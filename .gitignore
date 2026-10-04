@@ -1,0 +1,18 @@
+# Build/tool outputs; intended implementation layout
+target/
+project/target/
+project/project/
+.bsp/
+.metals/
+.scala-build/
+.idea/
+
+# Local state, credentials, evidence
+.raider/
+.env
+.env.*
+!.env.example
+artifacts/
+*.log
+__pycache__/
+.DS_Store

@@ -1,0 +1,153 @@
+{
+  "schema_version": 1,
+  "observed_date": "2026-10-02",
+  "repository_hint": "sibling tokenrouter checkout; use YABANIN_REPO in future tasks",
+  "head": "0dbb287ac46be0dbf95d77f87a066baa4c42add3",
+  "scope": "read-only source inspection, no deployment or test certification",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "sha256": "fe00d6aac346d4451fea37b61d94c7c12c60b77c621c07a25be6e8d88c22639e",
+      "bytes": 4592,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "README.md",
+      "sha256": "f6bcf00d7e74fb220bab8b9b72af81810ff4eef6889cc0314162a419726ec286",
+      "bytes": 13627,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "docs/architecture.md",
+      "sha256": "e5bbdb2a046ea48c87692e6f4f7dcf6d6fee2434907e35a664e5887e50c41ae0",
+      "bytes": 17740,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "docs/harness.md",
+      "sha256": "b38a13ae7ccf247d5dde10e7aa4dc9eb74cf8d44a9d92cf2e130273f0dd57c88",
+      "bytes": 2358,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "docs/labels.md",
+      "sha256": "eedb353783923ba6bed28ae25353c1152341f61ef3fa177c110d5f93de35dcdc",
+      "bytes": 4914,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "docs/api/openapi.yaml",
+      "sha256": "c57a5feb382772482b34f86b1db3026009a7ab79d69fc262cf91b91aa2e6b90f",
+      "bytes": 9254,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "docs/ci.md",
+      "sha256": "fee0ec2a53ec84e66c98fa41fd1f71f5b2f5c91c085b6a56c6b4792d77c55ff0",
+      "bytes": 3673,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "scripts/quality/README.md",
+      "sha256": "b5b42fe1d2de522eab5dcf6d82b9c50d7fe2c3456f7a96ad0492a5431ce9bcaf",
+      "bytes": 12500,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "scripts/quality/commands.json",
+      "sha256": "bede4f5dd59250ec4405282fca7e8e23b112b822c6f17b5d536f157283c3569f",
+      "bytes": 1214,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "standards/agent-handoff.md",
+      "sha256": "25cab16d933e1d92703e99aeba59bb3e6034425dc941f32e47fd297dae9edbd7",
+      "bytes": 4059,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/cli/gateway.go",
+      "sha256": "5d5e68698985761405bfe7939db61fe609eecb71778523401e25feaf595cb6c9",
+      "bytes": 54099,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/cli/chat.go",
+      "sha256": "a26a7077b3d477203a2cd18798c571dfeae02ba0184ed23ebad3bad09c1e1fd9",
+      "bytes": 59711,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/cli/labels_mw.go",
+      "sha256": "998a319705a3a8d30d8af5d29a2d7af1c364d3d3dd825dbe8c12f04850115fa7",
+      "bytes": 4231,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/cli/decision.go",
+      "sha256": "af6eeef440cea7c15431f707c2287d1ceb3a5d725e9dd93a255663f8b5b68f83",
+      "bytes": 2832,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/cli/sessionkeys_api.go",
+      "sha256": "61b1e692202569368d07f1feb430378e9acb2dcc732b27d2ee4afa18a8f4eda4",
+      "bytes": 18585,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/labels/header.go",
+      "sha256": "b8b459a20cf2a7481ab3d0342bd0cf442ee15fccc6f0b812da03c3190ee00c95",
+      "bytes": 3771,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/harness/adapters/registry.go",
+      "sha256": "0276f3dfb0fa27aa2e5714fdd2253f1e5565f3f4d3ad3e9f6f57a12d51a5c289",
+      "bytes": 2475,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/trcli/delegate.go",
+      "sha256": "26b189d8349ad6ca20293149dce5192336961b71b3810cb7d9544ca2fcea5787",
+      "bytes": 12621,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/contracts.go",
+      "sha256": "67b97e3230d5f743777e45d4f5a59a54008b5bd914510d5656fa875a50ac50ed",
+      "bytes": 12044,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/schema/manifest.schema.json",
+      "sha256": "0a3b0a7d905040afa7ac9eb817f656c5668a8f71e429cae46b9da01a5ca76343",
+      "bytes": 3767,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/schema/episode.schema.json",
+      "sha256": "d7a4bf169eaead570e81ac8fa2de3609a9de7b967425417bdc28b1dc67bd9956",
+      "bytes": 2394,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/schema/call.schema.json",
+      "sha256": "2ec14af25d75628020ce532f8df88083164247f7fbd1d98714278b5fb0e82986",
+      "bytes": 2137,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/schema/tool.schema.json",
+      "sha256": "6c81d7af42a02fde0e8ed6065744994e632b29574bbafcc8fc94f6c5fedf6fa8",
+      "bytes": 1173,
+      "working_tree_status": "clean"
+    },
+    {
+      "path": "pkg/agenteval/contracts/schema/verdict.schema.json",
+      "sha256": "ac162e350c89a2ccca68c8f6dcf525a8990e12794cfb5322d564a9d2a049293e",
+      "bytes": 498,
+      "working_tree_status": "clean"
+    }
+  ]
+}

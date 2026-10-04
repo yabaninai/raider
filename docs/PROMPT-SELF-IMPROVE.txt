@@ -1,0 +1,45 @@
+You are working on your own codebase — Raider (Scala 3 + ZIO).
+Task: add an interactive `raider chat` mode so users can have a conversation
+with the model instead of making one-shot calls.
+
+PLAN (follow strictly, step by step):
+
+1. fs_read {"path": "modules/cli/src/main/scala/raider/cli/run/CliArgs.scala", "max_lines": 60}
+   — see how the `run` subcommand is parsed
+
+2. fs_read {"path": "modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala", "max_lines": 50}
+   — see how execute works for the Agent target
+
+3. Create file modules/cli/src/main/scala/raider/cli/run/ChatLoop.scala via fs_edit:
+   - Content: object ChatLoop with method def loop(backend, registry, model, admission, root): ZIO[Any, RaiderError, Unit]
+   - Method reads a line from stdin via Console.readLine
+   - Accumulates List[RequestMessage] (conversation history)
+   - On each line calls AgentLoop(backend, registry, model, admission, root).runText(history, limits, maxRounds)
+   - Adds the answer as RequestMessage("assistant", answer) to history
+   - Prints the answer via Console.printLine
+   - Exit: string ":q" or ":quit"
+   - On error prints the error code and continues
+
+4. In CliArgs.scala: add case "chat" to parse — parses --provider, --base-url, --model, --workspace (same flags as run)
+
+5. In Main.scala: add case for chat — creates backend, toolset, admission, calls ChatLoop.loop
+   Do NOT use forkDaemon/SIGTERM hook for chat — this is interactive mode, just ZIO.scoped
+
+6. proc_run {"argv": ["sbt", "--batch", "raiderCli/compile"], "timeout_s": 300}
+   — if compilation fails, read the file, fix it, retry (max 3 attempts)
+
+7. proc_run {"argv": ["sbt", "--batch", "raiderCli/test"], "timeout_s": 300}
+   — all tests must be green
+
+IMPORTANT RULES:
+- DO NOT overwrite files entirely — use fs_edit with expected_sha256
+- First fs_read the file, then fs_edit with the correct sha256
+- If fs_edit gives STALE WRITE — re-read the file and retry
+- Write idiomatic Scala 3 (no null, no var, pattern matching)
+- Explicit imports: import raider.core.*, import zio.*, etc.
+- Do NOT add new dependencies to build.sbt
+- Code must compile WITHOUT warnings (-Werror)
+- If something doesn't work after 3 attempts — write what exactly failed
+
+GOAL: `raider chat --provider openai --model local` opens an interactive
+dialog where you can write tasks and get answers with context continuity.

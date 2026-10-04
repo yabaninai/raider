@@ -1,0 +1,1742 @@
+
+{
+  "schema_version": 1,
+  "status": "design-backlog-not-executed",
+  "raider_count": 53,
+  "companion_count": 3,
+  "cards": [
+    {
+      "id": "RAI-001",
+      "title": "Feasibility headless и настоящего Scala REPL",
+      "milestone": "M0",
+      "dependencies": [],
+      "allowed_paths": [
+        "experiments/repl-spike/**",
+        "docs/adr/**",
+        "docs/research/feasibility/**"
+      ],
+      "profiles": [
+        "bootstrap"
+      ],
+      "behavior": "Минимальный reproducer: binding val/def/case class, общий runtime object через classloader/prelude bridge, фоновые fibers, JLine edit buffer, bundled headless invoke. Проверить Scala/JDK/ZIO/artifacts и HTTP/schema candidates; записать exact версии, startup/memory и рекомендуемый adapter.",
+      "acceptance": {
+        "normal": "SPIKE-01: clean запуск, сохранённые transcript и version inventory; отдельный headless процесс без terminal/compiler classpath.",
+        "error": "SPIKE-02: compile error сохраняет старый binding; missing toolchain/artifact явно unavailable.",
+        "concurrency": "SPIKE-03: Ctrl+C foreground/await/idle и SIGTERM runner без orphan; background output не портит строку."
+      },
+      "non_goals": "Production runtime, fake Scala parser, обещание стабильного bind API; этот prototype не release.",
+      "context": "runtime-contracts.md §1; product-repl.md §1,7,12; ci-runtime.md §3,6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-002",
+      "title": "Frozen публичные API и versioned схемы",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-001",
+        "RAI-003"
+      ],
+      "allowed_paths": [
+        "modules/core/**",
+        "modules/dsl/**",
+        "contracts/**",
+        "docs/adr/**"
+      ],
+      "profiles": [
+        "static",
+        "contracts",
+        "docs"
+      ],
+      "behavior": "Compile-only Program/Agent/Workflow/Task/Job/Child, launch facade capability, all overloads, pipeline/verify/check codecs, backend events/errors. JSON schemas input/context/run/result/bundle/checks. DefinitionContext явно предоставляется REPL/loader; no global launch in imports.",
+      "acceptance": {
+        "normal": "API-01: positive Scala fixtures для apply/andThen/all heterogeneous tuple/map/for/fork/pipeline; roundtrip canonical schemas.",
+        "error": "API-02: negative fixtures wrong input/mixed Programs/Task output/unknown schema version; error family с stable exit mapping.",
+        "concurrency": "API-03: construction/printer не исполняет backend; immutable descriptors можно разделять без runtime mutation."
+      },
+      "non_goals": "Рабочие transports/REPL, Any/casts на public boundary, второй DSL parser.",
+      "context": "runtime-contracts.md §3; dsl-experience.md; ci-runtime.md §2–4,7–8; provider-protocols.md §2",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-003",
+      "title": "Pinned build и разделение distributions",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-001"
+      ],
+      "allowed_paths": [
+        "build.sbt",
+        "project/**",
+        ".scalafmt.conf",
+        ".scalafix.conf",
+        "Makefile",
+        "scripts/bootstrap/**",
+        "modules/*/src/main/**"
+      ],
+      "profiles": [
+        "bootstrap",
+        "static",
+        "contracts"
+      ],
+      "behavior": "Канонический sbt multi-project, exact tool versions, JDK policy, dependency resolution и build inventory. Run/dev module dependency graph: core не знает compiler, testkit вне production. Bootstrap не скрывается внутри tests.",
+      "acceptance": {
+        "normal": "BUILD-01: clean compile всех skeleton modules; dependency tree и headless distribution исключают compiler/JLine.",
+        "error": "BUILD-02: unsupported JDK/missing tool объявляется до build; no floating versions/snapshots.",
+        "concurrency": "BUILD-03: два независимых clean builds дают одинаковый dependency inventory; build не запускает model/tools."
+      },
+      "non_goals": "Полноценный packaging/release, auto-install во время quality gate.",
+      "context": "runtime-contracts.md §1–2; quality-gates.md §4; ci-runtime.md §3",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-004",
+      "title": "Quality runner, classifier и evidence",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-003"
+      ],
+      "allowed_paths": [
+        "scripts/quality/**",
+        "scripts/quality-policy/**",
+        "Makefile",
+        "contracts/quality/**",
+        "docs/quality-gates.md"
+      ],
+      "profiles": [
+        "self",
+        "static",
+        "contracts",
+        "security"
+      ],
+      "behavior": "Protected argv registry, diff classifier для merge-base/staged/unstaged/untracked/rename/delete/unborn, required profiles, timeout/partial logs, source/policy/toolchain/log hashes. evidence --require проверяет freshness/completeness, не summary автора.",
+      "acceptance": {
+        "normal": "GATE-01: fast/changed/full и profile commands генерируют валидный manifest; selected risky path включает правильные profiles.",
+        "error": "GATE-02: fabricated/stale log, missing tool, skipped gate, changed threshold/registry и evidence write failure nonzero.",
+        "concurrency": "GATE-03: timeout/SIGTERM сохраняет partial report, concurrent source edit invalidates run; gates не rewrite source."
+      },
+      "non_goals": "Ослабление coverage/thresholds, paid inference, использование shell для registry argv.",
+      "context": "quality-gates.md §1–6,12; model-workflow.md §5–8",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-005",
+      "title": "Profiles, policies и независимый provider config",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-004"
+      ],
+      "allowed_paths": [
+        "modules/core/src/main/**/config/**",
+        "modules/cli/src/main/**/config/**",
+        "modules/core/src/test/**/config/**",
+        "examples/config/**",
+        "contracts/config/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "security"
+      ],
+      "behavior": "Versioned immutable config, env credential refs, model roles, explicit defaults, endpoint/auth/version normalization, runtime ceilings и trust ownership. OpenAI-compatible/Anthropic-compatible/Yabanin доступны одинаково; цены nullable и источник известен.",
+      "acceptance": {
+        "normal": "CFG-01: три profiles и mixed-role resolution без service calls, API prefix сохранён; bounded env credential resolution.",
+        "error": "CFG-02: missing role/key, duplicate names, insecure remote URL, invalid cap и unknown required option before dispatch; redact diagnostics.",
+        "concurrency": "CFG-03: running snapshot не меняется при reload; overrides только сужают capabilities/ceilings."
+      },
+      "non_goals": "HTTP calls, secret literals, implicit gateway/direct failover, mint keys.",
+      "context": "provider-protocols.md §1–2; product-repl.md §8; ci-runtime.md §4–5",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-006",
+      "title": "Deterministic testkit без LLM",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-004"
+      ],
+      "allowed_paths": [
+        "modules/testkit/**",
+        "contracts/testkit/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "Scripted ModelBackend/tool outcomes, virtual time, controllable promises/barriers, request recorder, simulated usage/errors/partial events. Fixture mode маркирован; core contract suites переиспользуемы любым backend.",
+      "acceptance": {
+        "normal": "MOCK-01: text/tool/tool-result/final, scripted price/unknown usage и ordered event traces.",
+        "error": "MOCK-02: invalid fixture, unexpected call, overread, output bound не превращаются в success.",
+        "concurrency": "MOCK-03: virtual deadline/backoff, controllable cancellation/finish races без real sleeps."
+      },
+      "non_goals": "Network client, смешение mock и live, dependency testkit в production classpath.",
+      "context": "runtime-contracts.md §3,8–9; quality-gates.md §7,11",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-007",
+      "title": "Job registry и atomic lifecycle",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-006"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/jobs/**",
+        "modules/testkit/**/jobs/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "Typed Job handle, heterogeneous admin views только с codecs, IDs/root lineage, queued/running/waiting/terminal transitions, shared completion и bounded retention. Admission остаётся отдельным service.",
+      "acceptance": {
+        "normal": "JOB-01: start/read/await terminal outcome, два await не повторяют backend, несколько roots независимы.",
+        "error": "JOB-02: unknown ID, invalid transition, duplicate terminal event дают typed errors/late observations.",
+        "concurrency": "JOB-03: many waiters + cancel/success race: один terminal winner/result, no lost waiter."
+      },
+      "non_goals": "Database/daemon, unbounded forever registry, costs/tools implementation.",
+      "context": "runtime-contracts.md §3–5; quality-gates.md §7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-008",
+      "title": "Structured scopes и отмена subtree",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-007"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/scopes/**",
+        "modules/runtime/**/jobs/**",
+        "modules/testkit/**/scopes/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "CI/REPL owner→root→scoped child, cancellation-safe registration/finalizers, bounded cleanup, no new dispatch after Cancelling. Domain failure и interruption различимы.",
+      "acceptance": {
+        "normal": "SCOPE-01: join/scoped exit/all fail cancel unjoined children; root completes после mandatory finalizers.",
+        "error": "SCOPE-02: cleanup failure/grace exhaustion отражаются Interrupted/Uncertain согласно evidence, не fake Cancelled.",
+        "concurrency": "SCOPE-03: interrupt ровно между child launch/register; no orphan, one completion и permit cleanup."
+      },
+      "non_goals": "Detached daemon jobs, Future/Await/global runtime, обещание remote cancellation по TCP close.",
+      "context": "runtime-contracts.md §4–6; ci-runtime.md §6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-009",
+      "title": "Root budget и admission без deadlocks",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-008"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/budget/**",
+        "modules/runtime/**/admission/**",
+        "modules/testkit/**/budget/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "performance"
+      ],
+      "behavior": "Atomic exact money ledger/reservations/settlement, attempts/tokens/depth/children/queue/model/tool ceilings. Price unknown explicit; retries и output repair расходуют root cap. Fair bounded queues и deadline during wait.",
+      "acceptance": {
+        "normal": "BUD-01: concurrent children суммы<=declared bounded admission; exact rounding/overflow; mixed-provider root.",
+        "error": "BUD-02: неизвестная цена при required hard USD cap rejected, negative/overflow config не запускается.",
+        "concurrency": "BUD-03: parent delegate+join при model slots=1 не deadlock; cancel на каждой acquisition boundary release correctly."
+      },
+      "non_goals": "Pipeline-wide distributed hard cap, Double money, post-hoc polling как admission.",
+      "context": "runtime-contracts.md §6–7; provider-protocols.md §2; quality-gates.md §7,10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-010",
+      "title": "Native agent loop",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-006",
+        "RAI-009"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/loop/**",
+        "modules/testkit/**/loop/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval"
+      ],
+      "behavior": "Freeze profile/tools/model/context, normalize requests/events, complete tool arguments validation/policy, bounded retry/steps, final output validation. Runnable delegate primitive после limits; LLM-driven profile selection checked registry.",
+      "acceptance": {
+        "normal": "LOOP-01: text→tool→result→final и child delegation со scoped ownership; attempt/ToolCall IDs сохранены.",
+        "error": "LOOP-02: invalid arguments/schema/unknown tool/profile, provider error, max steps/depth rejected без side effect.",
+        "concurrency": "LOOP-03: cancel during stream/tool/join; partial tool args не execute; retries bounded и billed attempts distinct."
+      },
+      "non_goals": "Compaction/full typed repair, внешние engines единственным runtime, trusted verdict из ответа модели.",
+      "context": "runtime-contracts.md §8–11; quality-gates.md §7,11",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-011",
+      "title": "OpenAI-compatible HTTP Chat",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-006",
+        "RAI-010"
+      ],
+      "allowed_paths": [
+        "modules/provider-chat/**",
+        "contracts/providers/openai-chat/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "security"
+      ],
+      "behavior": "Nonstreaming Chat serialization/auth/tool rounds/errors/usage, API prefix/TLS/redirect behavior, bounded body/timeouts. Endpoint model configured без обязательного /models; normalize actual vs requested metadata.",
+      "acceptance": {
+        "normal": "CHAT-01: реальный local HTTP mock принимает request/tool IDs и отдаёт text/tool/usage outcomes без Yabanin.",
+        "error": "CHAT-02: 401/403/429/5xx/malformed/oversize/unsupported-required classified, auth не уходит на другой origin.",
+        "concurrency": "CHAT-03: cancel request/body closes resources; ambiguous paid attempts не обнуляют usage и не repeat tools."
+      },
+      "non_goals": "Responses, Azure/cloud auth ecosystem, gateway-specific headers в generic adapter.",
+      "context": "provider-protocols.md §2–3; runtime-contracts.md §9; quality-gates.md §3,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-012",
+      "title": "OpenAI SSE streaming state machine",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-011"
+      ],
+      "allowed_paths": [
+        "modules/provider-chat/**/stream/**",
+        "contracts/providers/openai-chat/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "runtime"
+      ],
+      "behavior": "Incremental UTF-8/SSE framing и normalized deltas, interleaved tool indices/arguments, usage-only data, finish_reason/DONE/EOF policy. Reusable framing может использовать Anthropic, semantic parser отдельный.",
+      "acceptance": {
+        "normal": "SSE-01: все chunk partitions sanitized corpus дают одинаковый output/usage/tool IDs.",
+        "error": "SSE-02: truncated frames/oversize/invalid JSON/EOF-before-finish/idle timeout typed fail, no partial tool execution.",
+        "concurrency": "SSE-03: slow consumer/cancel/finish race bounded buffers, closed response и truthful accounting."
+      },
+      "non_goals": "Assume one chunk=one event, unbounded concatenation, переписывание protocol fixtures под parser.",
+      "context": "provider-protocols.md §3; yabanin-integration.md §5; quality-gates.md §7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-013",
+      "title": "Anthropic-compatible Messages и streaming",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-010",
+        "RAI-012"
+      ],
+      "allowed_paths": [
+        "modules/provider-anthropic/**",
+        "contracts/providers/anthropic/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "runtime",
+        "security"
+      ],
+      "behavior": "Самостоятельный Messages wire: system/content blocks/tool_use/tool_result, max_tokens/auth/version, indexed SSE block lifecycle/partial JSON/cumulative usage. Capability-specific metadata roundtrip и privacy без fake OpenAI conversion.",
+      "acceptance": {
+        "normal": "ANTH-01: local HTTP full tool round и text stream, equivalent native outcome без Yabanin env; multiple tools/errors.",
+        "error": "ANTH-02: refusal/truncation/error-after-200/unknown required block/incomplete stream/version-auth mismatch truthful errors.",
+        "concurrency": "ANTH-03: fragmented UTF-8/tool input и cancel между block_stop/message_stop; once tool execute, usage не суммирует cumulative twice."
+      },
+      "non_goals": "Server-managed tools/cloud adapters/all beta features, logging thinking/signatures, silently dropped unsupported semantics.",
+      "context": "provider-protocols.md §4–5; runtime-contracts.md §9",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-014",
+      "title": "Чтение и поиск с workspace containment",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-008"
+      ],
+      "allowed_paths": [
+        "modules/tools/**/files/read/**",
+        "modules/tools/**/search/**",
+        "contracts/tools/read/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "tools",
+        "security"
+      ],
+      "behavior": "Bounded read/search, realpath/workspace policy, UTF-8/binary behavior и output truncation evidence. Не делать shell concatenation для search. File artifacts provenance/hash.",
+      "acceptance": {
+        "normal": "READ-01: temporary repo read/search returns correct ranges и bounded result, empty query/file defined.",
+        "error": "READ-02: traversal/symlink escape/permission/binary/oversize отказ или declared truncation без secret dump.",
+        "concurrency": "READ-03: deleted/changed file during read gets defined error/provenance; cancellation stops long search."
+      },
+      "non_goals": "Write/process tools, обещание полноценного OS sandbox.",
+      "context": "runtime-contracts.md §10; ci-runtime.md §5,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-015",
+      "title": "Безопасная мутация и patch artifacts",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-014"
+      ],
+      "allowed_paths": [
+        "modules/tools/**/files/edit/**",
+        "contracts/tools/edit/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "tools",
+        "runtime",
+        "security"
+      ],
+      "behavior": "Expected SHA/content preconditions, atomic replace, diff bounds/encoding, symlink-aware write policy, patch/baseSha artifact. Default serialized writers, explicit isolated worktrees для параллельных agents.",
+      "acceptance": {
+        "normal": "EDIT-01: apply approved patch only matching base; record resulting hash/diff, no unrelated paths.",
+        "error": "EDIT-02: stale expected hash/path escape/protected verifier/invalid diff fail without partial silent mutation.",
+        "concurrency": "EDIT-03: two writers stale conflict predictable; cancel pre/during commit records applied/uncertain status."
+      },
+      "non_goals": "Auto commit/push/merge, exactly-once after crash, изменение verifier в agent workspace.",
+      "context": "runtime-contracts.md §6,10; ci-runtime.md §5,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-016",
+      "title": "Owned process tools и isolated execution",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-008",
+        "RAI-014"
+      ],
+      "allowed_paths": [
+        "modules/tools/**/process/**",
+        "contracts/tools/process/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "tools",
+        "runtime",
+        "security",
+        "ci"
+      ],
+      "behavior": "Structured argv/cwd/env allowlist, output/time bounds, process groups/grace escalation и sandbox capability negotiation. CI untrusted tests только credential-free isolated worker; unavailable isolation→deny.",
+      "acceptance": {
+        "normal": "PROC-01: registered command fixture в temp workspace, captured exit/output и no inherited credentials.",
+        "error": "PROC-02: invalid argv/cwd/policy/missing sandbox/oversize/timeouts fail honestly; no raw shell interpolation.",
+        "concurrency": "PROC-03: SIGTERM/cancel kills owned grandchildren, PID reuse/foreign process не kill; unresolved remote process Uncertain."
+      },
+      "non_goals": "Docker daemon setup, privileged mounts, host sandbox guarantee из одного env filtering.",
+      "context": "runtime-contracts.md §5,10; ci-runtime.md §5–6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-017",
+      "title": "Единая typed composition",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-008",
+        "RAI-009"
+      ],
+      "allowed_paths": [
+        "modules/dsl/**/composition/**",
+        "modules/runtime/**/composition/**",
+        "contracts/compile/composition/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "docs"
+      ],
+      "behavior": "andThen/mapOutput, all Programs/Tasks arity2 typed tuples, ordered bounded batch/batchCollect, scope/fork/join. One effect interpreter; external cancellation не swallowed в collect.",
+      "acceptance": {
+        "normal": "COMP-01: mixed typed tuple, sequential ordering, ordered batch, empty batch no dispatch и explicit input contexts.",
+        "error": "COMP-02: negative inference fixtures/mismatched inputs/invalid parallelism; fail-fast cancels siblings.",
+        "concurrency": "COMP-03: bounded fanout/root ledger и scope exit; max model permit1 parent waiting no deadlock."
+      },
+      "non_goals": "Macros, dynamic List[Any], race/quorum до P2, отдельный scheduler.",
+      "context": "product-repl.md §4–6; runtime-contracts.md §3,5–7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-018",
+      "title": "Ergonomic REPL launch facade",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-010",
+        "RAI-017"
+      ],
+      "allowed_paths": [
+        "modules/repl/**/facade/**",
+        "contracts/compile/facade/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "repl",
+        "docs"
+      ],
+      "behavior": "ask/start/run/await/send/cancel/watch/info на Program/Task/Job через using ReplSession, method/infix/functional aliases delegates one launch. Foreground/root observer cancellation ownership explicit.",
+      "acceptance": {
+        "normal": "FACADE-01: primary DSL fixtures возвращают typed result/Job; repeated await no calls; prelude first answer.",
+        "error": "FACADE-02: missing session и blocking facade inside workflow give clear errors; bare Task never run.",
+        "concurrency": "FACADE-03: CtrlC foreground subtree vs await/watch observer different behavior; session close owns roots."
+      },
+      "non_goals": "Hidden global runtime, смена apply eager semantics, arbitrary persistent closures.",
+      "context": "dsl-experience.md §1–8; product-repl.md §2–3,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-019",
+      "title": "Pinned compiler/JLine REPL adapter",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-001",
+        "RAI-018"
+      ],
+      "allowed_paths": [
+        "modules/repl-engine/**",
+        "modules/repl/**/terminal/**",
+        "contracts/pty/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl",
+        "security",
+        "performance"
+      ],
+      "behavior": "Real Scala eval/completion/multiline, shared type/classloader context, single terminal writer/coalescing, session lifecycle/signal ownership. Compiler imports only engine adapter; state reset explicit.",
+      "acceptance": {
+        "normal": "REPL-01: val/def/case class/import/Unicode/load, old bindings после compile error и no output duplication.",
+        "error": "REPL-02: runtime error/EOF/bad pasted source restores prompt; pretty-print secrets/tasks safe.",
+        "concurrency": "REPL-03: 20 streaming jobs vs editing buffer; CtrlC modes; reset/exit no orphan/fiber; PTY actual process."
+      },
+      "non_goals": "Fake Interpreter acceptance, Windows support без suite, compiler in headless distribution.",
+      "context": "product-repl.md §1,7,11–12; quality-gates.md §8,10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-020",
+      "title": "Prelude, registry commands и definition load",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-019"
+      ],
+      "allowed_paths": [
+        "modules/repl/**/commands/**",
+        "modules/dsl/**/definitions/**",
+        "contracts/pty/**",
+        "examples/workflows/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl",
+        "docs",
+        "security"
+      ],
+      "behavior": "Presets, help/jobs/watch/cancel/agents/tools/workflows/load/run/spawn/doctor/reset/exit. DefinitionContext+explicit register/version snapshot; quoted paths parsed without shell. Load trusted code without command-history replay.",
+      "acceptance": {
+        "normal": "CMD-01: help alone позволяет seven UX scenarios; load/register/run same Program и preview IDs.",
+        "error": "CMD-02: unknown ID/workflow/wrong input/bad path/code reports line+column, previous definitions retained.",
+        "concurrency": "CMD-03: reload while running leaves pinned old snapshot; exit/reset handles jobs, inbox/watch subscriptions."
+      },
+      "non_goals": "Interactive prompt in CI, binary plugin hot reload, fabricated built-in upstream parity.",
+      "context": "product-repl.md §6,9–12; dsl-experience.md §9–10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-021",
+      "title": "Steering mailbox и checked model delegation",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-010",
+        "RAI-018",
+        "RAI-020"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/mailbox/**",
+        "modules/runtime/**/delegation/**",
+        "contracts/runtime/delegation/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval"
+      ],
+      "behavior": "Bounded ordered steering receipts queued/applied/rejected with safe-boundary consumption. Delegate registered profile/version/schema/context/capability subset; join releases active model permit.",
+      "acceptance": {
+        "normal": "MSG-01: send affects next turn; model delegate child inherits RootId/policy/limits, typed outcome reference.",
+        "error": "MSG-02: finished job/full inbox/unauthorized profile/wrong child input/depth cap rejects with receipt.",
+        "concurrency": "MSG-03: send/cancel/finish race no lost receipt; recursive delegation stops admission; parent cancellation owns child."
+      },
+      "non_goals": "Unbounded freeform cross-root bus, daemon messaging, передачa parent credentials/full transcript по умолчанию.",
+      "context": "runtime-contracts.md §6,11; product-repl.md §3,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-022",
+      "title": "Compiled bundles и headless Runner",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-005",
+        "RAI-010",
+        "RAI-017"
+      ],
+      "allowed_paths": [
+        "modules/cli/**/run/**",
+        "modules/repl/**/compile/**",
+        "modules/core/**/bundle/**",
+        "contracts/bundle/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "runtime",
+        "docs",
+        "security"
+      ],
+      "behavior": "Compile trusted definitions/registers→versioned JAR manifest; headless load validated bundle/input/workflow and run same Task. dev source shorthand explicit compilation; stdout JSON/noANSI, stderr diagnostics, no stdin dependence.",
+      "acceptance": {
+        "normal": "RUN-01: packaged runner executes mock Program from bundle with closed stdin, no compiler/JLine/network resolution.",
+        "error": "RUN-02: bad hash/API/dependency/schema/name/input fails preflight before spend, output failure typed.",
+        "concurrency": "RUN-03: invocation owns root cleanup; SIGTERM bounded stop, concurrent invocations have separate state directories."
+      },
+      "non_goals": "Trust from bare hash, executing fork-supplied bundle with credentials, second interpreter/runtime.",
+      "context": "ci-runtime.md §1–3,6; product-repl.md §12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-023",
+      "title": "CI context и trust preflight",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-005",
+        "RAI-022"
+      ],
+      "allowed_paths": [
+        "modules/ci/**/context/**",
+        "modules/ci/**/policy/**",
+        "contracts/ci/context/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "security"
+      ],
+      "behavior": "Generic schema plus GitHub/GitLab env adapters, provenance/bounded metadata/matrix/retry identity and explicit owner trust. Protected bundle/verifier/policy sources independent of target workspace. Required policy checked before dispatch.",
+      "acceptance": {
+        "normal": "CTX-01: same semantics from equivalent three contexts; fresh roots and stable logical identity.",
+        "error": "CTX-02: ambiguous auto platform/malformed missing context/untrusted trust escalation fail; no raw env export.",
+        "concurrency": "CTX-03: concurrent matrix/retry distinct attribution; fork config cannot widen permissions or access keys."
+      },
+      "non_goals": "CI DAG/runner scheduling, network repo hosting API calls, trusting env flag alone.",
+      "context": "ci-runtime.md §4–5; quality-gates.md §12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-024",
+      "title": "Trusted checks, artifacts и exit contracts",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-002",
+        "RAI-016",
+        "RAI-022",
+        "RAI-023"
+      ],
+      "allowed_paths": [
+        "modules/ci/**/checks/**",
+        "modules/ci/**/report/**",
+        "modules/ci/**/exit/**",
+        "contracts/ci/reports/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "tools",
+        "security",
+        "eval"
+      ],
+      "behavior": "MVP deterministic verifier/check registry outside agent workspace, report-format/input/output schema checks; frozen advisory/blocking policy. Atomic run/result/events/JUnit/summary/artifacts manifests и stable error precedence; actual check evidence.",
+      "acceptance": {
+        "normal": "REPORT-01: success/finding advisory/blocking failure → expected run verdict/exit, hashes/XML match actual outputs.",
+        "error": "REPORT-02: diskfull/permission/secret/log-command/XML/path injection; every exit mapping table-driven incl. uncertainty.",
+        "concurrency": "REPORT-03: signal finalization while output writing сохраняет truthful partial state; no fake passed checks from model."
+      },
+      "non_goals": "Task eval benchmark suite (041), SARIF publisher/PR writes, self-hash recursive manifest, green при reporter error.",
+      "context": "ci-runtime.md §2,7–8,11; quality-gates.md §5,12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-025",
+      "title": "GitHub/GitLab/generic wrappers",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-023",
+        "RAI-024"
+      ],
+      "allowed_paths": [
+        "integrations/github/**",
+        "integrations/gitlab/**",
+        "integrations/generic/**",
+        "modules/ci/**/platform/**",
+        "contracts/ci/platform/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "docs",
+        "security"
+      ],
+      "behavior": "Thin templates CLI+safe summary/scalar outputs+artifact upload/JUnit mapping; pinned third-party refs. Generic context example works without host vendor SDK. Default permissions/read-only/fork mock; paid/live/publish explicit.",
+      "acceptance": {
+        "normal": "PLAT-01: local env/template/schema fixtures; clean hosted runner transcripts when owner has configured infrastructure.",
+        "error": "PLAT-02: untrusted multiline summary/output/::command/PR title not executed, no secret dotenv; missing hosted run pending.",
+        "concurrency": "PLAT-03: matrix identities/interruptible/retry preserve truthful artifacts and avoid blind mutation replay."
+      },
+      "non_goals": "Universal cloud orchestrator, auto configure repo secrets, publication/posts, claim readiness по YAML alone.",
+      "context": "ci-runtime.md §9–11; sources-decisions.md §1",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-026",
+      "title": "Совместная MVP-приёмка",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-012",
+        "RAI-013",
+        "RAI-014",
+        "RAI-015",
+        "RAI-016",
+        "RAI-017",
+        "RAI-018",
+        "RAI-019",
+        "RAI-020",
+        "RAI-021",
+        "RAI-022",
+        "RAI-023",
+        "RAI-024",
+        "RAI-025"
+      ],
+      "allowed_paths": [
+        "contracts/acceptance/mvp/**",
+        "examples/mvp/**",
+        "docs/acceptance/**"
+      ],
+      "profiles": [
+        "full",
+        "ci",
+        "repl",
+        "transport",
+        "eval"
+      ],
+      "behavior": "One deterministic vertical slice: review/advisory, patch+checks, research output; same workflow CI/REPL, standalone оба wires, mixed providers. Acceptance matrix limits/cancel/error/artifact/trust explicitly exported.",
+      "acceptance": {
+        "normal": "MVP-01: product CLI and PTY transcripts pass; generic/GitHub/GitLab fixture semantic equivalence, no Yabanin dependency.",
+        "error": "MVP-02: missing creds/unsupported tools/invalid output/provider error/budget/deadline/check fail/report failure nonzero.",
+        "concurrency": "MVP-03: two async children+steering+join/cancel; maxLLM1; SIGTERM owned process cleanup and no leak."
+      },
+      "non_goals": "Live spend, asserting hosted CI without evidence, beta/P2 features; unresolved defect gets dedicated fix card.",
+      "context": "PLAN.md acceptance; ci-runtime.md §11; quality-gates.md §7–8,11–12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-027",
+      "title": "Journal и архивирование без replay",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-026"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/journal/**",
+        "modules/core/**/events/**",
+        "contracts/journal/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci",
+        "security"
+      ],
+      "behavior": "Versioned event envelope, single writer/atomic snapshots, root sequences, bounded retention/redaction, archived views. Recovery invalid tail: interrupted/uncertain, no auto replay mutation/closure.",
+      "acceptance": {
+        "normal": "JOURNAL-01: events/results roundtrip and root/job lineage; archive available after restart.",
+        "error": "JOURNAL-02: corrupt tail/unknown schema/disk error marked incomplete; raw keys/prompts absent по policy.",
+        "concurrency": "JOURNAL-03: slow writer observer не blocks budget; bounded overflow defined, final flush errors honest."
+      },
+      "non_goals": "Arbitrary Scala durable resume, SQL persistence без измерений, fake durable guarantee при dropped events.",
+      "context": "runtime-contracts.md §13; ci-runtime.md §7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-028",
+      "title": "Typed agents, tools и bounded output repair",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-002",
+        "RAI-010",
+        "RAI-027"
+      ],
+      "allowed_paths": [
+        "modules/core/**/codec/**",
+        "modules/dsl/**/typed/**",
+        "modules/runtime/**/validation/**",
+        "contracts/compile/typed/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval",
+        "docs"
+      ],
+      "behavior": "Tool[I,O] и Agent[I,O] с едиными codec/schema derivation, structured outputs и runtime validation; beta all arity 3/4 с heterogeneous tuple inference. Endpoint native schema mode optional; bounded repair charged attempts; derive macro только стандартная typeclass mechanism, не compiler AST DSL.",
+      "acceptance": {
+        "normal": "TYPE-01: case class/enum/nested codec tests, typed chain inference, tool inputs roundtrip обоих wires.",
+        "error": "TYPE-02: invalid JSON/unknown required field/schema mismatch/unsupported native capability, no unchecked casting.",
+        "concurrency": "TYPE-03: repair retry cap и root reservation с cancel/deadline; repeated bad output ends Failed."
+      },
+      "non_goals": "Общий schema framework с нуля, unlimited model repair, research-verdict из LLM.",
+      "context": "runtime-contracts.md §3,8–10; provider-protocols.md §3–4; product-repl.md §5",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-029",
+      "title": "Definition loaders и context policy",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-020",
+        "RAI-027"
+      ],
+      "allowed_paths": [
+        "modules/dsl/**/definitions/**",
+        "modules/runtime/**/context/loaders/**",
+        "contracts/definitions/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "docs",
+        "security"
+      ],
+      "behavior": "Native Markdown/TOML/Scala definitions, provenance/version snapshot, instructions hierarchy/cwd/context policy, bounded resource refs. Reuse DefinitionContext; policy intersection, missing references typed.",
+      "acceptance": {
+        "normal": "LOAD-01: equivalent native profile definitions и source hashes, versioned registry roundtrip.",
+        "error": "LOAD-02: malformed frontmatter/unsupported required key/traversal/context secret leakage denied.",
+        "concurrency": "LOAD-03: reload affects new roots only; child TaskOnly vs Summary/Artifacts limits explicit."
+      },
+      "non_goals": "Upstream importer semantics (032/033), executing untrusted Scala plugin, auto replay history.",
+      "context": "runtime-contracts.md §11–13; product-repl.md §6,9–10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-030",
+      "title": "Context limits и compaction",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027",
+        "RAI-028",
+        "RAI-029"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/context/**",
+        "contracts/context/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval",
+        "security"
+      ],
+      "behavior": "Model context capability/estimate, pinned instruction/task/tool history, artifact refs, explicit compaction checkpoint. Summary cost charged; preserve tool correlation and unsent steering; uncertain token estimate visible.",
+      "acceptance": {
+        "normal": "CTXMEM-01: long scripted conversation bounded, preserves task/tools/results needed for next request.",
+        "error": "CTXMEM-02: missing tokenizer/context size/compaction invalid/schema errors fail by policy, not silent truncation essentials.",
+        "concurrency": "CTXMEM-03: compaction vs steering/cancel race deterministic; job version/model role retained."
+      },
+      "non_goals": "Magic infinite memory, embedding/vector DB/RAG platform, summary as task verifier.",
+      "context": "runtime-contracts.md §7–9,11; quality-gates.md §7,11",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-031",
+      "title": "Versioned JVM plugin SPI",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-028",
+        "RAI-029"
+      ],
+      "allowed_paths": [
+        "modules/core/**/extension/**",
+        "modules/runtime/**/extension/**",
+        "modules/cli/**/plugins/**",
+        "contracts/extensions/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "security",
+        "compatibility"
+      ],
+      "behavior": "Manifest/API range/IDs/dependencies/tools/providers/agents/middleware permissions. Immutable registry, deterministic hook order, scoped lifecycle; plugin code trusted with process authority. Invalid compatibility blocks load.",
+      "acceptance": {
+        "normal": "EXT-01: external example plugin registers typed tool+profile/provider via public SPI; no core changes.",
+        "error": "EXT-02: duplicate ID/API mismatch/cyclic deps/hook timeout/prohibited capability fail preflight.",
+        "concurrency": "EXT-03: hook failure cannot bypass root ceiling/cancel; concurrent jobs use pinned registry."
+      },
+      "non_goals": "Sandbox произвольной JVM, TS plugin interpreter, runtime binary hot reload, marketplace.",
+      "context": "runtime-contracts.md §12; provider-protocols.md §2",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-032",
+      "title": "Pi profile importer с provenance",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-029",
+        "RAI-031"
+      ],
+      "allowed_paths": [
+        "modules/compat-pi/**",
+        "contracts/compat/pi/**",
+        "vendor/pi-profiles/**",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "docs",
+        "compatibility",
+        "security",
+        "eval"
+      ],
+      "behavior": "Pin upstream commit/license/hash, import example scout/planner/reviewer/worker prompts+supported tool/context semantics into Raider profiles; compatibility report exact supported/ignored/rejected fields.",
+      "acceptance": {
+        "normal": "PIIMP-01: golden upstream corpus maps profiles/tool policies and notices reproducibly.",
+        "error": "PIIMP-02: unknown required tools/extensions/config rejected or explicit degraded opt-in, no false parity.",
+        "concurrency": "PIIMP-03: imported snapshot reload не mutates running child policy; effective capabilities only narrow."
+      },
+      "non_goals": "Copy всей архитектуры, claim встроенных pi subagents, execution TS extensions в JVM.",
+      "context": "runtime-contracts.md §12; sources-decisions.md pi references; product-repl.md §10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-033",
+      "title": "OpenCode profile importer",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-029",
+        "RAI-031"
+      ],
+      "allowed_paths": [
+        "modules/compat-opencode/**",
+        "contracts/compat/opencode/**",
+        "vendor/opencode-profiles/**",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "docs",
+        "compatibility",
+        "security",
+        "eval"
+      ],
+      "behavior": "Pin upstream version/commit; Markdown/JSON profiles вместе с registry permissions/mode defaults, primary build/plan и subagent roles per actual version. Ask/deny/allow fidelity and unsupported permission patterns report.",
+      "acceptance": {
+        "normal": "OCIMP-01: golden prompts+policy profile corpus и license notices, requested permissions mapped.",
+        "error": "OCIMP-02: unsupported tool/wildcard/mode/ask-in-CI cannot silently become allow.",
+        "concurrency": "OCIMP-03: native parent policy intersects imported child; registry versions immutable."
+      },
+      "non_goals": "All OpenCode config ecosystem/native TS plugins, carry prompt без permission semantics.",
+      "context": "runtime-contracts.md §12; sources-decisions.md OpenCode references; ci-runtime.md §5–6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-034",
+      "title": "Pi RPC external backend",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027",
+        "RAI-031",
+        "RAI-032"
+      ],
+      "allowed_paths": [
+        "modules/backend-pi/**",
+        "contracts/backends/pi/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "tools",
+        "transport",
+        "compatibility",
+        "security"
+      ],
+      "behavior": "Owned pinned pi process, JSONL stdin/stdout protocol, stderr separate, LF framing, request IDs; acceptance vs actual agent_settled completion. capabilities tools/cancel/nested accounting accurately advertised.",
+      "acceptance": {
+        "normal": "PIRPC-01: complete prompt/tool run event normalization through real compatible test process; version recorded.",
+        "error": "PIRPC-02: accepted prompt not treated final, stdout noise/corrupt JSON/crash/version mismatch fail.",
+        "concurrency": "PIRPC-03: Unicode separators are data; retry events not early-complete; process cancel acknowledgement/uncertainty truthful."
+      },
+      "non_goals": "Native tool-policy enforcement without bridge support, visibility полного upstream billing, silent backend fallback.",
+      "context": "runtime-contracts.md §9; sources-decisions.md Pi RPC; quality-gates.md §3,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-035",
+      "title": "OpenCode HTTP external backend",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027",
+        "RAI-031",
+        "RAI-033"
+      ],
+      "allowed_paths": [
+        "modules/backend-opencode/**",
+        "contracts/backends/opencode/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "transport",
+        "compatibility",
+        "security"
+      ],
+      "behavior": "Pinned session/prompt_async/events/abort APIs, directory/workspace ownership и auth; existing remote server optional external lifecycle contract. Shared global SSE filtering by session/request IDs, reconnect policy no mutation replay.",
+      "acceptance": {
+        "normal": "OCBACK-01: compatible local server fixture executes session/tool run to actual completion, version capabilities visible.",
+        "error": "OCBACK-02: auth/version/session mismatch/disconnect fail honest; unknown required guarantee blocks launch.",
+        "concurrency": "OCBACK-03: two roots concurrent session events не mix; abort ack vs requested abort different outcomes."
+      },
+      "non_goals": "Trust arbitrary unauthenticated network server, hard complete nested accounting, invent endpoint shapes.",
+      "context": "runtime-contracts.md §9; sources-decisions.md OpenCode server; ci-runtime.md §6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-036",
+      "title": "Conversation sessions с serialized turns",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027",
+        "RAI-030"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/conversation/**",
+        "modules/repl/**/session/**",
+        "contracts/sessions/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "repl",
+        "security"
+      ],
+      "behavior": "Conversation implements Program, apply lazy, ask/start same verbs; bounded ordered turns, durable archive codec, X-Session-ID scope independent child histories. close and queued-turn cancellation defined.",
+      "acceptance": {
+        "normal": "SESSION-01: two turns use context then archive/reopen explicit; one provider turn at a time.",
+        "error": "SESSION-02: closed/unknown/schema-invalid session and oversize history errors, no implicit agent restart.",
+        "concurrency": "SESSION-03: concurrent start/close/cancel/steering preserve order and root ownership; no dropped queued receipts."
+      },
+      "non_goals": "Daemon persistence active fibers, concurrent writes shared conversation transcript, arbitrary REPL binding restore.",
+      "context": "dsl-experience.md §8; runtime-contracts.md §5,11,13",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-037",
+      "title": "Optional Yabanin profile, labels и wrapper env",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-011",
+        "RAI-012",
+        "RAI-023",
+        "RAI-027"
+      ],
+      "allowed_paths": [
+        "modules/yabanin/**/connection/**",
+        "modules/yabanin/**/labels/**",
+        "modules/yabanin/**/doctor/**",
+        "contracts/yabanin/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "ci",
+        "security"
+      ],
+      "behavior": "Profile decorator/capability doctor без token spend, Go PathEscape golden labels/limits/provenance, decision metadata. yb ci exec child URL/key/labels recognized, explicit lifecycle owner wrapper; standalone generic paths untouched.",
+      "acceptance": {
+        "normal": "YBCON-01: mock gateway labels sorted/canonical and effective context; wrapper-first launch child-only env.",
+        "error": "YBCON-02: 401/403/501/stale models docs/label overflow distinguished; no direct provider fallback.",
+        "concurrency": "YBCON-03: matrix roots/attempts distinct; merging wrapper labels preserves protected CI attribution."
+      },
+      "non_goals": "Changes в Go Yabanin, mint lifecycle (038), claim deployed readiness от read-only snapshot.",
+      "context": "yabanin-integration.md §1–6,10,12–13; provider-protocols.md §1–2",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-038",
+      "title": "Yabanin root session keys и finish",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-037",
+        "RAI-009"
+      ],
+      "allowed_paths": [
+        "modules/yabanin/**/sessions/**",
+        "contracts/yabanin/sessions/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "runtime",
+        "ci",
+        "security"
+      ],
+      "behavior": "disabled/optional/required modes, parent capability preflight/mint TTL/root labels, opaque credential refs, idempotent finish/revoke policy. inherited ybs_ uses wrapper owner and не mint второй key.",
+      "acceptance": {
+        "normal": "YBKEY-01: one key per standalone root+children, complete finish/mock usage and owner recorded.",
+        "error": "YBKEY-02: required unavailable/permission/mint fallback blocks; optional degraded explicit; credentials never artifacts.",
+        "concurrency": "YBKEY-03: cancel vs mint/finish, revoke errors/root failure/accounting pending; no leaking key or fake remote cancelled."
+      },
+      "non_goals": "Zero-overshoot promise из max_cost_usd field, automatic parent secret fallback strict mode.",
+      "context": "yabanin-integration.md §7–8,13; ci-runtime.md §10",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-039",
+      "title": "Pinned Yabanin stand acceptance",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-037",
+        "RAI-038"
+      ],
+      "allowed_paths": [
+        "integrations/yabanin/**",
+        "contracts/acceptance/yabanin/**",
+        "docs/acceptance/yabanin/**"
+      ],
+      "profiles": [
+        "integration",
+        "ci",
+        "transport",
+        "security"
+      ],
+      "behavior": "Owner-provided Yabanin checkout/version/stand with mock upstream, migration/logger/accounting prerequisites; source snapshot refresh, actual deployment capability report. Session/labels/cache/tool/stream behavior measured.",
+      "acceptance": {
+        "normal": "YBSTAND-01: real gateway+logger→usage labels and complete flag, no paid provider; artifact/transcript.",
+        "error": "YBSTAND-02: unavailable stand/migrations/DB/keys → unavailable non-pass; unsupported cap priced unknown.",
+        "concurrency": "YBSTAND-03: concurrent children/usage lag/cache duplicate tool/cancel/finish, no zero-unknown or blind replay."
+      },
+      "non_goals": "Deploy production, modifying sibling code, paid smoke without owner cap, treating polling stable as complete.",
+      "context": "yabanin-integration.md §1,5–9,12–13; quality-gates.md §2,12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-040",
+      "title": "Agent-eval contract export",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027",
+        "RAI-028",
+        "RAI-024"
+      ],
+      "allowed_paths": [
+        "modules/eval-export/**",
+        "contracts/eval-export/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "eval",
+        "security"
+      ],
+      "behavior": "Versioned Yabanin JSON Schema 2020-12 manifest/episodes/calls/tools/verdicts export, separate outcomes/usage coverage/unknown prices null; tool args digests and artifact hashes. Works standalone without server.",
+      "acceptance": {
+        "normal": "EXPORT-01: validate all files against pinned schemas/golden fixtures; reconstruct root/job/attempt lineage.",
+        "error": "EXPORT-02: missing actual verifier cannot fabricated verdict; unknown price/completeness retained, secrets absent.",
+        "concurrency": "EXPORT-03: interrupted run/cancel emits consistent partial episodes; late usage reconciliation versioned."
+      },
+      "non_goals": "Direct DB write/dashboard changes, LLM self-grading, paid eval within ordinary gates.",
+      "context": "yabanin-integration.md §11; runtime-contracts.md §13; quality-gates.md §11",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-041",
+      "title": "Protected task eval и adversarial corpus",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-024",
+        "RAI-028",
+        "RAI-040"
+      ],
+      "allowed_paths": [
+        "eval/**",
+        "contracts/acceptance/tasks/**",
+        "scripts/eval/**",
+        "docs/eval/**"
+      ],
+      "profiles": [
+        "eval",
+        "ci",
+        "contracts",
+        "security"
+      ],
+      "behavior": "12 deterministic loop fixtures+6 real task fixtures, protected verifier registry outside mutable workspace, coding regression/diff constraints/research source checks, safety/protocol hard gates vs soft usefulness. Corpus changes independent review.",
+      "acceptance": {
+        "normal": "EVAL-01: seeded review bug/safe edit/bugfix/extraction/parallel synthesis/research detect correct vs planted wrong outcomes.",
+        "error": "EVAL-02: deleting tests/verifier tamper/claim success/no actual check/traversal cannot pass; holdout not exposed.",
+        "concurrency": "EVAL-03: failing sibling/cancel/truncated evidence/artifact hash change cannot produce accepted root."
+      },
+      "non_goals": "Benchmark leaderboard из одного paid trial, changing gate thresholds alongside product fix.",
+      "context": "quality-gates.md §7,9,11; ci-runtime.md §2,5,7",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-042",
+      "title": "Accounting reconciliation без ложных денег",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-038",
+        "RAI-039",
+        "RAI-040"
+      ],
+      "allowed_paths": [
+        "modules/yabanin/**/accounting/**",
+        "modules/runtime/**/budget/**",
+        "contracts/accounting/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "transport",
+        "integration",
+        "ci"
+      ],
+      "behavior": "Join local attempts with available gateway metadata/session usage; estimates/observed/unpriced/uncertain/pending separate. Bounded lag polling, rounding/source provenance, incomplete final report honest; standalone price catalog paths retained.",
+      "acceptance": {
+        "normal": "COST-01: priced/unpriced/unknown/retry fixtures produce correct exact totals and coverage across mixed roots.",
+        "error": "COST-02: missing request ID/usage permission/logger/price never becomes zero/complete; post-hoc over-cost distinct.",
+        "concurrency": "COST-03: finish/poll/cancel/late settlement idempotence; concurrent cap tests measure actual overshoot contract."
+      },
+      "non_goals": "Shared cross-job hard cap, forged prices, гарантия отмены upstream через revoke.",
+      "context": "runtime-contracts.md §7; yabanin-integration.md §8,13; provider-protocols.md §2",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-043",
+      "title": "Soak и calibrated performance",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-026",
+        "RAI-027",
+        "RAI-030"
+      ],
+      "allowed_paths": [
+        "benchmarks/**",
+        "contracts/performance/**",
+        "scripts/performance/**",
+        "docs/performance/**"
+      ],
+      "profiles": [
+        "performance",
+        "runtime",
+        "ci",
+        "repl"
+      ],
+      "behavior": "Measure native submission/cancel, headless bundle verify/start, 20 streaming jobs prompt, 1000 bounded jobs memory/registry/fibers/process handles. Save reference machine/JDK/load; relative regression threshold ADR, no random sleeps.",
+      "acceptance": {
+        "normal": "PERF-01: budgets quality-gates §10 на calibrated runner; post-cleanup steady memory и no orphans.",
+        "error": "PERF-02: slow renderer/journal/backend observers bounded, stress oversized queue pressure remains controlled.",
+        "concurrency": "PERF-03: mixed launch/cancel/deadline/finish sustained load fair admission no deadlock; report quantiles."
+      },
+      "non_goals": "Lower threshold ради green, model/network latency как runtime overhead, distributed scalability claim.",
+      "context": "quality-gates.md §10; runtime-contracts.md §6; ci-runtime.md §3,6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-044",
+      "title": "JVM/OCI distribution и supply-chain inventory",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-022",
+        "RAI-026",
+        "RAI-031"
+      ],
+      "allowed_paths": [
+        "packaging/**",
+        "scripts/release/**",
+        "contracts/package/**",
+        "THIRD_PARTY_NOTICES.md"
+      ],
+      "profiles": [
+        "release",
+        "ci",
+        "security",
+        "docs"
+      ],
+      "behavior": "Separate run/dev launchers, Linux OCI nonroot/pinned base digest, SBOM/licenses/checksums/dependency inventory, offline runtime launch. PID1 signal forwarding and artifact volume UID/path contract. Artifact deterministic metadata.",
+      "acceptance": {
+        "normal": "PKG-01: clean-directory install/run/dev REPL; headless no compiler dependencies, container output files usable.",
+        "error": "PKG-02: corrupted bundle/checksum/incompatible JDK/missing writable mount fail; secrets not image/layers.",
+        "concurrency": "PKG-03: SIGTERM container owned subtree cleanup; launcher propagates exit, no signal swallow."
+      },
+      "non_goals": "Native-image, publishing/signing без owner policy, Windows support без suite.",
+      "context": "ci-runtime.md §3,6–7; runtime-contracts.md §2; quality-gates.md §4,12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-045",
+      "title": "CI разработки самого Raider",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-004",
+        "RAI-026",
+        "RAI-044"
+      ],
+      "allowed_paths": [
+        ".github/workflows/**",
+        ".gitlab-ci.yml",
+        "integrations/development-ci/**",
+        "scripts/quality/**",
+        "docs/ci-development.md"
+      ],
+      "profiles": [
+        "self",
+        "full",
+        "security",
+        "ci"
+      ],
+      "behavior": "PR risk gates и merge-base, main/nightly full/Linux + macOS compiler/package smoke, release optional integration lanes. Pinned actions/toolchain, fork secret isolation, validated fingerprints and artifact upload on failure.",
+      "acceptance": {
+        "normal": "DEV-CI-01: actual clean build job outputs manifest/logs; gates verify same source fingerprint.",
+        "error": "DEV-CI-02: failing/skipped scanner/missing prerequisite/stale cache/artifact writer fail pipeline, no continue-on-error hiding.",
+        "concurrency": "DEV-CI-03: source changes while gate running stale; forks cannot change protected policy to self-green."
+      },
+      "non_goals": "Product platform adapter (025), secrets provisioning/deploy, claiming executed CI от YAML only.",
+      "context": "quality-gates.md §2,5–6,12; model-workflow.md §8",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-046",
+      "title": "Executable examples и документация",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-026",
+        "RAI-028",
+        "RAI-032",
+        "RAI-033",
+        "RAI-044"
+      ],
+      "allowed_paths": [
+        "examples/**",
+        "docs/**",
+        "README.md",
+        "contracts/docs/**"
+      ],
+      "profiles": [
+        "docs",
+        "contracts",
+        "ci",
+        "repl",
+        "compatibility"
+      ],
+      "behavior": "Quick CI/direct-provider/repl onboarding и review/patch/research examples, upstream import report, integration limitations; every public snippet compiled/mock-executed. Separate sketches labelled and concrete domain fixture codecs provided.",
+      "acceptance": {
+        "normal": "DOC-01: newcomer uses short help/README, same definition REPL→bundle→CI, both direct protocols no Yabanin.",
+        "error": "DOC-02: stale command/broken link/uncompiled snippet/unlabelled mock fails docs gate.",
+        "concurrency": "DOC-03: cancel/limits/policy examples match actual runtime; reload/show archived does not replay."
+      },
+      "non_goals": "Marketing quality claims без evidence, documenting planned P2 as shipped.",
+      "context": "dsl-experience.md §10; product-repl.md §12; quality-gates.md §3,8",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-047",
+      "title": "Release candidate acceptance",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-041",
+        "RAI-043",
+        "RAI-044",
+        "RAI-045",
+        "RAI-046"
+      ],
+      "allowed_paths": [
+        "contracts/acceptance/release/**",
+        "docs/releases/**",
+        "scripts/release/**"
+      ],
+      "profiles": [
+        "release",
+        "full",
+        "ci",
+        "security"
+      ],
+      "behavior": "Supported capability matrix standalone/protocol/CI/REPL/platform; immutable fingerprint and validated package artifacts, known limitations. Advertised optional Yabanin/bridges требуют accepted 039/042/034/035 respective evidence; base release independent.",
+      "acceptance": {
+        "normal": "REL-01: clean distributions and full acceptance matrices pass; owner receives commands/transcripts/evidence verifier.",
+        "error": "REL-02: missing capability evidence/license/signing policy/failed required checks blocks relevant release claim.",
+        "concurrency": "REL-03: cancel/OOM/incomplete artifacts/retry caveats present, no false exactly-once/shared-cap claims."
+      },
+      "non_goals": "Automatic publish/tag/push, paid provider cap, calling unsupported integrations ready.",
+      "context": "development-plan.md §8–9; quality-gates.md §12; model-workflow.md §12",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-048",
+      "title": "Daemon attach и explicit job ownership",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "modules/daemon/**",
+        "modules/cli/**/attach/**",
+        "contracts/daemon/**",
+        "docs/adr/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "security",
+        "ci"
+      ],
+      "behavior": "Сначала ADR auth/transport/root ownership/reparent/TTL/quota, затем local daemon start/attach/list/cancel. Detached roots only explicit capability; REPL exit semantics documented.",
+      "acceptance": {
+        "normal": "DAEMON-01: disconnect/attach retains owned daemon job; daemon shutdown bounded cleanup.",
+        "error": "DAEMON-02: unauthorized clients/stale handles/expired root/schema mismatch denied.",
+        "concurrency": "DAEMON-03: client disconnect vs cancel/reparent race gives one owner/terminal result."
+      },
+      "non_goals": "Distributed cluster, restart running fibers, changing default REPL exit silently.",
+      "context": "runtime-contracts.md §5; product-repl.md §7; sources-decisions.md §4",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-049",
+      "title": "Recovery только registered serializable plans",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-027",
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "modules/runtime/**/recovery/**",
+        "contracts/recovery/**",
+        "docs/adr/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval",
+        "security"
+      ],
+      "behavior": "Design plan IR/registered step identities/checkpoints/side-effect recovery policy. Persist definitions/codecs/version/hash; resume only explicitly recoverable steps, uncertain mutation pauses reconciliation.",
+      "acceptance": {
+        "normal": "RECOVER-01: interrupted read-only registered plan reconstructs and resumes from validated checkpoint.",
+        "error": "RECOVER-02: unknown version/closure/nonidempotent step/changed workspace/missing receipt refuses replay.",
+        "concurrency": "RECOVER-03: crash at dispatch/commit/checkpoint boundaries no automatic duplicate mutation; racing resume one owner."
+      },
+      "non_goals": "Serialize arbitrary Scala closures/JVM stack, exactly-once from JSONL alone.",
+      "context": "runtime-contracts.md §3,13; ci-runtime.md §6; sources-decisions.md ADR-009",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-050",
+      "title": "Shared budget authority между CI jobs",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-009",
+        "RAI-042",
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "modules/budget-shared/**",
+        "contracts/budget-shared/**",
+        "docs/adr/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "integration",
+        "security"
+      ],
+      "behavior": "Отдельный design authority/admission/reservation/expiry/reconciliation protocol с failure closed/availability policy. Pipeline/matrix roots используют одно trusted budget, price guarantees declared. Adapter to existing gateway only if real contract supports.",
+      "acceptance": {
+        "normal": "SHARE-01: separate processes simultaneous reservations never exceed declared authority cap.",
+        "error": "SHARE-02: partition/timeout/unknown price/stale authority не masquerades local guaranteed cap.",
+        "concurrency": "SHARE-03: orphan lease/late charges/duplicate settlement/retry concurrent tests preserve ledger invariants."
+      },
+      "non_goals": "Polling usage as atomic admission, guarantees at unavailable upstream boundaries.",
+      "context": "runtime-contracts.md §7; yabanin-integration.md §8; ci-runtime.md §6",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-051",
+      "title": "Capped live сравнение моделей",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-040",
+        "RAI-041",
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "eval/live/**",
+        "scripts/eval/**",
+        "docs/eval/**"
+      ],
+      "profiles": [
+        "eval",
+        "integration",
+        "security"
+      ],
+      "behavior": "Owner-approved accounts/endpoints/spend cap; same task/tools/budget fixtures multiple repetitions, actual requested/served model, cost/latency/uncertainty. Pilot>=3 repeats, stronger conclusions требуют выборки/confidence intervals.",
+      "acceptance": {
+        "normal": "LIVE-01: report task/safety/protocol separately, real attempts и costs with provenance.",
+        "error": "LIVE-02: unpriced/missing accounting/budget cutoff/provider outage remain explicit invalid/incomplete trials.",
+        "concurrency": "LIVE-03: parallel runs spend managed by declared cap authority, cancel and retry attempts included."
+      },
+      "non_goals": "Implicit paid gate/full, ranking из single lucky response, account entitlement assumptions.",
+      "context": "quality-gates.md §11; model-workflow.md §10; provider-protocols.md §2",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-052",
+      "title": "raceSuccess/quorum coordination",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-017",
+        "RAI-043",
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "modules/dsl/**/coordination/**",
+        "modules/runtime/**/coordination/**",
+        "contracts/coordination/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval",
+        "performance"
+      ],
+      "behavior": "ADR precise winner/loser cancellation, no-first-error raceSuccess, quorum equivalence key typed results/tie policy/cost. Operations explicit opt-in поверх одного runtime.",
+      "acceptance": {
+        "normal": "QUORUM-01: first successful validated result или k-equivalent outputs; result provenance и loser accounting.",
+        "error": "QUORUM-02: all failures/no attainable quorum/invalid k/tie produce typed deterministic outcome.",
+        "concurrency": "QUORUM-03: simultaneous completions/cancel/deadline one winner, losers acknowledged/uncertain честно."
+      },
+      "non_goals": "Unbounded best-of-N spending, hidden judge success, новый scheduler.",
+      "context": "runtime-contracts.md §4–7; quality-gates.md §7,10–11",
+      "status": "todo"
+    },
+    {
+      "id": "RAI-053",
+      "title": "MCP tool adapter",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-031",
+        "RAI-047"
+      ],
+      "allowed_paths": [
+        "modules/mcp/**",
+        "contracts/mcp/**",
+        "docs/adr/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport",
+        "tools",
+        "security",
+        "compatibility"
+      ],
+      "behavior": "Pin MCP version/transports, lifecycle/auth/tools schema/artifact normalization, bounded timeout/output/permissions and server capability report. Discovery не execute tools и не предоставляет лишние rights.",
+      "acceptance": {
+        "normal": "MCP-01: local fixture server tools/resources translated into typed registry and native loop.",
+        "error": "MCP-02: auth/schema/protocol mismatch/disallowed tool/server disconnect explicit errors.",
+        "concurrency": "MCP-03: cancel request/session close/late tool output status, no orphan server processes or widened child permissions."
+      },
+      "non_goals": "Unlimited remote servers/plugins, protocol support без version conformance, bypass CI sandbox policy.",
+      "context": "runtime-contracts.md §10,12; provider-protocols.md §2; quality-gates.md §3",
+      "status": "todo"
+    },
+    {
+      "id": "YB-RAI-01",
+      "title": "yb harness connect raider",
+      "milestone": "Yabanin",
+      "dependencies": [
+        "RAI-037",
+        "RAI-038"
+      ],
+      "allowed_paths": [
+        "pkg/harness/adapters/**",
+        "pkg/trcli/harness*",
+        "docs/harness.md"
+      ],
+      "profiles": [
+        "yabanin-quality-changed",
+        "yabanin-quality-full",
+        "integration"
+      ],
+      "behavior": "Managed Raider config adapter/registry/connect/disconnect/doctor. Preserve permissions/user settings/backups, references на keys, drift и version schema. Wrapper-first CI already works без этого PR.",
+      "acceptance": {
+        "normal": "YB-01: connect twice идемпотентно; disconnect restores config, doctor verifies deployed capabilities.",
+        "error": "YB-02: config drift/schema conflict/helper returns parent in required mode fail without overwrite.",
+        "concurrency": "YB-03: atomic config transaction interrupted mid-write retains recoverable backup and no key literals."
+      },
+      "non_goals": "Менять Raider runtime, platform scheduler, silent auth fallback.",
+      "context": "yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория",
+      "status": "todo"
+    },
+    {
+      "id": "YB-RAI-02",
+      "title": "Real Raider executor вместо FakeExecutor",
+      "milestone": "Yabanin",
+      "dependencies": [
+        "RAI-022",
+        "RAI-024",
+        "RAI-039",
+        "YB-RAI-01"
+      ],
+      "allowed_paths": [
+        "pkg/delegation/controller/**",
+        "pkg/trcli/delegate*",
+        "docs/delegation*"
+      ],
+      "profiles": [
+        "yabanin-quality-changed",
+        "yabanin-quality-full",
+        "integration"
+      ],
+      "behavior": "Прежде design протокола mapping Existing Job/Task IDs/events/run/result/cancel/uncertainty; then owned raider-run process/bundle executor. One lifecycle owner, actual source CLI FakeExecutor gap acknowledged.",
+      "acceptance": {
+        "normal": "YB-04: persisted delegation job maps real Raider result/exit/events and attempts accounting.",
+        "error": "YB-05: missing binary/bundle mismatch/protocol crash cannot simulated success.",
+        "concurrency": "YB-06: controller cancel/retry/process exit race; no competing root owners or automatic mutation replay."
+      },
+      "non_goals": "Rewrite Go controller/MCP orchestrator, assume existing CLI already live executor.",
+      "context": "yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория",
+      "status": "todo"
+    },
+    {
+      "id": "YB-RAI-03",
+      "title": "CI/root analytics drilldown",
+      "milestone": "Yabanin",
+      "dependencies": [
+        "RAI-040",
+        "RAI-042",
+        "YB-RAI-01"
+      ],
+      "allowed_paths": [
+        "services/admind/**",
+        "docs/analytics*"
+      ],
+      "profiles": [
+        "yabanin-quality-changed",
+        "yabanin-quality-full",
+        "integration"
+      ],
+      "behavior": "Existing explorer/CI pipeline totals correlate root/job/workflow/attempt provenance and Raider artifacts with permitted filters. High cardinal IDs not automatic rollup dimensions; missing telemetry visibly pending.",
+      "acceptance": {
+        "normal": "YB-07: one pipeline/root matches accounting totals and actual model breakdown, safely escaped links.",
+        "error": "YB-08: no permissions/missing usage/broken lineage/unknown price retain incomplete states.",
+        "concurrency": "YB-09: logger lag/late reconciliation/no double-count retry and subtree totals."
+      },
+      "non_goals": "New DB schema/migration without own design card, trust client labels as auth, inflated aggregates.",
+      "context": "yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория",
+      "status": "todo"
+    }
+  ]
+}

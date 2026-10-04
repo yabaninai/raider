@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 200" width="400" height="200">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#0f3460;stop-opacity:1"/>
+      <stop offset="100%" style="stop-color:#e94560;stop-opacity:1"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="200" rx="12" fill="url(#bg)"/>
+  <rect x="0" y="170" width="400" height="4" rx="2" fill="url(#accent)"/>
+
+  <!-- Horse silhouette -->
+  <g transform="translate(40,40) scale(0.9)">
+    <path d="M20 100 C 15 90, 10 80, 15 70 C 20 60, 30 55, 40 58 C 35 50, 32 42, 35 35
+             L 40 25 L 45 30 L 42 40 C 45 35, 50 32, 55 30 L 50 40 C 55 35, 60 32, 65 30
+             L 60 40 L 65 38 C 70 40, 72 48, 68 55 L 75 65 C 78 75, 75 88, 70 100
+             L 65 100 C 68 92, 70 82, 65 75 C 60 80, 55 82, 50 80 L 45 90 L 45 100
+             L 40 100 C 42 92, 43 85, 40 78 C 35 80, 30 78, 28 72 L 25 100 Z"
+          fill="#e94560" opacity="0.9"/>
+    <circle cx="52" cy="28" r="3" fill="#1a1a2e"/>
+    <path d="M45 30 L 40 25 L 38 18" stroke="#e94560" stroke-width="2" fill="none"/>
+  </g>
+
+  <!-- Rider (abstract figure on horse) -->
+  <g transform="translate(65,50)">
+    <circle cx="0" cy="0" r="5" fill="#0f3460" stroke="#e94560" stroke-width="1.5"/>
+    <path d="M 0 5 L 0 20 L -5 30 M 0 20 L 8 15 M 0 20 L -8 25"
+          stroke="#0f3460" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <path d="M 8 15 L 15 5" stroke="#e94560" stroke-width="2" stroke-linecap="round"/>
+  </g>
+
+  <!-- Text -->
+  <text x="130" y="90" font-family="monospace" font-size="36" font-weight="bold" fill="#e94560">raider</text>
+  <text x="130" y="115" font-family="sans-serif" font-size="13" fill="#8899aa">Scalable agent harness for CI pipelines</text>
+  <text x="130" y="135" font-family="sans-serif" font-size="11" fill="#667788">Scala 3 · ZIO 2 · Self-hosting · 10 modules</text>
+
+  <!-- Arrow decoration -->
+  <g transform="translate(130,150)">
+    <line x1="0" y1="0" x2="250" y2="0" stroke="#e94560" stroke-width="1" opacity="0.5"/>
+    <polygon points="250,-3 256,0 250,3" fill="#e94560" opacity="0.7"/>
+    <line x1="0" y1="0" x2="250" y2="0" stroke="#e94560" stroke-width="1" opacity="0.5"/>
+  </g>
+
+  <!-- Scan lines effect -->
+  <g opacity="0.05">
+    <line x1="0" y1="30" x2="400" y2="30" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="60" x2="400" y2="60" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="90" x2="400" y2="90" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="120" x2="400" y2="120" stroke="white" stroke-width="1"/>
+    <line x1="0" y1="150" x2="400" y2="150" stroke="white" stroke-width="1"/>
+  </g>
+</svg>

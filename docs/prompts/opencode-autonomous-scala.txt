@@ -1,0 +1,1 @@
+Prompt: opencode-autonomous-scala (see docs/PROMPT-SELF-IMPROVE.txt and docs/selfdev-prompts.md for active prompts)

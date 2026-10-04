@@ -1,0 +1,147 @@
+{
+  "schema_version": 1,
+  "stage_policy": {
+    "component": "gates executable now on implemented slices",
+    "milestone": "obligations tracked by board; not runnable until stage target"
+  },
+  "profiles": {
+    "self": {
+      "stage": "component",
+      "gates": [
+        "self-registry-check"
+      ]
+    },
+    "static": {
+      "stage": "component",
+      "gates": [
+        "sbt-compile"
+      ]
+    },
+    "unit": {
+      "stage": "component",
+      "gates": [
+        "core-contracts-spec",
+        "sbt-test"
+      ]
+    },
+    "contracts": {
+      "stage": "component",
+      "gates": [
+        "core-contracts-spec",
+        "compile-fixtures"
+      ]
+    },
+    "docs": {
+      "stage": "component",
+      "gates": [
+        "plan-validate"
+      ]
+    },
+    "fast": {
+      "stage": "component",
+      "gates": [
+        "self-registry-check",
+        "sbt-compile",
+        "core-contracts-spec",
+        "compile-fixtures",
+        "plan-validate",
+        "sbt-test"
+      ]
+    },
+    "runtime": {
+      "stage": "component",
+      "gates": [
+        "sbt-test"
+      ]
+    }
+  },
+  "gates": {
+    "self-registry-check": {
+      "argv": [
+        "python3",
+        "scripts/quality/quality.py",
+        "self-check"
+      ],
+      "timeout_s": 60
+    },
+    "sbt-compile": {
+      "argv": [
+        "sbt",
+        "--batch",
+        "compile"
+      ],
+      "timeout_s": 600
+    },
+    "core-contracts-spec": {
+      "argv": [
+        "sbt",
+        "--batch",
+        "raiderCore/Test/runMain raider.core.ContractsSpec"
+      ],
+      "timeout_s": 600
+    },
+    "compile-fixtures": {
+      "argv": [
+        "sh",
+        "scripts/build/compile.sh"
+      ],
+      "timeout_s": 300
+    },
+    "plan-validate": {
+      "argv": [
+        "python3",
+        "scripts/plan/validate.py",
+        "--out",
+        "artifacts/plan-review/report.json"
+      ],
+      "timeout_s": 120
+    },
+    "sbt-test": {
+      "argv": [
+        "sbt",
+        "--batch",
+        "test"
+      ],
+      "timeout_s": 900
+    }
+  },
+  "path_profiles": {
+    "^modules/| ^contracts/": [
+      "static",
+      "unit",
+      "contracts"
+    ],
+    "^scripts/quality": [
+      "self"
+    ],
+    "^scripts/": [
+      "self",
+      "static"
+    ],
+    "^docs/|^README|^AGENTS.md": [
+      "docs"
+    ],
+    "^experiments/": [
+      "docs"
+    ],
+    "^build.sbt|^project/|^Makefile|^\\.scalafmt.conf": [
+      "static",
+      "contracts"
+    ]
+  },
+  "fingerprint_excludes": [
+    ".git",
+    "artifacts",
+    "target",
+    "project/target",
+    ".opencode",
+    "__pycache__",
+    ".DS_Store",
+    ".raider",
+    ".bsp",
+    ".metals",
+    ".idea",
+    ".scala-build",
+    ".bloop"
+  ]
+}

@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "review_date_local": "2026-10-03",
+  "timezone": "Europe/Moscow",
+  "scope": "independent feasibility review; not production acceptance",
+  "verdict": "changes-required",
+  "reviewed_source_hashes": {
+    "experiments/repl-spike/fetch_toolchain.py": "26503bb143c602fc45298a6f84cc8537f31d427374388c8d8bdbdc56f0267002",
+    "experiments/repl-spike/README.md": "5ff891df125ce1d6c8435cb036ba422138a19913ef3926cc267ade2e4f3f41ff",
+    "experiments/repl-spike/run_spike.sh": "806a776b7baa695a770537eb5172aa554bd575c8e6c34fdb4cd69c3c89d67abc",
+    "experiments/repl-spike/harness/headless_harness.py": "e253cbaf1eb05215ee4749df8c263f460c2792952095df97ba92f9f18bd2a12a",
+    "experiments/repl-spike/harness/repl_pty_harness.py": "fe38add22da1fbd0aabdb7dc35e8bc4f2fdffcffe4ddb1773562274d20df5a74",
+    "experiments/repl-spike/headless/HeadlessSpike.scala": "02b4718bbbdac6590d79a2b73b23bdf81c50854b1069424fb3a7ca6adb7145b7",
+    "experiments/repl-spike/prelude/SpikePrelude.scala": "86130098f070b6c082c7f7b9b7f3d0ac5a181bb7defcd13b710ea6b224adc2b9",
+    "experiments/repl-spike/probe/HttpJsonProbe.scala": "9070020e46ad540b052eb307bc74e3bb2c05f397213e97d5d7e52c0991cbbb4e"
+  },
+  "observations": {
+    "compile": "exit 0, fresh isolated classes from cached compiler",
+    "pty_xterm": "25/25 exit 0; isolated user.home",
+    "pty_inherited_TERM_dumb": "22/25 exit 1; environment sensitivity reproduced",
+    "foreground_cancel": "no chunks for 2 seconds after interruption",
+    "headless_exits": [
+      0,
+      143,
+      130
+    ],
+    "headless_own_child_alive_after_cleanup": false,
+    "json_probe": "3/3, exit 0",
+    "suite_false_green": "injected java/python3 failure exit 17; entrypoint returned 0",
+    "http_replay": "unavailable: loopback bind denied by sandbox",
+    "original_headless_harness": "ps denied; independent own-PID probe used"
+  },
+  "opencode_version": "1.18.34",
+  "evidence_directory": "artifacts/readiness-review-2026-10-03",
+  "raw_evidence_files": [
+    {
+      "path": "compile.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "false-green/artifacts/rai-001/compile.log",
+      "sha256": "22bae26b1121f4da3d67b05c8d21e35cd0dfb3dfc483004b8f9704c089a4086a"
+    },
+    {
+      "path": "false-green/artifacts/rai-001/environment.json",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "false-green/artifacts/rai-001/headless-harness.log",
+      "sha256": "1468592ddeb39e6d3bf60947f9afceb19f1e3a18e9ef4c88ed79a4e99802e191"
+    },
+    {
+      "path": "false-green/artifacts/rai-001/repl-harness.log",
+      "sha256": "1468592ddeb39e6d3bf60947f9afceb19f1e3a18e9ef4c88ed79a4e99802e191"
+    },
+    {
+      "path": "false-green/artifacts/tools/cp-headless.txt",
+      "sha256": "413c0579eb245b3da798fbd5b9bb8d00de79f9b73af3dd81e3a927b7e71ebcd4"
+    },
+    {
+      "path": "false-green/artifacts/tools/cp-repl.txt",
+      "sha256": "3e69101eec647448e5fb82240fa2e2d06bfae244c7f8ab595740e98c56a68c47"
+    },
+    {
+      "path": "false-green/bin/java",
+      "sha256": "2eb3c5a9ab9f6e18bdb6398d9e218fbf0b6029c80fa7e491f1514a0ff1549358"
+    },
+    {
+      "path": "false-green/bin/python3",
+      "sha256": "bc8af6179983e3d3ae7837c1fde09dbdcad6e18bc939d3a6078f54fef48aa749"
+    },
+    {
+      "path": "false-green/experiments/repl-spike/run_spike.sh",
+      "sha256": "806a776b7baa695a770537eb5172aa554bd575c8e6c34fdb4cd69c3c89d67abc"
+    },
+    {
+      "path": "false-green/result.json",
+      "sha256": "64eaa3b734364346cfe20b7dfaff75653f6a11c8e618349b101640dcec18afef"
+    },
+    {
+      "path": "foreground-cancel/repl-transcript-raw.txt",
+      "sha256": "26f0ef9b746340798cc6f299c275a889d4de7584b689dfe4e40f0559c89c30ed"
+    },
+    {
+      "path": "foreground-cancel/transcript.txt",
+      "sha256": "11f31d58ec9936f26320336742d64b0bbf98f7af1a5f61de3b55065456a9a064"
+    },
+    {
+      "path": "headless-independent/normal/run.json",
+      "sha256": "75b0b3b5ce99de1c812a0e6f44de0b840ca5c8ffe4649644a9735040641a142a"
+    },
+    {
+      "path": "headless-independent/normal/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "headless-independent/normal/stdout.log",
+      "sha256": "ea448f760074ba38fc542c1ab73ff6ace4e9ae5db74cad7cfabc173653d8869f"
+    },
+    {
+      "path": "headless-independent/results.json",
+      "sha256": "677efc5b78b7fd76a9fade7ebc597db23b5f4abb0fd850b078c194a3c11c9cc2"
+    },
+    {
+      "path": "headless-independent/sigint/run.json",
+      "sha256": "8b6a7f4c89799fbd0f5e677eeafef9c40a43b4bb1e4b085d2b7ab46b40b13563"
+    },
+    {
+      "path": "headless-independent/sigint/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "headless-independent/sigint/stdout.log",
+      "sha256": "d707cc2792f8908c3a39ba851e62001ebb635756a7d3ae95471862b9f3c29b9b"
+    },
+    {
+      "path": "headless-independent/sigterm/run.json",
+      "sha256": "f5769c144f5f38ef393260cfdc758078828ddc7549f8d4a93200f4081efd3ea1"
+    },
+    {
+      "path": "headless-independent/sigterm/stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "headless-independent/sigterm/stdout.log",
+      "sha256": "a4c9d2ed1db6272db471f85ce679cdbef79a2778d519b72553d2dae60845547a"
+    },
+    {
+      "path": "repl_pty_harness/repl-missing-toolchain.log",
+      "sha256": "80c3ed38eba4254f62cf49a764474aa91f02ea96ef761dc1a31b1442adc5cd84"
+    },
+    {
+      "path": "repl_pty_harness/repl-summary.json",
+      "sha256": "523db75beb01f0eb592841c3fa81a6bc97e85efd6bd75927abae1d5320a85149"
+    },
+    {
+      "path": "repl_pty_harness/repl-transcript-raw.txt",
+      "sha256": "54c6a8616b8da44a73d7d5163217e9fd57c4f7b7ba3c7e6b535ba603ea641368"
+    },
+    {
+      "path": "repl_pty_harness/repl-transcript.txt",
+      "sha256": "54c6a8616b8da44a73d7d5163217e9fd57c4f7b7ba3c7e6b535ba603ea641368"
+    },
+    {
+      "path": "repl_pty_xterm/repl-missing-toolchain.log",
+      "sha256": "8268907145b1b2ad3ddd131dbb94eaa0b881aad91803e1505c959adead961806"
+    },
+    {
+      "path": "repl_pty_xterm/repl-summary.json",
+      "sha256": "0a8705ef5bfd0a430004af0bfef829dd320c1bf51e0db7b4ca18d99af24aca0e"
+    },
+    {
+      "path": "repl_pty_xterm/repl-transcript-raw.txt",
+      "sha256": "0dae30ff55a0ebf5d8f0e408d175c06581dbbbf05fb408dc75b169d95ac0a139"
+    },
+    {
+      "path": "repl_pty_xterm/repl-transcript.txt",
+      "sha256": "9727070d5c753583724168d9c6918e2af74638a583e3674000f339753e2679cc"
+    },
+    {
+      "path": "sources.json",
+      "sha256": "73b1808dc875337fbd9e14df2eb6983275c9d310b3d797a0e6346943b6f52e80"
+    }
+  ],
+  "additional_openai_spike": {
+    "compile_exit": 0,
+    "launcher_fault_injection": {
+      "injected_java_python_exit": 17,
+      "actual_suite_exit": 0,
+      "success_banner": true
+    },
+    "network_replay": "not attempted: independent prior loopback bind denied",
+    "reported_checks": [
+      {
+        "id": "OAI-01-nonstream",
+        "status": "pass",
+        "detail": "exit=0"
+      },
+      {
+        "id": "OAI-02-stream-equivalence",
+        "status": "pass",
+        "detail": "exit=0 fragmented frames reassembled"
+      },
+      {
+        "id": "OAI-03-tool-args-assembled",
+        "status": "pass",
+        "detail": "exit=0 tool_line='[tool-call] id=call_1 name=fs.read args={\"path\": \"README.md\"}' args_valid=True"
+      },
+      {
+        "id": "OAI-04-auth-classified",
+        "status": "pass",
+        "detail": "exit=10"
+      },
+      {
+        "id": "OAI-05-cancel-midstream",
+        "status": "pass",
+        "detail": "exit=0 gateway_saw_disconnect=True"
+      },
+      {
+        "id": "OAI-06-repl-stream",
+        "status": "pass",
+        "detail": "repl_exit=0 streamed_into_repl=True"
+      }
+    ],
+    "reviewed_source_hashes": {
+      "experiments/openai-chat-spike/OpenAiCompatSpike.scala": "adfdfa3cf12fc6282d08446514591aff439dbce477d8e5a657e17ff59609ecf3",
+      "experiments/openai-chat-spike/README.md": "1bbcc18a50028595a6ec0fe62b876fcd430ace831ee2bf823c15c5184c0a820e",
+      "experiments/openai-chat-spike/harness/mock_gateway.py": "39505fc95dc5123ff9d1bf87fd68d440ddac3f858c211d1d6e560946a7a793ab",
+      "experiments/openai-chat-spike/harness/oai_spike_harness.py": "2f1b7e7209491f93f26b05d72e098c9aa7d0be3cda115d1a8504d57434969098",
+      "experiments/openai-chat-spike/run_spike.sh": "a74c2db2fc63df62c58d9d2b1dc0aa9b46aa3bee455909d8428d561ea022901f"
+    },
+    "raw_evidence_files": [
+      {
+        "path": "openai-addendum/compile.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "openai-addendum/false-green/artifacts/oai-spike/compile.log",
+        "sha256": "fa38083d50a8bd2f07945146af5d06150b2a09700cead1ace2b82411056ba83f"
+      },
+      {
+        "path": "openai-addendum/false-green/artifacts/oai-spike/harness.log",
+        "sha256": "fa38083d50a8bd2f07945146af5d06150b2a09700cead1ace2b82411056ba83f"
+      },
+      {
+        "path": "openai-addendum/false-green/artifacts/tools/cp-headless.txt",
+        "sha256": "ff34ec289d2d6daeade18d5beefb4b33ff68c2b0c8d21a2328b84721d9a8ce5f"
+      },
+      {
+        "path": "openai-addendum/false-green/artifacts/tools/cp-repl.txt",
+        "sha256": "ff34ec289d2d6daeade18d5beefb4b33ff68c2b0c8d21a2328b84721d9a8ce5f"
+      },
+      {
+        "path": "openai-addendum/false-green/bin/java",
+        "sha256": "5af8edad3963f22340435e4c1e2ad0fb0587276677037e2ea8d67c917b2beba5"
+      },
+      {
+        "path": "openai-addendum/false-green/bin/python3",
+        "sha256": "5af8edad3963f22340435e4c1e2ad0fb0587276677037e2ea8d67c917b2beba5"
+      },
+      {
+        "path": "openai-addendum/false-green/experiments/openai-chat-spike/run_spike.sh",
+        "sha256": "a74c2db2fc63df62c58d9d2b1dc0aa9b46aa3bee455909d8428d561ea022901f"
+      },
+      {
+        "path": "openai-addendum/false-green/launcher.log",
+        "sha256": "5f7d4ca7c88ed456622a5e9470117fec3a71cb63e539bb284e7766fcb2b9fbb6"
+      },
+      {
+        "path": "openai-addendum/result.json",
+        "sha256": "1b6d74a44405e51a53231f3989c2ed73f058b316c643f0f1761b24307170c71a"
+      }
+    ]
+  }
+}
