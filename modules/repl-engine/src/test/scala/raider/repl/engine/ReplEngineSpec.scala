@@ -4,7 +4,8 @@ import zio.test.*
 
 /** Behavioral fixture for the real dotty-backed engine: every case runs the
   * actual Scala 3.9.0 compiler in-process, so this spec is slow by design
-  * (seconds of warm-up on the first eval). No synthetic interpreter here. */
+  * (seconds of warm-up on the first eval). No synthetic interpreter here.
+  */
 object ReplEngineSpec extends ZIOSpecDefault:
 
   private def valueRepr(r: EvalResult): Option[String] = r match
@@ -22,8 +23,8 @@ object ReplEngineSpec extends ZIOSpecDefault:
   def spec = suite("ReplEngine")(
     test("val bindings and derived expressions live across eval calls") {
       for
-        engine  <- ReplEngine.make()
-        bound   <- engine.eval("val a = 40 + 2")
+        engine <- ReplEngine.make()
+        bound <- engine.eval("val a = 40 + 2")
         derived <- engine.eval("a * 2")
       yield assertTrue(
         valueRepr(bound).exists(_.contains("Int = 42")),
@@ -32,9 +33,9 @@ object ReplEngineSpec extends ZIOSpecDefault:
     },
     test("case class definitions survive into later eval calls") {
       for
-        engine   <- ReplEngine.make()
+        engine <- ReplEngine.make()
         declared <- engine.eval("case class Pt(x: Int, y: Int)")
-        probed   <- engine.eval("Pt(3, 4).x")
+        probed <- engine.eval("Pt(3, 4).x")
       yield assertTrue(
         valueRepr(declared).isDefined,
         valueRepr(probed).exists(_.contains("Int = 3"))
@@ -42,9 +43,9 @@ object ReplEngineSpec extends ZIOSpecDefault:
     },
     test("a compile error preserves bindings of the prior state") {
       for
-        engine  <- ReplEngine.make()
-        _       <- engine.eval("val a = 40 + 2")
-        failed  <- engine.eval("val bad: Int = \"oops\"")
+        engine <- ReplEngine.make()
+        _ <- engine.eval("val a = 40 + 2")
+        failed <- engine.eval("val bad: Int = \"oops\"")
         healthy <- engine.eval("a + 1")
       yield assertTrue(
         compileMsg(failed).isDefined,
@@ -53,8 +54,8 @@ object ReplEngineSpec extends ZIOSpecDefault:
     },
     test("a runtime failure is a result value and the session continues") {
       for
-        engine  <- ReplEngine.make()
-        boom    <- engine.eval("1 / 0")
+        engine <- ReplEngine.make()
+        boom <- engine.eval("1 / 0")
         healthy <- engine.eval("1 + 1")
       yield assertTrue(
         runtimeMsg(boom).exists(_.contains("ArithmeticException")),
@@ -64,18 +65,19 @@ object ReplEngineSpec extends ZIOSpecDefault:
     test("reset clears earlier bindings") {
       for
         engine <- ReplEngine.make()
-        _      <- engine.eval("val a = 1")
-        _      <- engine.reset()
-        gone   <- engine.eval("a")
+        _ <- engine.eval("val a = 1")
+        _ <- engine.reset()
+        gone <- engine.eval("a")
       yield assertTrue(compileMsg(gone).isDefined)
     },
     test("completions is the documented Nil cut of this slice") {
       for
         engine <- ReplEngine.make()
-        cs     <- engine.completions("a")
+        cs <- engine.completions("a")
       yield assertTrue(cs.isEmpty)
     }
   ) @@ TestAspect.sequential
   // sequential: every test boots its own real compiler; six parallel warm-ups
   // under cross-module load produced a truncated-output flake once (2026-10-03,
+
   // RAI-011 slice gate). Sequencing removes the contention, checks unchanged.

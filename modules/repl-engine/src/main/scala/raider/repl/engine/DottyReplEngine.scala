@@ -15,23 +15,23 @@ import zio.{UIO, ZIO}
   * place. Driver output is captured through a PrintStream over an in-memory
   * buffer and classified into the frozen EvalResult cases.
   *
- * Classification is an honest heuristic, not a lexer: dotty prints
- * `-- [E###] ... Error:` diagnostic headers for compile failures and a bare
- * "<qualified class>: message" first line for a submission that ended in a
+  * Classification is an honest heuristic, not a lexer: dotty prints
+  * `-- [E###] ... Error:` diagnostic headers for compile failures and a bare
+  * "<qualified class>: message" first line for a submission that ended in a
   * caught exception. A submission that succeeds but merely *renders* such a
   * line (e.g. printing an exception's toString) would be misclassified as
   * RuntimeFailure; that trade-off is accepted for this slice.
   *
-  * The engine is a single mutable session (a plain var State, no locking):
-  * it is meant to be owned by one fiber, not shared concurrently. NonFatal
-  * crashes inside the driver (compiler internal errors) are mapped to
-  * RuntimeFailure so the engine keeps its never-failing channel; Fatal errors
-  * propagate.
+  * The engine is a single mutable session (a plain var State, no locking): it
+  * is meant to be owned by one fiber, not shared concurrently. NonFatal crashes
+  * inside the driver (compiler internal errors) are mapped to RuntimeFailure so
+  * the engine keeps its never-failing channel; Fatal errors propagate.
   */
 final class DottyReplEngine extends ReplEngine:
 
   private val buffer = new ByteArrayOutputStream
   private val out = new PrintStream(buffer, true, StandardCharsets.UTF_8)
+
   private var driver = new ReplDriver(
     Array("-usejavacp", "-color:never"),
     out,

@@ -18,7 +18,8 @@ object ScriptedBackendSpec extends ZIOSpecDefault:
           ModelEvent.Started(attempt),
           ModelEvent.TextDelta(attempt, "func "),
           ModelEvent.TextDelta(attempt, "✓"),
-          ModelEvent.UsageObserved(attempt, Usage(3, 2, None), priceKnown = false),
+          ModelEvent
+            .UsageObserved(attempt, Usage(3, 2, None), priceKnown = false),
           ModelEvent.Finished(attempt, "stop")
         )
         req = ModelRequest("fast", List(RequestMessage("user", "verify")), 64)
@@ -30,7 +31,6 @@ object ScriptedBackendSpec extends ZIOSpecDefault:
         backend.fixtureMode
       )
     },
-
     test("two runs are deterministic and both recorded") {
       for
         backend <- ScriptedModelBackend(ModelEvent.TextDelta(attempt, "same"))
@@ -41,15 +41,20 @@ object ScriptedBackendSpec extends ZIOSpecDefault:
         recorded <- backend.requests
       yield assertTrue(e1 == e2, recorded.size == 2)
     },
-
     test("failing backend yields a typed Failed terminal event") {
       for
-        backend <- ScriptedModelBackend.failing(RaiderError.ProviderRateLimit("429"))
+        backend <- ScriptedModelBackend.failing(
+          RaiderError.ProviderRateLimit("429")
+        )
         events <- ZIO.scoped(
-          backend.stream(ModelRequest("fast", Nil, 8)).runCollect)
+          backend.stream(ModelRequest("fast", Nil, 8)).runCollect
+        )
       yield assertTrue(
         events.toList == List(
-          ModelEvent.Failed(AttemptId("scripted-1"), RaiderError.ProviderRateLimit("429"))
+          ModelEvent.Failed(
+            AttemptId("scripted-1"),
+            RaiderError.ProviderRateLimit("429")
+          )
         )
       )
     }

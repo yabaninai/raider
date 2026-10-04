@@ -43,8 +43,13 @@ def sha256_file(p: pathlib.Path) -> str:
 
 def load_policy() -> dict:
     policy = json.loads(POLICY.read_text())
+    # component-stage profiles: every referenced gate must exist in the registry
+    component_profiles = (
+        "self", "static", "unit", "contracts", "docs", "fast",
+        "runtime", "tools", "transport", "repl", "ci",
+    )
     for name in policy["profiles"]:
-        if name not in ("self", "static", "unit", "contracts", "docs", "fast"):
+        if name not in component_profiles:
             continue  # milestone-only profiles may appear later
         for gate in policy["profiles"][name]["gates"]:
             if gate not in policy["gates"]:

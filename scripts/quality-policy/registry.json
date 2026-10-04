@@ -14,7 +14,8 @@
     "static": {
       "stage": "component",
       "gates": [
-        "sbt-compile"
+        "sbt-compile",
+        "scalafmt-check"
       ]
     },
     "unit": {
@@ -42,6 +43,9 @@
       "gates": [
         "self-registry-check",
         "sbt-compile",
+        "scalafmt-check",
+        "scalafix-check",
+        "forbidden-apis",
         "core-contracts-spec",
         "compile-fixtures",
         "plan-validate",
@@ -52,6 +56,32 @@
       "stage": "component",
       "gates": [
         "sbt-test"
+      ]
+    },
+    "tools": {
+      "stage": "component",
+      "gates": [
+        "sbt-test"
+      ]
+    },
+    "transport": {
+      "stage": "component",
+      "gates": [
+        "sbt-test"
+      ]
+    },
+    "repl": {
+      "stage": "component",
+      "gates": [
+        "sbt-test",
+        "repl-smoke"
+      ]
+    },
+    "ci": {
+      "stage": "component",
+      "gates": [
+        "sbt-test",
+        "cli-smoke"
       ]
     }
   },
@@ -103,6 +133,44 @@
         "test"
       ],
       "timeout_s": 900
+    },
+    "scalafmt-check": {
+      "argv": [
+        "sbt",
+        "--batch",
+        "scalafmtCheckAll"
+      ],
+      "timeout_s": 120
+    },
+    "scalafix-check": {
+      "argv": [
+        "sbt",
+        "--batch",
+        "scalafixAll --check"
+      ],
+      "timeout_s": 180
+    },
+    "forbidden-apis": {
+      "argv": [
+        "python3",
+        "scripts/quality/forbidden_apis.py",
+        "--self-test"
+      ],
+      "timeout_s": 60
+    },
+    "repl-smoke": {
+      "argv": [
+        "sh",
+        "scripts/quality/repl_smoke.sh"
+      ],
+      "timeout_s": 120
+    },
+    "cli-smoke": {
+      "argv": [
+        "sh",
+        "scripts/quality/cli_smoke.sh"
+      ],
+      "timeout_s": 120
     }
   },
   "path_profiles": {

@@ -28,7 +28,7 @@ object Commands:
 
   /** Handle one `:`-command. Returns false only for :quit. */
   def handle(line: String, engine: ReplEngine, rePrelude: () => Unit): Boolean =
-    val parts   = line.trim.split("\\s+").toList
+    val parts = line.trim.split("\\s+").toList
     val command = parts.headOption.getOrElse("").toLowerCase
     command match
       case ":help" | ":h" =>
@@ -43,8 +43,10 @@ object Commands:
             println("usage: :cancel <jobId>   (see :jobs)")
           case Some(raw) =>
             val id = raw.replace("\"", "")
-            printCaptured(engine,
-              s"raider.repl.facade.ReplCommands.printCancel(\"$id\")")
+            printCaptured(
+              engine,
+              s"raider.repl.facade.ReplCommands.printCancel(\"$id\")"
+            )
         true
       case ":log" =>
         parts.lift(1) match
@@ -52,15 +54,19 @@ object Commands:
             println("usage: :log <jobId>   (see :jobs)")
           case Some(raw) =>
             val id = raw.replace("\"", "")
-            printCaptured(engine,
-              s"raider.repl.facade.ReplCommands.printLog(\"$id\")")
+            printCaptured(
+              engine,
+              s"raider.repl.facade.ReplCommands.printLog(\"$id\")"
+            )
         true
       case ":reset" =>
         Unsafe.unsafe { implicit u =>
           zio.Runtime.default.unsafe.run(engine.reset()).getOrThrow()
         }
         rePrelude()
-        println("session state reset (fresh interpreter); facade prelude re-imported; earlier job handles are no longer listed")
+        println(
+          "session state reset (fresh interpreter); facade prelude re-imported; earlier job handles are no longer listed"
+        )
         true
       case ":quit" | ":q" | ":exit" =>
         false
@@ -71,20 +77,24 @@ object Commands:
         println(s"unknown command $other — try :help")
         true
 
-  /** Evaluate a Unit expression whose println output is the command result:
-    * the engine captures it into the Value repr (printed once here; Unit
-    * evals render nothing, so user resN numbering is untouched). */
+  /** Evaluate a Unit expression whose println output is the command result: the
+    * engine captures it into the Value repr (printed once here; Unit evals
+    * render nothing, so user resN numbering is untouched).
+    */
   private def printCaptured(engine: ReplEngine, expr: String): Unit =
     val result =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(engine.eval(expr)).getOrThrow()
       }
     result match
-      case EvalResult.Value(repr)        =>
+      case EvalResult.Value(repr) =>
         val text = repr.trim
         if text.nonEmpty then println(text)
-      case EvalResult.CompileError(msg)  =>
-        println(s"command failed (prelude broken?): ${msg.trim.linesIterator.take(3).mkString(" | ")}")
-      case EvalResult.RuntimeFailure(m)  =>
+      case EvalResult.CompileError(msg) =>
+        println(
+          s"command failed (prelude broken?): ${msg.trim.linesIterator.take(3).mkString(" | ")}"
+        )
+      case EvalResult.RuntimeFailure(m) =>
         println(s"command failed: $m")
+
 end Commands

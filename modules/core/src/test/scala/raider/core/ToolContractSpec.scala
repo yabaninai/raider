@@ -4,15 +4,16 @@ import zio.{Scope, ZIO}
 import zio.test.*
 
 /** RAI-002.b: Tool contract freeze — registration validation is total and
-  * typed; lookup is pure; the JSON boundary matches ToolCallReady. */
+  * typed; lookup is pure; the JSON boundary matches ToolCallReady.
+  */
 object ToolContractSpec extends ZIOSpecDefault:
 
   private def stub(
-    toolName: String,
-    toolVersion: Int = 1,
-    toolTimeoutMs: Long = 1000L,
-    recoveryClass: RecoveryClass = RecoveryClass.ReadOnly,
-    safe: Boolean = false
+      toolName: String,
+      toolVersion: Int = 1,
+      toolTimeoutMs: Long = 1000L,
+      recoveryClass: RecoveryClass = RecoveryClass.ReadOnly,
+      safe: Boolean = false
   ): Tool = new Tool:
     def name = toolName
     def version = toolVersion
@@ -25,7 +26,8 @@ object ToolContractSpec extends ZIOSpecDefault:
 
   def spec = suite("Tool contract RAI-002.b")(
     test("valid registry builds; lookup is pure and exact") {
-      val reg = ToolRegistry.of(stub("fs.read"), stub("fs.search", toolVersion = 2))
+      val reg =
+        ToolRegistry.of(stub("fs.read"), stub("fs.search", toolVersion = 2))
       for _ <- ZIO.unit
       yield assertTrue(
         reg.isRight,
@@ -48,13 +50,17 @@ object ToolContractSpec extends ZIOSpecDefault:
     },
     test("empty name / version < 1 / timeout <= 0 are typed errors") {
       val badName = ToolRegistry.of(stub("  "))
-      val badVer  = ToolRegistry.of(stub("x", toolVersion = 0))
+      val badVer = ToolRegistry.of(stub("x", toolVersion = 0))
       val badTime = ToolRegistry.of(stub("y", toolTimeoutMs = 0))
       for _ <- ZIO.unit
       yield assertTrue(
         badName.left.toOption.map(_.code).contains("RA-INP"),
-        badVer.left.toOption.map(_.detail).exists(_.contains("version must be >= 1")),
-        badTime.left.toOption.map(_.detail).exists(_.contains("timeoutMs must be > 0"))
+        badVer.left.toOption
+          .map(_.detail)
+          .exists(_.contains("version must be >= 1")),
+        badTime.left.toOption
+          .map(_.detail)
+          .exists(_.contains("timeoutMs must be > 0"))
       )
     },
     test("invoke is lazy: registry construction dispatches nothing (API-03)") {
@@ -70,10 +76,12 @@ object ToolContractSpec extends ZIOSpecDefault:
           ZIO.succeed { invoked += 1; s"""{"n":$invoked}""" }
 
       val reg = ToolRegistry.of(lazyTool)
+      // hoisted val (not a leading `=` binding): scalameta/scalafix cannot
+      // parse a for-comprehension that opens with an `=` binding (parser gap)
+      val before = invoked
       for
-        before = invoked
-        _      <- ZIO.unit
-        out    <- reg.toOption.flatMap(_.lookup("lazy")).get.invoke("\"hi\"")
+        _ <- ZIO.unit
+        out <- reg.toOption.flatMap(_.lookup("lazy")).get.invoke("\"hi\"")
       yield assertTrue(
         before == 0, // construction/registration dispatched nothing
         invoked == 1,
@@ -82,7 +90,8 @@ object ToolContractSpec extends ZIOSpecDefault:
     },
     test("recovery classes and concurrentSafe stay declared, not inferred") {
       val t = stub("mutator", recoveryClass = RecoveryClass.Mutating)
-      val t2 = stub("safe-read", recoveryClass = RecoveryClass.ReadOnly, safe = true)
+      val t2 =
+        stub("safe-read", recoveryClass = RecoveryClass.ReadOnly, safe = true)
       for _ <- ZIO.unit
       yield assertTrue(
         t.recovery == RecoveryClass.Mutating,

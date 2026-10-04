@@ -14,6 +14,7 @@ sealed trait RaiderError extends RuntimeException:
   def detail: String
 
 object RaiderError:
+
   final case class Configuration(what: String) extends RaiderError:
     val code = "RA-CFG"; val retryable = false; val detail = what
 

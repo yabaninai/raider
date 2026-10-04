@@ -1,8 +1,12 @@
 package raider.repl
 
 import raider.repl.engine.{EvalResult, ReplEngine}
-import org.jline.reader.{EndOfFileException, LineReader, LineReaderBuilder,
-                         UserInterruptException}
+import org.jline.reader.{
+  EndOfFileException,
+  LineReader,
+  LineReaderBuilder,
+  UserInterruptException
+}
 import org.jline.terminal.{Terminal, TerminalBuilder}
 import zio.Unsafe
 
@@ -34,15 +38,17 @@ object Main:
 
   /** Prelude replayed through the engine itself (spike pattern): the scripted
     * backend, the session (installed into ReplCommands for the console
-    * commands) and the facade `given` + ready agent handles all become
-    * ordinary interpreter-world bindings. */
-  /** If RAIDER_PROVIDER=openai, wire a LIVE backend + coding tools.
-    * Otherwise fall back to the scripted fixture backend. */
+    * commands) and the facade `given` + ready agent handles all become ordinary
+    * interpreter-world bindings.
+    */
+  /** If RAIDER_PROVIDER=openai, wire a LIVE backend + coding tools. Otherwise
+    * fall back to the scripted fixture backend.
+    */
   private def preludeSources: List[String] =
     val provider = Option(System.getenv("RAIDER_PROVIDER")).getOrElse("mock")
-    val baseUrl  = Option(System.getenv("RAIDER_BASE_URL"))
-                     .getOrElse("http://127.0.0.1:8081/v1")
-    val model    = Option(System.getenv("RAIDER_MODEL")).getOrElse("local")
+    val baseUrl = Option(System.getenv("RAIDER_BASE_URL"))
+      .getOrElse("http://127.0.0.1:8081/v1")
+    val model = Option(System.getenv("RAIDER_MODEL")).getOrElse("local")
 
     if provider == "openai" then
       List(
@@ -80,7 +86,8 @@ object Main:
     MainBridge.setupLive(
       Option(System.getenv("RAIDER_PROVIDER")).getOrElse("mock"),
       Option(System.getenv("RAIDER_BASE_URL"))
-        .getOrElse("http://127.0.0.1:8081/v1"))
+        .getOrElse("http://127.0.0.1:8081/v1")
+    )
     val engine =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(ReplEngine.make()).getOrThrow()
@@ -95,63 +102,81 @@ object Main:
     println("Raider REPL (W10 fast-path slice)")
     println("  engine : scala3-repl 3.9.0 (in-process compiler)")
     printCaptured(engine, "raider.repl.facade.ReplCommands.printBackendLine()")
-    println("""  try    : scout.ask("hello")   |   val j = worker.start("bg"); j.await()""")
+    println(
+      """  try    : scout.ask("hello")   |   val j = worker.start("bg"); j.await()"""
+    )
     println("  cmds   : :help :jobs :cancel <id> :reset :quit")
 
   private def runPrelude(engine: ReplEngine): Unit =
     preludeSources.foreach(src => submit(src, engine, silent = true))
 
   private def loop(engine: ReplEngine): Unit =
-    if System.console() == null then pipeLoop(engine)
+    if Option(System.console()).isEmpty then pipeLoop(engine)
     else ttyLoop(engine)
 
   /** Non-TTY path (piped smoke): plain stdin reader, no terminal detection
     * games. Same line semantics as the interactive loop: commands, multiline
-    * buffer, blank-line submit. */
+    * buffer, blank-line submit.
+    */
   private def pipeLoop(engine: ReplEngine): Unit =
     val in = java.io.BufferedReader(
-      java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8))
+      java.io
+        .InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8)
+    )
     val pending = new StringBuilder
     var running = true
     while running do
       print(if pending.isEmpty then Prompt else Continuation)
       System.out.flush()
-      val line = in.readLine()
-      if line == null then
-        driveEof(pending)
-        running = false
-      else running = drive(engine, pending, line)
+      // readLine returns null at EOF — wrapped in Option (null-free code rule)
+      Option(in.readLine()) match
+        case None =>
+          driveEof(pending)
+          running = false
+        case Some(line) => running = drive(engine, pending, line)
     shutdown(engine)
 
   /** Interactive TTY path: JLine line editor; Ctrl+C clears the pending buffer
-    * and redraws the prompt (never kills the loop). */
+    * and redraws the prompt (never kills the loop).
+    */
   private def ttyLoop(engine: ReplEngine): Unit =
     val reader = LineReaderBuilder.builder().terminal(makeTerminal()).build()
     // JLine 4 does not bind Ctrl+C by default: without this the interrupt
     // byte is swallowed and the pending multiline buffer survives ^C.
     // "abort" is readLine's special Reference that throws UserInterruptException.
-    val mainKeyMap = reader.getKeyMaps.get("main")
-    if mainKeyMap != null then
-      mainKeyMap.bind(new org.jline.reader.Reference("abort"), "\u0003")
+    val mainKeyMap = Option(reader.getKeyMaps.get("main"))
+    mainKeyMap.foreach(
+      _.bind(new org.jline.reader.Reference("abort"), "\u0003")
+    )
     val pending = new StringBuilder
     var running = true
     while running do
-      val line =
-        try reader.readLine(if pending.isEmpty then Prompt else Continuation)
+      // readLine throws EndOfFileException at EOF — normalized to None
+      val lineOpt =
+        try
+          Some(
+            reader.readLine(if pending.isEmpty then Prompt else Continuation)
+          )
         catch
-          case _: EndOfFileException => null
+          case _: EndOfFileException => None
           case _: UserInterruptException =>
             if pending.nonEmpty then println("(pending input cleared)")
             pending.clear()
-            ""
-      if line == null then
-        driveEof(pending)
-        running = false
-      else running = drive(engine, pending, line)
+            Some("")
+      lineOpt match
+        case None =>
+          driveEof(pending)
+          running = false
+        case Some(line) => running = drive(engine, pending, line)
     shutdown(engine)
 
-  /** One line of console input against the shared pending buffer; false = quit. */
-  private def drive(engine: ReplEngine, pending: StringBuilder, line: String): Boolean =
+  /** One line of console input against the shared pending buffer; false = quit.
+    */
+  private def drive(
+      engine: ReplEngine,
+      pending: StringBuilder,
+      line: String
+  ): Boolean =
     line match
       case "" =>
         if pending.nonEmpty then
@@ -176,30 +201,37 @@ object Main:
   private def makeTerminal(): Terminal =
     TerminalBuilder.terminal()
 
-  /** Continuation heuristic (accepted W10 trade-off): char-count balance of
-    * (), {} and [] plus no trailing continuation token. A wrong guess is never
+  /** Continuation heuristic (accepted W10 trade-off): char-count balance of (),
+    * {} and [] plus no trailing continuation token. A wrong guess is never
     * sticky — a compile error preserves state, and a blank line always submits
-    * the pending buffer as-is. */
+    * the pending buffer as-is.
+    */
   private def complete(src: String): Boolean =
     val trimmed = src.trim
     trimmed.nonEmpty &&
-      Seq(('(', ')'), ('{', '}'), ('[', ']')).forall((o, c) =>
-        src.count(_ == o) == src.count(_ == c)) &&
-      !continuationEndings.exists(trimmed.endsWith)
+    Seq(('(', ')'), ('{', '}'), ('[', ']')).forall((o, c) =>
+      src.count(_ == o) == src.count(_ == c)
+    ) &&
+    !continuationEndings.exists(trimmed.endsWith)
 
-  private val continuationEndings = Set(
-    "=", "=>", ",", ".", "+", "-", "*", "/", "%", "&&", "||", "with", ":")
+  private val continuationEndings =
+    Set("=", "=>", ",", ".", "+", "-", "*", "/", "%", "&&", "||", "with", ":")
 
-  private def submit(src: String, engine: ReplEngine, silent: Boolean = false): Unit =
+  private def submit(
+      src: String,
+      engine: ReplEngine,
+      silent: Boolean = false
+  ): Unit =
     val result =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(engine.eval(src)).getOrThrow()
       }
     if !silent then
       result match
-        case EvalResult.Value(repr)         => println(repr.trim)
-        case EvalResult.CompileError(msg)   => println(msg.trim)
-        case EvalResult.RuntimeFailure(msg) => println(s"runtime failure: ${msg.trim}")
+        case EvalResult.Value(repr)       => println(repr.trim)
+        case EvalResult.CompileError(msg) => println(msg.trim)
+        case EvalResult.RuntimeFailure(msg) =>
+          println(s"runtime failure: ${msg.trim}")
     ()
 
   private def printCaptured(engine: ReplEngine, expr: String): Unit =
@@ -208,19 +240,26 @@ object Main:
         zio.Runtime.default.unsafe.run(engine.eval(expr)).getOrThrow()
       }
     result match
-      case EvalResult.Value(repr)        =>
+      case EvalResult.Value(repr) =>
         val text = repr.trim
         if text.nonEmpty then println(text)
-      case EvalResult.CompileError(msg)  =>
-        println(s"prelude broken? ${msg.trim.linesIterator.take(3).mkString(" | ")}")
-      case EvalResult.RuntimeFailure(m)  =>
+      case EvalResult.CompileError(msg) =>
+        println(
+          s"prelude broken? ${msg.trim.linesIterator.take(3).mkString(" | ")}"
+        )
+      case EvalResult.RuntimeFailure(m) =>
         println(s"command failed: $m")
 
   /** Honest shutdown: the interpreter world reports active jobs; they are
-    * daemon fibers of this process and there is no durable resume here. */
+    * daemon fibers of this process and there is no durable resume here.
+    */
   private def shutdown(engine: ReplEngine): Unit =
-    printCaptured(engine, "raider.repl.facade.ReplCommands.printShutdownWarning()")
+    printCaptured(
+      engine,
+      "raider.repl.facade.ReplCommands.printShutdownWarning()"
+    )
     println("bye")
     // deterministic exit: the JVM must not linger after the console loop ends
     Runtime.getRuntime.exit(0)
+
 end Main

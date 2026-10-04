@@ -28,6 +28,7 @@ object ReplEngine:
 
   /** Builds the real in-process engine over scala3-repl 3.9.0 (ReplDriver).
     * Driver/compiler setup is a side effect, so it happens inside the returned
-    * effect, never at the call site; signatures of this contract stay frozen. */
+    * effect, never at the call site; signatures of this contract stay frozen.
+    */
   def make(): UIO[ReplEngine] = ZIO.succeed(new DottyReplEngine)
 end ReplEngine

@@ -28,19 +28,25 @@ object ReplSession:
 
   /** Wire a session. `limits` must pass BudgetLimits.make (BUD-02: invalid
     * ceilings never construct a session). `tools` must come from the validated
-    * ToolRegistry constructor (`of`/`build`), so it is valid by construction. */
-  def make(backend: ModelBackend,
-           limits: Either[RaiderError, BudgetLimits] = BudgetLimits.make(),
-           tools: ToolRegistry = ToolRegistry.empty)
-          : ZIO[Any, RaiderError, ReplSession] =
+    * ToolRegistry constructor (`of`/`build`), so it is valid by construction.
+    */
+  def make(
+      backend: ModelBackend,
+      limits: Either[RaiderError, BudgetLimits] = BudgetLimits.make(),
+      tools: ToolRegistry = ToolRegistry.empty
+  ): ZIO[Any, RaiderError, ReplSession] =
     for
-      valid     <- ZIO.fromEither(limits)
+      valid <- ZIO.fromEither(limits)
       admission <- Admission.make(Right(valid))
-      jobs      <- JobManager.make()
+      jobs <- JobManager.make()
     yield ReplSessionImpl(backend, jobs, admission, valid, tools)
 
   private final case class ReplSessionImpl(
-    backend: ModelBackend, jobs: JobManager, admission: Admission,
-    limits: BudgetLimits, override val tools: ToolRegistry
+      backend: ModelBackend,
+      jobs: JobManager,
+      admission: Admission,
+      limits: BudgetLimits,
+      override val tools: ToolRegistry
   ) extends ReplSession
+
 end ReplSession

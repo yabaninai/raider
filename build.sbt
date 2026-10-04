@@ -4,6 +4,9 @@ ThisBuild / scalaVersion := "3.9.0"
 ThisBuild / organization := "dev.raider"
 ThisBuild / version := "0.1.0-SNAPSHOT"
 
+// Formatting is an explicit gate (scalafmt-check), never a silent compile hook.
+ThisBuild / scalafmtOnCompile := false
+
 val zioVersion = "2.1.26"
 val zioJsonVersion = "0.10.0"
 

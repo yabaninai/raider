@@ -4,7 +4,8 @@ import raider.core.*
 import zio.{Ref, UIO, ZIO, Scope}
 import zio.stream.ZStream
 
-/** RAI-006: deterministic scripted ModelBackend — no LLM, no network, no clocks.
+/** RAI-006: deterministic scripted ModelBackend — no LLM, no network, no
+  * clocks.
   *
   * The script is an exact ordered sequence of normalized ModelEvents; every
   * request is recorded. Fixture mode is a first-class marker (mock output must
@@ -12,9 +13,9 @@ import zio.stream.ZStream
   * against any backend; this one makes them deterministic and fast.
   */
 final class ScriptedModelBackend private (
-  val fixtureMode: Boolean,
-  script: Vector[ModelEvent],
-  recorder: Ref[Vector[ModelRequest]]
+    val fixtureMode: Boolean,
+    script: Vector[ModelEvent],
+    recorder: Ref[Vector[ModelRequest]]
 ) extends ModelBackend:
 
   override def capabilities: ModelCapabilities =
@@ -24,7 +25,9 @@ final class ScriptedModelBackend private (
       cancellationAck = CapabilityStatus.Supported
     )
 
-  override def stream(input: ModelRequest): ZStream[Scope, RaiderError, ModelEvent] =
+  override def stream(
+      input: ModelRequest
+  ): ZStream[Scope, RaiderError, ModelEvent] =
     ZStream.fromZIO(recorder.update(_ :+ input)) *>
       ZStream.fromIterable(script)
 
@@ -35,10 +38,14 @@ final class ScriptedModelBackend private (
   def plannedEvents: Vector[ModelEvent] = script
 
 object ScriptedModelBackend:
+
   /** Create a scripted backend emitting `script` in order. */
   def apply(events: ModelEvent*): UIO[ScriptedModelBackend] =
-    Ref.make(Vector.empty[ModelRequest]).map(ref =>
-      new ScriptedModelBackend(fixtureMode = true, events.toVector, ref))
+    Ref
+      .make(Vector.empty[ModelRequest])
+      .map(ref =>
+        new ScriptedModelBackend(fixtureMode = true, events.toVector, ref)
+      )
 
   /** Failing attempt: a single Failed event with the given error. */
   def failing(error: RaiderError): UIO[ScriptedModelBackend] =

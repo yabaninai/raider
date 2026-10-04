@@ -1,7 +1,9 @@
 package raider.core
 
-/** Typed identifiers (runtime-contracts §3). Opaque-ish value classes keep codecs
-  * and REPL printing simple; all descendants/events carry root lineage ids. */
+/** Typed identifiers (runtime-contracts §3). Opaque-ish value classes keep
+  * codecs and REPL printing simple; all descendants/events carry root lineage
+  * ids.
+  */
 object ids:
   final case class SessionId(value: String) extends AnyVal
   final case class RootId(value: String) extends AnyVal
