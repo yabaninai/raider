@@ -15,7 +15,7 @@ graph, the source tree, or shipped artifacts.
 
 - Build-time sbt plugins (scalafmt, scalafix, sbt-assembly) do not ship in
   artifacts; permissive-family is still preferred.
-- Plugin ecosystem (roadmap Phase 3): the same policy applies to plugin
+- Plugin ecosystem (roadmap Phase 4): the same policy applies to plugin
   runtime dependencies, enforced by the future `plugin` gate profile.
 - Shipped artifacts (fat JAR) must include a generated `THIRD-PARTY-NOTICES`
   listing bundled libraries and their licenses (release checklist).

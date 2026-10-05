@@ -19,7 +19,7 @@ Candidates evaluated:
 | --- | --- | --- |
 | Lanterna 3.1.x (widget toolkit) | **LGPL-3.0** | REJECTED — license incompatible with MIT-only policy, regardless of technical fit |
 | Mordant (Kotlin) | MIT | REJECTED for now — pulls the Kotlin stdlib into a Scala-only product and ships styling, not the widget layer we need; revisit only with an owner-approved ADR |
-| Web renderer first (zio-http) | Apache-2.0 | DEFERRED — Phase 7, gated; terminal-first is the product instinct |
+| Web renderer first (zio-http) | Apache-2.0 | DEFERRED — Phase 9, gated; terminal-first is the product instinct |
 | **Custom diff-based ANSI renderer over JLine 4** | JLine is **BSD-3**, already in the graph (REPL dependency) | **ACCEPTED** |
 
 ## Decision
@@ -34,7 +34,7 @@ Candidates evaluated:
    Phase-2 terminal-matrix gate): stable output in tmux, screen, iTerm2,
    Terminal.app and the IntelliJ run console under resize; ≤16 ms frame diff
    at 120×40 with a 10k-line scrollback backing store.
-4. The seam keeps a future web renderer (Phase 7) implementable against the
+4. The seam keeps a future web renderer (Phase 9) implementable against the
    same StatusLedger/EventBus inputs — the renderer is a view, never a runtime.
 
 ## Consequences
@@ -48,4 +48,4 @@ Candidates evaluated:
 - If the spike disproves feasibility (flicker/perf unfixable), the fallback is
   NOT Lanterna: it is a reduced inline UI (status line + tab hints without
   full-screen panes, JLine-only) — still MIT-clean. Full-screen panes then
-  move to the Phase-7 web console.
+  move to the Phase-9 web console.

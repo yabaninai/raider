@@ -36,9 +36,9 @@ after every task. Commit after every completed task:
 
 ## Tasks
 
-### Task 0.1 — ADR-2: AgentEvent schema + bus + ledger (~1 day)
+### Task 0.1 — ADR-017: AgentEvent schema + bus + ledger (~1 day)
 
-Write `docs/adr/ADR-002-agent-events.md` (status: Accepted after self-review)
+Write `docs/adr/ADR-017-agent-events.md` (status: Accepted after self-review)
 covering:
 - The `AgentEvent` ADT per `docs/roadmap-10k.md` §3.1 vocabulary (envelope:
   `{sessionId, rootId, jobId, seq, at, event}`; JSON codecs via zio-json).
@@ -88,9 +88,9 @@ gate `tui-render-smoke` (timeout 120) and add it to a NEW `ui` profile (stage
 Acceptance: gate passes standalone and via
 `make quality-profile PROFILES=ui`; smoke is deterministic (fixed feed).
 
-### Task 0.5 — ADR-4: Tool progress contract (~0.5 day)
+### Task 0.5 — ADR-019: Tool progress contract (~0.5 day)
 
-Write `docs/adr/ADR-004-tool-progress.md`: decide how tools report live
+Write `docs/adr/ADR-019-tool-progress.md`: decide how tools report live
 progress to the observation layer (option A: `ToolEnv` service in the ZIO
 environment of `invoke`; option B: fiber-ref implicit sink). Compare against
 the frozen `Tool` contract (core), list migration steps, pick ONE with
@@ -116,6 +116,13 @@ sh scripts/quality/cli_smoke.sh
 ```
 
 All must pass. Fix before committing; a timeout or skip is NOT a pass.
+
+## Parallel-execution note
+
+If the state workstream prompt (`MASTER-10K-STATE.md`) runs in another
+session, coordinate `build.sbt`: module registrations are a single-owner edit
+(both prompts add a module). Sequence the two additions or route them through
+one session.
 
 ## Honesty rules (unchanged)
 

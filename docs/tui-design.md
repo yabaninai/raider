@@ -27,7 +27,7 @@ trait ScreenRenderer:
 | --- | --- | --- | --- | --- |
 | **A `inline`** | v1 (spike → Phase 2 start) | JLine `LineReader` + `printAbove`; one in-place rewriteable status line (`\r` + `ESC[K`) | kept (terminal's own) | ~600h incl. sessions wiring |
 | **B `fullscreen`** | v2 (Phase 2) | Alternate screen (`ESC[?1049h`), cell buffer + diff redraw, panes per tab | replaced by bounded ring buffers per tab (+ `Ctrl+B` dump to file) | +~800h |
-| **C `web`** | Phase 7, gated | same events over WebSocket (zio-http) | n/a | 900h budgeted |
+| **C `web`** | Phase 9, gated | same events over WebSocket (zio-http) | n/a | 900h budgeted |
 
 v1 rationale: inline keeps native scrollback and copy/paste, avoids all
 alternate-screen terminal quirks, and tab switching = separator + bounded
