@@ -84,8 +84,11 @@ scheduler — AGENTS constraint):
   (jobs are daemon fibers already — switching never pauses work).
 - Per-tab ring-buffer scrollback, unread badges, activity glyphs
   (`● streaming`, `◐ tool/waiting`, `○ idle`, `✗ failed`).
-- Renderer behind a thin seam (`ScreenRenderer`) so the TUI choice is
-  swappable: custom-ANSI-on-JLine vs Lanterna (ADR-1) vs later web.
+- Renderer: **custom diff-based ANSI renderer on JLine 4** (already a
+  dependency, BSD-3) behind a thin `ScreenRenderer` seam — decided in
+  [ADR-016](adr/ADR-016-tui-renderer.md) so the project stays **MIT-only**:
+  no LGPL (Lanterna) or GPL-family dependencies are permitted in the runtime
+  graph. The seam keeps a future web renderer swappable.
 - Headless `raider run` and `raider chat` remain; `chat` becomes a tab.
 
 ### 3.3 Plugin system (powers extension without rebuilds)
@@ -124,11 +127,12 @@ scheduler — AGENTS constraint):
 
 ### Phase 0 — Foundations & decisions (300h)
 
-- ADR-1 TUI strategy: (A) custom ANSI full-screen on JLine — no new dep, full
-  control, more work; (B) Lanterna 3.1.x — pure-Java widget toolkit, **LGPL-3.0
-  license review required**, maintenance risk; recommendation: 50h spike of
-  both in tmux/iTerm2/IDEA-console matrix, pick on flicker+resize evidence;
-  keep `ScreenRenderer` seam either way.
+- ADR-1 TUI strategy — **RESOLVED** as
+  [ADR-016](adr/ADR-016-tui-renderer.md): custom diff-based ANSI renderer on
+  JLine 4 (BSD-3, existing dependency). Lanterna was rejected: LGPL-3.0 is
+  incompatible with the owner's MIT-only requirement. Remaining Phase-0 work:
+  the 50h renderer spike (flicker/resize on the tmux/iTerm2/IDEA-console
+  matrix) proves the flicker/resize bar on the chosen path.
 - ADR-2 AgentEvent bus & StatusLedger (schema, severities, drop policy).
 - ADR-3 Plugin SPI + classloader policy (PoC: load a tool plugin into a live
   REPL session through the ThreadLocal bridge).
@@ -241,7 +245,7 @@ scheduler — AGENTS constraint):
 
 - Docs overhaul (api/architecture/contributing refreshed for UI+plugins);
   first-run wizard; `raider doctor` environment check; screencasts.
-- Release engineering: fat JAR with UI, distribution notes.
+- Release engineering: fat JAR with UI + generated `THIRD-PARTY-NOTICES` (§8 licensing), distribution notes.
 - 1.0 milestone: extended final checklist (nightly's 10-point list plus
   UI/plugin gates), all green in one run.
 - **Exit gates**: 1.0 released.
@@ -265,7 +269,7 @@ scheduler — AGENTS constraint):
 | --- | --- |
 | Classloader hell (plugins × REPL self-first) | ADR-3 PoC before commitment; fixture matrix; narrow exported API |
 | TUI flicker/perf across terminals | Phase-0 spike + terminal-matrix gate; `ScreenRenderer` seam keeps Lanterna swappable for custom ANSI |
-| Lanterna LGPL-3.0 | License review in ADR-1; fallback option A avoids the dep entirely |
+| Custom renderer engineering cost (no widget toolkit available under MIT) | Budgeted in Phase 2 (+~200h vs widget toolkit); cell-buffer + diff-draw keeps scope to tab bar / status line / log pane; `ScreenRenderer` seam preserves a web-renderer escape hatch |
 | Web console scope creep | Hard gate at Phase 7 entry; bus-first design keeps it additive |
 | Event loss hiding diagnostics | Severity drop policy; accounting events lossless; soak gates |
 | Plugin trust misuse | Loud "trusted code" docs, guard hooks, no sandbox claims |
@@ -279,9 +283,33 @@ scheduler — AGENTS constraint):
 - No paid API calls from gates; mock/replay only.
 - Yabanin integration stays in its own repo and cards.
 
-## 8. ADR backlog (write first)
+## 8. Licensing policy (MIT-only, enforced)
 
-1. ADR-TUI: terminal UI strategy (custom ANSI vs Lanterna; license; perf).
+The project is MIT (`LICENSE`). Constraint from the owner: Raider must stay
+usable under MIT — the runtime dependency graph must never acquire
+copyleft licenses.
+
+- **Runtime graph policy** (enforced by the `license-audit` gate,
+  `scripts/quality/license_audit.py`, in the `fast` profile):
+  - ALLOWED: MIT, BSD-2/3, Apache-2.0, ISC, CC0, Unlicense, public domain.
+  - FORBIDDEN: GPL, LGPL, AGPL (any version).
+  - REVIEW (fail until explicitly allowlisted in the script with a dated
+    comment): MPL, EPL, CDDL.
+  - UNKNOWN (no pom license, exhausted parent chain) = FAIL — an unaudited
+    dependency is not a safe dependency.
+- **Build-time sbt plugins** (scalafmt/scalafix/assembly) never ship in
+  artifacts; permissive-family preferred anyway.
+- **Future TUI/plugin ecosystems**: any candidate library goes through the
+  audit gate first; Lanterna (LGPL) is permanently excluded.
+- **Attribution**: the fat JAR (Phase 5/9) must ship a generated
+  `THIRD-PARTY-NOTICES` file listing bundled libraries and their licenses —
+  release-engineering checklist item.
+- Baseline audit 2026-10-05: 25 runtime artifacts — all Apache-2.0 / BSD /
+  MIT; 0 problems (report in `artifacts/license-audit/`).
+
+## 9. ADR backlog
+
+1. ~~ADR-TUI~~ → [ADR-016](adr/ADR-016-tui-renderer.md) — accepted 2026-10-05.
 2. ADR-BUS: AgentEvent schema, severities, backpressure/drop policy.
 3. ADR-PLUGIN: plugin SPI, classloader policy, failure & trust semantics.
 4. ADR-PROGRESS: tool progress contract (ProgressSink env vs fiber-ref).

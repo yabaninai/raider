@@ -46,6 +46,7 @@
         "scalafmt-check",
         "scalafix-check",
         "forbidden-apis",
+        "license-audit",
         "core-contracts-spec",
         "compile-fixtures",
         "plan-validate",
@@ -171,6 +172,14 @@
         "scripts/quality/cli_smoke.sh"
       ],
       "timeout_s": 120
+    },
+    "license-audit": {
+      "argv": [
+        "python3",
+        "scripts/quality/license_audit.py",
+        "--self-test"
+      ],
+      "timeout_s": 300
     }
   },
   "path_profiles": {
