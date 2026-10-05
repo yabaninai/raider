@@ -76,6 +76,7 @@ selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
 
 | Date | Event |
 | --- | --- |
+| 2026-10-05 (NIGHTLY-P5) | Packaging: GitHub Actions CI (test+quality jobs), raider-cli.jar via sbt-assembly (java -jar smoke PASS), Makefile raider-jar/raider-chat/raider-run/quality-full. full 0 fail, gates 9/9. Record: NIGHTLY-PHASE-5.md |
 | 2026-10-05 (NIGHTLY-P4) | Recovery: CompileFixLoop (:fix, errors→model→recompile ≤3), RateLimitRetries (429 backoff 1/2/4s ×3, all 3 construction sites), coder prompts upgraded. FIXED flaky delegation cancel test (turn routing by content, bounded settle) — was hanging suites under load. full 0 fail ×2, gates 9/9. Record: NIGHTLY-PHASE-4.md |
 | 2026-10-05 (NIGHTLY-P3) | REPL live: streaming backend via MainBridge, RAIDER_MODEL→session.model, system prompt on every facade call, live echo (deltas stdout, tools stderr). ReplSession +2 defaulted members. repl 21, full 0 fail, gates 9/9, repl_smoke PASS. Record: NIGHTLY-PHASE-3.md |
 | 2026-10-05 (NIGHTLY-P2) | Core: CLI streaming (SSE backend + StreamingDisplay), SessionStore (--resume/:save/:sessions/:load), compaction (:compact + auto), fs_patch (unified diff, sha+atomic), fs_tree (bounded, skip-list), proc_run parsed field (sbt compile/test). cli 27, tools 46, full 0 fail, gates 9/9. Record: NIGHTLY-PHASE-2.md |

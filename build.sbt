@@ -129,6 +129,7 @@ lazy val raiderProviderAnthropic = (project in file("modules/provider-anthropic"
 // stable exit codes; NO compiler/JLine (headless distribution rule).
 lazy val raiderCli = (project in file("modules/cli"))
   .settings(commonSettings, testSettings, name := "raider-cli")
+  .settings(raiderCliAssemblySettings)
   .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
   .dependsOn(raiderCore, raiderDsl, raiderRuntime, raiderTools,
              raiderProviderChat)
@@ -138,6 +139,25 @@ lazy val raiderCli = (project in file("modules/cli"))
 lazy val raiderCliFixtures = (project in file("modules/cli-fixtures"))
   .settings(commonSettings, name := "raider-cli-fixtures", publish / skip := true)
   .dependsOn(raiderCore)
+
+// raiderCli fat-JAR packaging (nightly Phase 5.2): standalone raider-cli.jar —
+// main raider.cli.Main, no runtime compiler (headless distribution rule).
+// Merge rules: discard foreign MANIFESTs and module-info stubs; everything
+// else uses the assembly defaults (service files concat, refs dedup).
+lazy val raiderCliAssemblySettings = Seq(
+  assembly / mainClass := Some("raider.cli.Main"),
+  assembly / assemblyJarName := "raider-cli.jar",
+  assembly / test := {},
+  assembly / assemblyMergeStrategy := {
+    case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+    case PathList("META-INF", xs @ _*) if xs.lastOption.exists(_.endsWith(".SF")) =>
+      MergeStrategy.discard
+    case "module-info.class" => MergeStrategy.discard
+    case x =>
+      val old = (assembly / assemblyMergeStrategy).value
+      old(x)
+  }
+)
 
 lazy val root = (project in file("."))
   .aggregate(raiderCore, raiderRuntime, raiderDsl, raiderTestkit, raiderTools,

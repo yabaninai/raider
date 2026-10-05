@@ -1,0 +1,29 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '21', distribution: 'temurin' }
+      - uses: coursier/cache-action@v6
+      - name: Compile (zero warnings, -Werror)
+        run: sbt --batch compile
+      - name: Test (all modules)
+        run: sbt --batch test
+      - name: Format check (scalafmt)
+        run: sbt --batch scalafmtCheckAll
+      - name: Static analysis (scalafix)
+        run: sbt --batch "scalafixAll --check"
+      - name: Forbidden API scan
+        run: python3 scripts/quality/forbidden_apis.py --self-test
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { java-version: '21', distribution: 'temurin' }
+      - uses: coursier/cache-action@v6
+      - name: Quality gate registry (full-tree fast profile, executed)
+        run: make quality-changed QUALITY_EXECUTE=1

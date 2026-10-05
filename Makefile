@@ -49,5 +49,24 @@ quality-verify:
 quality-inventory:
 	python3 scripts/quality/quality.py inventory --out artifacts/quality/base-manifest.json
 
+# Nightly Phase 5: packaging + full local verification
+raider-jar:
+	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch raiderCli/assembly
+
+raider-chat: raider-jar
+	java -jar modules/cli/target/scala-3.9.0/raider-cli.jar chat --provider openai
+
+raider-run: raider-jar
+	java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run \
+	  --agent coder --provider openai --input "$(INPUT)" --out artifacts/selfdev
+
+quality-full:
+	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch test
+	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch scalafmtCheckAll
+	python3 scripts/quality/forbidden_apis.py --self-test
+	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} make quality-changed QUALITY_EXECUTE=1
+	sh scripts/quality/repl_smoke.sh
+	sh scripts/quality/cli_smoke.sh
+
 clean:
 	rm -rf artifacts/build project/target target modules/*/target
