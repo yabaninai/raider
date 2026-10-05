@@ -29,11 +29,15 @@ final class CodingToolset private (
     read: ReadTool,
     search: SearchTool,
     process: ProcessTool,
-    edit: raider.tools.files.edit.EditTool
+    edit: raider.tools.files.edit.EditTool,
+    patch: raider.tools.files.edit.PatchTool,
+    tree: raider.tools.files.TreeTool
 ):
 
   def registry: Either[RaiderError, ToolRegistry] =
-    ToolRegistry.build(List(fsReadT, fsSearchT, procRunT, fsEditT))
+    ToolRegistry.build(
+      List(fsReadT, fsSearchT, procRunT, fsEditT, fsPatchT, fsTreeT)
+    )
 
   // ---- fs_read ----
   private def fsReadInvoke(
@@ -89,7 +93,16 @@ final class CodingToolset private (
           ),
           maxOutputBytes = 256 * 1024
         )
-        process.exec(req).map(CodingToolset.encodeExec)
+        process.exec(req).map { o =>
+          // Phase 2.6: structured parse of common outputs (sbt compile/test)
+          // embedded alongside the raw output
+          val parsed = raider.tools.process.OutputParser
+            .parse(o.stdout, o.stderr, o.exitCode)
+          s"""{"exitCode":${o.exitCode.map(_.toString).getOrElse("null")},""" +
+            s""""stdout":${o.stdout.toJson},"stderr":${o.stderr.toJson},""" +
+            s""""truncated":${o.truncated},"timedOut":${o.timedOut},""" +
+            s""""parsed":${raider.tools.process.OutputParser.encode(parsed)}}"""
+        }
 
   private def fsEditInvoke(
       argumentsJson: String
@@ -101,6 +114,34 @@ final class CodingToolset private (
         edit
           .write(a.path, a.content, a.expected_sha256)
           .map(raider.tools.CodingToolset.encodeEdit)
+
+  private def fsPatchInvoke(
+      argumentsJson: String
+  ): ZIO[Scope, RaiderError, String] =
+    argumentsJson.fromJson[CodingToolset.FsPatchArgs] match
+      case Left(err) =>
+        ZIO.fail(
+          RaiderError.InputValidation(s"fs_patch args: ${err.take(120)}")
+        )
+      case Right(a) =>
+        patch
+          .apply(a.path, a.diff, a.expected_sha256)
+          .map(raider.tools.CodingToolset.encodeEdit)
+
+  private def fsTreeInvoke(
+      argumentsJson: String
+  ): ZIO[Scope, RaiderError, String] =
+    argumentsJson.fromJson[CodingToolset.FsTreeArgs] match
+      case Left(err) =>
+        ZIO.fail(RaiderError.InputValidation(s"fs_tree args: ${err.take(120)}"))
+      case Right(a) =>
+        tree
+          .tree(
+            depth = a.depth.getOrElse(CodingToolset.DefaultTreeDepth),
+            glob = a.glob,
+            maxEntries = CodingToolset.MaxTreeEntries
+          )
+          .map(CodingToolset.encodeTree)
 
   private def toolOf(
       toolName: String,
@@ -172,11 +213,33 @@ final class CodingToolset private (
     fsEditInvoke
   )
 
+  private val FsPatchSchemaStr =
+    "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"relative path\"},\"diff\":{\"type\":\"string\",\"description\":\"unified diff (@@ -start,count +start,count @@ hunks) to apply\"},\"expected_sha256\":{\"type\":\"string\",\"description\":\"SHA-256 of current content (required)\"}},\"required\":[\"path\",\"diff\",\"expected_sha256\"]}"
+
+  private val fsPatchT = toolOf(
+    "fs_patch",
+    "Apply a unified diff to an existing file (atomic; requires expected_sha256 from fs_read).",
+    FsPatchSchemaStr,
+    fsPatchInvoke
+  )
+
+  private val FsTreeSchemaStr =
+    "{\"type\":\"object\",\"properties\":{\"depth\":{\"type\":\"integer\",\"description\":\"max depth (default 3, max 5)\"},\"glob\":{\"type\":\"string\",\"description\":\"file glob filter e.g. *.scala\"}},\"required\":[]}"
+
+  private val fsTreeT = toolOf(
+    "fs_tree",
+    "List workspace files as a bounded tree (skips .git/target/node_modules, max 500 entries).",
+    FsTreeSchemaStr,
+    fsTreeInvoke
+  )
+
 object CodingToolset:
 
   val DefaultMaxLines = 400
   val DefaultMaxMatches = 40
   val DefaultTimeoutS = 120
+  val DefaultTreeDepth = 3
+  val MaxTreeEntries = 500
 
   /** Build the toolset rooted at `workspaceRoot` (absolute or relative CWD). */
   def make(workspaceRoot: String): ZIO[Any, RaiderError, CodingToolset] =
@@ -186,7 +249,9 @@ object CodingToolset:
       search = new SearchTool(ws)
       process = new ProcessTool(ws)
       edit = new raider.tools.files.edit.EditTool(ws)
-    yield new CodingToolset(read, search, process, edit)
+      patch = new raider.tools.files.edit.PatchTool(ws)
+      tree = new raider.tools.files.TreeTool(ws)
+    yield new CodingToolset(read, search, process, edit, patch, tree)
 
   // ---- args wires ----
   private final case class FsReadArgs(
@@ -215,6 +280,23 @@ object CodingToolset:
 
   private object FsEditArgs:
     given JsonDecoder[FsEditArgs] = DeriveJsonDecoder.gen[FsEditArgs]
+
+  private final case class FsPatchArgs(
+      path: String,
+      diff: String,
+      expected_sha256: String
+  )
+
+  private object FsPatchArgs:
+    given JsonDecoder[FsPatchArgs] = DeriveJsonDecoder.gen[FsPatchArgs]
+
+  private final case class FsTreeArgs(
+      depth: Option[Int] = None,
+      glob: Option[String] = None
+  )
+
+  private object FsTreeArgs:
+    given JsonDecoder[FsTreeArgs] = DeriveJsonDecoder.gen[FsTreeArgs]
 
   private final case class ProcRunArgs(
       argv: List[String],
@@ -245,9 +327,11 @@ object CodingToolset:
     val action = if r.created then "created" else "modified"
     s"{\"action\":\"$action\",\"path\":\"${r.path}\",\"old_sha256\":\"${r.oldSha256}\",\"new_sha256\":\"${r.newSha256}\",\"bytes\":${r.bytes}}"
 
-  private[tools] def encodeExec(o: ExecOutcome): String =
-    s"""{"exitCode":${o.exitCode.map(_.toString).getOrElse("null")},""" +
-      s""""stdout":${o.stdout.toJson},"stderr":${o.stderr.toJson},""" +
-      s""""truncated":${o.truncated},"timedOut":${o.timedOut}}"""
+  private[tools] def encodeTree(r: raider.tools.files.TreeResult): String =
+    val es = r.entries
+      .map: e =>
+        s"""{"path":${e.path.toJson},"bytes":${e.bytes}}"""
+      .mkString("[", ",", "]")
+    s"""{"entries":$es,"total":${r.total},"truncated":${r.truncated},"depth":${r.depthUsed}}"""
 
 end CodingToolset

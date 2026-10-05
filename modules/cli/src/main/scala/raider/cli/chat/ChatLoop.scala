@@ -17,6 +17,12 @@ import java.nio.file.Paths
   * critical missing piece for self-hosting — without it, every message starts
   * from scratch and iterative coding is impossible.
   *
+  * REAL-TIME STREAMING (nightly Phase 2.1): the OpenAI-compatible transport is
+  * the SSE streaming backend wrapped in StreamingDisplay — text deltas print to
+  * stdout as they arrive, ready tool calls print `→ tool(args)` to stderr the
+  * moment the model emits them, and tool results print `← tool: preview` when
+  * they complete (tracer).
+  *
   * Usage: raider chat [--provider openai] [--base-url URL] [--model NAME]
   * [--workspace PATH]
   *
@@ -26,6 +32,26 @@ object ChatLoop:
 
   private val Prompt = "raider> "
   private val MaxHistoryMessages = 40 // bounded context
+
+  // Conversation compaction (nightly Phase 2.3): past the threshold the oldest
+  // slice is summarized into one system message and the recent tail stays
+  // intact; anything between the summarized head and the kept tail is dropped.
+  private[chat] val CompactThreshold = 30
+  private[chat] val CompactKeep = 20
+  private[chat] val CompactSummarizeMax = 10
+
+  /** Pure compaction plan: None = nothing to do; Some((summarize, keep)). */
+  private[chat] def splitForCompaction(
+      history: List[RequestMessage],
+      force: Boolean = false
+  ): Option[(List[RequestMessage], List[RequestMessage])] =
+    val applies = force || history.size > CompactThreshold
+    if !applies || history.size <= CompactKeep then None
+    else
+      val recent = history.takeRight(CompactKeep)
+      val oldCount = history.size - CompactKeep
+      val toSummarize = history.take(math.min(oldCount, CompactSummarizeMax))
+      Some((toSummarize, recent))
 
   // Known-valid limits (defaults + delegation-capable tool slots); total
   // fallback so admission setup can never depend on a null value.
@@ -45,7 +71,8 @@ object ChatLoop:
       baseUrl: String,
       model: String,
       apiKey: String,
-      workspace: Option[String]
+      workspace: Option[String],
+      resume: Option[String] = None
   ): ZIO[Any, Nothing, Int] =
     for
       registry <- makeRegistry(workspace)
@@ -69,7 +96,29 @@ object ChatLoop:
       traceRef <- Ref.make(Vector.empty[raider.core.trace.TraceEvent])
       // VERBOSE trace: prints to stderr in real-time + records to Ref
       tracer <- ZIO.succeed(makeTracer(traceRef))
+      // --resume seeds the conversation from a saved session (Phase 2.2)
       historyRef <- Ref.make(List.empty[RequestMessage])
+      _ <- resume match
+        case Some(name) =>
+          SessionStore
+            .load(SessionStore.defaultBase, name)
+            .foldZIO(
+              err =>
+                ZIO.succeed(
+                  System.err.println(
+                    s"resume failed [${err.code}]: ${err.detail}; starting empty"
+                  )
+                ),
+              session =>
+                historyRef.set(session.messages) *>
+                  ZIO.succeed(
+                    println(
+                      s"resumed '$name': ${session.messages.size} messages " +
+                        s"(saved ${session.timestamp}, model ${session.model})"
+                    )
+                  )
+            )
+        case None => ZIO.unit
       sysPrompt = Some(
         """You are a coding agent working inside a Scala 3 + ZIO project.
 You have tools: fs_read, fs_search, fs_edit, proc_run.
@@ -109,15 +158,14 @@ Give clear, concise answers.""".stripMargin
       val stderr = System.err
       ev match
         case raider.core.trace.TraceEvent.RunStarted(_, m, msgs) =>
-          stderr.println(f"\n${C}bold${C.reset}── run ── model=$m msgs=$msgs")
+          stderr.println(f"\n${C.bold}${C.reset}── run ── model=$m msgs=$msgs")
         case raider.core.trace.TraceEvent.RoundStarted(_, r) =>
-          stderr.println(f"${C}dim${C.reset}[round $r]${C.reset}")
+          stderr.println(f"${C.dim}${C.reset}[round $r]${C.reset}")
         case raider.core.trace.TraceEvent.ModelCall(_, _, msgs) =>
-          stderr.println(s"  ${C}cyan${C.reset}→ model${C.reset} ($msgs msgs)")
-        case raider.core.trace.TraceEvent.TextReceived(_, _, text) =>
-          stderr.println(
-            s"  ${C}green${C.reset}← text${C.reset}: ${text.take(120)}"
-          )
+          stderr.println(s"  ${C.cyan}${C.reset}→ model${C.reset} ($msgs msgs)")
+        // TextReceived is recorded for :trace but NOT printed here: text
+        // deltas already stream to stdout in real time (Phase 2.1)
+        case raider.core.trace.TraceEvent.TextReceived(_, _, _) => ()
         case raider.core.trace.TraceEvent.ToolCallStarted(
               _,
               _,
@@ -126,7 +174,7 @@ Give clear, concise answers.""".stripMargin
               args
             ) =>
           stderr.println(
-            s"  ${C}blue${C.reset}→ $tool${C.reset} ${args.take(120)}"
+            s"  ${C.blue}${C.reset}→ $tool${C.reset} ${args.take(120)}"
           )
         case raider.core.trace.TraceEvent.ToolCallFinished(
               _,
@@ -137,7 +185,7 @@ Give clear, concise answers.""".stripMargin
               ok
             ) =>
           val marker =
-            if ok then s"${C}green${C.reset}✓" else s"${C}red${C.reset}✗"
+            if ok then s"${C.green}${C.reset}✓" else s"${C.red}${C.reset}✗"
           stderr.println(s"  $marker ← $tool: ${result.take(150)}")
         case raider.core.trace.TraceEvent.ToolCallRefused(
               _,
@@ -147,23 +195,23 @@ Give clear, concise answers.""".stripMargin
               reason
             ) =>
           stderr.println(
-            s"  ${C}yellow${C.reset}⊘ $tool${C.reset} refused: $reason"
+            s"  ${C.yellow}${C.reset}⊘ $tool${C.reset} refused: $reason"
           )
         case raider.core.trace.TraceEvent.ChildDelegated(_, agent, childId) =>
           stderr.println(
-            s"  ${C}cyan${C.reset}→ delegate: $agent → $childId${C.reset}"
+            s"  ${C.cyan}${C.reset}→ delegate: $agent → $childId${C.reset}"
           )
         case raider.core.trace.TraceEvent.ChildAwaited(_, childId, status) =>
           stderr.println(
-            s"  ${C}cyan${C.reset}← child $childId: $status${C.reset}"
+            s"  ${C.cyan}${C.reset}← child $childId: $status${C.reset}"
           )
         case raider.core.trace.TraceEvent.RunFinished(_, outcome, detail) =>
           stderr.println(
-            s"${C}bold${C.reset}── done: ${detail.take(120)}${C.reset}\n"
+            s"${C.bold}${C.reset}── done: ${detail.take(120)}${C.reset}\n"
           )
         case raider.core.trace.TraceEvent.RunFailed(_, code, detail) =>
           stderr.println(
-            s"${C}red${C.reset}── FAILED [$code]: ${detail.take(120)}${C.reset}\n"
+            s"${C.red}${C.reset}── FAILED [$code]: ${detail.take(120)}${C.reset}\n"
           )
 
   private object C:
@@ -215,6 +263,16 @@ Give clear, concise answers.""".stripMargin
                   .run(traceRef.set(Vector.empty))
                   .getOrThrow()
                 println("context cleared")
+              case cmd if cmd.startsWith(":save") =>
+                val name = cmd.drop(5).trim
+                handleSave(historyRef, loop.model, name)
+              case ":sessions" =>
+                handleListSessions()
+              case cmd if cmd.startsWith(":load") =>
+                val name = cmd.drop(5).trim
+                handleLoad(historyRef, name)
+              case ":compact" =>
+                handleCompact(loop, limits, historyRef)
               case ":context" =>
                 val h =
                   zio.Runtime.default.unsafe.run(historyRef.get).getOrThrow()
@@ -260,10 +318,12 @@ Give clear, concise answers.""".stripMargin
                     processMessage(loop, limits, historyRef, traceRef, input)
                   )
                 exit match
-                  case zio.Exit.Success(answer) =>
-                    println(answer)
+                  case zio.Exit.Success(_) =>
+                    // the answer already streamed to stdout as deltas; just
+                    // separate it from the next prompt
                     println()
                   case zio.Exit.Failure(cause) =>
+                    println() // close the streamed-partial line before errors
                     cause.failures.headOption match
                       case Some(err) =>
                         println(s"ERROR [${err.code}]: ${err.detail.take(200)}")
@@ -282,9 +342,13 @@ Give clear, concise answers.""".stripMargin
   ): ZIO[Any, RaiderError, String] =
     for
       history <- historyRef.get
+      // automatic compaction BEFORE the model call when context exceeds the
+      // threshold (Phase 2.3): the model sees the compacted context
+      _ <- compactHistory(loop, limits, historyRef, force = false)
+      compacted <- historyRef.get
       // Append the new user message
       newUser = RequestMessage("user", input)
-      messages = (history :+ newUser).takeRight(MaxHistoryMessages)
+      messages = (compacted :+ newUser).takeRight(MaxHistoryMessages)
       // Run the loop with FULL conversation
       answer <- loop.runText(messages, limits, math.min(limits.maxAttempts, 12))
       // Record trace events
@@ -309,12 +373,63 @@ Give clear, concise answers.""".stripMargin
       }
     yield answer
 
+  /** Summarize the oldest slice into one system message (Phase 2.3). The
+    * summary itself is a side model call (1 round) and never enters the
+    * history; on summary failure the history is left untouched.
+    */
+  private def compactHistory(
+      loop: AgentLoop,
+      limits: BudgetLimits,
+      historyRef: Ref[List[RequestMessage]],
+      force: Boolean
+  ): ZIO[Any, Nothing, Unit] =
+    historyRef.get.flatMap: history =>
+      ChatLoop.splitForCompaction(history, force) match
+        case None => ZIO.unit
+        case Some((old, recent)) =>
+          val transcript =
+            old.map(m => s"${m.role}: ${m.content.take(300)}").mkString("\n")
+          val ask = RequestMessage(
+            "user",
+            s"Summarize in 2 sentences the following conversation excerpt " +
+              s"(keep key decisions, file paths, error messages):\n$transcript"
+          )
+          loop
+            .runText(List(ask), limits, 1)
+            .foldZIO(
+              _ => ZIO.unit, // summary failure keeps history untouched
+              summary =>
+                val sysMsg = RequestMessage(
+                  "system",
+                  s"Summary of earlier conversation (older messages were compacted): $summary"
+                )
+                historyRef.set(List(sysMsg) ++ recent)
+            )
+
+  /** :compact — force manual compaction and report the size change. */
+  private def handleCompact(
+      loop: AgentLoop,
+      limits: BudgetLimits,
+      historyRef: Ref[List[RequestMessage]]
+  ): Unit =
+    zio.Unsafe.unsafe { implicit u =>
+      val runtime = zio.Runtime.default
+      val before = runtime.unsafe.run(historyRef.get).getOrThrow()
+      runtime.unsafe
+        .run(compactHistory(loop, limits, historyRef, force = true))
+        .getOrThrow()
+      val after = runtime.unsafe.run(historyRef.get).getOrThrow()
+      if after.size < before.size then
+        println(s"compacted: ${before.size} → ${after.size} messages")
+      else println("nothing to compact")
+    }
+
   private def makeBackendSimple(
       provider: String,
       baseUrl: String,
       apiKey: String
   ): ModelBackend =
-    provider match
+    val raw = provider match
       case "openai" =>
         try
           val config = raider.provider.chat.OpenAIChatBackend.Config
@@ -322,8 +437,11 @@ Give clear, concise answers.""".stripMargin
           config match
             case Right(cfg) =>
               zio.Unsafe.unsafe { implicit u =>
+                // STREAMING wire (Phase 2.1): text deltas surface as they
+                // arrive instead of after the full response
                 zio.Runtime.default.unsafe.run(
-                  raider.provider.chat.OpenAIChatBackend.make(Right(cfg))
+                  raider.provider.chat.stream.OpenAIChatStreamingBackend
+                    .make(Right(cfg))
                 ) match
                   case zio.Exit.Success(b) => b
                   case _                   => MockBackendFallback.backend
@@ -331,6 +449,16 @@ Give clear, concise answers.""".stripMargin
             case Left(_) => MockBackendFallback.backend
         catch case _: Exception => MockBackendFallback.backend
       case _ => MockBackendFallback.backend
+    // Real-time display: deltas → stdout, ready tool calls → stderr
+    StreamingDisplay(
+      raw,
+      onTextDelta = t => ZIO.succeed { print(t); System.out.flush() },
+      onToolCall = (name, args) =>
+        ZIO.succeed:
+          System.err.println(
+            s"  ${C.blue}${C.reset}→ $name${C.reset} ${args.take(160)}"
+          )
+    )
 
   private def makeRegistry(
       workspace: Option[String]
@@ -340,6 +468,74 @@ Give clear, concise answers.""".stripMargin
       .make(wsPath)
       .flatMap(ts => ZIO.fromEither(ts.registry))
       .orElse(ZIO.succeed(ToolRegistry.empty))
+
+  /** :save <name> — persist the current conversation history (Phase 2.2). */
+  private def handleSave(
+      historyRef: Ref[List[RequestMessage]],
+      model: String,
+      name: String
+  ): Unit =
+    if name.isEmpty then println("usage: :save <name>")
+    else
+      zio.Unsafe.unsafe { implicit u =>
+        val history =
+          zio.Runtime.default.unsafe.run(historyRef.get).getOrThrow()
+        if history.isEmpty then println("nothing to save: history is empty")
+        else
+          val session = SavedSession(
+            id = name,
+            messages = history,
+            model = model,
+            timestamp = java.time.Instant.now().toString
+          )
+          zio.Runtime.default.unsafe
+            .run(SessionStore.save(SessionStore.defaultBase, session)) match
+            case zio.Exit.Success(path) =>
+              println(s"saved ${history.size} messages → $path")
+            case zio.Exit.Failure(cause) =>
+              cause.failures.headOption.foreach: err =>
+                println(s"save failed [${err.code}]: ${err.detail.take(160)}")
+      }
+
+  /** :sessions — list saved sessions (Phase 2.2). */
+  private def handleListSessions(): Unit =
+    zio.Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe
+        .run(SessionStore.list(SessionStore.defaultBase)) match
+        case zio.Exit.Success(Nil) => println("no saved sessions")
+        case zio.Exit.Success(sessions) =>
+          println(s"${sessions.size} saved session(s):")
+          sessions.foreach: s =>
+            println(
+              f"  ${s.id}%-24s ${s.messages.size}%4d msgs  model=${s.model}  ${s.timestamp}"
+            )
+        case zio.Exit.Failure(cause) =>
+          cause.failures.headOption.foreach: err =>
+            println(s"list failed [${err.code}]: ${err.detail.take(160)}")
+    }
+
+  /** :load <name> — replace the current conversation with a saved session. */
+  private def handleLoad(
+      historyRef: Ref[List[RequestMessage]],
+      name: String
+  ): Unit =
+    if name.isEmpty then println("usage: :load <name>")
+    else
+      zio.Unsafe.unsafe { implicit u =>
+        zio.Runtime.default.unsafe
+          .run(SessionStore.load(SessionStore.defaultBase, name)) match
+          case zio.Exit.Success(session) =>
+            zio.Runtime.default.unsafe
+              .run(historyRef.set(session.messages))
+              .getOrThrow()
+            println(
+              s"loaded '$name': ${session.messages.size} messages " +
+                s"(saved ${session.timestamp}, model ${session.model})"
+            )
+          case zio.Exit.Failure(cause) =>
+            cause.failures.headOption.foreach: err =>
+              println(s"load failed [${err.code}]: ${err.detail.take(160)}")
+      }
 
   /** :pipe — sequential pipeline: :pipe scout("find") then worker("fix") then
     * reviewer("check") Each step gets the PREVIOUS step's output as context.
@@ -425,7 +621,9 @@ Give clear, concise answers.""".stripMargin
       println(s"  model: $model")
       println(s"  tools: ${registry.names.mkString(", ")}")
       println(s"  workspace: ${workspace.getOrElse("CWD")}")
-      println("  commands: :help :quit :clear :context :tools :trace")
+      println(
+        "  commands: :help :quit :clear :context :tools :trace :save :sessions :load"
+      )
       println()
 
   private def printHelp(): Unit =
@@ -436,6 +634,10 @@ Give clear, concise answers.""".stripMargin
       |  :context  show conversation history summary
       |  :tools    list available tools
       |  :trace    show recent trace events (tool calls, model calls)
+      |  :save <name>    save the current conversation to ~/.raider/sessions/
+      |  :sessions       list saved sessions
+      |  :load <name>    load a saved session into the current context
+      |  :compact        summarize the oldest messages into a system note
       |  :pipe     sequential pipeline: :pipe scout("find") then worker("fix") then reviewer("check")
       |  :delegate fire-and-forget task: :delegate worker("fix the bug")
       |Anything else is sent to the model with full conversation context.

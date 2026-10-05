@@ -86,12 +86,14 @@ final class EditTool(workspace: Workspace):
       }.flatMap(fromEither)
     }
 
-  private def fromEither(
+  private[edit] def fromEither(
       e: Either[RaiderError, EditResult]
   ): ZIO[Any, RaiderError, EditResult] =
     e.fold(ZIO.fail, ZIO.succeed)
 
-  private def resolveSafe(relativePath: String): ZIO[Any, RaiderError, Path] =
+  private[edit] def resolveSafe(
+      relativePath: String
+  ): ZIO[Any, RaiderError, Path] =
     attemptR {
       val raw = workspace.root.resolve(relativePath).normalize()
       if !raw.startsWith(workspace.root) then
@@ -106,7 +108,7 @@ final class EditTool(workspace: Workspace):
         else Right(real)
     }.flatMap(_.fold(ZIO.fail, ZIO.succeed))
 
-  private def atomicWrite(target: Path, bytes: Array[Byte]): Unit =
+  private[edit] def atomicWrite(target: Path, bytes: Array[Byte]): Unit =
     val tmp = target.resolveSibling(
       target.getFileName.toString + ".raider-tmp-" +
         java.util.UUID.randomUUID().toString.take(8)
@@ -119,14 +121,14 @@ final class EditTool(workspace: Workspace):
       StandardCopyOption.ATOMIC_MOVE
     )
 
-  private def sha256(bytes: Array[Byte]): String =
+  private[edit] def sha256(bytes: Array[Byte]): String =
     MessageDigest
       .getInstance("SHA-256")
       .digest(bytes)
       .map(b => f"${b & 0xff}%02x")
       .mkString
 
-  private def attemptR[A](f: => A): ZIO[Any, RaiderError, A] =
+  private[edit] def attemptR[A](f: => A): ZIO[Any, RaiderError, A] =
     ZIO
       .attemptBlocking(f)
       .mapError(e => RaiderError.ToolFailed(e.getMessage.take(120)))

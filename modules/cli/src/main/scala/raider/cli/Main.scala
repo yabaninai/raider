@@ -62,7 +62,8 @@ object Main:
               baseUrl = argOr(argv, "--base-url", "http://127.0.0.1:8081/v1"),
               model = argOr(argv, "--model", detectModel()),
               apiKey = argOr(argv, "--api-key", "no-key"),
-              workspace = argOrOpt(argv, "--workspace")
+              workspace = argOrOpt(argv, "--workspace"),
+              resume = argOrOpt(argv, "--resume")
             )
           )
           .getOrThrow()
