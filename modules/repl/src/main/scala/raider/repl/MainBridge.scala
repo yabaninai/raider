@@ -34,9 +34,11 @@ object MainBridge:
           case Right(cfg) =>
             zio.Unsafe.unsafe { implicit u =>
               zio.Runtime.default.unsafe.run(
-                // STREAMING wire (Phase 3.1/3.3): REPL sees deltas live
+                // STREAMING wire (Phase 3.1/3.3): REPL sees deltas live;
+                // 429s back off exponentially (Phase 4.2)
                 raider.provider.chat.stream.OpenAIChatStreamingBackend
                   .make(Right(cfg))
+                  .map(raider.runtime.display.RateLimitRetries(_))
               ) match
                 case zio.Exit.Success(b) => backendRef.set(b)
                 case _                   => ()

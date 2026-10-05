@@ -31,7 +31,7 @@ import java.nio.file.Paths
 object ChatLoop:
 
   private val Prompt = "raider> "
-  private val MaxHistoryMessages = 40 // bounded context
+  private[chat] val MaxHistoryMessages = 40 // bounded context
 
   // Conversation compaction (nightly Phase 2.3): past the threshold the oldest
   // slice is summarized into one system message and the recent tail stays
@@ -120,14 +120,31 @@ object ChatLoop:
             )
         case None => ZIO.unit
       sysPrompt = Some(
-        """You are a coding agent working inside a Scala 3 + ZIO project.
-You have tools: fs_read, fs_search, fs_edit, proc_run.
+        """You are an expert Scala 3 + ZIO developer working in the Raider workspace.
+Available tools:
+- fs_read(path, max_lines): Read a file. Returns content + sha256.
+- fs_search(query, glob): Search for text in files.
+- fs_edit(path, content, expected_sha256): Write a file. Use sha from fs_read.
+- fs_patch(path, diff, expected_sha256): Apply a unified diff patch.
+- fs_tree(depth, glob): List the workspace structure (bounded).
+- proc_run(argv, timeout_s): Run a command. Returns exit code + output.
+
 All paths are relative to the workspace root.
 
-Use tools to understand code before making changes.
-Use fs_edit with sha256 verification for edits.
-Use proc_run to verify compilation after changes.
-Give clear, concise answers.""".stripMargin
+Workflow:
+1. READ the relevant files first
+2. UNDERSTAND the current code structure
+3. MAKE the minimal necessary change
+4. RUN sbt compile to verify
+5. If errors, READ the errors and FIX them
+6. RUN sbt test to confirm
+7. Give a concise summary
+
+Rules:
+- Never overwrite a file without reading it first
+- Always use the sha256 from your last fs_read
+- If compilation fails, fix the specific error, don't rewrite the file
+- Prefer fs_patch for small changes, fs_edit for new files""".stripMargin
       )
       loop <- ZIO.succeed(
         AgentLoop(
@@ -273,6 +290,8 @@ Give clear, concise answers.""".stripMargin
                 handleLoad(historyRef, name)
               case ":compact" =>
                 handleCompact(loop, limits, historyRef)
+              case ":fix" =>
+                handleFix(loop, limits, historyRef)
               case ":context" =>
                 val h =
                   zio.Runtime.default.unsafe.run(historyRef.get).getOrThrow()
@@ -438,10 +457,12 @@ Give clear, concise answers.""".stripMargin
             case Right(cfg) =>
               zio.Unsafe.unsafe { implicit u =>
                 // STREAMING wire (Phase 2.1): text deltas surface as they
-                // arrive instead of after the full response
+                // arrive instead of after the full response; 429s back off
+                // exponentially (Phase 4.2)
                 zio.Runtime.default.unsafe.run(
                   raider.provider.chat.stream.OpenAIChatStreamingBackend
                     .make(Right(cfg))
+                    .map(raider.runtime.display.RateLimitRetries(_))
                 ) match
                   case zio.Exit.Success(b) => b
                   case _                   => MockBackendFallback.backend
@@ -536,6 +557,35 @@ Give clear, concise answers.""".stripMargin
             cause.failures.headOption.foreach: err =>
               println(s"load failed [${err.code}]: ${err.detail.take(160)}")
       }
+
+  /** :fix — run the compile→errors→model-fix loop (Phase 4.1). */
+  private def handleFix(
+      loop: AgentLoop,
+      limits: BudgetLimits,
+      historyRef: Ref[List[RequestMessage]]
+  ): Unit =
+    zio.Unsafe.unsafe { implicit u =>
+      println("fix loop: compiling…")
+      val report = zio.Runtime.default.unsafe
+        .run(
+          CompileFixLoop
+            .run(loop, loop.tools, limits, historyRef)
+            .fold(
+              err => s"fix loop failed [${err.code}]: ${err.detail.take(160)}",
+              o =>
+                if o.success then
+                  s"fix loop: compile PASSES after ${o.attempts} attempt(s)"
+                else
+                  s"fix loop: still FAILING after ${o.attempts} attempt(s); " +
+                    "remaining errors:\n" + o.lastErrors
+                      .take(10)
+                      .map(e => s"  $e")
+                      .mkString("\n")
+            )
+        )
+        .getOrThrow()
+      println(report)
+    }
 
   /** :pipe — sequential pipeline: :pipe scout("find") then worker("fix") then
     * reviewer("check") Each step gets the PREVIOUS step's output as context.
@@ -638,6 +688,7 @@ Give clear, concise answers.""".stripMargin
       |  :sessions       list saved sessions
       |  :load <name>    load a saved session into the current context
       |  :compact        summarize the oldest messages into a system note
+      |  :fix            run sbt compile; send errors to the model to fix (≤3 rounds)
       |  :pipe     sequential pipeline: :pipe scout("find") then worker("fix") then reviewer("check")
       |  :delegate fire-and-forget task: :delegate worker("fix the bug")
       |Anything else is sent to the model with full conversation context.

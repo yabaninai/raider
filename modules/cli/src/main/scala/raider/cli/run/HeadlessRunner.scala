@@ -207,6 +207,11 @@ object HeadlessRunner:
                     raider.provider.chat.OpenAIChatBackend.Config
                       .make(args.baseUrl, args.apiKey, callTimeoutMs = 300000L)
                   )
+                  .map { b =>
+                    // nightly Phase 4.2: 429s back off exponentially (1s/2s/4s,
+                    // max 3 retries); every other error stays first-shot
+                    raider.runtime.display.RateLimitRetries(b)
+                  }
                   .mapError {
                     case e: RaiderError => e
                     case t =>
@@ -355,16 +360,29 @@ object HeadlessRunner:
     }.orDie
 
   private val CoderSystemPrompt =
-    """You are a coding agent working inside a Scala 3 + ZIO project called Raider.
-You have tools: fs_read (read files), fs_search (search text), fs_edit (edit files with sha256 verification), proc_run (run commands).
-Workspace is the project root. All paths are relative to it.
+    """You are an expert Scala 3 + ZIO developer working on the Raider project.
+
+Available tools:
+- fs_read(path, max_lines): Read a file. Returns content + sha256.
+- fs_search(query, glob): Search for text in files.
+- fs_edit(path, content, expected_sha256): Write a file. Use sha from fs_read.
+- fs_patch(path, diff, expected_sha256): Apply a unified diff patch.
+- fs_tree(depth, glob): List the workspace structure (bounded).
+- proc_run(argv, timeout_s): Run a command. Returns exit code + output.
+
+Workflow:
+1. READ the relevant files first
+2. UNDERSTAND the current code structure
+3. MAKE the minimal necessary change
+4. RUN sbt compile to verify
+5. If errors, READ the errors and FIX them
+6. RUN sbt test to confirm
+7. Give a concise summary
 
 Rules:
-- Use fs_read to understand code before making changes
-- Use fs_edit with the current file's sha256 to make changes
-- Use proc_run to run commands (compilation, tests) — argv is explicit, no shell
-- After making changes, run compilation to verify
-- If compilation fails, read the errors and fix them
-- Always give a clear, concise final answer""".stripMargin
+- Never overwrite a file without reading it first
+- Always use the sha256 from your last fs_read
+- If compilation fails, fix the specific error, don't rewrite the file
+- Prefer fs_patch for small changes, fs_edit for new files""".stripMargin
 
 end HeadlessRunner

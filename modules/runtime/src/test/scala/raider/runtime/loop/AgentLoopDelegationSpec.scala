@@ -364,50 +364,81 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
         // cancel_agent — a genuine design finding (see record): cancellation
         // of a stuck child needs either a second slot, child deadlines, or
         // an out-of-band cancel channel (obligation).
+        //
+        // ROUTING BY CONTENT, not by call index: parent and child dispatch
+        // concurrently under llm=2, so arrival order is not deterministic
+        // under load (nightly finding 2026-10-05 — the old call-index turns
+        // raced and could hand the parent the child's turn).
+        // scripted turns (content-routed below; hoisted vals — a leading
+        // `=` lambda binding is not parseable in a for-comprehension)
+        val parentDelegate = Vector(
+          ModelEvent.ToolCallReady(
+            a,
+            c1,
+            "delegate",
+            """{"agent":"scout","input":"slow"}"""
+          ),
+          ModelEvent.Finished(a, "r")
+        )
+        val childTurn = Vector(
+          ModelEvent.TextDelta(a, "never"),
+          ModelEvent.Finished(a, "stop")
+        )
+        val parentCancelReq = (req: ModelRequest) =>
+          Vector(
+            ModelEvent.ToolCallReady(
+              a,
+              c2,
+              "cancel_agent",
+              s"""{"child_id":"${childIdOf(req)}"}"""
+            ),
+            ModelEvent.Finished(a, "r")
+          )
+        val parentFinal = Vector(
+          ModelEvent.TextDelta(a, "canceled it"),
+          ModelEvent.Finished(a, "stop")
+        )
         for
           jobs <- JobManager.make()
           adm <- Admission.make(lims(llm = 2))
           gate <- Promise.make[Nothing, Unit]
-          backend = new TurnBackend(
-            Vector(
-              _ =>
-                Vector( // parent: delegate (child parks mid-run)
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c1,
-                    "delegate",
-                    """{"agent":"scout","input":"slow"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector( // child would answer — but it is parked
-                  ModelEvent.TextDelta(a, "never"),
-                  ModelEvent.Finished(a, "stop")
-                ),
-              req =>
-                Vector( // parent: cancel the parked child
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c2,
-                    "cancel_agent",
-                    s"""{"child_id":"${childIdOf(req)}"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector(
-                  ModelEvent.TextDelta(a, "canceled it"),
-                  ModelEvent.Finished(a, "stop")
-                )
-            ),
-            parkIf = Some(req =>
-              // the CHILD's first call: single plain user message "slow"
-              req.messages.size == 1 &&
-                req.messages.head.content.contains("slow")
-            ),
-            gate = Some(gate)
-          )
+          backend = new ModelBackend:
+            val capabilities: ModelCapabilities = ModelCapabilities(
+              CapabilityStatus.Supported,
+              CapabilityStatus.Supported,
+              CapabilityStatus.Unknown
+            )
+            def stream(
+                input: ModelRequest
+            ): ZStream[Scope, RaiderError, ModelEvent] =
+              ZStream.unwrap:
+                ZIO.succeed:
+                  val single = input.messages.size == 1
+                  val head =
+                    input.messages.headOption.map(_.content).getOrElse("")
+                  val isChild = single && head.contains("slow")
+                  val isParentStart = single && head == "u"
+                  // route by tool_call_id (c1 = ToolCallId("call-1"),
+                  // c2 = ToolCallId("call-2")): "delegate" the literal is NOT
+                  // in the delegate result: {"child_id":…,"state":…}
+                  val delegateDone = input.messages.exists(m =>
+                    m.role == "tool" && m.content.contains("call-1")
+                  )
+                  val cancelDone = input.messages.exists(m =>
+                    m.role == "tool" && m.content.contains("call-2")
+                  )
+                  val parkStream: ZStream[Any, Nothing, Nothing] =
+                    if isChild then ZStream.fromZIO(gate.await).drain
+                    else ZStream.empty
+                  val body: Vector[ModelEvent] =
+                    if isParentStart then parentDelegate
+                    else if isChild then childTurn
+                    else if delegateDone && !cancelDone then
+                      parentCancelReq(input)
+                    else parentFinal
+                  parkStream ++ ZStream.fromIterable(
+                    ModelEvent.Started(a) +: body
+                  )
           root = AgentLoop.newRoot()
           toolset <- ZIO.fromEither(
             raider.runtime.delegate.DelegationToolset.make(
@@ -432,8 +463,12 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
             )
             .timeout(ZDuration.fromSeconds(15))
           _ <- toolset.childIds match
-            case List(id) => toolset.awaitSettled(id)
-            case _        => ZIO.unit
+            case List(id) =>
+              // bounded settle wait: a lost settle signal must surface as a
+              // test FAILURE (assertions below), never an infinite suite hang
+              // under machine load (nightly finding, 2026-10-05)
+              toolset.awaitSettled(id).timeout(ZDuration.fromSeconds(30))
+            case _ => ZIO.unit
           snaps <- ZIO.foreach(toolset.childIds)(id =>
             jobs.lookup(raider.core.JobId(id))
           )
