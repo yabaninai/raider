@@ -1,6 +1,13 @@
 package raider.repl.facade
 
-import raider.core.{JobId, RaiderError, RequestMessage, RootId, Task}
+import raider.core.{
+  JobId,
+  ModelBackend,
+  RaiderError,
+  RequestMessage,
+  RootId,
+  Task
+}
 import raider.runtime.jobs.JobHandle
 import raider.runtime.loop.AgentLoop
 import zio.{Exit, Unsafe, ZIO}
@@ -74,6 +81,40 @@ object FacadeOps:
   ): ZIO[Any, RaiderError, String] =
     textAttemptMessages(session, agent, List(RequestMessage("user", prompt)))
 
+  /** REPL system prompt (nightly Phase 3.2): prepended to EVERY facade model
+    * call so live backends behave as coding agents with the registered tools.
+    */
+  val ReplSystemPrompt: String =
+    """You are a coding agent in a Scala 3 + ZIO project.
+Tools: fs_read, fs_search, fs_edit, fs_patch, fs_tree, proc_run.
+Be concise. Use tools before answering.""".stripMargin
+
+  /** Interactive echo (nightly Phase 3.3): deltas to stdout, ready tool calls
+    * and tool results to stderr — as they happen, not after.
+    */
+  private def echoBackend(b: ModelBackend): ModelBackend =
+    raider.runtime.display.StreamingDisplay(
+      b,
+      onTextDelta = t => zio.Console.print(t).orDie,
+      onToolCall =
+        (n, a) => zio.Console.printLineError(s"  → $n ${a.take(160)}").orDie
+    )
+
+  private def echoTracer: raider.core.trace.TraceEvent => zio.UIO[Unit] =
+    case raider.core.trace.TraceEvent.ToolCallFinished(
+          _,
+          _,
+          tool,
+          _,
+          result,
+          ok
+        ) =>
+      val mark = if ok then "✓" else "✗"
+      zio.Console
+        .printLineError(s"  $mark ← $tool: ${result.take(150)}")
+        .orDie
+    case _ => zio.ZIO.unit
+
   /** The ONE agent execution point (RAI-010.a) over an explicit message list —
     * the multi-turn Chat continuity rides the same loop.
     */
@@ -82,12 +123,20 @@ object FacadeOps:
       agent: AgentRef,
       messages: List[RequestMessage]
   ): ZIO[Any, RaiderError, String] =
+    val backend =
+      if session.echoStream then echoBackend(session.backend)
+      else session.backend
+    val modelName =
+      if session.model == "scripted" then s"scripted:${agent.name}"
+      else session.model
     AgentLoop(
-      session.backend,
+      backend,
       session.tools,
-      s"scripted:${agent.name}",
+      modelName,
       session.admission,
-      AgentLoop.newRoot()
+      AgentLoop.newRoot(),
+      trace = if session.echoStream then echoTracer else _ => zio.ZIO.unit,
+      systemPrompt = Some(ReplSystemPrompt)
     )
       .runText(messages, session.limits, session.limits.maxAttempts)
 

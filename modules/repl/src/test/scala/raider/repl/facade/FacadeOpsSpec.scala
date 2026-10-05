@@ -68,7 +68,11 @@ object FacadeOpsSpec extends ZIOSpecDefault:
         answer == Head + Tail,
         recorded.size == 1, // one attempt, one recorded request
         recorded.head.model == "scripted:scout",
-        recorded.head.messages == List(RequestMessage("user", "ping"))
+        // nightly Phase 3.2: the REPL system prompt is prepended to every call
+        recorded.head.messages == List(
+          RequestMessage("system", FacadeOps.ReplSystemPrompt),
+          RequestMessage("user", "ping")
+        )
       )
     },
     test(
@@ -180,8 +184,8 @@ object FacadeOpsSpec extends ZIOSpecDefault:
         backend.fixtureMode,
         answer == "tool answered",
         reqs.size == 2, // tool round + final round through the ONE loop
-        reqs(1).messages(1).role == "tool",
-        reqs(1).messages(1).content.contains("\"c-1\"")
+        reqs(1).messages(2).role == "tool", // [0]=system, [1]=user, [2]=tool
+        reqs(1).messages(2).content.contains("\"c-1\"")
       )
     }
   ) @@ TestAspect.sequential

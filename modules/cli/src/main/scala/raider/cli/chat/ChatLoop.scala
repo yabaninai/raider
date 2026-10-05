@@ -450,7 +450,7 @@ Give clear, concise answers.""".stripMargin
         catch case _: Exception => MockBackendFallback.backend
       case _ => MockBackendFallback.backend
     // Real-time display: deltas → stdout, ready tool calls → stderr
-    StreamingDisplay(
+    raider.runtime.display.StreamingDisplay(
       raw,
       onTextDelta = t => ZIO.succeed { print(t); System.out.flush() },
       onToolCall = (name, args) =>

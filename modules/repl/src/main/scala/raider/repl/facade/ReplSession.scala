@@ -16,6 +16,12 @@ import zio.ZIO
   * degenerates exactly into the previous Runner.runText behavior, so existing
   * REPL behavior is unchanged; registering tools from console commands is a
   * RAI-018/020 obligation, not a silent new surface here.
+  *
+  * Nightly Phase 3 (additive, defaulted — source-compatible with the frozen
+  * surface): `model` is the model name the facade sends to the backend
+  * ("scripted" keeps the historical `scripted:<agent>` label), `echoStream`
+  * turns on real-time delta/tool-echo for interactive REPL use (off by default
+  * so fixture tests stay quiet).
   */
 trait ReplSession:
   def backend: ModelBackend
@@ -23,6 +29,8 @@ trait ReplSession:
   def admission: Admission
   def limits: BudgetLimits
   def tools: ToolRegistry = ToolRegistry.empty
+  def model: String = "scripted"
+  def echoStream: Boolean = false
 
 object ReplSession:
 
@@ -33,20 +41,32 @@ object ReplSession:
   def make(
       backend: ModelBackend,
       limits: Either[RaiderError, BudgetLimits] = BudgetLimits.make(),
-      tools: ToolRegistry = ToolRegistry.empty
+      tools: ToolRegistry = ToolRegistry.empty,
+      model: String = "scripted",
+      echoStream: Boolean = false
   ): ZIO[Any, RaiderError, ReplSession] =
     for
       valid <- ZIO.fromEither(limits)
       admission <- Admission.make(Right(valid))
       jobs <- JobManager.make()
-    yield ReplSessionImpl(backend, jobs, admission, valid, tools)
+    yield ReplSessionImpl(
+      backend,
+      jobs,
+      admission,
+      valid,
+      tools,
+      model,
+      echoStream
+    )
 
   private final case class ReplSessionImpl(
       backend: ModelBackend,
       jobs: JobManager,
       admission: Admission,
       limits: BudgetLimits,
-      override val tools: ToolRegistry
+      override val tools: ToolRegistry,
+      override val model: String,
+      override val echoStream: Boolean
   ) extends ReplSession
 
 end ReplSession

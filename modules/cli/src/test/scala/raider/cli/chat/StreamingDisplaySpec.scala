@@ -1,6 +1,7 @@
 package raider.cli.chat
 
 import raider.core.*
+import raider.runtime.display.StreamingDisplay
 import zio.*
 import zio.stream.ZStream
 import zio.test.*

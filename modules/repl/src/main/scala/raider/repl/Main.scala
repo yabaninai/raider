@@ -41,7 +41,8 @@ object Main:
     * commands) and the facade `given` + ready agent handles all become ordinary
     * interpreter-world bindings.
     */
-  /** If RAIDER_PROVIDER=openai, wire a LIVE backend + coding tools. Otherwise
+  /** If RAIDER_PROVIDER=openai, wire a LIVE backend + coding tools (nightly
+    * Phase 3.1: streaming backend, RAIDER_MODEL, live-echo session). Otherwise
     * fall back to the scripted fixture backend.
     */
   private def preludeSources: List[String] =
@@ -56,11 +57,14 @@ object Main:
         "import raider.runtime.budget.BudgetLimits",
         """val __backend = raider.repl.MainBridge.backend""",
         """val __tools = raider.repl.MainBridge.tools""",
+        s"""val __model = raider.repl.MainBridge.liveModel""",
         """val __session = zio.Unsafe.unsafe { implicit u =>
            zio.Runtime.default.unsafe.run(
              ReplSession.make(__backend,
                BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 48),
-               __tools))
+               __tools,
+               model = __model,
+               echoStream = true))
              .getOrThrow() }""",
         "ReplCommands.install(__session)",
         "given ReplSession = __session",
@@ -74,6 +78,8 @@ object Main:
         "import raider.runtime.budget.BudgetLimits",
         "import raider.testkit.ScriptedModelBackend",
         s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+        // scripted branch: echo stays OFF (fixture tests/smoke assert on the
+        // plain transcript; live echo is an interactive-live-provider feature)
         "val __session = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ReplSession.make(__backend, BudgetLimits.make())).getOrThrow() }",
         "ReplCommands.install(__session)",
         "given ReplSession = __session",

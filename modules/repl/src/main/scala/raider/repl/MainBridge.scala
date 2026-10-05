@@ -9,6 +9,7 @@ import raider.core.{ModelBackend, ToolRegistry}
 object MainBridge:
   private val backendRef = new ThreadLocal[ModelBackend]
   private val toolsRef = new ThreadLocal[ToolRegistry]
+  private val modelRef = new ThreadLocal[String]
 
   def setBackend(b: ModelBackend): Unit = backendRef.set(b)
   def setTools(t: ToolRegistry): Unit = toolsRef.set(t)
@@ -19,7 +20,12 @@ object MainBridge:
   def tools: ToolRegistry =
     Option(toolsRef.get()).getOrElse(ToolRegistry.empty)
 
+  /** Configured live model (RAIDER_MODEL); "scripted" when unset. */
+  def liveModel: String = Option(modelRef.get()).getOrElse("scripted")
+
   def setupLive(provider: String, baseUrl: String): Unit =
+    val model = Option(System.getenv("RAIDER_MODEL")).getOrElse("local")
+    modelRef.set(model)
     if provider == "openai" then
       try
         val config = raider.provider.chat.OpenAIChatBackend.Config
@@ -28,7 +34,9 @@ object MainBridge:
           case Right(cfg) =>
             zio.Unsafe.unsafe { implicit u =>
               zio.Runtime.default.unsafe.run(
-                raider.provider.chat.OpenAIChatBackend.make(Right(cfg))
+                // STREAMING wire (Phase 3.1/3.3): REPL sees deltas live
+                raider.provider.chat.stream.OpenAIChatStreamingBackend
+                  .make(Right(cfg))
               ) match
                 case zio.Exit.Success(b) => backendRef.set(b)
                 case _                   => ()

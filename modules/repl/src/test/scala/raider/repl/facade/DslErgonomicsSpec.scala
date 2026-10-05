@@ -85,7 +85,12 @@ object DslErgonomicsSpec extends ZIOSpecDefault:
         x == Head + Tail,
         y == Head + Tail,
         reqs.size == 2,
-        reqs.forall(_.messages == List(RequestMessage("user", "verify")))
+        reqs.forall(
+          _.messages == List(
+            RequestMessage("system", FacadeOps.ReplSystemPrompt),
+            RequestMessage("user", "verify")
+          )
+        )
       )
     },
     test("all(askA.map(f), askB).run() — typed tuple composition") {
@@ -108,7 +113,8 @@ object DslErgonomicsSpec extends ZIOSpecDefault:
         // batch contract: RESULTS keep input order; dispatch/recording order
         // is concurrent under parallelism > 1 and is NOT part of the contract
         results == List(Head + Tail, Head + Tail, Head + Tail),
-        reqs.map(_.messages.head.content).toSet ==
+        // [0] is the system prompt (Phase 3.2); prompts ride the LAST message
+        reqs.map(_.messages.last.content).toSet ==
           Set("explore parser", "explore config", "explore cli"),
         reqs.size == 3
       )
@@ -138,8 +144,9 @@ object DslErgonomicsSpec extends ZIOSpecDefault:
       yield assertTrue(
         first == Head + Tail,
         second == Head + Tail,
-        // turn-1 continuity: request 2 carries user1, assistant1, user2
+        // turn-1 continuity: request 2 carries system, user1, assistant1, user2
         reqs(1).messages == List(
+          RequestMessage("system", FacadeOps.ReplSystemPrompt),
           RequestMessage("user", "study parser"),
           RequestMessage("assistant", Head + Tail),
           RequestMessage("user", "now fix the edge case")
