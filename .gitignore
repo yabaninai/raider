@@ -15,4 +15,7 @@ project/project/
 artifacts/
 *.log
 __pycache__/
+
+# coursier relative-cache accident (must never be materialized in-repo)
+/https/
 .DS_Store

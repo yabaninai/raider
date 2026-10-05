@@ -76,6 +76,7 @@ selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
 
 | Date | Event |
 | --- | --- |
+| 2026-10-05 (NIGHTLY-FOLLOWUP) | CoderPrompts single-sourced; make quality-full executed end-to-end (exit 0). FIXED: Makefile COURSIER_CACHE inline-default bug (coursier relative cache dumped 223MB https/ into repo — removed, gitignored), SECOND flaky delegation test (max_children, call-index race) content-routed, 6/6 clean. full 0 fail, gates 9/9. Record: NIGHTLY-FOLLOWUP.md |
 | 2026-10-05 (NIGHTLY-P6) | Docs: api.md (public API + examples), architecture.md (modules, round data flow, budget/admission), contributing.md (tool/provider/gates/tests). FINAL CHECKLIST 10/10 incl. PTY smoke 13/13 and LIVE self-hosting round (local llama.cpp, Succeeded). Record: NIGHTLY-PHASE-6.md |
 | 2026-10-05 (NIGHTLY-P5) | Packaging: GitHub Actions CI (test+quality jobs), raider-cli.jar via sbt-assembly (java -jar smoke PASS), Makefile raider-jar/raider-chat/raider-run/quality-full. full 0 fail, gates 9/9. Record: NIGHTLY-PHASE-5.md |
 | 2026-10-05 (NIGHTLY-P4) | Recovery: CompileFixLoop (:fix, errors→model→recompile ≤3), RateLimitRetries (429 backoff 1/2/4s ×3, all 3 construction sites), coder prompts upgraded. FIXED flaky delegation cancel test (turn routing by content, bounded settle) — was hanging suites under load. full 0 fail ×2, gates 9/9. Record: NIGHTLY-PHASE-4.md |

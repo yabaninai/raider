@@ -1,9 +1,14 @@
 # Raider development entrypoints (RAI-003 stage B).
 # NOTE: quality-* targets appear only with RAI-004; do not invent gates.
 
+# Shared coursier cache. MUST be a make variable (`?=`), not an inline
+# `${VAR:-default}`: make expands that to `:-/tmp/cc-master`, which coursier
+# treats as a RELATIVE cache and materializes into the repo (found 2026-10-05).
+COURSIER_CACHE ?= /tmp/cc-master
+
 .PHONY: bootstrap compile build-script spike-suite spike-oai \
         quality-changed quality-changed-execute quality-profile quality-verify \
-        quality-inventory clean
+        quality-inventory raider-jar raider-chat raider-run quality-full clean
 
 bootstrap:
 	sh scripts/bootstrap.sh
@@ -51,7 +56,7 @@ quality-inventory:
 
 # Nightly Phase 5: packaging + full local verification
 raider-jar:
-	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch raiderCli/assembly
+	COURSIER_CACHE=$(COURSIER_CACHE) sbt --batch raiderCli/assembly
 
 raider-chat: raider-jar
 	java -jar modules/cli/target/scala-3.9.0/raider-cli.jar chat --provider openai
@@ -61,10 +66,10 @@ raider-run: raider-jar
 	  --agent coder --provider openai --input "$(INPUT)" --out artifacts/selfdev
 
 quality-full:
-	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch test
-	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} sbt --batch scalafmtCheckAll
+	COURSIER_CACHE=$(COURSIER_CACHE) sbt --batch test
+	COURSIER_CACHE=$(COURSIER_CACHE) sbt --batch scalafmtCheckAll
 	python3 scripts/quality/forbidden_apis.py --self-test
-	COURSIER_CACHE=${COURSIER_CACHE:-/tmp/cc-master} make quality-changed QUALITY_EXECUTE=1
+	COURSIER_CACHE=$(COURSIER_CACHE) make quality-changed QUALITY_EXECUTE=1
 	sh scripts/quality/repl_smoke.sh
 	sh scripts/quality/cli_smoke.sh
 

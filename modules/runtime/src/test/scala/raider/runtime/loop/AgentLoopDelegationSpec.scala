@@ -239,43 +239,70 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
     },
     test("max_children exceeded → structured feedback, no extra spawn") {
       live {
+        // ROUTING BY CONTENT/tool_call_id, not call index: the child spawns
+        // asynchronously, so under load its call can land after a parent turn
+        // and shift the index (nightly finding 2026-10-05, same race as the
+        // parked-child test)
+        val parentDelegate1 = Vector(
+          ModelEvent.ToolCallReady(
+            a,
+            c1,
+            "delegate",
+            """{"agent":"scout","input":"1"}"""
+          ),
+          ModelEvent.Finished(a, "r")
+        )
+        val childTurn = Vector(
+          ModelEvent.TextDelta(a, "c1"),
+          ModelEvent.Finished(a, "stop")
+        )
+        val parentDelegate2 = Vector(
+          ModelEvent.ToolCallReady(
+            a,
+            c2,
+            "delegate",
+            """{"agent":"scout","input":"2"}"""
+          ),
+          ModelEvent.Finished(a, "r")
+        )
+        val parentFinal = Vector(
+          ModelEvent.TextDelta(a, "done"),
+          ModelEvent.Finished(a, "stop")
+        )
+        // recorder declared OUTSIDE the for: the comprehension widens the
+        // backend val to ModelBackend (the refined type would be lost)
+        val recorded =
+          java.util.concurrent.CopyOnWriteArrayList[ModelRequest]()
         for
           jobs <- JobManager.make()
           adm <- Admission.make(lims())
-          backend = new TurnBackend(
-            Vector(
-              _ =>
-                Vector( // parent: delegate #1 (ok)
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c1,
-                    "delegate",
-                    """{"agent":"scout","input":"1"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector( // child
-                  ModelEvent.TextDelta(a, "c1"),
-                  ModelEvent.Finished(a, "stop")
-                ),
-              _ =>
-                Vector( // parent: delegate #2 → max_children feedback
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c2,
-                    "delegate",
-                    """{"agent":"scout","input":"2"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector( // parent final
-                  ModelEvent.TextDelta(a, "done"),
-                  ModelEvent.Finished(a, "stop")
-                )
+          backend = new ModelBackend:
+            val capabilities: ModelCapabilities = ModelCapabilities(
+              CapabilityStatus.Supported,
+              CapabilityStatus.Supported,
+              CapabilityStatus.Unknown
             )
-          )
+            def stream(
+                input: ModelRequest
+            ): ZStream[Scope, RaiderError, ModelEvent] =
+              ZStream.unwrap:
+                ZIO.succeed:
+                  recorded.add(input)
+                  val single = input.messages.size == 1
+                  val head =
+                    input.messages.headOption.map(_.content).getOrElse("")
+                  val refuseDone = input.messages.exists(m =>
+                    m.role == "tool" && m.content.contains("call-2")
+                  )
+                  val firstDelegateDone = input.messages.exists(m =>
+                    m.role == "tool" && m.content.contains("call-1")
+                  )
+                  val body: Vector[ModelEvent] =
+                    if refuseDone then parentFinal
+                    else if firstDelegateDone then parentDelegate2
+                    else if single && head == "1" then childTurn
+                    else parentDelegate1
+                  ZStream.fromIterable(ModelEvent.Started(a) +: body)
           root = AgentLoop.newRoot()
           toolset <- ZIO.fromEither(
             raider.runtime.delegate.DelegationToolset.make(
@@ -295,7 +322,7 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
           answer <- loop
             .runText(List(RequestMessage("user", "u")), limsV(), 8)
             .timeout(ZDuration.fromSeconds(15))
-          reqs = backend.requests
+          reqs = recorded.asScala.toList
         yield assertTrue(
           answer.contains("done"),
           toolset.childIds.size == 1, // second delegate refused
