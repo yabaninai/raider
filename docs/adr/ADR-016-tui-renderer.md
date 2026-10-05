@@ -1,7 +1,8 @@
 # ADR-016: Terminal UI renderer — custom diff-based ANSI on JLine (MIT-only)
 
 Status: **Accepted** (owner directive, 2026-10-05). Supersedes the open
-"ADR-TUI" question in [the 10k roadmap](../roadmap-10k.md).
+"ADR-TUI" question in [the 10k roadmap](../roadmap-10k.md). Implementation
+design: [docs/tui-design.md](../tui-design.md).
 Scope: `raider.ui` (Phase 2 of the 10k roadmap), Phase-0 spike.
 
 ## Context

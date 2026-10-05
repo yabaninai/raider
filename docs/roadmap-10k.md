@@ -309,9 +309,17 @@ copyleft licenses.
 
 ## 9. ADR backlog
 
-1. ~~ADR-TUI~~ → [ADR-016](adr/ADR-016-tui-renderer.md) — accepted 2026-10-05.
-2. ADR-BUS: AgentEvent schema, severities, backpressure/drop policy.
-3. ADR-PLUGIN: plugin SPI, classloader policy, failure & trust semantics.
-4. ADR-PROGRESS: tool progress contract (ProgressSink env vs fiber-ref).
-5. ADR-DURABILITY: session persistence/replay semantics (at-least-once).
-6. ADR-REMOTE (Phase 6): remote execution trust boundary.
+1. ~~ADR-TUI~~ → [ADR-016](adr/ADR-016-tui-renderer.md) — accepted 2026-10-05;
+   implementation design in [docs/tui-design.md](tui-design.md).
+2. ADR-002 (Phase 0): AgentEvent schema, severities, backpressure/drop policy.
+3. ADR-003 (Phase 3): plugin SPI, classloader policy, failure & trust semantics.
+4. ADR-004 (Phase 0): tool progress contract (ProgressSink env vs fiber-ref).
+5. ADR-005 (Phase 5): session persistence/replay semantics (at-least-once).
+6. ADR-006 (Phase 6): remote execution trust boundary.
+
+## 10. Launch
+
+Execution prompt for this roadmap's Phase 0:
+[docs/prompts/MASTER-10K-PHASE0.md](prompts/MASTER-10K-PHASE0.md) — feed it to
+an executor agent (or follow it manually). Verification contract: compile +
+test + 10/10 gates after every task, MIT-only enforced by `license-audit`.
