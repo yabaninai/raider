@@ -42,6 +42,17 @@ import java.util.UUID
   * when the invocation actually passed through the ledger — a run that failed
   * an earlier preflight has no ledger and therefore NO accounting field
   * (nothing is invented); summary.md gets the honest one-line cost view.
+  *
+  * RAI-100 (WRAP): `--ci github|gitlab|generic` selects the wrapper behavior
+  * when `--context` is ABSENT: `github` -> [[CiContext.fromGitHubEnv]] over the
+  * invocation env, `gitlab` -> [[CiContext.fromGitLabEnv]]; `generic` or absent
+  * -> no wrapper behavior at all. `--context` WINS over `--ci` (an explicit
+  * owner payload is authoritative). Env detection NEVER raises trust, so an
+  * env-derived context is untrusted and ALL its artifacts — the run.json `ci`
+  * splice AND the summary.md "CI annotations" section — render the
+  * [[CiContext.redacted]] view. The flag itself travels as the [[run]] `ci`
+  * parameter: argv parsing lives in CliArgs/Main, which are OUTSIDE this card's
+  * allowed paths (wiring `--ci` through the parser needs its own scope card).
   */
 object HeadlessRunner:
 
@@ -83,6 +94,18 @@ object HeadlessRunner:
     * resolution can be exercised hermetically (no reliance on the process env).
     */
   def run(args: CliArgs, env: Map[String, String]): ZIO[Any, Nothing, Outcome] =
+    run(args, env, ci = None)
+
+  /** RAI-100: run with an explicit `--ci` selection — `github`, `gitlab` or
+    * `generic`; `None` = flag absent (generic default). The value is validated
+    * during the args-level preflight ([[resolveCi]]): an unknown value or a
+    * failed env detection is a TYPED refusal before any dispatch/spend.
+    */
+  def run(
+      args: CliArgs,
+      env: Map[String, String],
+      ci: Option[String]
+  ): ZIO[Any, Nothing, Outcome] =
     ZIO.scoped:
       for
         startedAt <- ZIO.succeed(Instant.now())
@@ -108,6 +131,7 @@ object HeadlessRunner:
           args,
           root,
           env,
+          ci,
           workDir,
           hub,
           manager,
@@ -172,6 +196,7 @@ object HeadlessRunner:
       args: CliArgs,
       root: RootId,
       env: Map[String, String],
+      ciFlag: Option[String],
       workDir: Path,
       hub: EventHub,
       manager: JobManager,
@@ -196,7 +221,16 @@ object HeadlessRunner:
           }
           ZIO
             .scoped(
-              execute(args, root, env, workDir, Some(le), ciOut, usageOut)
+              execute(
+                args,
+                root,
+                env,
+                ciFlag,
+                workDir,
+                Some(le),
+                ciOut,
+                usageOut
+              )
             )
             .foldZIO(
               err => emitMarker *> ZIO.fail(err),
@@ -310,18 +344,21 @@ object HeadlessRunner:
       args: CliArgs,
       root: RootId,
       env: Map[String, String],
+      ciFlag: Option[String],
       workDir: Path,
       events: Option[LoopEvents],
       ciOut: Ref[Option[CiContext]],
       usageOut: Ref[Option[UsageReport]]
   ): ZIO[Scope, RaiderError, String] =
     for
-      // RAI-086 preflight (args-level, FIRST): parse the ci-context payload
-      // BEFORE any dispatch — a typed parse failure refuses the launch with
-      // no spend. A successfully parsed context is published to ciOut
-      // immediately, so it is exported even when a LATER preflight step
-      // fails the run (the failed run.json still carries the honest view).
-      ciOpt <- ZIO.fromEither(contextFrom(args))
+      // RAI-086/RAI-100 preflight (args-level, FIRST): resolve the ci
+      // context — `--context` file wins over `--ci`, otherwise the flag
+      // drives the env detection — BEFORE any dispatch; a typed failure
+      // refuses the launch with no spend. A successfully resolved context is
+      // published to ciOut immediately, so it is exported even when a LATER
+      // preflight step fails the run (the failed run.json still carries the
+      // honest view).
+      ciOpt <- ZIO.fromEither(resolveCi(args, env, ciFlag))
       _ <- ciOut.set(ciOpt)
       // RAI-064 preflight: a live provider requires a credential from the
       // environment BEFORE any dispatch/spend — no network call, no artifact,
@@ -495,6 +532,20 @@ object HeadlessRunner:
       // RAI-086: honest cost line — present ONLY when the run went through
       // the budget ledger; unknown cost is never shown as a number
       val costLine = usage.fold("")(u => s"- ${AccountingView.human(u)}\n")
+      // RAI-100: the "CI annotations" section rides the REDACTED view — an
+      // untrusted context (env-detected contexts are ALWAYS untrusted)
+      // contributes only placeholders; a trusted --context payload shows its
+      // real values. No context -> empty string -> byte-identical summary.
+      val ciSection = ci
+        .map(_.redacted)
+        .fold("")(c => s"""## CI annotations
+           |
+           |- ci: ${c.ci}
+           |- pipeline: ${c.pipeline}
+           |- ref: ${c.ref}
+           |- trusted: ${c.trusted}
+           |
+           |""".stripMargin)
       Files.writeString(
         workDir.resolve("summary.md"),
         s"""# raider run
@@ -505,7 +556,7 @@ object HeadlessRunner:
            |
            |- target: ${targetLine(args.target)}
            |- provider: ${args.provider} (model: ${args.model})
-           |$costLine- exit code: ${runResult.exitCode}
+           |$costLine$ciSection- exit code: ${runResult.exitCode}
            |- events: ${exported.size} event envelope(s) exported (schemaVersion 1)
            |""".stripMargin,
         UTF_8
@@ -534,6 +585,48 @@ object HeadlessRunner:
             Left(
               RaiderError.InputValidation(
                 s"cannot read --context: ${e.getClass.getSimpleName}"
+              )
+            )
+
+  /** RAI-100: ci-context resolution for the invocation. Precedence (explicit
+    * beats detected):
+    *   1. `--context <file>` — the owner payload wins over `--ci`; it is read
+    *      and validated exactly as in RAI-086 ([[contextFrom]]);
+    *   2. `--ci github|gitlab` — env detection over the FIXED allowlists of
+    *      [[CiContext.fromGitHubEnv]] / [[CiContext.fromGitLabEnv]], with
+    *      `trusted = false` ALWAYS (env detection never raises trust,
+    *      ci-runtime §4). A missing/blank allowlisted var is the typed
+    *      `CiContextError.MissingField` naming the env var — the launch is
+    *      refused before any dispatch/spend;
+    *   3. `--ci generic` or no flag at all — `None`: no wrapper behavior, no
+    *      `ci` field, no annotations (generic default).
+    */
+  private def resolveCi(
+      args: CliArgs,
+      env: Map[String, String],
+      ciFlag: Option[String]
+  ): Either[RaiderError, Option[CiContext]] =
+    args.context match
+      case Some(_) => contextFrom(args)
+      case None =>
+        ciFlag match
+          case None | Some("generic") => Right(None)
+          case Some("github") =>
+            CiContext
+              .fromGitHubEnv(env, trusted = false)
+              .left
+              .map(_.toRaiderError)
+              .map(source => Some(source.context))
+          case Some("gitlab") =>
+            CiContext
+              .fromGitLabEnv(env, trusted = false)
+              .left
+              .map(_.toRaiderError)
+              .map(source => Some(source.context))
+          case Some(other) =>
+            Left(
+              RaiderError.Configuration(
+                s"unknown --ci '$other' (github|gitlab|generic)"
               )
             )
 

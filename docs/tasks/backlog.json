@@ -2980,7 +2980,7 @@
    },
    "non_goals": "Второй scheduler/runtime, облако.",
    "context": "RAI-025/023 wiring; 086 accepted.",
-   "status": "ready"
+   "status": "accepted"
   },
   {
    "id": "RAI-101",
@@ -3007,7 +3007,7 @@
    },
    "non_goals": "Hot unload, транзакционность fs, marketplace.",
    "context": "P4.B remainder; ADR-025 §2.5.",
-   "status": "ready"
+   "status": "accepted"
   }
  ]
 }

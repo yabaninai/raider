@@ -1,6 +1,7 @@
 package raider.repl.facade
 
 import raider.core.{JobId, RaiderError}
+import raider.provider.anthropic.AnthropicMessagesBackend
 import raider.runtime.jobs.JobStatus
 import raider.testkit.ScriptedModelBackend
 import zio.ZIO
@@ -46,13 +47,17 @@ object ReplCommands:
         else s"${handle.id.value} is already terminal"
 
   /** Backend mode line for the banner (printed inside the interpreter world).
-    * Honest by contract: a scripted fixture says so; anything else names the
-    * model actually configured (never a bare "unknown").
+    * Honest by contract: a scripted fixture says so; a live backend names its
+    * wire family (RAI-098: Anthropic Messages is distinct from the
+    * OpenAI-compatible transport); anything else names the model actually
+    * configured (never a bare "unknown").
     */
   def printBackendLine(): Unit =
     val mode = session.backend match
       case s: ScriptedModelBackend if s.fixtureMode =>
         "fixture/mock — ScriptedModelBackend, live providers NOT wired in this slice"
+      case _: AnthropicMessagesBackend =>
+        s"live — Anthropic Messages streaming, model ${session.model}"
       case _ => s"live — OpenAI-compatible streaming, model ${session.model}"
     println(s"  backend: $mode")
 

@@ -107,6 +107,17 @@ object PluginCliSpec extends ZIOSpecDefault:
       }
     finally out.close()
 
+  // RAI-101 helpers: byte-level identity checks for the update/rollback
+  // acceptance (the prev sidecar must preserve the displaced jar EXACTLY).
+  private def sha256Of(bytes: Array[Byte]): String =
+    java.security.MessageDigest
+      .getInstance("SHA-256")
+      .digest(bytes)
+      .map("%02x".format(_))
+      .mkString
+
+  private def sha256(path: Path): String = sha256Of(Files.readAllBytes(path))
+
   def spec = suite("RAI-075 plugin CLI")(
     test("default dir honors RAIDER_PLUGINS_DIR, else ~/.raider/plugins") {
       // env is read at call time; this process may or may not carry it — both
@@ -289,5 +300,266 @@ object PluginCliSpec extends ZIOSpecDefault:
     test("execute/run keep their contract: exit 0 on success, 2 on failure") {
       val code = PluginCli.run(List("list"), tmp.resolve("empty-catalog"))
       assertTrue(code == 0)
+    },
+    // -------------------------------------------------------------------------
+    // RAI-101: plugin update/rollback lifecycle (UPL-01..03)
+    // -------------------------------------------------------------------------
+    test(
+      "UPL-01: update swaps in the new version, list shows it, prev is preserved"
+    ) {
+      val dir = ownCatalog("kappa")
+      val v1 = pluginJar(
+        "kappa",
+        PluginVersion(1, 0, 0),
+        tmp.resolve("kappa-v1"),
+        payloadBody = "kap-v1"
+      )
+      val v2 = pluginJar(
+        "kappa",
+        PluginVersion(2, 0, 0),
+        tmp.resolve("kappa-v2"),
+        payloadBody = "kap-v2"
+      )
+      PluginCli.execute(List("install", v1.toString), dir)
+      val live = dir.resolve("kappa-1.0.0.jar")
+      val v1Sha = sha256(live)
+      val updated = PluginCli.execute(List("update", "kappa", v2.toString), dir)
+      val listed = PluginCli.execute(List("list"), dir)
+      // a DIFFERENT plugin must still co-install: the .prev sidecar is
+      // invisible to list and never enters co-install preflight
+      val other = pluginJar("kappa2", PluginVersion(1, 0, 0), tmp)
+      val second = PluginCli.execute(List("install", other.toString), dir)
+      assertTrue(
+        updated.isRight,
+        updated.exists(_.contains(""""result":"updated"""")),
+        updated.exists(_.contains(""""version":"2.0.0"""")),
+        Files.isRegularFile(dir.resolve("kappa-2.0.0.jar")),
+        !Files.exists(live),
+        Files.isRegularFile(dir.resolve("kappa.prev.jar")),
+        sha256(dir.resolve("kappa.prev.jar")) == v1Sha,
+        listed.isRight,
+        listed.exists(_.contains(""""version":"2.0.0"""")),
+        !listed.exists(_.contains("1.0.0")),
+        !listed.exists(_.contains("prev")),
+        second.isRight
+      )
+    },
+    test(
+      "UPL-02: rollback restores the previous jar; a second rollback swaps back"
+    ) {
+      val dir = ownCatalog("lambda")
+      val v1 = pluginJar(
+        "lambda",
+        PluginVersion(1, 0, 0),
+        tmp.resolve("lambda-v1"),
+        payloadBody = "lam-v1"
+      )
+      val v2 = pluginJar(
+        "lambda",
+        PluginVersion(2, 0, 0),
+        tmp.resolve("lambda-v2"),
+        payloadBody = "lam-v2"
+      )
+      PluginCli.execute(List("install", v1.toString), dir)
+      val v1Sha = sha256(dir.resolve("lambda-1.0.0.jar"))
+      PluginCli.execute(List("update", "lambda", v2.toString), dir)
+      val rolled = PluginCli.execute(List("rollback", "lambda"), dir)
+      val listed = PluginCli.execute(List("list"), dir)
+      assertTrue(
+        rolled.isRight,
+        rolled.exists(_.contains(""""result":"rolled_back"""")),
+        rolled.exists(_.contains(""""version":"1.0.0"""")),
+        Files.isRegularFile(dir.resolve("lambda-1.0.0.jar")),
+        sha256(dir.resolve("lambda-1.0.0.jar")) == v1Sha,
+        Files.isRegularFile(dir.resolve("lambda.prev.jar")),
+        listed.isRight,
+        listed.exists(_.contains(""""version":"1.0.0""""))
+      )
+      // swap semantics: the displaced current becomes the new prev, so
+      // rolling back again returns to the updated version (and the ORIGINAL
+      // v1 bytes keep circulating unchanged)
+      val rolledAgain = PluginCli.execute(List("rollback", "lambda"), dir)
+      assertTrue(
+        rolledAgain.isRight,
+        rolledAgain.exists(_.contains(""""version":"2.0.0"""")),
+        Files.isRegularFile(dir.resolve("lambda-2.0.0.jar")),
+        sha256(dir.resolve("lambda.prev.jar")) == v1Sha
+      )
+    },
+    test(
+      "UPL-02: a corrupt update is typed and the installed plugin stays intact"
+    ) {
+      val dir = ownCatalog("mu")
+      val src = tmp.resolve("mu-src")
+      val v1 =
+        pluginJar("mu", PluginVersion(1, 0, 0), tmp, payloadBody = "mu-v1")
+      val v2 =
+        pluginJar("mu", PluginVersion(2, 0, 0), src, payloadBody = "mu-v2")
+      PluginCli.execute(List("install", v1.toString), dir)
+      val live = dir.resolve("mu-1.0.0.jar")
+      val v1Sha = sha256(live)
+      // Rewrite the v2 payload WITHOUT recomputing the pin: the jar's own
+      // payload no longer matches its manifest sha256 — the exact
+      // corrupt-update shape. Preflight must refuse it BEFORE the catalog is
+      // touched: no prev created, no file replaced, no temp litter left.
+      val in = new java.util.jar.JarFile(v2.toFile)
+      val entries =
+        (try
+          in.entries()
+            .asScala
+            .toList
+            .filterNot(_.isDirectory)
+            .map(e => e.getName -> in.getInputStream(e).readAllBytes())
+        finally in.close())
+      val swapped = entries.map { (name, bytes) =>
+        if name == "lib/payload.txt" then
+          name -> "TAMPERED".getBytes(StandardCharsets.UTF_8)
+        else name -> bytes
+      }
+      val tampered = src.resolve("mu-tampered.jar")
+      writeJar(tampered, swapped)
+      val res = PluginCli.execute(List("update", "mu", tampered.toString), dir)
+      val plain = tmp.resolve("mu-plain.txt")
+      Files.write(plain, "not a jar".getBytes(StandardCharsets.UTF_8))
+      val notJar = PluginCli.execute(List("update", "mu", plain.toString), dir)
+      val listed = PluginCli.execute(List("list"), dir)
+      assertTrue(
+        res.isLeft,
+        res.swap.exists(_.contains("sha256 mismatch")),
+        notJar.isLeft,
+        notJar.swap.exists(_.contains("not a jar")),
+        Files.isRegularFile(live),
+        sha256(live) == v1Sha,
+        !Files.exists(dir.resolve("mu.prev.jar")),
+        listed.exists(_.contains(""""version":"1.0.0""""))
+      )
+    },
+    test(
+      "UPL-03: update touches catalog files only — an open artifact keeps its bytes"
+    ) {
+      val dir = ownCatalog("nu")
+      val v1 = pluginJar(
+        "nu",
+        PluginVersion(1, 0, 0),
+        tmp.resolve("nu-v1"),
+        payloadBody = "nu-v1"
+      )
+      val v2 = pluginJar(
+        "nu",
+        PluginVersion(2, 0, 0),
+        tmp.resolve("nu-v2"),
+        payloadBody = "nu-v2"
+      )
+      PluginCli.execute(List("install", v1.toString), dir)
+      val live = dir.resolve("nu-1.0.0.jar")
+      val before = Files.readAllBytes(live)
+      // A running session holds the OLD artifact open (the jar its
+      // classloader was built from). Update is a rename-based swap: the open
+      // handle keeps reading exactly the old bytes — no truncation, no
+      // rewrite, NO hot-unload. The new version applies to NEW sessions only
+      // (ADR-025 §2.5 drain/restart semantics; documented in PluginCli).
+      val session = Files.newInputStream(live)
+      val updated = PluginCli.execute(List("update", "nu", v2.toString), dir)
+      val readBack = session.readAllBytes()
+      session.close()
+      assertTrue(
+        updated.isRight,
+        updated.exists(_.contains(""""result":"updated"""")),
+        readBack.toSeq == before.toSeq,
+        Files.isRegularFile(dir.resolve("nu-2.0.0.jar")),
+        sha256(dir.resolve("nu.prev.jar")) == sha256Of(before)
+      )
+    },
+    test(
+      "UPL-03: the disabled state follows the jar across update and rollback"
+    ) {
+      val dir = ownCatalog("xi")
+      val v1 = pluginJar(
+        "xi",
+        PluginVersion(1, 0, 0),
+        tmp.resolve("xi-v1"),
+        payloadBody = "xi-v1"
+      )
+      val v2 = pluginJar(
+        "xi",
+        PluginVersion(2, 0, 0),
+        tmp.resolve("xi-v2"),
+        payloadBody = "xi-v2"
+      )
+      PluginCli.execute(List("install", v1.toString), dir)
+      PluginCli.execute(List("disable", "xi"), dir)
+      // update carries the plugin's active/disabled state over to the new
+      // version (activation is owner-explicit — never flipped by file surgery)
+      val updated = PluginCli.execute(List("update", "xi", v2.toString), dir)
+      assertTrue(
+        updated.isRight,
+        updated.exists(_.contains(""""active":false""")),
+        Files.exists(dir.resolve("xi-2.0.0.jar.disabled"))
+      )
+      // rollback restores each version with its OWN sidecar state
+      val rolled = PluginCli.execute(List("rollback", "xi"), dir)
+      assertTrue(
+        rolled.isRight,
+        rolled.exists(_.contains(""""active":false""")),
+        Files.exists(dir.resolve("xi-1.0.0.jar.disabled"))
+      )
+    },
+    test("rollback without a saved prev is typed; the plugin stays installed") {
+      val dir = ownCatalog("omicron")
+      val jar = pluginJar("omicron", PluginVersion(1, 0, 0), tmp)
+      PluginCli.execute(List("install", jar.toString), dir)
+      val res = PluginCli.execute(List("rollback", "omicron"), dir)
+      val listed = PluginCli.execute(List("list"), dir)
+      assertTrue(
+        res.isLeft,
+        res.swap.exists(_.contains("no previous version")),
+        listed.exists(_.contains("omicron"))
+      )
+    },
+    test("update refuses a name mismatch and an uninstalled target (typed)") {
+      val dir = ownCatalog("pi")
+      val rho = pluginJar("rho", PluginVersion(1, 0, 0), tmp)
+      val sigma = pluginJar("sigma", PluginVersion(1, 0, 0), tmp)
+      PluginCli.execute(List("install", rho.toString), dir)
+      val mismatch =
+        PluginCli.execute(List("update", "rho", sigma.toString), dir)
+      val missing =
+        PluginCli.execute(List("update", "tau", rho.toString), dir)
+      assertTrue(
+        mismatch.isLeft,
+        mismatch.swap.exists(_.contains("manifest declares 'sigma'")),
+        missing.isLeft,
+        missing.swap.exists(_.contains("not installed"))
+      )
+    },
+    test("remove drops the prev sidecar; a fresh install cannot roll back") {
+      val dir = ownCatalog("tau")
+      val v1 = pluginJar(
+        "tau",
+        PluginVersion(1, 0, 0),
+        tmp.resolve("tau-v1"),
+        payloadBody = "tau-v1"
+      )
+      val v2 = pluginJar(
+        "tau",
+        PluginVersion(2, 0, 0),
+        tmp.resolve("tau-v2"),
+        payloadBody = "tau-v2"
+      )
+      PluginCli.execute(List("install", v1.toString), dir)
+      PluginCli.execute(List("update", "tau", v2.toString), dir)
+      val removed = PluginCli.execute(List("remove", "tau"), dir)
+      assertTrue(
+        removed.isRight,
+        !Files.exists(dir.resolve("tau.prev.jar")),
+        !Files.exists(dir.resolve("tau-2.0.0.jar"))
+      )
+      val fresh = PluginCli.execute(List("install", v1.toString), dir)
+      val rolled = PluginCli.execute(List("rollback", "tau"), dir)
+      assertTrue(
+        fresh.isRight,
+        rolled.isLeft,
+        rolled.swap.exists(_.contains("no previous version"))
+      )
     }
   )

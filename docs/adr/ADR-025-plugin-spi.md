@@ -1,6 +1,6 @@
 # ADR-025: Plugin SPI — узкий versioned Scala SPI, manifest и preflight
 
-Status: **Proposed** (freeze после independent review). Дата: 2026-10-09.
+Status: **Frozen** (2026-10-09, after freeze review R1-R8 amendments) (freeze после independent review). Дата: 2026-10-09.
 Owner: lane 5 (P4.A, [roadmap-12k](../roadmap-12k.md) §P4.A, 450 h package).
 Карточка: [RAI-066](../tasks/m2-p2.md) (PLUG-01..03). Сохраняет силу tool
 contract RAI-002.b ([`raider.core.tool`](../../modules/core/src/main/scala/raider/core/tool.scala))
@@ -52,7 +52,10 @@ locator артефакта (в v1 — локальный JAR), `sha256` (64 lowe
 подтверждение владельца в P4.B UI, и эта граница заявлена в модели, а не
 спрятана в installer.
 
-### 2.3 Preflight до любого load
+#
+**Digest domain (ratified, lane-15 D2):** the pin is computed over the jar **payload**: all non-directory entries except the embedded `META-INF/raider-plugin.json` itself, sorted by name, each as `name ++ 0x00 ++ len ++ 0x00 ++ content`, SHA-256, lowercase hex. The manifest lives INSIDE the jar at `META-INF/raider-plugin.json` and pins this payload digest (self-reference avoided). Integrity ≠ trust.
+
+## 2.3 Preflight до любого load
 
 Вся решающая логика P4.A — чистые функции `Either[PluginError, Unit]`:
 
@@ -85,7 +88,11 @@ jar; классы `raider-*`, zio/zio-json и JDK предоставляются
 решение; недоверенный код требует отдельного process-isolation проекта вне
 этого бюджета.
 
-### 2.5 Resource lifecycle (P4.B/C)
+#
+**ServiceLoader (ratified, lane-15 D4):** rejected as manifest-less discovery; permitted STRICTLY after manifest+sha+compatibility+duplicate-name preflight. Rules: exactly one `RaiderPlugin` provider per jar; the provided Tool set must EQUAL the declared tool capabilities — missing or undeclared entries are typed failures.
+
+## 2.5 Resource lifecycle (P4.B/C)
+**Status: decision, NOT yet implemented** (P4.B/C obligation — update/rollback CLI landed in RAI-101; drain/restart runtime semantics remain a design commitment, no reader may treat this section as existing behavior).
 
 Обновление активного plugin применяется к новым sessions после drain активных
 jobs; безопасный hot unload JVM-кода не обещается (обновлённые классы — новые
@@ -207,6 +214,9 @@ object Preflight:                         // всё чистое: Either, нол
       currentApi: Int = ApiVersion.current): Either[PluginError, Unit]
 ```
 
+
+**5b. Hook SPI (ratified, RAI-084):** `trait RaiderHook { def name: String; def apply(inputJson: String): String }` (read-only JSON in/out; no policy/budget access through the seam). `HookRunner` executes with a bounded per-call timeout (default 2000ms, per-call bound > 0), cooperative interrupt ONLY (the deprecated stop API is never used), one daemon worker per invocation — a timed-out hook's worker may outlive the call (honest, documented). Outcomes: `HookOutcome`/`HookFailure` sealed families (Completed/Failed{TimedOut,Threw,Undeclared,NotAHook,InvalidTimeout,Interrupted}); host channel reuses the EXISTING `PluginError.Malformed` — frozen §5 family is NOT extended. Classloader remains a compatibility boundary, not a sandbox.
+
 ## 6. Acceptance (RAI-066: PLUG-01..03)
 
 - PLUG-01: манифест-модель roundtrip (zio-json, строковый wire версий);
@@ -221,6 +231,9 @@ object Preflight:                         // всё чистое: Either, нол
   `java.nio.file`, `ServiceLoader`, `URLClassLoader`, `ProcessBuilder`,
   `zio.ZIO`, …); ссылки на `java/io/Serializable` допустимы (маркер case
   классов, прав не даёт).
+
+
+**Open contract (freeze note):** who discovers/instantiates `RaiderHook` providers for hooks is NOT defined in v1 — the loader deliberately does not load hooks; `HookRunner` runs a handed-in instance. Owner card required before hook *dispatch* work freezes (discovery exists in `plugin/loader/HookDiscovery`, RAI-095).
 
 ## 7. Не входит
 

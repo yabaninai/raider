@@ -116,6 +116,14 @@ final class JobJournal private (
       }
     }
 
+  /** The journal directory this journal writes into (segments live here as
+    * `segment-N.jsonl`). Exposed for wiring (RAI-093): a checkpoint writer
+    * needs a path next to the segments, and [[JobJournal.replay]] documents
+    * that non-segment files in this directory (e.g. a checkpoint snapshot) are
+    * ignored — never replayed, never deleted.
+    */
+  def path: Path = dir
+
   private def rotateIfNeeded(
       current: JobJournal.Writer,
       line: String

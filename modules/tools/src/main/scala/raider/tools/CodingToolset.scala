@@ -3,6 +3,7 @@ package raider.tools
 import raider.core.*
 import raider.tools.files.read.{ReadResult, ReadTool, Workspace}
 import raider.tools.process.{ExecOutcome, ExecRequest, ProcessTool}
+import raider.runtime.state.{StateStore, StateTools}
 import raider.tools.search.SearchTool
 import zio.{Scope, ZIO}
 import zio.json.*
@@ -21,6 +22,10 @@ import zio.json.*
   *     workspace, empty-env + explicit allowlist, timeout with graceful-then-
   *     force kill, bounded output. This is the ONLY mutation path in this slice
   *     (argv is fully visible in every event/log — no hidden writes).
+  *   - `state_*` (RAI-094, OPT-IN) — the four [[StateTools]] bound to a
+  *     caller-supplied [[StateStore]]; appended AFTER the six coding tools. No
+  *     store passed → observationally identical to the feature not existing
+  *     (opt-in law, roadmap P5 exit).
   *
   * All outputs are single-line JSON matched back by tool_call_id. Tool failures
   * are typed RaiderErrors (→ structured feedback for the loop).
@@ -31,12 +36,23 @@ final class CodingToolset private (
     process: ProcessTool,
     edit: raider.tools.files.edit.EditTool,
     patch: raider.tools.files.edit.PatchTool,
-    tree: raider.tools.files.TreeTool
+    tree: raider.tools.files.TreeTool,
+    state: Option[(StateStore, JobId)] = None
 ):
+
+  /** Opt-in state tools (RAI-094): built once, bound to the store and the agent
+    * job id the CALLER supplies (nothing here invents an agent identity — the
+    * default Agent scope of every state tool is the caller's job). `None` →
+    * Nil, so `registry` stays byte-identical to the pre-RAI-094 one.
+    */
+  private val stateTools: List[Tool] = state match
+    case None            => Nil
+    case Some((st, job)) => StateTools.store(st, job)
 
   def registry: Either[RaiderError, ToolRegistry] =
     ToolRegistry.build(
-      List(fsReadT, fsSearchT, procRunT, fsEditT, fsPatchT, fsTreeT)
+      List(fsReadT, fsSearchT, procRunT, fsEditT, fsPatchT, fsTreeT) ++
+        stateTools // appended AFTER the six coding tools (RAI-094 order)
     )
 
   // ---- fs_read ----
@@ -241,8 +257,14 @@ object CodingToolset:
   val DefaultTreeDepth = 3
   val MaxTreeEntries = 500
 
-  /** Build the toolset rooted at `workspaceRoot` (absolute or relative CWD). */
-  def make(workspaceRoot: String): ZIO[Any, RaiderError, CodingToolset] =
+  /** Build the toolset rooted at `workspaceRoot` (absolute or relative CWD).
+    * `state = Some((store, agentJob))` opts in the four state tools (RAI-094);
+    * the default `None` keeps the toolset exactly as before the card.
+    */
+  def make(
+      workspaceRoot: String,
+      state: Option[(StateStore, JobId)] = None
+  ): ZIO[Any, RaiderError, CodingToolset] =
     for
       ws <- Workspace.make(workspaceRoot)
       read = new ReadTool(ws)
@@ -251,7 +273,7 @@ object CodingToolset:
       edit = new raider.tools.files.edit.EditTool(ws)
       patch = new raider.tools.files.edit.PatchTool(ws)
       tree = new raider.tools.files.TreeTool(ws)
-    yield new CodingToolset(read, search, process, edit, patch, tree)
+    yield new CodingToolset(read, search, process, edit, patch, tree, state)
 
   // ---- args wires ----
   private final case class FsReadArgs(

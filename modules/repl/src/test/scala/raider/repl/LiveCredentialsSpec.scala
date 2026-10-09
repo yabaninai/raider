@@ -18,6 +18,12 @@ import zio.test.*
   *     falls back to the scripted/mock sources with a notice (never a crash,
   *     never a fake live wire), and no message ever contains the secret or the
   *     helper command text (mask/`<redacted>` only).
+  *
+  * RAI-098 supersession: `anthropic` + a resolved key NO LONGER falls back to
+  * the scripted/mock sources with a masked notice — it wires the LIVE
+  * AnthropicMessagesBackend. That behavior and its fixtures live in
+  * AnthropicLiveWiringSpec (RANT-01); the no-key anthropic fallback itself is
+  * unchanged (RANT-02) and stays asserted here.
   */
 object LiveCredentialsSpec extends ZIOSpecDefault:
 
@@ -178,22 +184,6 @@ object LiveCredentialsSpec extends ZIOSpecDefault:
           assertTrue(
             plan.notices.length == 1,
             plan.sources.exists(_.contains("ScriptedModelBackend"))
-          )
-        },
-        test(
-          "anthropic + resolved key -> honest mock fallback, masked notice"
-        ) {
-          val secret = "test-sec-val"
-          val plan = Main.preludePlan(
-            Map("RAIDER_PROVIDER" -> "anthropic", "RAIDER_API_KEY" -> secret)
-          )
-          val all = plan.sources.mkString("\n")
-          assertTrue(
-            plan.notices.length == 1,
-            plan.notices.head.contains("test***"),
-            !plan.notices.head.contains(secret),
-            !all.contains(secret),
-            all.contains("ScriptedModelBackend")
           )
         },
         test("mock provider needs no key and prints no notice") {

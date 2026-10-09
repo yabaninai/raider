@@ -11,6 +11,7 @@ import raider.core.{
   ToolCallId,
   ToolRegistry
 }
+import raider.core.plugin.{HookOutcome, PluginHost}
 import raider.runtime.admission.{Admission, SlotKind}
 import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd}
 import raider.runtime.events.ToolOutcome
@@ -53,8 +54,10 @@ import java.util.concurrent.atomic.AtomicLong
   *
   * Event emission (RAI-058): `events` is an OPTIONAL context binding this run
   * to one job/root/session of an EventHub (ADR-024 §2.3/§6); `None` (the
-  * default) = zero overhead. Emission seams, in program order:
-  *   - `Diagnostics("round N started")` — RoundStarted equivalent;
+  * default) = zero overhead. The same context may carry an optional JobJournal
+  * (RAI-093, see [[LoopEvents]]): every emitted envelope is appended there
+  * failure-absorbingly, and a journaled `Terminal` triggers a checkpoint — the
+  * loop itself owns no journal logic. Emission seams, in program order:
   *   - `Waiting(Slot)` (RELIABLE, bounded) before each Model/Tool slot wait;
   *   - `ModelCallStarted(round, model, Some(n))` → stream pass →
   *     `ModelCallFinished(round, durationMs, usage = unknown)` — the real
@@ -65,7 +68,12 @@ import java.util.concurrent.atomic.AtomicLong
   *     failure path (today's trace emits nothing on failure); refusals are
   *     documented as `ToolFinished(Failed("refused: ..."))` without a
   *     ToolStarted;
-  *   - `Diagnostics("round N text: …")` — TextReceived equivalent.
+  *   - `Diagnostics("round N text: …")` — TextReceived equivalent;
+  *   - `Diagnostics("plugin hook …")` — RAI-095 lifecycle hooks: one line per
+  *     `PluginHost` hook outcome, `runStart` after the RunStarted trace,
+  *     `runFinish` before the RunFinished/RunFailed trace. Hooks NEVER
+  *     influence the run's result or typed error channel (outcomes are only
+  *     logged; `plugins = None` — the default — is a literal no-op).
   * Emission never breaks the run (failure-absorbing, see [[LoopEvents]]); the
   * existing `trace` callback keeps its exact call points and event types (its
   * round fields now carry the real round instead of the old -1 hardcode); job
@@ -80,7 +88,9 @@ final case class AgentLoop(
     attemptEstimate: CostEstimate = CostEstimate.Unknown,
     trace: raider.core.trace.TraceEvent => zio.UIO[Unit] = _ => zio.ZIO.unit,
     systemPrompt: Option[String] = None,
-    events: Option[LoopEvents] = None
+    events: Option[LoopEvents] = None,
+    // RAI-095: optional lifecycle hook host; None (default) = zero overhead
+    plugins: Option[PluginHost] = None
 ):
 
   /** Event emission (RAI-058): `None` = zero-overhead no-op at every seam. */
@@ -88,6 +98,36 @@ final case class AgentLoop(
     events match
       case Some(e) => f(e)
       case None    => zio.ZIO.unit
+
+  /** RAI-095: one lifecycle hook phase (runStart/runFinish), isolated from the
+    * run's fate:
+    *   - `plugins = None` (the default) is a literal `unit` — zero overhead: no
+    *     host, no hook, no work is even described;
+    *   - with a host, the bounded SYNCHRONOUS dispatch ([[PluginHost.runStart]]
+    *     / [[PluginHost.runFinish]] → [[HookRunner.runHook]], one daemon thread
+    *     + bounded wait per hook) runs on the blocking pool so a hook waiting
+    *     out its bound never starves the executor; `runHook` never leaks
+    *     exceptions (RAI-084), so the phase is failure-free by construction;
+    *   - outcomes are only LOGGED: when an `events` channel exists, each
+    *     outcome becomes one `Diagnostics` line (bounded by LoopEvents);
+    *     without a channel the outcomes are dropped. Hooks NEVER influence the
+    *     run's result or typed error channel (card non-goal).
+    */
+  private def hookPhase(
+      run: PluginHost => List[HookOutcome]
+  ): zio.UIO[Unit] =
+    plugins match
+      case None => zio.ZIO.unit
+      case Some(host) =>
+        zio.ZIO
+          .blocking(zio.ZIO.succeed(run(host)))
+          .flatMap: outcomes =>
+            events match
+              case None => zio.ZIO.unit
+              case Some(e) =>
+                zio.ZIO.foreachDiscard(outcomes)(o =>
+                  e.diagnostics(AgentLoop.hookText(o))
+                )
 
   /** One agent run: bounded tool rounds until a validated final text.
     *
@@ -127,18 +167,34 @@ final case class AgentLoop(
         raider.core.trace.TraceEvent
           .RunStarted(AgentLoop.now(), model, messages.size)
       ) *>
+        // RAI-095: lifecycle hooks run AFTER RunStarted; the read-only
+        // metaJson identifies the run — conversation content never crosses
+        // the SPI seam
+        hookPhase(_.runStart(hookMetaJson)) *>
         rounds(messages, ceilings, maxRounds, 1).tapBoth(
           e =>
-            trace(
-              raider.core.trace.TraceEvent
-                .RunFailed(AgentLoop.now(), e.code, e.detail.take(160))
-            ),
+            // RAI-095: runFinish BEFORE the RunFailed trace emission
+            hookPhase(_.runFinish(hookMetaJson)) *>
+              trace(
+                raider.core.trace.TraceEvent
+                  .RunFailed(AgentLoop.now(), e.code, e.detail.take(160))
+              ),
           t =>
-            trace(
-              raider.core.trace.TraceEvent
-                .RunFinished(AgentLoop.now(), "Succeeded", t.take(160))
-            )
+            // RAI-095: runFinish BEFORE the RunFinished trace emission
+            hookPhase(_.runFinish(hookMetaJson)) *>
+              trace(
+                raider.core.trace.TraceEvent
+                  .RunFinished(AgentLoop.now(), "Succeeded", t.take(160))
+              )
         )
+
+  /** RAI-095: the read-only lifecycle-hook input — run identity only (model,
+    * root), as one JSON document. Never conversation content: the hook SPI
+    * hands over exactly one read-only string, and the loop keeps the envelope
+    * minimal by construction.
+    */
+  private def hookMetaJson: String =
+    s"{\"model\":${model.toJson},\"root\":${root.value.toJson}}"
 
   private def rounds(
       messages: List[RequestMessage],
@@ -484,6 +540,16 @@ object AgentLoop:
       case _: RaiderError.Cancelled        => ToolOutcome.Cancelled
       case other =>
         ToolOutcome.Failed(other.detail.take(LoopEvents.maxReasonChars))
+
+  /** RAI-095: one [[HookOutcome]] → one bounded Diagnostics line
+    * ([[LoopEvents.diagnostics]] truncates to 2000 chars). Completed hooks
+    * report their verbatim output; failures report the typed runner detail.
+    */
+  private def hookText(o: HookOutcome): String = o match
+    case HookOutcome.Completed(name, outputJson) =>
+      s"plugin hook '$name' completed: $outputJson"
+    case HookOutcome.Failed(name, failure) =>
+      s"plugin hook '$name' failed: ${failure.detail}"
 
 end AgentLoop
 

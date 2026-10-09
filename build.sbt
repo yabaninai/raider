@@ -27,6 +27,8 @@ lazy val raiderCore = (project in file("modules/core"))
   .settings(
     commonSettings,
     testSettings,
+    // RAI-096: protected plugin-SDK fixture spec lives in contracts/plugins
+    Test / unmanagedSourceDirectories += baseDirectory.value / ".." / ".." / "contracts" / "plugins",
     name := "raider-core",
     libraryDependencies ++= Seq(
       "dev.zio" %% "zio" % zioVersion,
@@ -77,6 +79,10 @@ lazy val raiderUi = (project in file("modules/ui"))
 // (RAI-014.a read/search, RAI-016.a process) add only their own subpackages.
 lazy val raiderTools = (project in file("modules/tools"))
   .settings(commonSettings, testSettings, name := "raider-tools")
+  // RAI-094 (ratified by coordinator 2026-10-09): CodingToolset consumes the
+  // runtime StateStore SPI for opt-in state tools; no cycle (runtime does not
+  // depend on tools).
+  .dependsOn(raiderRuntime % "compile->compile;test->test")
   .dependsOn(raiderCore % "compile->compile;test->test")
 
 // raider-repl-engine: in-process scala3-repl (pinned 3.9.0) behind ReplEngine.

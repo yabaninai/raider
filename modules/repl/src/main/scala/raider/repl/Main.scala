@@ -48,9 +48,11 @@ object Main:
     * anthropic), the API key is resolved from the environment (RAIDER_API_KEY
     * or RAIDER_API_KEY_CMD, via LiveCredentials); a resolvable key under
     * `openai` wires the LIVE streaming backend + coding tools (nightly Phase
-    * 3.1: RAIDER_MODEL, live-echo session). A MISSING key never crashes the
-    * REPL: it prints a clear how-to-enable notice and the scripted/mock path
-    * runs unchanged. `env` is injectable for tests.
+    * 3.1: RAIDER_MODEL, live-echo session), and under `anthropic` the LIVE
+    * Anthropic Messages backend (RAI-098, SSE streaming — the build edge to
+    * raider-provider-anthropic was added by the coordinator). A MISSING key
+    * never crashes the REPL: it prints a clear how-to-enable notice and the
+    * scripted/mock path runs unchanged. `env` is injectable for tests.
     */
   private[repl] final case class PreludePlan(
       sources: List[String],
@@ -72,17 +74,26 @@ object Main:
     keyOutcome match
       case Right(Some(key)) if provider == "openai" =>
         PreludePlan(liveOpenaiSources(baseUrl, model, key), Nil)
+      case Right(Some(key)) if provider == "anthropic" =>
+        // RAI-098: raider-provider-anthropic IS a repl dependency now (the
+        // build.sbt edge was added by the coordinator), so a resolvable key
+        // wires the real AnthropicMessagesBackend — same honest live rules
+        // as the openai branch, no fake fallback, notice-free start.
+        PreludePlan(liveAnthropicSources(baseUrl, model, key), Nil)
       case Right(Some(key)) =>
-        // live provider whose transport this REPL slice does not wire
-        // (anthropic): the repl classpath has no Anthropic Messages backend
-        // (raider-provider-anthropic is not a repl dependency and build.sbt
-        // is coordinator-owned). Honest mock fallback — never a fake live wire.
+        // live provider whose transport this REPL slice does not wire (all
+        // CURRENT LiveCredentials.LiveProviders — openai, anthropic — are
+        // wired above; this is the defensive branch for a future provider
+        // added to LiveCredentials before its transport lands here). Honest
+        // mock fallback — never a fake live wire. Only the masked key form
+        // may reach the notice.
         PreludePlan(
           scriptedSources,
           List(
             s"RAIDER_PROVIDER=$provider: API key resolved (masked: " +
               s"${LiveCredentials.mask(key)}), but this REPL slice wires " +
-              "only the OpenAI-compatible live transport; continuing in mock."
+              "only the OpenAI-compatible and Anthropic live transports; " +
+              "continuing in mock."
           )
         )
       case Right(None) =>
@@ -97,6 +108,9 @@ object Main:
     * REPL classloader loads raider classes self-first, so console-world statics
     * (MainBridge) are a DIFFERENT class from the one seen here and a
     * ThreadLocal written there reads as null here (2026-10-08)).
+    *
+    * RAI-098: the session/tools/facade tail is shared verbatim with the
+    * anthropic branch ([[liveTail]]) — only the backend construction differs.
     */
   private def liveOpenaiSources(
       baseUrl: String,
@@ -115,7 +129,43 @@ object Main:
            raider.provider.chat.stream.OpenAIChatStreamingBackend
              .make(Right(__cfg))
              .map(raider.runtime.display.RateLimitRetries(_)))
-           .getOrThrow() }""",
+           .getOrThrow() }"""
+    ) ++ liveTail(model)
+
+  /** RAI-098: live Anthropic-compatible wiring — the real
+    * `raider.provider.anthropic.AnthropicMessagesBackend` via its factory (SSE
+    * streaming, pinned anthropic-version, x-api-key), constructed INSIDE the
+    * interpreter world exactly like the openai branch. Construction only builds
+    * the JDK HttpClient — nothing is dialed until an ask runs. The masked key
+    * never appears here: like openai, the raw key exists only as the
+    * silently-evaluated escaped binding; notices (mask only) belong to the
+    * no-key/unwired fallbacks above.
+    */
+  private def liveAnthropicSources(
+      baseUrl: String,
+      model: String,
+      apiKey: String
+  ): List[String] =
+    List(
+      "import raider.repl.facade.*",
+      "import raider.runtime.budget.BudgetLimits",
+      s"val __baseUrl = \"${scalaStr(baseUrl)}\"",
+      s"val __apiKey = \"${scalaStr(apiKey)}\"",
+      """val __cfg = raider.provider.anthropic.AnthropicMessagesBackend.Config
+        |  .make(__baseUrl, __apiKey, callTimeoutMs = 300000L) match { case Right(c) => c }""".stripMargin,
+      """val __backend = zio.Unsafe.unsafe { implicit u =>
+         zio.Runtime.default.unsafe.run(
+           raider.provider.anthropic.AnthropicMessagesBackend
+             .make(Right(__cfg), streaming = true))
+           .getOrThrow() }"""
+    ) ++ liveTail(model)
+
+  /** Shared tail of every live prelude (RAI-098 extraction, content unchanged
+    * from the RAI-090 openai slice): coding tools, the live-echo session and
+    * the facade bindings. Byte-identical to the pre-extraction openai output.
+    */
+  private def liveTail(model: String): List[String] =
+    List(
       """val __tools = zio.Unsafe.unsafe { implicit u =>
          zio.Runtime.default.unsafe.run(
            raider.tools.CodingToolset

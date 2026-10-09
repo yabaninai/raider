@@ -1,237 +1,240 @@
 {
-  "schema_version": 1,
-  "stage_policy": {
-    "component": "gates executable now on implemented slices",
-    "milestone": "obligations tracked by board; not runnable until stage target"
+ "schema_version": 1,
+ "stage_policy": {
+  "component": "gates executable now on implemented slices",
+  "milestone": "obligations tracked by board; not runnable until stage target"
+ },
+ "profiles": {
+  "self": {
+   "stage": "component",
+   "gates": [
+    "self-registry-check"
+   ]
   },
-  "profiles": {
-    "self": {
-      "stage": "component",
-      "gates": [
-        "self-registry-check"
-      ]
-    },
-    "static": {
-      "stage": "component",
-      "gates": [
-        "sbt-compile",
-        "scalafmt-check"
-      ]
-    },
-    "unit": {
-      "stage": "component",
-      "gates": [
-        "core-contracts-spec",
-        "sbt-test"
-      ]
-    },
-    "contracts": {
-      "stage": "component",
-      "gates": [
-        "core-contracts-spec",
-        "compile-fixtures"
-      ]
-    },
-    "docs": {
-      "stage": "component",
-      "gates": [
-        "plan-validate"
-      ]
-    },
-    "fast": {
-      "stage": "component",
-      "gates": [
-        "self-registry-check",
-        "sbt-compile",
-        "scalafmt-check",
-        "scalafix-check",
-        "forbidden-apis",
-        "license-audit",
-        "core-contracts-spec",
-        "compile-fixtures",
-        "plan-validate",
-        "sbt-test"
-      ]
-    },
-    "runtime": {
-      "stage": "component",
-      "gates": [
-        "sbt-test"
-      ]
-    },
-    "tools": {
-      "stage": "component",
-      "gates": [
-        "sbt-test"
-      ]
-    },
-    "transport": {
-      "stage": "component",
-      "gates": [
-        "sbt-test"
-      ]
-    },
-    "repl": {
-      "stage": "component",
-      "gates": [
-        "sbt-test",
-        "repl-smoke"
-      ]
-    },
-    "ci": {
-      "stage": "component",
-      "gates": [
-        "sbt-test",
-        "cli-smoke"
-      ]
-    },
-    "security": {
-      "stage": "component",
-      "gates": [
-        "security-secrets-scan"
-      ]
-    }
+  "static": {
+   "stage": "component",
+   "gates": [
+    "sbt-compile",
+    "scalafmt-check"
+   ]
   },
-  "gates": {
-    "self-registry-check": {
-      "argv": [
-        "python3",
-        "scripts/quality/quality.py",
-        "self-check"
-      ],
-      "timeout_s": 60
-    },
-    "sbt-compile": {
-      "argv": [
-        "sbt",
-        "--batch",
-        "compile"
-      ],
-      "timeout_s": 600
-    },
-    "core-contracts-spec": {
-      "argv": [
-        "sbt",
-        "--batch",
-        "raiderCore/Test/runMain raider.core.ContractsSpec"
-      ],
-      "timeout_s": 600
-    },
-    "compile-fixtures": {
-      "argv": [
-        "sh",
-        "scripts/build/compile.sh"
-      ],
-      "timeout_s": 300
-    },
-    "plan-validate": {
-      "argv": [
-        "python3",
-        "scripts/plan/validate.py",
-        "--out",
-        "artifacts/plan-review/report.json"
-      ],
-      "timeout_s": 120
-    },
-    "sbt-test": {
-      "argv": [
-        "sbt",
-        "--batch",
-        "test"
-      ],
-      "timeout_s": 900
-    },
-    "scalafmt-check": {
-      "argv": [
-        "sbt",
-        "--batch",
-        "scalafmtCheckAll"
-      ],
-      "timeout_s": 120
-    },
-    "scalafix-check": {
-      "argv": [
-        "sbt",
-        "--batch",
-        "scalafixAll --check"
-      ],
-      "timeout_s": 180
-    },
-    "forbidden-apis": {
-      "argv": [
-        "python3",
-        "scripts/quality/forbidden_apis.py",
-        "--self-test"
-      ],
-      "timeout_s": 60
-    },
-    "repl-smoke": {
-      "argv": [
-        "sh",
-        "scripts/quality/repl_smoke.sh"
-      ],
-      "timeout_s": 120
-    },
-    "cli-smoke": {
-      "argv": [
-        "sh",
-        "scripts/quality/cli_smoke.sh"
-      ],
-      "timeout_s": 120
-    },
-    "license-audit": {
-      "argv": [
-        "python3",
-        "scripts/quality/license_audit.py",
-        "--self-test"
-      ],
-      "timeout_s": 300
-    },
-    "security-secrets-scan": {
-      "argv": [
-        "python3",
-        "scripts/quality/security_checks.py"
-      ],
-      "timeout_s": 120
-    }
+  "unit": {
+   "stage": "component",
+   "gates": [
+    "core-contracts-spec",
+    "sbt-test"
+   ]
   },
-  "path_profiles": {
-    "^modules/| ^contracts/": [
-      "static",
-      "unit",
-      "contracts"
-    ],
-    "^scripts/quality": [
-      "self"
-    ],
-    "^scripts/": [
-      "self",
-      "static"
-    ],
-    "^docs/|^README|^AGENTS.md": [
-      "docs"
-    ],
-    "^experiments/": [
-      "docs"
-    ],
-    "^build.sbt|^project/|^Makefile|^\\.scalafmt.conf": [
-      "static",
-      "contracts"
-    ]
+  "contracts": {
+   "stage": "component",
+   "gates": [
+    "core-contracts-spec",
+    "compile-fixtures"
+   ]
   },
-  "fingerprint_excludes": [
-    ".git",
-    "artifacts",
-    "target",
-    "project/target",
-    ".opencode",
-    "__pycache__",
-    ".DS_Store",
-    ".raider",
-    ".bsp",
-    ".metals",
-    ".idea",
-    ".scala-build",
-    ".bloop"
+  "docs": {
+   "stage": "component",
+   "gates": [
+    "plan-validate"
+   ]
+  },
+  "fast": {
+   "stage": "component",
+   "gates": [
+    "self-registry-check",
+    "sbt-compile",
+    "scalafmt-check",
+    "scalafix-check",
+    "forbidden-apis",
+    "license-audit",
+    "core-contracts-spec",
+    "compile-fixtures",
+    "plan-validate",
+    "sbt-test"
+   ]
+  },
+  "runtime": {
+   "stage": "component",
+   "gates": [
+    "sbt-test"
+   ]
+  },
+  "tools": {
+   "stage": "component",
+   "gates": [
+    "sbt-test"
+   ]
+  },
+  "transport": {
+   "stage": "component",
+   "gates": [
+    "sbt-test"
+   ]
+  },
+  "repl": {
+   "stage": "component",
+   "gates": [
+    "sbt-test",
+    "repl-smoke"
+   ]
+  },
+  "ci": {
+   "stage": "component",
+   "gates": [
+    "sbt-test",
+    "cli-smoke"
+   ]
+  },
+  "security": {
+   "stage": "component",
+   "gates": [
+    "security-secrets-scan"
+   ]
+  }
+ },
+ "gates": {
+  "self-registry-check": {
+   "argv": [
+    "python3",
+    "scripts/quality/quality.py",
+    "self-check"
+   ],
+   "timeout_s": 60
+  },
+  "sbt-compile": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "compile"
+   ],
+   "timeout_s": 600
+  },
+  "core-contracts-spec": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "raiderCore/Test/runMain raider.core.ContractsSpec"
+   ],
+   "timeout_s": 600
+  },
+  "compile-fixtures": {
+   "argv": [
+    "sh",
+    "scripts/build/compile.sh"
+   ],
+   "timeout_s": 300
+  },
+  "plan-validate": {
+   "argv": [
+    "python3",
+    "scripts/plan/validate.py",
+    "--out",
+    "artifacts/plan-review/report.json"
+   ],
+   "timeout_s": 120
+  },
+  "sbt-test": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "test"
+   ],
+   "timeout_s": 900
+  },
+  "scalafmt-check": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "scalafmtCheckAll"
+   ],
+   "timeout_s": 120
+  },
+  "scalafix-check": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "scalafixAll --check"
+   ],
+   "timeout_s": 180
+  },
+  "forbidden-apis": {
+   "argv": [
+    "python3",
+    "scripts/quality/forbidden_apis.py",
+    "--self-test"
+   ],
+   "timeout_s": 60
+  },
+  "repl-smoke": {
+   "argv": [
+    "sh",
+    "scripts/quality/repl_smoke.sh"
+   ],
+   "timeout_s": 120
+  },
+  "cli-smoke": {
+   "argv": [
+    "sh",
+    "scripts/quality/cli_smoke.sh"
+   ],
+   "timeout_s": 120
+  },
+  "license-audit": {
+   "argv": [
+    "python3",
+    "scripts/quality/license_audit.py",
+    "--self-test"
+   ],
+   "timeout_s": 300
+  },
+  "security-secrets-scan": {
+   "argv": [
+    "python3",
+    "scripts/quality/security_checks.py"
+   ],
+   "timeout_s": 120
+  }
+ },
+ "path_profiles": {
+  "^modules/| ^contracts/": [
+   "static",
+   "unit",
+   "contracts"
+  ],
+  "^scripts/quality": [
+   "self"
+  ],
+  "^scripts/": [
+   "self",
+   "static"
+  ],
+  "^docs/|^README|^AGENTS.md": [
+   "docs"
+  ],
+  "^experiments/": [
+   "docs"
+  ],
+  "^build.sbt|^project/|^Makefile|^\\.scalafmt.conf": [
+   "static",
+   "contracts"
+  ],
+  "^examples/": [
+   "docs"
   ]
+ },
+ "fingerprint_excludes": [
+  ".git",
+  "artifacts",
+  "target",
+  "project/target",
+  ".opencode",
+  "__pycache__",
+  ".DS_Store",
+  ".raider",
+  ".bsp",
+  ".metals",
+  ".idea",
+  ".scala-build",
+  ".bloop"
+ ]
 }

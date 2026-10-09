@@ -2,14 +2,21 @@ package raider.runtime.loop
 
 import raider.core.{JobId, RootId, SessionId}
 import raider.runtime.budget.MicroUsd
+import raider.runtime.events.EventCodecs.given
 import raider.runtime.events.{
+  EventEnvelope,
   EventHub,
   EventPayload,
   ToolOutcome,
   UsageSnapshot,
   WaitReason
 }
+import raider.runtime.journal.JobJournal
+import raider.runtime.jobs.JobStatus
+import zio.json.{DeriveJsonEncoder, EncoderOps, JsonEncoder}
 import zio.{UIO, ZIO}
+
+import java.util.concurrent.atomic.AtomicLong
 
 /** Optional emission context binding one [[AgentLoop]] run (or one
   * [[raider.runtime.display.RateLimitRetries]] decorator) to a single
@@ -35,20 +42,110 @@ import zio.{UIO, ZIO}
   * `ModelCallFinished` always reports
   * `UsageSnapshot(MicroUsd(0), MicroUsd(0), unknown = true)` — unknown is
   * passed as unknown, never coerced into 0/false.
+  *
+  * Journal wiring (RAI-093): `journal`, when present, receives every EMITTED
+  * envelope — appended only AFTER the hub publish succeeded (a dropped
+  * diagnostic or a Backpressure failure emits nothing, consumes no sequence and
+  * is journaled by nothing: the journal is the log of what was actually
+  * emitted). The sink is awaited-append, absorbed-failure ("fire and forget" in
+  * the failure sense): appends are awaited INLINE so the journal order equals
+  * the emission order of the publishing fiber, while EVERY sink failure is
+  * swallowed — `EventError` from publish and any defect from
+  * `append`/`checkpoint` (the journal's error channel is defects-only) never
+  * reach the loop; interruption stays the run's own cancellation, exactly as
+  * for publish. The journal therefore NEVER affects the loop, and NO automatic
+  * replay exists anywhere in this wiring — recovery data returned by
+  * `JobJournal.replay` is inert input for an explicit caller policy, never
+  * re-executed here.
+  *
+  * Journal seq space: journaled envelopes carry a DENSE JOURNAL-LOCAL sequence
+  * (`journalSeq`, 1, 2, 3, ... in emission order), NOT the hub's per-job seq.
+  * `EventHub.publish` does not return the emitted envelope, and reading the hub
+  * seq back via `snapshot(job).lastSeq` would be racy under concurrent
+  * publishers of one job (the job layer publishes `JobStatusChanged`/`Terminal`
+  * to the same job) and undefined for dropped diagnostics — claiming hub parity
+  * from this seam would be dishonest. The two seq spaces stay separate, and the
+  * checkpoint document names BOTH explicitly (`journalLastSeq` vs
+  * `hubLastSeq`).
+  *
+  * Checkpoint (JW-02): when a `Terminal` payload passes the seam, one
+  * [[JobJournal.checkpoint]] is written to `journal.path/checkpoint.json` after
+  * the Terminal record is appended. The context knows the hub, so the snapshot
+  * facts come from `hub.snapshot(jobId)` (`hubLastSeq`, `hubStatus` — canonical
+  * ADR-024 status names); if the hub has no snapshot for the job, those fields
+  * are simply absent and the document degenerates to the minimal JSON carrying
+  * `journalLastSeq` only. Like every journal write, a failed checkpoint is
+  * absorbed: the loop runs on.
   */
 final case class LoopEvents(
     hub: EventHub,
     jobId: JobId,
     rootId: RootId,
-    sessionId: SessionId
+    sessionId: SessionId,
+    journal: Option[JobJournal] = None,
+    journalSeq: AtomicLong = new AtomicLong(0L)
 ):
 
-  /** Failure-absorbing publish: any `EventError` → `unit`; an interruption
-    * during publish propagates as the run's own cancellation (never as a typed
-    * failure).
+  /** Failure-absorbing publish + optional journal append (RAI-093): any
+    * `EventError` from the hub AND any defect from the journal sink → `unit`;
+    * an interruption propagates as the run's own cancellation (never as a typed
+    * failure). Only a SUCCESSFUL publish is journaled — the journal holds
+    * exactly the emitted envelopes, in emission order.
     */
   def emit(payload: EventPayload): UIO[Unit] =
-    hub.publish(jobId, rootId, sessionId, payload).catchAll(_ => ZIO.unit)
+    hub.publish(jobId, rootId, sessionId, payload).catchAll(_ => ZIO.unit) *>
+      (journal match
+        case Some(j) => record(j, payload)
+        case None    => ZIO.unit)
+
+  /** Awaited-append, absorbed-failure sink: `JobJournal.append` is UIO (its
+    * error channel is defects by contract), so absorbing means `catchAllDefect`
+    * — a dying sink (append-after-close, IO failure) never reaches the loop.
+    * Awaiting inline is what makes journal order == emission order for one
+    * publishing fiber; an append torn by interruption is an honest Uncertain
+    * for replay, never repaired here.
+    */
+  private def record(j: JobJournal, payload: EventPayload): UIO[Unit] =
+    ZIO.succeed(journalSeq.incrementAndGet()).flatMap { seq =>
+      val env = EventEnvelope(
+        LoopEvents.schemaVersion,
+        seq,
+        jobId,
+        rootId,
+        sessionId,
+        java.lang.System.currentTimeMillis(),
+        payload
+      )
+      j.append(env).catchAllDefect(_ => ZIO.unit).unit *>
+        (payload match
+          case EventPayload.Terminal(_) => checkpoint(j, seq)
+          case _                        => ZIO.unit)
+    }
+
+  /** Checkpoint after a journaled Terminal (JW-02): snapshot facts from the hub
+    * the context already holds; hub fields absent when the hub knows nothing
+    * about the job (the minimal lastSeq-only JSON). The status encodes as its
+    * canonical ADR-024 name (the EventCodecs given). Absorbed like every sink
+    * failure: `JournalError` and defects both → unit.
+    */
+  private def checkpoint(j: JobJournal, lastSeq: Long): UIO[Unit] =
+    hub.snapshot(jobId).flatMap { snap =>
+      val doc = LoopEvents.CheckpointDoc(
+        kind = LoopEvents.CheckpointDoc.kind,
+        jobId = jobId.value,
+        journalLastSeq = lastSeq,
+        hubLastSeq = snap.map(_.lastSeq),
+        hubStatus = snap.map(_.status),
+        capturedAtMs = java.lang.System.currentTimeMillis()
+      )
+      JobJournal
+        .checkpoint(
+          doc.toJson,
+          j.path.resolve(LoopEvents.CheckpointDoc.fileName)
+        )
+        .ignore
+        .catchAllDefect(_ => ZIO.unit)
+    }
 
   /** RELIABLE: the run is about to wait for a Model or Tool slot. Emitted
     * unconditionally before each `admission.withSlot`/`withSlotFree` call — a
@@ -164,4 +261,37 @@ object LoopEvents:
     * malformed (`ToolFinished(Failed("refused: invalid arguments"))`).
     */
   val refusedInvalidArgs: String = "refused: invalid arguments"
+
+  /** Envelope schema version of journaled records (ADR-024 §5: "always 1 in
+    * this revision"; the hub keeps the same value privately).
+    */
+  private[loop] val schemaVersion: Int = 1
+
+  /** Checkpoint document written after a journaled Terminal (RAI-093, JW-02).
+    * Wire shape is NOT part of the frozen event schema — it is a recovery aid
+    * next to the segments: `journalLastSeq` is the journal-local dense seq of
+    * the last journaled record, `hubLastSeq`/`hubStatus` mirror
+    * `hub.snapshot(jobId)` at checkpoint time (absent when the hub knows
+    * nothing about the job — the minimal lastSeq-only document). The two seq
+    * spaces are different spaces and are never mixed: reconciliation across a
+    * gap maps journal records to hub state via these two named fields, never by
+    * assuming equality.
+    */
+  private[loop] final case class CheckpointDoc(
+      kind: String,
+      jobId: String,
+      journalLastSeq: Long,
+      hubLastSeq: Option[Long],
+      // encodes as the canonical ADR-024 status name via the EventCodecs
+      // given JsonEncoder[JobStatus] picked up by the derived encoder
+      hubStatus: Option[JobStatus],
+      capturedAtMs: Long
+  )
+
+  private[loop] object CheckpointDoc:
+    val kind: String = "raider.loop.checkpoint"
+    val fileName: String = "checkpoint.json"
+
+    given JsonEncoder[CheckpointDoc] = DeriveJsonEncoder.gen[CheckpointDoc]
+
 end LoopEvents
