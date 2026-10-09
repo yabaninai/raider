@@ -1,6 +1,7 @@
 package raider.runtime.budget
 
-import raider.core.{RaiderError, RootId}
+import raider.core.{JobId, RaiderError, RootId, SessionId}
+import raider.runtime.events.{EventHub, EventPayload}
 import zio.{UIO, ZIO}
 import zio.stm.{TMap, TRef, STM}
 
@@ -133,9 +134,42 @@ final class BudgetLedger private (
     unpriced: TRef[Long],
     late: TRef[Int],
     violations: TRef[Int],
-    records: TMap[ReservationId, (RootId, Long, TRef[SettleStatus])]
+    records: TMap[ReservationId, (RootId, Long, TRef[SettleStatus])],
+    hub: Option[EventHub]
 ):
   private val counter = new java.util.concurrent.atomic.AtomicLong(0)
+
+  /** RAI-059 (ADR-024 §2.6): optional budget emission seam.
+    *
+    * After every budget mutation (reserve / settle / late-settle / release /
+    * markUncertain) a `BudgetChanged(reserved, observed, unknownAttempts)`
+    * snapshot is published. The ledger is a single budget pool for one root, so
+    * the snapshot is routed under a synthetic job id derived from that root
+    * (`JobId(root.value)`) with the empty session.
+    *
+    * Never blocks (EMJ-03): the publish runs on a forked daemon fiber, so the
+    * budget operation returns as soon as its STM transaction commits — a slow
+    * or backpressured reliable buffer can never delay admission. Every
+    * `EventError` is swallowed (the budget result is never altered by
+    * emission); an interrupted publish is simply dropped. `None` hub = zero
+    * overhead: the seam degrades to `ZIO.unit`.
+    */
+  private def emitBudgetChanged(root: RootId): UIO[Unit] =
+    hub match
+      case None => ZIO.unit
+      case Some(h) =>
+        (for
+          r <- reserved.get
+          o <- observed.get
+          p <- unpriced.get
+        yield EventPayload.BudgetChanged(MicroUsd(r), MicroUsd(o), p)).commit
+          .flatMap(payload =>
+            h
+              .publish(JobId(root.value), root, SessionId(""), payload)
+              .catchAll(_ => ZIO.unit)
+          )
+          .forkDaemon
+          .unit
 
   /** Atomic admission-side reservation (BUD-01/BUD-02). */
   def reserveSTM(
@@ -199,7 +233,7 @@ final class BudgetLedger private (
       root: RootId,
       est: CostEstimate
   ): ZIO[Any, RaiderError, Reservation] =
-    reserveSTM(root, est).commit
+    reserveSTM(root, est).commit.flatMap(res => emitBudgetChanged(root).as(res))
 
   /** Terminal settlement with observed cost; refund of the unused reservation
     * is part of the same transaction. Observed above the estimate is recorded
@@ -248,7 +282,7 @@ final class BudgetLedger private (
               // late settlement: counted, never rewrites the outcome (§4 style)
               late.update(_ + 1).as(())
           }
-    yield ()).commit
+    yield ()).commit *> emitBudgetChanged(res.root)
 
   /** Attempt released before any dispatch: full refund. */
   def release(res: Reservation): UIO[Unit] =
@@ -265,7 +299,7 @@ final class BudgetLedger private (
             case _ => late.update(_ + 1)
           }
         case None => STM.unit
-    yield ()).commit
+    yield ()).commit *> emitBudgetChanged(res.root)
 
   /** Cancel/ambiguity during dispatch: the attempt may have been paid; the
     * reservation stays charged and is reported as Uncertain (never zeroed).
@@ -285,7 +319,7 @@ final class BudgetLedger private (
             case _ => late.update(_ + 1)
           }
         case None => STM.unit
-    yield ()).commit
+    yield ()).commit *> emitBudgetChanged(res.root)
 
   def usage: UIO[UsageReport] =
     (for
@@ -311,7 +345,13 @@ object BudgetLedger:
       Left(RaiderError.LocalBudgetExceeded(s"money underflow: ${a} + ${b}"))
     else Right(MicroUsd(a.value + b.value))
 
-  def make(limits: BudgetLimits): UIO[BudgetLedger] =
+  /** `hub` = the optional RAI-059 emission seam (see the class doc); `None`
+    * (the default) = zero overhead, no events.
+    */
+  def make(
+      limits: BudgetLimits,
+      hub: Option[EventHub] = None
+  ): UIO[BudgetLedger] =
     for
       r <- TRef.make[Long](0L).commit
       o <- TRef.make[Long](0L).commit
@@ -320,6 +360,6 @@ object BudgetLedger:
       l <- TRef.make[Int](0).commit
       v <- TRef.make[Int](0).commit
       rs <- TMap.empty[ReservationId, (RootId, Long, TRef[SettleStatus])].commit
-    yield new BudgetLedger(limits, r, o, u, p, l, v, rs)
+    yield new BudgetLedger(limits, r, o, u, p, l, v, rs, hub)
 
 end BudgetLedger

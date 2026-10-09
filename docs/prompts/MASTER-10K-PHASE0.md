@@ -1,5 +1,10 @@
 # Raider 10K — Phase 0 Execution Master Prompt
 
+> HISTORICAL — use [roadmap-12k](../roadmap-12k.md) and the
+> [current execution prompt](opencode-12k-parallel.txt) for new assignments.
+> The design notes below are reference material; phase budgets/order and any
+> fixed count of green gates are not current acceptance evidence.
+
 You are working on Raider, a self-hosting agent harness (Scala 3 + ZIO 2).
 This prompt launches **Phase 0** of the 10,000-hour roadmap
 (`docs/roadmap-10k.md`): foundations, decisions, and the terminal-renderer

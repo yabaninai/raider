@@ -70,11 +70,45 @@ object ReplEngineSpec extends ZIOSpecDefault:
         gone <- engine.eval("a")
       yield assertTrue(compileMsg(gone).isDefined)
     },
-    test("completions is the documented Nil cut of this slice") {
+    test("completions find a val binding by bare prefix (COMP-01)") {
       for
         engine <- ReplEngine.make()
-        cs <- engine.completions("a")
+        _ <- engine.eval("val hello = 1")
+        cs <- engine.completions("hel")
+      yield assertTrue(
+        cs.contains("hello"),
+        cs == cs.sorted,
+        cs.length <= 50
+      )
+    },
+    test("completions after a dot return member candidates (COMP-01)") {
+      for
+        engine <- ReplEngine.make()
+        _ <- engine.eval("val xs = List(1)")
+        cs <- engine.completions("xs.map")
+      yield assertTrue(cs.contains("map"))
+    },
+    test(
+      "a syntactically invalid prefix yields an empty list, no exception (COMP-02)"
+    ) {
+      for
+        engine <- ReplEngine.make()
+        _ <- engine.eval("val a = 1")
+        cs <- engine.completions("###")
       yield assertTrue(cs.isEmpty)
+    },
+    test(
+      "completions still resolve session bindings after a compile-error eval (COMP-03)"
+    ) {
+      for
+        engine <- ReplEngine.make()
+        _ <- engine.eval("val hello = 1")
+        failed <- engine.eval("val bad: Int = \"oops\"")
+        cs <- engine.completions("hel")
+      yield assertTrue(
+        compileMsg(failed).isDefined,
+        cs.contains("hello")
+      )
     }
   ) @@ TestAspect.sequential
   // sequential: every test boots its own real compiler; six parallel warm-ups

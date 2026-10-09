@@ -90,3 +90,51 @@ Markdown содержит full contract, JSON канонический для ID
 - **YB-RAI-01** [yb harness connect raider](yabanin.md); dependencies: RAI-037, RAI-038; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
 - **YB-RAI-02** [Real Raider executor вместо FakeExecutor](yabanin.md); dependencies: RAI-022, RAI-024, RAI-039, YB-RAI-01; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
 - **YB-RAI-03** [CI/root analytics drilldown](yabanin.md); dependencies: RAI-040, RAI-042, YB-RAI-01; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
+- **RAI-054** [Quality runner: manifest/execute classification defect](m0.md); dependencies: нет; profiles: self, static, docs.
+- **RAI-055** [Event envelopes и snapshot/subscribe hub (P1.A slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, runtime.
+- **RAI-056** [Inline renderer PTY spike и UX baseline (P0.C)](m0.md); dependencies: нет; profiles: self, static, repl, docs.
+- **RAI-057** [SessionRegistry: identity/focus и per-tab state (P2.A slice)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts.
+- **RAI-058** [AgentLoop: эмиссия событий в EventHub (P1.B-1)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-059** [JobManager/budget/delegation эмиссия и onTransition hook (P1.B-2)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-060** [Status line/timeline и headless event export (P1.C)](m1.md); dependencies: RAI-058, RAI-059; profiles: static, unit, contracts, ci, runtime.
+- **RAI-061** [Inline tab shell на JLine (P2.B)](m2-p2.md); dependencies: RAI-057; profiles: static, unit, contracts.
+- **RAI-062** [PTY-интеграция tabs/runtime и headless regression (P2.C)](m2-p2.md); dependencies: RAI-060, RAI-061; profiles: self, static, repl, ci, docs.
+- **RAI-063** [OOB subtree cancel, deadlines и stuck-child fix (P3.B)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-064** [Credentials только через env/helper (setup без argv-секретов)](m0.md); dependencies: нет; profiles: static, unit, contracts, security.
+- **RAI-065** [Bounded mailbox для send (P3.A slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, runtime.
+- **RAI-066** [Plugin SPI ADR-025 и узкий skeleton (P4.A)](m2-p2.md); dependencies: нет; profiles: static, unit, contracts, docs.
+- **RAI-067** [Multi-file patch и partial-failure контракт (RAI-015 remainder)](m2-p2.md); dependencies: нет; profiles: static, unit, contracts, tools.
+- **RAI-068** [REPL completion (RAI-020 slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, repl.
+- **RAI-069** [Security profile в gate registry (gate-policy карточка)](m0.md); dependencies: нет; profiles: self, static, security.
+- **RAI-070** [UX baseline harness (P0.C остаток / P9 prep)](m0.md); dependencies: нет; profiles: self, static, docs.
+- **RAI-071** [--provider anthropic в CLI (W05 parity)](m1.md); dependencies: RAI-060; profiles: static, unit, contracts, transport.
+- **RAI-072** [Docs refresh: события/вкладки/cancel API](m2-p2.md); dependencies: нет; profiles: docs.
+- **RAI-073** [Delegated-race fix: эмиссия до гонки с Terminal](m1.md); dependencies: RAI-059; profiles: static, unit, contracts, runtime.
+- **RAI-074** [Mailbox wiring в DelegationToolset](m1.md); dependencies: RAI-065, RAI-073; profiles: static, unit, contracts, runtime.
+- **RAI-075** [Plugin loader и CLI команды](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
+- **RAI-076** [StateStore SPI (P5.A slice)](m1.md); dependencies: RAI-060; profiles: static, unit, contracts, runtime.
+- **RAI-077** [Session schema v2 + миграции](m1.md); dependencies: RAI-060; profiles: static, unit, contracts.
+- **RAI-078** [CI context parsing (RAI-023/025 slice)](m2-p2.md); dependencies: RAI-060; profiles: static, unit, contracts.
+- **RAI-079** [Anthropic HTTP-стенд tool-round тест](m1.md); dependencies: RAI-071; profiles: static, unit, contracts, transport.
+- **RAI-080** [Onboarding guide (UX01 prep)](m0.md); dependencies: RAI-071; profiles: docs.
+- **RAI-081** [Eval task fixtures (authoring, protected)](m2-p2.md); dependencies: RAI-060; profiles: docs.
+- **RAI-082** [Accounting view (P6.B slice)](m2-p2.md); dependencies: RAI-060; profiles: static, unit, contracts.
+- **RAI-083** [PluginCli wiring в Main (P4.B завершение)](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.
+- **RAI-084** [Hooks исполнение bounded (P4.A finish)](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
+- **RAI-085** [state_get/put opt-in tools (P5.B)](m1.md); dependencies: RAI-076; profiles: static, unit, contracts, tools.
+- **RAI-086** [HeadlessRunner wiring: CiContext + AccountingView](m2-p2.md); dependencies: RAI-078, RAI-082; profiles: static, unit, contracts, ci.
+- **RAI-087** [Journal/checkpoint slice (P6.A)](m2-p2.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-088** [TabShell `:plugins`/`:state` экраны](m1.md); dependencies: RAI-075, RAI-076; profiles: static, unit, contracts.
+- **RAI-089** [UX03/04 baseline на root](m0.md); dependencies: RAI-070; profiles: self, static, docs.
+- **RAI-090** [REPL live env-key](m1.md); dependencies: RAI-064; profiles: static, unit, repl.
+- **RAI-091** [forbidden-apis location allowlist (gate-policy)](m0.md); dependencies: RAI-069; profiles: self, static.
+- **RAI-092** [Stabilization: delegation test flakes под load](m1.md); dependencies: RAI-073; profiles: static, unit, runtime.
+- **RAI-093** [Journal→AgentLoop wiring (P6.A finish)](m1.md); dependencies: RAI-087, RAI-058; profiles: static, unit, contracts, runtime.
+- **RAI-094** [StateTools → CodingToolset + TabShell provider](m1.md); dependencies: RAI-085, RAI-088; profiles: static, unit, contracts, tools.
+- **RAI-095** [Plugin hooks вызов в loop (lifecycle)](m2-p2.md); dependencies: RAI-084; profiles: static, unit, contracts, runtime.
+- **RAI-096** [P4.C SDK: docs + 3 fixture-плагина](m2-p2.md); dependencies: RAI-075; profiles: docs, static.
+- **RAI-097** [Единый status-render для CLI и вкладок](m1.md); dependencies: RAI-060, RAI-061; profiles: static, unit, contracts.
+- **RAI-098** [REPL live anthropic](m1.md); dependencies: RAI-090; profiles: static, unit, repl.
+- **RAI-099** [M1 acceptance card (milestone evidence)](m1.md); dependencies: RAI-062, RAI-060; profiles: docs.
+- **RAI-100** [GitHub/GitLab wrappers wiring](m2-p2.md); dependencies: RAI-078; profiles: static, unit, contracts, ci.
+- **RAI-101** [Plugin update/rollback lifecycle](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.

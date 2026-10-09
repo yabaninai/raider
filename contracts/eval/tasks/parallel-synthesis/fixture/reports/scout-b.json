@@ -1,0 +1,9 @@
+{
+  "agent": "scout-b",
+  "generated_at": "2026-10-06T11:00:00Z",
+  "modules": {
+    "auth": {"status": "done", "items": 5},
+    "search": {"status": "todo", "items": 3},
+    "ui": {"status": "in_progress", "items": 4}
+  }
+}

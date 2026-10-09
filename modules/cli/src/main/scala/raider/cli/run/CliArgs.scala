@@ -2,7 +2,7 @@ package raider.cli.run
 
 import raider.core.RaiderError
 
-import java.nio.file.{Path, Paths}
+import java.nio.file.{Files, Path, Paths}
 
 /** Headless CLI arguments (RAI-022 slice): pure parser — no shell, no stdin,
   * typed errors. Subcommand `run` only: run (--bundle <jar> --workflow <name> |
@@ -10,6 +10,22 @@ import java.nio.file.{Path, Paths}
   * `--agent` and `--bundle/--workflow` are MUTUALLY exclusive (working-product
   * §3). `--mock` marks fixture allowance: live providers are NOT wired in this
   * slice, so the runner refuses without it.
+  *
+  * RAI-064: `--api-key` is REMOVED — passing it is a typed Configuration error
+  * pointing at the env path. Credentials are resolved from the environment (see
+  * [[Credentials]]), never from argv, so a secret can't reach shell history or
+  * the process listing.
+  *
+  * RAI-071: `--provider` accepts `mock|openai|anthropic` — the Anthropic
+  * Messages wire is a first-class backend alongside the OpenAI-compatible one;
+  * both share the same env-credential preflight ([[Credentials]]) and the same
+  * `--base-url`/`--model` flags.
+  *
+  * RAI-086: `--context <file>` points at a ci-context JSON payload (wire schema
+  * of [[CiContext]]). The file must EXIST at parse time — a missing file is a
+  * typed Configuration error here; a malformed or incomplete payload is refused
+  * later by [[CiContext.parse]] as a typed `CiContextError` during the runner
+  * preflight (before any dispatch).
   */
 final case class CliArgs(
     target: CliArgs.Target,
@@ -20,9 +36,11 @@ final case class CliArgs(
     provider: String = "mock",
     baseUrl: String = "http://127.0.0.1:8081/v1",
     model: String = "local",
-    apiKey: String = "no-key",
-    workspace: Option[Path] = None
+    workspace: Option[Path] = None,
+    context: Option[Path] = None
 ):
+  // RAI-064: NO credential field — the key is resolved from the environment
+  // (RAIDER_API_KEY / RAIDER_API_KEY_CMD) at runtime, never carried in args.
 
   def inputText: Either[RaiderError, String] = (input, inputJson) match
     case (Some(text), _) => Right(text)
@@ -53,6 +71,8 @@ object CliArgs:
     */
   val BuiltInAgents: Set[String] = Set("scout", "worker", "coder")
 
+  // RAI-064: `--api-key` is deliberately ABSENT from the value flags — it is
+  // intercepted in parseRun as a typed error (secrets must not be in argv).
   private val flagsWithValue =
     Set(
       "--bundle",
@@ -64,8 +84,8 @@ object CliArgs:
       "--provider",
       "--base-url",
       "--model",
-      "--api-key",
-      "--workspace"
+      "--workspace",
+      "--context"
     )
 
   /** Parse `run` argv (the subcommand token included). */
@@ -89,6 +109,15 @@ object CliArgs:
     rest match
       case Nil              => assemble(acc, mock)
       case "--mock" :: tail => parseRun(tail, acc, mock = true)
+      // RAI-064: `--api-key` is a typed error, never parsed as a secret. The
+      // message points at the env path and NEVER echoes the supplied value.
+      case "--api-key" :: _ =>
+        Left(
+          RaiderError.Configuration(
+            "--api-key is removed: secrets must not appear in argv/shell history; " +
+              "set RAIDER_API_KEY (env) or RAIDER_API_KEY_CMD (helper) instead"
+          )
+        )
       case flag :: value :: tail if flagsWithValue.contains(flag) =>
         if acc.contains(flag) then
           Left(RaiderError.Configuration(s"$flag specified twice"))
@@ -118,18 +147,33 @@ object CliArgs:
           )
         case _ => Right(())
       provider <- acc.get("--provider") match
-        case None                                    => Right("mock")
-        case Some(p) if p == "mock" || p == "openai" => Right(p)
+        case None => Right("mock")
+        case Some(p) if p == "mock" || p == "openai" || p == "anthropic" =>
+          Right(p)
         case Some(other) =>
           Left(
             RaiderError.Configuration(
-              s"unknown --provider '$other' (mock|openai)"
+              s"unknown --provider '$other' (mock|openai|anthropic)"
             )
           )
       baseUrl = acc.getOrElse("--base-url", "http://127.0.0.1:8081/v1")
       model = acc.getOrElse("--model", "local")
-      apiKey = acc.getOrElse("--api-key", "no-key")
+      // RAI-064: no apiKey here — resolved from env at runtime (Credentials).
       workspace = acc.get("--workspace").map(Paths.get(_))
+      // RAI-086: exists-check at parse time — a missing context file is a
+      // typed Configuration error (the path is echoed; paths are not secrets;
+      // file CONTENTS are only read later by CiContext.parse in preflight).
+      context <- acc.get("--context") match
+        case None => Right(None)
+        case Some(v) =>
+          val p = Paths.get(v)
+          if Files.exists(p) then Right(Some(p))
+          else
+            Left(
+              RaiderError.Configuration(
+                s"--context file does not exist: $v"
+              )
+            )
       target <- (agent, bundle, workflow) match
         case (Some(a), None, None) =>
           if BuiltInAgents.contains(a) then Right(Target.Agent(a))
@@ -166,8 +210,8 @@ object CliArgs:
       provider,
       baseUrl,
       model,
-      apiKey,
-      workspace
+      workspace,
+      context
     )
 
   private def requireString(

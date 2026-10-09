@@ -1,0 +1,1 @@
+{"name": "structured-extraction", "kind": "extraction", "budget_hint": "small: <=15 steps, <=20 min wall time, no paid calls"}

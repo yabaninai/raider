@@ -1,10 +1,18 @@
 # Raider Execution Board
 
-Last passing run (2026-10-04, SELFDEV): quality fast 6/6 full-tree
-(artifacts/quality/20261004-181210), full sbt test 188 green,
-coder agent with REAL fs_read/fs_search/proc_run + live openai provider;
-selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
-— record: [SELFDEV](records/SELFDEV.md).
+Current improvement program (2026-10-05): [12,000-hour roadmap](../roadmap-12k.md)
+and [parallel OpenCode prompt](../prompts/opencode-12k-parallel.txt).
+Tabs/statuses/plugins first; all Yabanin work is P11 after accepted standalone M4.
+P0 wave executed (gap matrix, ADR-024 frozen, runner fix, event seam, renderer
+spike): [P0-WAVE0 record](records/P0-WAVE0.md). This is not runtime acceptance.
+
+Last passing run (2026-10-09, W5×10): full sbt 545/0; fast PASSED; 9 профилей passed; UX03/04 ЗАМЕРЕНЫ (p50 53.5/p95 55.5ms); delegation-флейки стабилизированы (×10 + negative control); plugin hooks + state tools + journal + TabShell :plugins/:state + plugin wiring. (artifacts/quality/20261009-203453|203554, artifacts/ux-baseline-root.json). Предыдущие: W4×10: full sbt 476/0; EXECUTE + 9 профилей (вкл. security/transport/tools) passed; fast (10 gates) PASSED впервые на дереве с изменениями (artifacts/quality/20261009-172910|185843|185942|191006). M1-DEMO PTY all_pass. Предыдущие: W3×10: full sbt 406/0; EXECUTE + 8 профилей (вкл. новый security) passed; M1-DEMO PTY all_pass 5 вкладок/1105 событий/0 потерь (artifacts/quality/20261009-172428|172520, artifacts/tabs-pty). Предыдущие: 2026-10-09 W2: EXECUTE 7/7 + profiles static/unit/contracts/runtime/ci on merged W2 tree; runtime 137/137, ui 16/16 (artifacts/quality/20261009-100041-*). Previous: 2026-10-08 W1: quality-changed EXECUTE 7/7 + profiles static/unit/contracts/runtime/ci (cli-smoke) on integrated W1 tree (artifacts/quality/20261008-001211-*, 20261008-001358-*); mock run + RA-CFG preflight demo. Previous: 2026-10-06 P0-WAVE0: quality-changed EXECUTE 7/7 on changed
+tree (first honest non-clean-tree green after RAI-054), profiles
+static/unit/contracts/runtime 5/5, module runtime 99/99 tests, PTY probe 4/4
+(artifacts/quality/20261006-120717-*, 20261007-005445-*, artifacts/renderer-spike).
+Earlier: quality fast 6/6 full-tree (artifacts/quality/20261004-181210), full sbt
+test 188 green, coder agent with REAL fs_read/fs_search/proc_run + live openai
+provider — record: [SELFDEV](records/SELFDEV.md).
 
 ## Module Status
 
@@ -34,6 +42,18 @@ selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
 | DSL-ERGO | done | [record](records/DSL-ERGO.md); lazy descriptors, all/batch, openSession |
 | DELEGATION | done | [record](records/DELEGATION.md); delegate/await/cancel/list; 7/7 ×3 |
 | SELFDEV | done | [record](records/SELFDEV.md); coder agent, live backend, fs tools; 10/10 |
+| RAI-054 Quality runner fix | accepted | [record](records/P0-WAVE0.md); classify file-keyed + git mode; EXECUTE green on dirty tree |
+| RAI-055 Events (P1.A slice) | accepted | [record](records/P0-WAVE0.md); ADR-024 frozen; raider.runtime.events; 99/99; EVT-01..04 |
+| RAI-056 Renderer PTY spike (P0.C) | accepted | [record](records/P0-WAVE0.md); RENDER-01..04 4/4; baseline in artifacts/renderer-spike |
+| RAI-057 SessionRegistry (P2.A) | accepted | [W1 record](records/W1-EVENTS-TABS.md); real-hub tabs, TAB-01..03, 5/5 |
+| RAI-058 Loop emitters (P1.B-1) | accepted | [W1 record](records/W1-EVENTS-TABS.md); real rounds, outcomes, 109/109 runtime |
+| RAI-064 Credentials env-only | accepted | [W1 record](records/W1-EVENTS-TABS.md); --api-key removed, helper bounded+masked; security-profile obligation open |
+| RAI-059 Jobs/budget/delegation emitters (P1.B-2) | ready | next dispatch; Terminal authority for UI |
+| REPL-LIVE-BRIDGE | done | live prelude built in interpreter world (MainBridge classloader split deleted); live Qwen round-trip; 21/21 repl, PTY 13/13, EXECUTE 7/7; [record](records/REPL-LIVE-BRIDGE.md) |
+| RAI-063 OOB cancel/deadlines (P3.B) | ready | stuck-child fix; deps RAI-055 accepted |
+| RAI-061 Tab shell (P2.B) | ready-adjacent | deps RAI-057 accepted; JLine dep → coordinator build edit |
+| RAI-060 Status line (P1.C) | todo | waits RAI-059 (058 accepted) |
+| RAI-062 PTY integration (P2.C) | todo | waits RAI-060+061; M1 exit rehearsal |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |
 
@@ -54,6 +74,11 @@ selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
 | Fair admission across DIFFERENT roots | RAI-010/017 integration |
 | Performance profile in registry | RAI-004 stage-aware |
 | Owner sign-off F-14 + runtime profile | strict registry upgrade |
+| Event emission from AgentLoop/JobManager into hub | P1.B/P2.C cards over RAI-055 (cancellation/ownership/budget tests) |
+| Tabs UI on ADR-024 events | RAI-057 → P2.B/C |
+| --api-key credentials-in-argv (CliArgs:67) | new setup card (env/helper refs only) |
+| Probe COURSIER_CACHE fallback → env.setdefault | one-line follow-up with next scripts/quality change |
+| Plugin SPI ADR/design | P4.A (после P0 baseline — baseline готов этой wave) |
 
 ## Key Findings (fixed by fixtures)
 
@@ -76,6 +101,14 @@ selfdev prompts: docs/selfdev-prompts.md, launcher scripts/selfdev/raider.sh
 
 | Date | Event |
 | --- | --- |
+| 2026-10-09 (W5-PARALLEL) | 9 карточек: 083 plugin wiring, 084 HookRunner, 085 StateTools, 086 CI/accounting wiring, 087 JobJournal, 088 :plugins/:state экраны, 089 UX baseline ЗАМЕРЕН, 090 REPL env-key, 091 forbidden-apis allowlist (policy APPROVE), 092 delegation test stabilization. Full sbt 545/0. Record: W5-PARALLEL.md |
+| 2026-10-09 (W4-PARALLEL) | 9 карточек: RAI-074 mailbox wiring (send_to_child, 171/171 runtime), 075 PluginLoader+PluginCli (P4.B ядро), 076 StateStore SPI (P5.A), 077 Session v2+миграции, 078 CiContext (RAI-023 slice), 079 anthropic stand tool-round, 080 onboarding guide, 081 eval fixtures ×6 (protected), 082 accounting view. Full sbt 476/0; fast PASSED (10 gates). Record: W4-PARALLEL.md |
+| 2026-10-09 (W3-PARALLEL-10) | 10 карточек за волну (owner decision 3→10 threads): RAI-062 PTY-вкладки (M1-DEMO all_pass), 065 mailbox, 066 ADR-025+SPI skeleton, 067 multi-file patch, 068 REPL completions, 069 security profile (gate-policy APPROVE), 070 UX baseline harness, 071 anthropic CLI, 072 docs, 073 Delegated-race. Full sbt 406/0. Record: W3-PARALLEL-10.md |
+| 2026-10-09 (W3-PLAN) | RAI-060 accepted (integrated, gates green). OWNER DECISION: parallelism cap raised 3→10 threads (runbook §1 superseded for this wave; recorded here). Registered W3 wave: RAI-062/065..072 (8 lanes + reviewer + coordinator = 10). Validator 75 cards. |
+| 2026-10-09 (W2-EMITTERS-CANCEL-SHELL) | RAI-059 emitters + RAI-063 OOB cancel/deadlines + RAI-061 tab shell accepted; DelegationToolset hand-merge verified pure-addition; runtime 137/137, ui 16/16; integrated gates green. Record: W2-EMITTERS-CANCEL-SHELL.md |
+| 2026-10-08 (REPL-LIVE-BRIDGE) | Live REPL fixed: phase-3 prelude read console-world MainBridge statics; scala3-repl classloader split made interpreter world see null backend (NPE on every live ask). Prelude now wires streaming backend + coding tools inline; honest banner; MainBridge deleted. raiderRepl 21/21, PTY 13/13, quality-changed EXECUTE 7/7, live Qwen round-trip via local llama.cpp. Record: REPL-LIVE-BRIDGE.md |
+| 2026-10-08 (W1-EVENTS-TABS) | RAI-057 SessionRegistry + RAI-058 loop emitters + RAI-064 credentials env-only accepted (3 lanes, independent review, fix rounds). Runtime 109/109, cli 44/44, ui 5/5. Integrated EXECUTE 7/7 + runtime/ci profiles. Record: W1-EVENTS-TABS.md |
+| 2026-10-06 (P0-WAVE0) | 12k roadmap first wave: P0.A gap matrix (W01–W18/UX01–08, 2 runner defects + --api-key finding); ADR-024 event seam frozen (2 review rounds); RAI-054 runner fix (first honest dirty-tree EXECUTE green); RAI-055 raider.runtime.events (EVT-01..04, 99/99, zio queue-suspend defect found+fixed); RAI-056 renderer PTY spike (draft survives 200 writes + 3×67 overlap, width table baseline). Isolated snapshot lanes, independent review each. Record: P0-WAVE0.md |
 | 2026-10-05 (ROADMAP-V2) | Plan v2 11,700h: optional agent state registry (Phase 3, 800h — scopes/blackboard/opt-in tools/default-off) + Yabanin direct integration slot (Phase 7, 900h, discovery-first per docs/yabanin-integration.md). New launch prompt MASTER-10K-STATE.md; ADR series 017–023; cross-refs renumbered. Gates 10/10. Record: ROADMAP-V2-STATE-YABANIN.md |
 | 2026-10-05 (ROADMAP-MIT-START) | MIT-only enforced: license_audit.py gate (fast=10 gates), baseline 25 artifacts 0 problems, ADR-016 accepted (custom ANSI renderer on JLine, Lanterna rejected as LGPL), roadmap+licensing.md amended. Gates 10/10. Record: ROADMAP-MIT-START.md |
 | 2026-10-05 (NIGHTLY-FOLLOWUP) | CoderPrompts single-sourced; make quality-full executed end-to-end (exit 0). FIXED: Makefile COURSIER_CACHE inline-default bug (coursier relative cache dumped 223MB https/ into repo — removed, gitignored), SECOND flaky delegation test (max_children, call-index race) content-routed, 6/6 clean. full 0 fail, gates 9/9. Record: NIGHTLY-FOLLOWUP.md |

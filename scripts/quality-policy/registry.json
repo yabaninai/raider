@@ -84,6 +84,12 @@
         "sbt-test",
         "cli-smoke"
       ]
+    },
+    "security": {
+      "stage": "component",
+      "gates": [
+        "security-secrets-scan"
+      ]
     }
   },
   "gates": {
@@ -180,6 +186,13 @@
         "--self-test"
       ],
       "timeout_s": 300
+    },
+    "security-secrets-scan": {
+      "argv": [
+        "python3",
+        "scripts/quality/security_checks.py"
+      ],
+      "timeout_s": 120
     }
   },
   "path_profiles": {

@@ -1,0 +1,10 @@
+{
+  "modules": {
+    "auth": {"status": "done", "items": 5},
+    "billing": {"status": "in_progress", "items": 8},
+    "search": {"status": "in_progress", "items": 3},
+    "ui": {"status": "in_progress", "items": 4}
+  },
+  "total_items": 20,
+  "conflicts": ["billing", "search", "ui"]
+}

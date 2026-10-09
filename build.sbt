@@ -58,6 +58,20 @@ lazy val raiderTestkit = (project in file("modules/testkit"))
   .settings(commonSettings, testSettings, name := "raider-testkit")
   .dependsOn(raiderCore % "compile->compile;test->test")
 
+// RAI-057 (P2.A): tab/session state over the ADR-024 event seam. Controller
+// layer only — no terminal rendering here (P2.B/C, ADR-016 stays authoritative).
+// RAI-061 (P2.B): JLine 4 inline shell (same pinned JLine as repl-engine).
+lazy val raiderUi = (project in file("modules/ui"))
+  .settings(commonSettings, testSettings, name := "raider-ui")
+  .settings(
+    libraryDependencies ++= Seq(
+      "org.jline" % "jline-terminal" % "4.0.14",
+      "org.jline" % "jline-reader" % "4.0.14",
+      "org.jline" % "jline-terminal-jni" % "4.0.14"
+    )
+  )
+  .dependsOn(raiderRuntime % "compile->compile;test->test")
+
 // raider-tools: fs/search/edit/process primitives (runtime-contracts.md §2, §10).
 // Registered by root coordinator (build.sbt is a shared/owned file). Lane slices
 // (RAI-014.a read/search, RAI-016.a process) add only their own subpackages.
@@ -95,7 +109,8 @@ lazy val raiderRepl = (project in file("modules/repl"))
     raiderTestkit,
     raiderReplEngine,
     raiderTools,
-    raiderProviderChat
+    raiderProviderChat,
+    raiderProviderAnthropic
   )
   .settings(
     run / fork := true,
@@ -132,7 +147,7 @@ lazy val raiderCli = (project in file("modules/cli"))
   .settings(raiderCliAssemblySettings)
   .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
   .dependsOn(raiderCore, raiderDsl, raiderRuntime, raiderTools,
-             raiderProviderChat)
+             raiderProviderChat, raiderProviderAnthropic)
   .dependsOn(raiderCliFixtures % Test)
 
 // compiled fixture bundle workflow for the cli tests (jarred at test time)
@@ -162,10 +177,10 @@ lazy val raiderCliAssemblySettings = Seq(
 lazy val root = (project in file("."))
   .aggregate(raiderCore, raiderRuntime, raiderDsl, raiderTestkit, raiderTools,
              raiderReplEngine, raiderRepl, raiderProviderChat,
-             raiderProviderAnthropic, raiderCliFixtures, raiderCli)
+             raiderProviderAnthropic, raiderCliFixtures, raiderCli, raiderUi)
   .dependsOn(raiderCore, raiderRuntime, raiderDsl, raiderTestkit, raiderTools,
              raiderReplEngine, raiderRepl, raiderProviderChat,
-             raiderProviderAnthropic, raiderCliFixtures, raiderCli)
+             raiderProviderAnthropic, raiderCliFixtures, raiderCli, raiderUi)
   .settings(
     name := "raider",
     publish / skip := true

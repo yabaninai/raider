@@ -20,8 +20,10 @@ import zio.Unsafe
   * twice and must never be shared between this console world and the
   * interpreter world. The session is therefore CONSTRUCTED INSIDE the
   * interpreter by the prelude below; the console only feeds lines and prints
-  * engine output. Live providers are NOT wired in this slice and the banner
-  * says so (fixture/mock ScriptedModelBackend).
+  * engine output. This applies to the LIVE branch too (regression finding
+  * 2026-10-08: the Phase-3 prelude read console-world MainBridge statics and
+  * the interpreter world saw null — backend construction now happens INSIDE the
+  * prelude, exactly like the scripted branch).
   *
   * Multiline input accumulates until braces/parens balance and the line does
   * not end in a continuation token; a blank line always submits the pending
@@ -41,59 +43,132 @@ object Main:
     * commands) and the facade `given` + ready agent handles all become ordinary
     * interpreter-world bindings.
     */
-  /** If RAIDER_PROVIDER=openai, wire a LIVE backend + coding tools (nightly
-    * Phase 3.1: streaming backend, RAIDER_MODEL, live-echo session). Otherwise
-    * fall back to the scripted fixture backend.
+  /** RAI-090 wiring plan: the prelude sources plus console-world notices to
+    * print at live-mode start. If RAIDER_PROVIDER is a live provider (openai |
+    * anthropic), the API key is resolved from the environment (RAIDER_API_KEY
+    * or RAIDER_API_KEY_CMD, via LiveCredentials); a resolvable key under
+    * `openai` wires the LIVE streaming backend + coding tools (nightly Phase
+    * 3.1: RAIDER_MODEL, live-echo session). A MISSING key never crashes the
+    * REPL: it prints a clear how-to-enable notice and the scripted/mock path
+    * runs unchanged. `env` is injectable for tests.
     */
-  private def preludeSources: List[String] =
-    val provider = Option(System.getenv("RAIDER_PROVIDER")).getOrElse("mock")
-    val baseUrl = Option(System.getenv("RAIDER_BASE_URL"))
-      .getOrElse("http://127.0.0.1:8081/v1")
-    val model = Option(System.getenv("RAIDER_MODEL")).getOrElse("local")
+  private[repl] final case class PreludePlan(
+      sources: List[String],
+      notices: List[String]
+  )
 
-    if provider == "openai" then
-      List(
-        "import raider.repl.facade.*",
-        "import raider.runtime.budget.BudgetLimits",
-        """val __backend = raider.repl.MainBridge.backend""",
-        """val __tools = raider.repl.MainBridge.tools""",
-        s"""val __model = raider.repl.MainBridge.liveModel""",
-        """val __session = zio.Unsafe.unsafe { implicit u =>
-           zio.Runtime.default.unsafe.run(
-             ReplSession.make(__backend,
-               BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 48),
-               __tools,
-               model = __model,
-               echoStream = true))
-             .getOrThrow() }""",
-        "ReplCommands.install(__session)",
-        "given ReplSession = __session",
-        """val scout = AgentRef("scout")""",
-        """val worker = AgentRef("worker")""",
-        """val coder = AgentRef("coder")"""
-      )
-    else
-      List(
-        "import raider.repl.facade.*",
-        "import raider.runtime.budget.BudgetLimits",
-        "import raider.testkit.ScriptedModelBackend",
-        s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
-        // scripted branch: echo stays OFF (fixture tests/smoke assert on the
-        // plain transcript; live echo is an interactive-live-provider feature)
-        "val __session = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ReplSession.make(__backend, BudgetLimits.make())).getOrThrow() }",
-        "ReplCommands.install(__session)",
-        "given ReplSession = __session",
-        "val scout = AgentRef(\"scout\")",
-        "val worker = AgentRef(\"worker\")"
-      )
+  private[repl] def preludePlan(
+      env: Map[String, String] = sys.env
+  ): PreludePlan =
+    val provider = env.getOrElse("RAIDER_PROVIDER", "mock")
+    val baseUrl = env.getOrElse("RAIDER_BASE_URL", "http://127.0.0.1:8081/v1")
+    val model = env.getOrElse("RAIDER_MODEL", "local")
+
+    val keyOutcome =
+      if LiveCredentials.isLive(provider) then
+        LiveCredentials.resolve(provider, env)
+      else Right(None)
+
+    keyOutcome match
+      case Right(Some(key)) if provider == "openai" =>
+        PreludePlan(liveOpenaiSources(baseUrl, model, key), Nil)
+      case Right(Some(key)) =>
+        // live provider whose transport this REPL slice does not wire
+        // (anthropic): the repl classpath has no Anthropic Messages backend
+        // (raider-provider-anthropic is not a repl dependency and build.sbt
+        // is coordinator-owned). Honest mock fallback — never a fake live wire.
+        PreludePlan(
+          scriptedSources,
+          List(
+            s"RAIDER_PROVIDER=$provider: API key resolved (masked: " +
+              s"${LiveCredentials.mask(key)}), but this REPL slice wires " +
+              "only the OpenAI-compatible live transport; continuing in mock."
+          )
+        )
+      case Right(None) =>
+        PreludePlan(scriptedSources, Nil) // provider=mock — unchanged path
+      case Left(message) =>
+        PreludePlan(scriptedSources, List(message))
+
+  /** Live OpenAI-compatible wiring: the env-resolved key (RAI-090) replaces the
+    * old hardcoded "no-key" placeholder. The key exists only as an
+    * interpreter-world binding — the prelude is evaluated silently, so the
+    * value is never echoed; live wiring stays INSIDE the interpreter world (the
+    * REPL classloader loads raider classes self-first, so console-world statics
+    * (MainBridge) are a DIFFERENT class from the one seen here and a
+    * ThreadLocal written there reads as null here (2026-10-08)).
+    */
+  private def liveOpenaiSources(
+      baseUrl: String,
+      model: String,
+      apiKey: String
+  ): List[String] =
+    List(
+      "import raider.repl.facade.*",
+      "import raider.runtime.budget.BudgetLimits",
+      s"val __baseUrl = \"${scalaStr(baseUrl)}\"",
+      s"val __apiKey = \"${scalaStr(apiKey)}\"",
+      """val __cfg = raider.provider.chat.OpenAIChatBackend.Config
+        |  .make(__baseUrl, __apiKey, 300000L) match { case Right(c) => c }""".stripMargin,
+      """val __backend = zio.Unsafe.unsafe { implicit u =>
+         zio.Runtime.default.unsafe.run(
+           raider.provider.chat.stream.OpenAIChatStreamingBackend
+             .make(Right(__cfg))
+             .map(raider.runtime.display.RateLimitRetries(_)))
+           .getOrThrow() }""",
+      """val __tools = zio.Unsafe.unsafe { implicit u =>
+         zio.Runtime.default.unsafe.run(
+           raider.tools.CodingToolset
+             .make(java.nio.file.Paths.get("").toAbsolutePath.toString)
+             .flatMap(ts => zio.ZIO.fromEither(ts.registry)))
+           .getOrThrow() }""",
+      s"val __model = \"${scalaStr(model)}\"",
+      """val __session = zio.Unsafe.unsafe { implicit u =>
+         zio.Runtime.default.unsafe.run(
+           ReplSession.make(__backend,
+             BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 48),
+             __tools,
+             model = __model,
+             echoStream = true))
+           .getOrThrow() }""",
+      "ReplCommands.install(__session)",
+      "given ReplSession = __session",
+      """val scout = AgentRef("scout")""",
+      """val worker = AgentRef("worker")""",
+      """val coder = AgentRef("coder")"""
+    )
+
+  /** The scripted fixture branch — the historical mock path, unchanged by
+    * RAI-090; reused verbatim for the live-without-key fallback.
+    */
+  private def scriptedSources: List[String] =
+    List(
+      "import raider.repl.facade.*",
+      "import raider.runtime.budget.BudgetLimits",
+      "import raider.testkit.ScriptedModelBackend",
+      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      // scripted branch: echo stays OFF (fixture tests/smoke assert on the
+      // plain transcript; live echo is an interactive-live-provider feature)
+      "val __session = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ReplSession.make(__backend, BudgetLimits.make())).getOrThrow() }",
+      "ReplCommands.install(__session)",
+      "given ReplSession = __session",
+      "val scout = AgentRef(\"scout\")",
+      "val worker = AgentRef(\"worker\")"
+    )
+
+  /** Escapes a value into the body of a Scala string literal so an env-sourced
+    * key/URL/model containing quotes, backslashes or control chars cannot break
+    * the generated prelude source (defense in depth: secrets must never leak,
+    * not even via a compile-error echo of a broken line).
+    */
+  private def scalaStr(s: String): String =
+    s.flatMap:
+      case '\\'         => "\\\\"
+      case '"'          => "\\\""
+      case c if c < ' ' => f"\\u${c.toInt}%04x"
+      case c            => c.toString
 
   def main(args: Array[String]): Unit =
-    // Setup live backend BEFORE the prelude (console world, full classpath)
-    MainBridge.setupLive(
-      Option(System.getenv("RAIDER_PROVIDER")).getOrElse("mock"),
-      Option(System.getenv("RAIDER_BASE_URL"))
-        .getOrElse("http://127.0.0.1:8081/v1")
-    )
     val engine =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(ReplEngine.make()).getOrThrow()
@@ -114,7 +189,12 @@ object Main:
     println("  cmds   : :help :jobs :cancel <id> :reset :quit")
 
   private def runPrelude(engine: ReplEngine): Unit =
-    preludeSources.foreach(src => submit(src, engine, silent = true))
+    val plan = preludePlan()
+    // RAI-090: a live start without a resolvable key explains how to enable
+    // live mode BEFORE the banner; the REPL then keeps running the scripted/
+    // mock path (also re-printed on :reset, which re-reads the environment).
+    plan.notices.foreach(println)
+    plan.sources.foreach(src => submit(src, engine, silent = true))
 
   private def loop(engine: ReplEngine): Unit =
     if Option(System.console()).isEmpty then pipeLoop(engine)
@@ -144,9 +224,20 @@ object Main:
 
   /** Interactive TTY path: JLine line editor; Ctrl+C clears the pending buffer
     * and redraws the prompt (never kills the loop).
+    *
+    * Completion (RAI-068): the EngineCompleter asks the engine for real dotty
+    * candidates and ScalaWordParser keeps insertion local to the trailing
+    * identifier segment. Wiring model and crash guarantees are documented in
+    * CompletionSupport; the completer runs inside readLine on this thread,
+    * serialized against eval by control flow.
     */
   private def ttyLoop(engine: ReplEngine): Unit =
-    val reader = LineReaderBuilder.builder().terminal(makeTerminal()).build()
+    val reader = LineReaderBuilder
+      .builder()
+      .terminal(makeTerminal())
+      .completer(CompletionSupport.EngineCompleter(engine))
+      .parser(CompletionSupport.ScalaWordParser)
+      .build()
     // JLine 4 does not bind Ctrl+C by default: without this the interrupt
     // byte is swallowed and the pending multiline buffer survives ^C.
     // "abort" is readLine's special Reference that throws UserInterruptException.

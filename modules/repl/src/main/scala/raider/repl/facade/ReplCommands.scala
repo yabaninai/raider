@@ -46,12 +46,14 @@ object ReplCommands:
         else s"${handle.id.value} is already terminal"
 
   /** Backend mode line for the banner (printed inside the interpreter world).
+    * Honest by contract: a scripted fixture says so; anything else names the
+    * model actually configured (never a bare "unknown").
     */
   def printBackendLine(): Unit =
     val mode = session.backend match
       case s: ScriptedModelBackend if s.fixtureMode =>
         "fixture/mock — ScriptedModelBackend, live providers NOT wired in this slice"
-      case _ => "unknown backend"
+      case _ => s"live — OpenAI-compatible streaming, model ${session.model}"
     println(s"  backend: $mode")
 
   /** :jobs — the rendered job table. */

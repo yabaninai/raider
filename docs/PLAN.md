@@ -2,6 +2,12 @@
 
 # Raider: подробная программа разработки
 
+Текущая очередность улучшений (2026-10-05): [план на 12 000 часов](roadmap-12k.md)
+и [prompt параллельного исполнения](prompts/opencode-12k-parallel.txt).
+Runtime/CLI/REPL уже присутствуют в исходниках; исторические статусы ниже не actual
+inventory. Старые acceptance сохраняются; Yabanin/W17 — последняя фаза P11,
+после самостоятельного candidate P10. Общая W18 принимается после P11.
+
 Исходный план: 2026-10-02; execution revision: 2026-10-03. Есть feasibility spike, продуктовый runtime ещё не реализован. Actual status сверять по code и board.
 
 Итоговый scope: CI-primary; удобный реальный REPL; оба direct API protocols; optional Yabanin; 53 Raider cards и 3 optional companion cards. Текущий entrypoint: `opencode` → `/raider-finish` (`/raider-build` alias), [инструкция и prompt](handoff-opencode.md).

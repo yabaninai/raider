@@ -12,7 +12,10 @@ raider (root)
 ├── raiderCore            frozen types: ModelBackend/ModelEvent, Tool,
 │                         RaiderError, TraceEvent, Task/Bundle/Job, codecs
 ├── raiderRuntime         AgentLoop, Admission, BudgetLedger, JobManager,
-│                         DelegationToolset, display decorators
+│                         DelegationToolset, runtime→UI event seam
+│                         (EventHub/reducer), display decorators
+├── raiderUi              tab/session UI state over the event seam
+│                         (SessionRegistry, TabShell)
 ├── raiderDsl             composition interpreter (all / batch, fail-fast)
 ├── raiderTestkit         scripted backends (test scope only — never shipped)
 ├── raiderTools           CodingToolset: fs_read/fs_search/fs_edit/fs_patch/
@@ -26,11 +29,12 @@ raider (root)
 ```
 
 Dependency direction: everything flows down to `raiderCore`. Providers depend
-only on core (plus shared SSE framing from provider-chat). `raiderCli` and
-`raiderRepl` are two frontends over the same runtime — the CLI is headless
-(no compiler/JLine in its distribution), the REPL embeds the real Scala 3
-compiler. There is no second scheduler: the REPL facade, the chat loop and the
-headless runner all delegate to the same `AgentLoop`.
+only on core (plus shared SSE framing from provider-chat). `raiderCli`,
+`raiderRepl` and `raiderUi` are frontends over the same runtime — the CLI is
+headless (no compiler/JLine in its distribution), the REPL embeds the real
+Scala 3 compiler, `raiderUi` is the tab shell (JLine only, no compiler). There
+is no second scheduler: the REPL facade, the chat loop, the headless runner
+and the tab shell all delegate to the same `AgentLoop`.
 
 ## 2. Data flow: one agent round
 
@@ -67,6 +71,42 @@ Key invariants:
   conversational content. Mutational tool calls are never auto-retried after an
   ambiguous outcome.
 
+### 2.1 Event seam: how the UI observes a run
+
+Live observability is a one-way publish seam — the runtime emits, consumers
+fold. The hub never calls back into the runtime.
+
+```
+AgentLoop emitters (LoopEvents) ──┐
+JobManager transitions (StatusLedger) ──┤──► EventHub ──► StatusLine (chat)
+DelegationToolset (DelegationEvents) ──┘   (reliable |      tabs/registry (raiderUi,
+                                            diagnostics)     SessionRegistry)
+```
+
+- **Routing.** Each of the 13 frozen payload cases is RELIABLE (bounded-wait,
+  typed `Backpressure` on timeout, no silent loss — `Terminal`, `Waiting`,
+  `JobStatusChanged`, `BudgetChanged`, `RetryScheduled`, `Delegated`) or
+  DIAGNOSTICS (non-blocking, dropped only with a counted bump — model/tool
+  progress, `Diagnostics`). Every envelope carries a per-job `seq`, monotonic
+  from 1 and gap-free; consumers reorder by `seq` (the two classes are relayed
+  by independent forwarders, so cross-class arrival order is unspecified).
+- **Authority split.** The loop emits model/tool/wait events and NEVER a
+  terminal status: `JobStatusChanged` and the exactly-one, always-last
+  `Terminal` belong to the job layer (`StatusLedger`). The reducer refuses any
+  event after a terminal snapshot as `Malformed`.
+- **Consumers stay dumb.** `SessionReducer` folds envelopes into a
+  `SessionSnapshot`; `StatusLine` renders one line per change; the
+  `SessionRegistry` keeps per-tab history/scrollback with honest eviction
+  counters. Emission failure never breaks a run, and a slow consumer can never
+  block the loop.
+- **Cancel is outside model admission.** Besides the model-callable
+  `cancel_agent`, the owner/UI channel cancels children directly via
+  `DelegationToolset.cancelOutOfBand` / `cancelAllOutOfBand` (`jobs.cancelAny`
+  with no model round and no second slot) — reachable even when a parked child
+  holds the only model slot. Per-child deadline watchdogs (`setChildDeadline`,
+  bounded by `deadlineGrace`) do the same on expiry; an unobservable outcome
+  past the grace is reported Uncertain, never a fake `Cancelled`.
+
 ## 3. Budget & admission system
 
 Resource control is two-layered:
@@ -87,9 +127,10 @@ Delegation extends this to child agents: `DelegationToolset` exposes
 tools over the same `JobManager`. Children share the root's ledger (one
 accounting root), and `maxConcurrentTools >= 2` is REQUIRED because the
 awaiting parent holds a tool slot while children run (BUD-03 no-deadlock
-rule). The `maxLLM=1` parent/cancel interplay is a tracked design obligation,
-documented in the delegation record and visible in
-`AgentLoopDelegationSpec`.
+rule). The `maxLLM=1` parent/cancel interplay (a parent parked behind a child
+can never get a slot to issue `cancel_agent`) is resolved OUTSIDE model
+admission: the out-of-band cancel channel and child deadlines of §2.1 reach
+the same `JobManager` directly.
 
 Jobs (`JobManager`) own lifecycle: start (daemon fiber, cancellation-safe
 registration), STM status transitions, typed result publication — a final
@@ -106,8 +147,11 @@ performs preflight BEFORE any spend, writes artifacts (`run.json`,
 `transcript.json`, `events.jsonl`, `summary.md`) and maps failures to 18
 stable exit-code families. SIGTERM stops through a bounded shutdown hook.
 `raider chat` is the interactive frontend: streaming deltas (stdout), live tool
-echo (stderr), session persistence (`~/.raider/sessions`), conversation
-compaction and the `:fix` compile→errors→model→recompile loop.
+echo and a status line folded from the event seam (stderr, one synchronized
+writer), session persistence (`~/.raider/sessions`), conversation
+compaction and the `:fix` compile→errors→model→recompile loop. Credentials
+come only from the environment — `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`;
+`--api-key` in argv is a typed `RA-CFG` error, never a parsed secret.
 
 ### REPL
 

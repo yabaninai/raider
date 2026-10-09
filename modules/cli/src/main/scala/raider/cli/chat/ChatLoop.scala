@@ -2,10 +2,14 @@ package raider.cli.chat
 
 import raider.core.*
 import raider.cli.CoderPrompts
+import raider.cli.run.{Credentials, EventExport}
+import raider.core.result.ExitCodes
 import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
-import raider.runtime.loop.AgentLoop
-import zio.{Ref, Scope, ZIO}
+import raider.runtime.events.EventHub
+import raider.runtime.jobs.{JobHandle, JobManager, StatusLedger}
+import raider.runtime.loop.{AgentLoop, LoopEvents}
+import zio.{Promise, Ref, Scope, ZIO}
 import zio.json.EncoderOps
 
 import java.io.BufferedReader
@@ -24,8 +28,8 @@ import java.nio.file.Paths
   * moment the model emits them, and tool results print `← tool: preview` when
   * they complete (tracer).
   *
-  * Usage: raider chat [--provider openai] [--base-url URL] [--model NAME]
-  * [--workspace PATH]
+  * Usage: raider chat [--provider mock|openai|anthropic] [--base-url URL]
+  * [--model NAME] [--workspace PATH]
   *
   * Commands: :help :quit :clear :context :tools :trace
   */
@@ -67,13 +71,51 @@ object ChatLoop:
       queueCapacity = 256
     )
 
+  /** One chat session's wiring (RAI-060): the hub + JobManager live for the
+    * whole session (one root per chat run); each user message runs as ONE job
+    * of that manager, so the status line spans queued→model→tool→terminal with
+    * the job layer (RAI-059) owning the transitions.
+    */
+  private final case class RunCtx(
+      loop: AgentLoop, // base loop, events = None (per-message copy adds them)
+      limits: BudgetLimits,
+      historyRef: Ref[List[RequestMessage]],
+      traceRef: Ref[Vector[raider.core.trace.TraceEvent]],
+      hub: EventHub,
+      manager: JobManager,
+      root: RootId,
+      sink: String => zio.UIO[Unit]
+  )
+
   def run(
       provider: String,
       baseUrl: String,
       model: String,
-      apiKey: String,
       workspace: Option[String],
       resume: Option[String] = None
+  ): ZIO[Any, Nothing, Int] =
+    // RAI-064 preflight: a live provider requires a credential from the env
+    // BEFORE any spend — fail fast with a clear typed message. A missing key
+    // must NEVER silently fall back to a mock (that would masquerade as live).
+    ZIO
+      .fromEither(Credentials.resolve(provider))
+      .foldZIO(
+        err =>
+          ZIO.succeed {
+            System.err.println(s"raider: ${err.code}: ${err.detail}")
+            ExitCodes.ConfigInvalid
+          },
+        keyOpt =>
+          runWithKey(provider, baseUrl, model, keyOpt, workspace, resume)
+      )
+
+  private def runWithKey(
+      provider: String,
+      baseUrl: String,
+      model: String,
+      keyOpt: Option[String],
+      workspace: Option[String],
+      resume: Option[String]
   ): ZIO[Any, Nothing, Int] =
     for
       registry <- makeRegistry(workspace)
@@ -93,7 +135,15 @@ object ChatLoop:
         identity
       )
       root <- ZIO.succeed(AgentLoop.newRoot())
-      backend = makeBackendSimple(provider, baseUrl, apiKey)
+      // RAI-060: the event seam of this chat session — hub (ADR-024 §2.2/§2.3)
+      // + job layer (RAI-059); StatusLedger bridges job transitions into the
+      // hub, LoopEvents (per message) bridges loop emissions.
+      hub <- EventHub.make()
+      manager <- JobManager.make(
+        onTransition = Some(StatusLedger.onTransition(hub, root))
+      )
+      writer <- ZIO.succeed(new ChatWriter)
+      backend = makeBackendSimple(provider, baseUrl, keyOpt, writer)
       traceRef <- Ref.make(Vector.empty[raider.core.trace.TraceEvent])
       // VERBOSE trace: prints to stderr in real-time + records to Ref
       tracer <- ZIO.succeed(makeTracer(traceRef))
@@ -135,7 +185,17 @@ object ChatLoop:
         )
       )
       _ <- banner(registry, model, workspace)
-      exitCode <- repl(loop, limits, historyRef, traceRef)
+      ctx = RunCtx(
+        loop,
+        limits,
+        historyRef,
+        traceRef,
+        hub,
+        manager,
+        root,
+        sink = line => ZIO.succeed(writer.statusLine(line))
+      )
+      exitCode <- repl(ctx)
     yield exitCode
 
   /** Prints every event to stderr in real-time (colored) AND records it. */
@@ -217,12 +277,7 @@ object ChatLoop:
     val cyan = "\u001b[36m"
     val dim = "\u001b[2m"
 
-  private def repl(
-      loop: AgentLoop,
-      limits: BudgetLimits,
-      historyRef: Ref[List[RequestMessage]],
-      traceRef: Ref[Vector[raider.core.trace.TraceEvent]]
-  ): ZIO[Any, Nothing, Int] =
+  private def repl(ctx: RunCtx): ZIO[Any, Nothing, Int] =
     ZIO.succeed:
       val in = new BufferedReader(
         new InputStreamReader(System.in, StandardCharsets.UTF_8)
@@ -244,42 +299,44 @@ object ChatLoop:
                 printHelp()
               case cmd if cmd.startsWith(":pipe") =>
                 val spec = line.trim.drop(5).trim
-                handlePipeline(loop, limits, historyRef, traceRef, spec)
+                handlePipeline(ctx, spec)
               case cmd if cmd.startsWith(":delegate") =>
                 val spec = line.trim.drop(9).trim
-                handleDelegate(loop, limits, historyRef, traceRef, spec)
+                handleDelegate(ctx, spec)
               case ":clear" =>
                 zio.Runtime.default.unsafe
-                  .run(historyRef.set(List.empty))
+                  .run(ctx.historyRef.set(List.empty))
                   .getOrThrow()
                 zio.Runtime.default.unsafe
-                  .run(traceRef.set(Vector.empty))
+                  .run(ctx.traceRef.set(Vector.empty))
                   .getOrThrow()
                 println("context cleared")
               case cmd if cmd.startsWith(":save") =>
                 val name = cmd.drop(5).trim
-                handleSave(historyRef, loop.model, name)
+                handleSave(ctx.historyRef, ctx.loop.model, name)
               case ":sessions" =>
                 handleListSessions()
               case cmd if cmd.startsWith(":load") =>
                 val name = cmd.drop(5).trim
-                handleLoad(historyRef, name)
+                handleLoad(ctx.historyRef, name)
               case ":compact" =>
-                handleCompact(loop, limits, historyRef)
+                handleCompact(ctx.loop, ctx.limits, ctx.historyRef)
               case ":fix" =>
-                handleFix(loop, limits, historyRef)
+                handleFix(ctx.loop, ctx.limits, ctx.historyRef)
               case ":context" =>
                 val h =
-                  zio.Runtime.default.unsafe.run(historyRef.get).getOrThrow()
+                  zio.Runtime.default.unsafe
+                    .run(ctx.historyRef.get)
+                    .getOrThrow()
                 println(s"context: ${h.size} messages")
                 h.zipWithIndex.foreach { case (m, i) =>
                   println(s"  [$i] ${m.role}: ${m.content.take(60)}...")
                 }
               case ":tools" =>
-                loop.tools.names.foreach(t => println(s"  $t"))
+                ctx.loop.tools.names.foreach(t => println(s"  $t"))
               case ":trace" =>
                 val evts =
-                  zio.Runtime.default.unsafe.run(traceRef.get).getOrThrow()
+                  zio.Runtime.default.unsafe.run(ctx.traceRef.get).getOrThrow()
                 println(s"trace: ${evts.size} events")
                 evts.take(10).foreach {
                   case raider.core.trace.TraceEvent.ToolCallStarted(
@@ -309,9 +366,7 @@ object ChatLoop:
                 }
               case input =>
                 val exit = zio.Runtime.default.unsafe
-                  .run(
-                    processMessage(loop, limits, historyRef, traceRef, input)
-                  )
+                  .run(processMessage(ctx, input))
                 exit match
                   case zio.Exit.Success(_) =>
                     // the answer already streamed to stdout as deltas; just
@@ -328,7 +383,51 @@ object ChatLoop:
                         println()
       exit
 
+  /** One user message as ONE job (RAI-060): the job's body is held on a barrier
+    * until AFTER the status-line renderer subscribed (no loss window), so the
+    * renderer sees every envelope from the start transition onward. LoopEvents
+    * (RAI-058) binds the loop emissions to the job's own id; JobManager +
+    * StatusLedger (RAI-059) own the transitions and the single Terminal.
+    */
+  private[chat] def runJob[R](
+      hub: EventHub,
+      manager: JobManager,
+      root: RootId,
+      sink: String => zio.UIO[Unit],
+      label: String,
+      onStart: JobHandle[?] => zio.UIO[Unit] = _ => ZIO.unit
+  )(body: JobId => ZIO[Any, RaiderError, R]): ZIO[Any, RaiderError, R] =
+    for
+      barrier <- Promise.make[Nothing, JobId]
+      handle <- manager.start(
+        root,
+        label,
+        Task(barrier.await.flatMap(jobId => body(jobId)))
+      )
+      renderer <- StatusLine.start(hub, handle.id, sink)
+      _ <- onStart(handle)
+      _ <- barrier.succeed(handle.id).unit
+      result <- manager
+        .await(handle)
+        .ensuring(
+          EventExport
+            .awaitCaughtUp(hub, handle.id, renderer.foldedSeq.get)
+            .zipRight(renderer.fiber.interrupt)
+        )
+    yield result
+
   private def processMessage(
+      ctx: RunCtx,
+      input: String
+  ): ZIO[Any, RaiderError, String] =
+    runJob(ctx.hub, ctx.manager, ctx.root, ctx.sink, "chat-message") { jobId =>
+      val loop = ctx.loop.copy(events =
+        Some(LoopEvents(ctx.hub, jobId, ctx.root, StatusLedger.sessionId))
+      )
+      processMessageBody(loop, ctx.limits, ctx.historyRef, ctx.traceRef, input)
+    }
+
+  private def processMessageBody(
       loop: AgentLoop,
       limits: BudgetLimits,
       historyRef: Ref[List[RequestMessage]],
@@ -419,16 +518,24 @@ object ChatLoop:
       else println("nothing to compact")
     }
 
-  private def makeBackendSimple(
+  /** Backend wiring for chat (RAI-071): openai (SSE streaming) and anthropic
+    * (native Messages wire, SSE streaming) are first-class; any other value
+    * keeps the honest mock-fallback backend — a failed setup NEVER masquerades
+    * as a live wire. `private[chat]` for the backend-class unit tests.
+    */
+  private[chat] def makeBackendSimple(
       provider: String,
       baseUrl: String,
-      apiKey: String
+      keyOpt: Option[String],
+      writer: ChatWriter
   ): ModelBackend =
     val raw = provider match
       case "openai" =>
+        // RAI-064: the key comes from the env (preflight resolved it above);
+        // for a live provider keyOpt is guaranteed Some(non-empty) here.
         try
           val config = raider.provider.chat.OpenAIChatBackend.Config
-            .make(baseUrl, apiKey, callTimeoutMs = 300000L)
+            .make(baseUrl, keyOpt.getOrElse(""), callTimeoutMs = 300000L)
           config match
             case Right(cfg) =>
               zio.Unsafe.unsafe { implicit u =>
@@ -445,11 +552,31 @@ object ChatLoop:
               }
             case Left(_) => MockBackendFallback.backend
         catch case _: Exception => MockBackendFallback.backend
+      case "anthropic" =>
+        // RAI-071: native Messages wire (`/v1/messages`, x-api-key +
+        // pinned anthropic-version) with SSE streaming — the SAME
+        // env-resolved key, the same RateLimitRetries parity as openai.
+        try
+          raider.provider.anthropic.AnthropicMessagesBackend.Config
+            .make(baseUrl, keyOpt.getOrElse(""), callTimeoutMs = 300000L) match
+            case Right(cfg) =>
+              zio.Unsafe.unsafe { implicit u =>
+                zio.Runtime.default.unsafe.run(
+                  raider.provider.anthropic.AnthropicMessagesBackend
+                    .make(Right(cfg), streaming = true)
+                    .map(raider.runtime.display.RateLimitRetries(_))
+                ) match
+                  case zio.Exit.Success(b) => b
+                  case _                   => MockBackendFallback.backend
+              }
+            case Left(_) => MockBackendFallback.backend
+        catch case _: Exception => MockBackendFallback.backend
       case _ => MockBackendFallback.backend
-    // Real-time display: deltas → stdout, ready tool calls → stderr
+    // Real-time display: deltas → stdout via the SHARED writer (one-writer
+    // discipline with the status line), ready tool calls → stderr
     raider.runtime.display.StreamingDisplay(
       raw,
-      onTextDelta = t => ZIO.succeed { print(t); System.out.flush() },
+      onTextDelta = t => ZIO.succeed(writer.text(t)),
       onToolCall = (name, args) =>
         ZIO.succeed:
           System.err.println(
@@ -566,13 +693,7 @@ object ChatLoop:
   /** :pipe — sequential pipeline: :pipe scout("find") then worker("fix") then
     * reviewer("check") Each step gets the PREVIOUS step's output as context.
     */
-  private def handlePipeline(
-      loop: AgentLoop,
-      limits: BudgetLimits,
-      historyRef: Ref[List[RequestMessage]],
-      traceRef: Ref[Vector[raider.core.trace.TraceEvent]],
-      spec: String
-  ): Unit =
+  private def handlePipeline(ctx: RunCtx, spec: String): Unit =
     val steps = spec.split(" then ").map(_.trim).filter(_.nonEmpty).toList
     if steps.isEmpty then
       println("usage: :pipe agent(\"prompt\") then agent(\"prompt\") ...")
@@ -585,10 +706,7 @@ object ChatLoop:
         val result = zio.Unsafe.unsafe { implicit u =>
           zio.Runtime.default.unsafe.run(
             processMessage(
-              loop,
-              limits,
-              historyRef,
-              traceRef,
+              ctx,
               if context.isEmpty then prompt
               else s"Context from previous step:\n$context\n\nTask: $prompt"
             )
@@ -608,18 +726,12 @@ object ChatLoop:
 
   /** :delegate — fire-and-forget subagent task: :delegate worker("fix the bug")
     */
-  private def handleDelegate(
-      loop: AgentLoop,
-      limits: BudgetLimits,
-      historyRef: Ref[List[RequestMessage]],
-      traceRef: Ref[Vector[raider.core.trace.TraceEvent]],
-      spec: String
-  ): Unit =
+  private def handleDelegate(ctx: RunCtx, spec: String): Unit =
     val prompt = extractPrompt(spec).getOrElse(spec)
     println(s"delegated: $prompt")
     val result = zio.Unsafe.unsafe { implicit u =>
       zio.Runtime.default.unsafe
-        .run(processMessage(loop, limits, historyRef, traceRef, prompt))
+        .run(processMessage(ctx, prompt))
     }
     result match
       case zio.Exit.Success(answer) => println(s"done: ${answer.take(300)}")
@@ -688,7 +800,8 @@ object ChatLoop:
           ModelEvent.Started(AttemptId("chat-mock")),
           ModelEvent.TextDelta(
             AttemptId("chat-mock"),
-            "[fallback-mock] backend not available. Use --provider openai --base-url http://127.0.0.1:8081/v1"
+            "[fallback-mock] backend setup failed; check --provider " +
+              "(mock|openai|anthropic), --base-url/--model and RAIDER_API_KEY"
           ),
           ModelEvent.Finished(AttemptId("chat-mock"), "stop")
         )

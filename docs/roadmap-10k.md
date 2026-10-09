@@ -1,5 +1,10 @@
 # Raider Long-Range Roadmap: Tabs, Live Statuses, Plugins, Agent State
 
+> Superseded execution order (2026-10-05): use [the 12,000-hour roadmap](roadmap-12k.md)
+> and [OpenCode prompt](prompts/opencode-12k-parallel.txt). The v2 text below is
+> historical design context. Its early Yabanin phase/discovery and web scope are
+> not active assignments: Yabanin now starts only after standalone acceptance, P11.
+
 Owner-directed long-range plan (2026-10-05, **v2** same day: owner added the
 optional **agent state registry** with a reserved **Yabanin direct
 integration** slot; +1,700 h). Scope: turn the current harness into a tool the

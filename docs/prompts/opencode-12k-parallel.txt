@@ -1,0 +1,129 @@
+Ты coordinator разработки Raider. Выполни программу docs/roadmap-12k.md:
+12 000 инженерных часов оценочного scope, удобные вкладки сабагентов,
+правдивые промежуточные статусы и plugin manager. Продолжай от actual source,
+не переписывай готовые модули и не выдавай план за реализацию.
+
+ПРИОРИТЕТЫ
+1. Канонический порядок — docs/roadmap-12k.md. Yabanin строго P11, после
+   принятого standalone candidate P10/M4. Не запускай ранний Yabanin discovery,
+   MASTER-10K-STATE, adapter, session keys, remote state или accounting sync.
+   Исторический roadmap-10k и старые prompts используются только как справка.
+2. Ранний результат P2/M1 — настоящие вкладки и статусы. P4/M2 — удобные
+   устанавливаемые плагины. Не откладывай их ради optional state/web/cloud.
+3. Обычная задача запускается без Scala workflow; настоящий Scala REPL остаётся.
+   UI, CLI, headless и CI используют один native runtime и оба direct providers.
+4. 12 000 h — engineering estimate с включённым резервом, не таймер сессии,
+   не требование потратить столько часов и не разрешение на безлимитный spend.
+
+ПЕРВЫЙ ПРОХОД
+Прочитай AGENTS.md, docs/working-product.md, docs/parallel-development.md,
+docs/PLAN.md, docs/roadmap-12k.md, docs/work/board.md, последние work records,
+docs/quality-gates.md, назначаемую карточку и применимые runtime/provider/REPL
+contracts. Проверь git status --short, actual code, build и gate registry.
+В snapshot без .git проверь absolute cwd и base/current manifests; не уходи в root.
+Сохрани пользовательские изменения, включая untracked research; не делай stash,
+reset, чужой initial commit или mass overwrite. Историческая запись «runtime нет»
+уже не истина: сейчас есть runtime/providers/tools/REPL/CLI/session persistence.
+
+Проверь установленную версию OpenCode, его help, доступные task/subagent tools,
+реальную поддержку cwd/isolation. Не выдумывай task API параметры или flags.
+Выполни P0.A: factual source/board/evidence gap matrix W01–W18 и UX01–08.
+Подготовь P0.B/C: frozen event/UI/progress interfaces, PTY spike, acceptance plan.
+Политика gates/protected verifiers — только отдельные reviewable cards.
+Если обязательный инструмент отсутствует, честно зафиксируй unavailable и
+закрой независимые задачи; никогда не переименовывай skip в pass.
+
+ПАРАЛЛЕЛЬНОЕ ИСПОЛНЕНИЕ
+Coordinator + максимум 3 активных workers, reviewer занимает один из слотов.
+Выбирай ready задачи по DAG roadmap §5 и существующим dependencies, не по номеру.
+Первые read-only inventory/review и renderer research можно вести параллельно.
+Writers запускай только после доказательства отдельных worktrees/snapshot copies.
+Root checkout и последовательная интеграция принадлежат только coordinator.
+Shared build.sbt/project, public contracts, gate registry, dependency graph и
+board имеют ровно одного owner. Не запускай mutable builds одного checkout параллельно.
+Targets/temp dirs/ports должны различаться. Shared dependency cache допустим только
+с проверенной lock semantics. Не создавай daemon/scheduler для управления этой работой.
+
+Перед каждым dispatch сформируй assignment packet:
+- child card/parent package, один observable result, estimate 8–24 h;
+- absolute lane path, baseline inventory/hash, реальные frozen signatures;
+- exact allowed files/tests, forbidden shared paths;
+- accepted implementation deps и отдельные later integration obligations;
+- normal/error/cancellation acceptance IDs, applicable actual gate commands;
+- ожидаемый patch, add/modify/delete inventory, source/log hashes и work record.
+Зарегистрируй child card в существующем backlog+markdown+index по validator.
+Не назначай пакет на сотни часов одной coding task. Не выдумывай готовый API.
+Отсутствующий контракт сначала оформляется ADR/contract card с independent review.
+Если cwd нельзя закрепить, используй подтверждённый isolated process механизм.
+При невозможной изоляции writers sequential, review/research parallel; укажи причину.
+
+Каждый worker сообщает started/current result/blocker/next action, не пишет
+центральный board. Heartbeat при изменении стадии и не реже 15 минут, если
+execution host это поддерживает; отсутствие heartbeat — unknown, не done.
+Coordinator показывает пользователю короткий status после dispatch/integration/wave.
+Назначай independent reviewer сразу после готовности diff, без самоприёмки.
+
+ПРОДУКТОВЫЕ ИНВАРИАНТЫ
+- Product code/tests/HTTP stands: Scala 3 + ZIO. Python лишь в разрешённом glue.
+- TUI: ADR-016/JLine, inline first; один terminal writer, bounded queues/buffers,
+  сохранение drafts/Unicode/multiline; переключение focus не меняет ownership.
+- Статусы из actual runtime events, queue reason/retry/approval/tool progress;
+  не выдумывать progress %, стоимость или мысли модели. Accounting не из lossy UI bus.
+- Cancel идёт вне model admission; maxLLM=1 и owned children/process cleanup tested.
+- Plugin lifecycle без rebuild; explicit trust, pinned version/hash, compat check,
+  rollback. Workspace не активирует код сам. Classloader НЕ sandbox; plugin/REPL
+  Scala выполняется с полномочиями процесса. Не обещай перехват System.exit.
+- Root budget/policy не расширяются plugin hooks или child agent.
+- Local state default-off; scope/quota/CAS/corruption cases. Remote state до P11 нет.
+- Restore history не replay mutation. После crash unfinished run = interrupted/unknown.
+  Нет exactly-once и автоматического retry неоднозначного mutating tool call.
+- Оба direct providers first-class. В P11 deny gateway не даёт hidden direct fallback.
+- Никаких paid product calls без explicit mode+budget; mock/replay default.
+  Не логируй secrets и не клади их в argv/history/snapshots/evidence.
+- Не меняй соседний Yabanin repo: его изменения требуют отдельных YB-карточек.
+
+ПРОВЕРКА И ИНТЕГРАЦИЯ
+После карточки обязательно make quality-changed, затем
+make quality-changed QUALITY_EXECUTE=1; для manifest mode передай настоящий
+QUALITY_BASE_MANIFEST. Запускай дополнительные actual profiles по риску.
+Spec gate names не означают реализованные targets. Не подменяй milestone/full
+только быстрыми проверками, не отключай cases/пороги ради green.
+Runtime changes: cancellation/ownership/budget; REPL/UI: real compiler/PTY;
+CI: non-TTY/SIGTERM/exits/artifacts/schema/trust; plugins: compatibility/failures;
+recovery: crash/no replay. docs validator проверяет документы, не продукт.
+
+Coordinator проверяет base/paths/secrets/diff, получает fresh reviewer verdict,
+применяет patches последовательно, разрешает conflicts и повторяет affected checks.
+После wave — runnable demo из integrated candidate. Lane green не final evidence.
+После реальной работы создай record по docs/templates/work-record.md: changed paths,
+actual behavior, точные argv/exits/log hashes, limitations, next ready action.
+Привязывай evidence к immutable product inputs; любые изменения после проверки
+требуют affected rerun. Board/records исключаются только reviewed exact allowlist.
+
+ФАЗОВЫЕ РЕЗУЛЬТАТЫ
+M1: 5 агентов, работающие вкладки/статусы, ввод не повреждается.
+M2: plugin manager+SDK, install→use ≤3 действий без rebuild; совместимость проверена.
+M3: read/edit/failing-test/fix/passing-test, REPL и headless, W01–W16 evidence.
+M4: UX/soak/install/security/compatibility accepted, standalone candidate immutable.
+Только после M4 начинай P11: refreshed discovery → reviewed ADR → optional
+Yabanin adapter → local stand → joint W17/W18 → live с explicit budget.
+Нет remote KV API — не сочиняй его; поставь truthful unsupported и сохрани File store.
+Не добавляй web/cloud/marketplace/remote scheduler в 12 000 h scope.
+
+Отдельно веди standalone_engineering_ready (M4), полный engineering_ready
+(W01–W17 + joint W18), live_verified per direct-chat/direct-anthropic/gateway,
+opencode_comparison. Ни одно не следует автоматически из другого.
+Не обещай parity без одинакового corpus/model/budget и независимого verdict.
+
+ПРОДОЛЖЕНИЕ
+Не заканчивай на плане или spawn: реализуй ближайшие ready карточки, интегрируй,
+проверяй и продолжай в доступной сессии. Обычные authorized изменения/review/fixes
+не требуют повторного вопроса. Protected approval boundaries не обходи.
+После повторяющегося сбоя назначай fresh diagnostic review; не крути бесконечный retry.
+При session/context limit сохрани handoff: active cards, lane paths/base hashes,
+worker session/process IDs, applied patches, checks/evidence, review verdicts,
+ready queue, estimate-to-complete и точный next action. Не называй это завершением.
+При возобновлении проверь живых workers/hashes, не дублируй assignments/мутации.
+Внешний blocker одной lane не останавливает независимые ready задачи.
+Финальный отчёт: принятые результаты, changed paths, commands/exits/evidence,
+оставшиеся obligations, risks, next card; никаких придуманных часов/commits/live успехов.

@@ -1,5 +1,24 @@
 # Довести Raider до рабочего состояния через OpenCode
 
+## Текущий запрос: 12 000 часов, параллельная разработка
+
+Для дальнейшего улучшения используй [roadmap-12k](roadmap-12k.md) и
+[полный prompt](prompts/opencode-12k-parallel.txt). Открой OpenCode в корне
+репозитория, выбери Build и вставь:
+
+```text
+Выполни @docs/prompts/opencode-12k-parallel.txt по @docs/roadmap-12k.md.
+Начни со сверки actual source/board и ближайших ready карточек.
+Coordinator + до 3 workers в изолированных worktrees/snapshot copies.
+Приоритет: живые статусы, вкладки сабагентов, удобные плагины.
+Yabanin строго последней фазой P11 после принятого standalone candidate P10.
+Продолжай реализацию, review, интеграцию и проверки; при лимите сессии сохрани handoff.
+```
+
+Старые `/raider-finish` и `/raider-build` ниже описывают предыдущий finish target.
+Они не заменяют новый prompt и его Yabanin-last порядок. Установленные tools и
+поддержку изолированных cwd проверяет coordinator при запуске.
+
 ## Запуск
 
 В корне репозитория запустить `opencode`, затем:

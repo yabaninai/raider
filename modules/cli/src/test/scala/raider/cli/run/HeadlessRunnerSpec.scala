@@ -10,6 +10,7 @@ import zio.test._
 import zio.test.live
 import zio.ZIO
 import zio.json.DecoderOps
+import raider.runtime.events.EventCodecs.given
 
 /** RAI-022 slice acceptance:
   *   - RUN-01: jar bundle (fixture classes zipped at test time) executes a mock
@@ -233,6 +234,14 @@ object HeadlessRunnerSpec extends ZIOSpecDefault:
             outcome.workDir.resolve("events.jsonl"),
             UTF_8
           )
+          // RAI-060: events.jsonl holds REAL EventEnvelope lines now —
+          // every line parses with the runtime codec and the run settles
+          // with a single terminal envelope
+          envelopes = events
+            .split("\n")
+            .filter(_.trim.nonEmpty)
+            .toList
+            .map(_.fromJson[raider.runtime.events.EventEnvelope])
         yield assertTrue(
           outcome.exitCode == 0,
           runJson.status == raider.core.result.ExecutionStatus.Succeeded,
@@ -241,7 +250,13 @@ object HeadlessRunnerSpec extends ZIOSpecDefault:
             c.id == "run-result-schema" && c.outcome == raider.core.result.CheckOutcome.Passed
           ),
           summary.contains("fixture/mock"), // mock never passes as live
-          events.contains("run.started") && events.contains("run.finished")
+          envelopes.nonEmpty,
+          envelopes.forall(_.isRight),
+          envelopes.last.toOption.exists(e =>
+            e.payload == raider.runtime.events.EventPayload.Terminal(
+              raider.runtime.jobs.JobStatus.Succeeded
+            )
+          )
         )
       }
     },
@@ -324,6 +339,128 @@ object HeadlessRunnerSpec extends ZIOSpecDefault:
           runs.forall(_.exitCode == 0),
           dirs.toSet.size == 3
         ) // no shared state directories
+      }
+    },
+    // ===== RAI-064: credentials only via env/helper, no argv secrets =====
+    test(
+      "SETUP-03: --api-key in argv is a typed error that never echoes the value"
+    ) {
+      val parsed = CliArgs.parse(
+        List(
+          "run",
+          "--agent",
+          "scout",
+          "--input",
+          "t",
+          "--out",
+          "o",
+          "--api-key",
+          "sk-test123"
+        )
+      )
+      assertTrue(
+        parsed.isLeft,
+        parsed.fold(
+          e =>
+            e.code == "RA-CFG" &&
+              e.detail.contains("RAIDER_API_KEY") &&
+              !e.detail.contains("sk-test123"), // redaction: value never echoed
+          _ => false
+        )
+      )
+    },
+    test("SETUP-02: live provider without a key fails preflight before spend") {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          args = CliArgs
+            .parse(
+              List(
+                "run",
+                "--agent",
+                "scout",
+                "--input",
+                "task-42",
+                "--out",
+                work.toString,
+                "--provider",
+                "openai",
+                "--base-url",
+                "not-a-url"
+              )
+            )
+            .fold(e => throw e, identity)
+          outcome <- HeadlessRunner.run(args, Map.empty) // no env key at all
+          runJson = readRunJson(outcome.workDir)
+        yield assertTrue(
+          outcome.exitCode == 21, // ConfigInvalid: a typed preflight refusal
+          runJson.status == raider.core.result.ExecutionStatus.Failed,
+          runJson.output.isEmpty, // no spend, no output produced
+          runJson.error.exists(e =>
+            e.code == "RA-CFG" &&
+              e.detail.contains("RAIDER_API_KEY") &&
+              e.detail.contains("missing credentials")
+          ),
+          runJson.checks.exists(c =>
+            c.id == "bundle-preflight" &&
+              c.outcome == raider.core.result.CheckOutcome.Failed
+          )
+        )
+      }
+    },
+    test("SETUP-01: live provider WITH an env key clears the credential gate") {
+      // Hermetic (no network): the base URL is invalid, so Config.make fails
+      // AFTER the credential preflight — proving the env key was resolved and
+      // accepted (the error is about the URL, not about missing credentials).
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          args = CliArgs
+            .parse(
+              List(
+                "run",
+                "--agent",
+                "scout",
+                "--input",
+                "task-42",
+                "--out",
+                work.toString,
+                "--provider",
+                "openai",
+                "--base-url",
+                "not-a-url"
+              )
+            )
+            .fold(e => throw e, identity)
+          outcome <- HeadlessRunner.run(
+            args,
+            Map("RAIDER_API_KEY" -> "sk-env-42")
+          )
+          raw = Files.readString(outcome.workDir.resolve("run.json"), UTF_8)
+          runJson = raw.fromJson[RunResult] match
+            case Right(r) => r
+            case Left(e) =>
+              throw new IllegalStateException(s"bad run.json: $e")
+        yield assertTrue(
+          // the failure is the LATER base-URL validation, not a credential one
+          runJson.error.exists(e =>
+            e.detail.contains("baseUrl must be an http(s) URL")
+          ),
+          // redaction: the key never appears in the artifact
+          !raw.contains("sk-env-42")
+        )
+      }
+    },
+    test("SETUP-01: mock provider without any key still works") {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          outcome <- HeadlessRunner.run(agentArgs(work), Map.empty)
+          runJson = readRunJson(outcome.workDir)
+        yield assertTrue(
+          outcome.exitCode == 0,
+          runJson.output.exists(o => o.json.contains("[mock] answer"))
+        )
       }
     }
   )

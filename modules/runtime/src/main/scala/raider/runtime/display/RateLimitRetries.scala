@@ -1,7 +1,7 @@
 package raider.runtime.display
 
 import raider.core.*
-import zio.{Duration, Scope, ZIO}
+import zio.{Duration, Scope, UIO, ZIO}
 import zio.stream.ZStream
 
 /** Rate-limit backoff decorator (nightly Phase 4.2): retries ONLY
@@ -13,11 +13,21 @@ import zio.stream.ZStream
   * contract).
   *
   * The decorator is transparent on success — events pass through unchanged.
+  *
+  * Retry emission (RAI-058): `onRetryScheduled` is an OPTIONAL hook called
+  * BEFORE each backoff sleep with `(attempt, delayMs, cause)` — `attempt` is
+  * the retry number (1 = first retry after the initial 429), `delayMs` the
+  * exact sleep that follows, `cause` the typed error detail (bounded). The hook
+  * is a `UIO` by contract (e.g. a failure-absorbing `RetryScheduled` publish —
+  * see [[raider.runtime.loop.LoopEvents]]); an interrupted hook interrupts the
+  * retry stream as any run cancellation would, never as a typed error. Default
+  * `None` = zero overhead.
   */
 final case class RateLimitRetries(
     underlying: ModelBackend,
     maxRetries: Int = 3,
-    baseDelay: Duration = Duration.fromSeconds(1)
+    baseDelay: Duration = Duration.fromSeconds(1),
+    onRetryScheduled: Option[RateLimitRetries.RetryScheduledSink] = None
 ) extends ModelBackend:
 
   override def capabilities: ModelCapabilities = underlying.capabilities
@@ -35,13 +45,31 @@ final case class RateLimitRetries(
       .stream(input)
       .catchAll:
         case rl: RaiderError.ProviderRateLimit if attemptNo < maxRetries =>
-          // exponential: 1s, 2s, 4s, ...
-          ZStream.fromZIO(
-            ZIO.sleep(
-              Duration.fromSeconds(
-                baseDelay.getSeconds * math.pow(2, attemptNo).toLong
-              )
+          // exponential: 1s, 2s, 4s, ... (one value feeds hook AND sleep)
+          val delay =
+            Duration.fromSeconds(
+              baseDelay.getSeconds * math.pow(2, attemptNo).toLong
             )
-          ) *>
+          val hook = onRetryScheduled match
+            case Some(h) =>
+              h(
+                attemptNo + 1,
+                delay.toMillis,
+                rl.detail.take(RateLimitRetries.maxCauseChars)
+              )
+            case None => ZIO.unit
+          ZStream.fromZIO(hook) *>
+            ZStream.fromZIO(ZIO.sleep(delay)) *>
             attempt(input, attemptNo + 1)
         case other => ZStream.fail(other)
+
+object RateLimitRetries:
+
+  /** `(retryAttempt, delayMs, cause) => emission effect`, failure-absorbing by
+    * caller contract (`UIO`).
+    */
+  type RetryScheduledSink =
+    (attempt: Int, delayMs: Long, cause: String) => UIO[Unit]
+
+  /** Hygiene bound for the emitted `cause` (no frozen bound exists). */
+  val maxCauseChars: Int = 512

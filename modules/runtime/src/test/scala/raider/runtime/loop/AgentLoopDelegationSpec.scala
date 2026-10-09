@@ -10,15 +10,18 @@ import zio.stream.ZStream
 import zio.{Duration as ZDuration, Promise, Scope, ZIO}
 
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters.*
 
 /** §11 acceptance: delegate/await_agent/cancel_agent/list_agents over the SAME
   * JobManager/root budget; maxLLM=1 without deadlock; no recursive delegation;
   * unknown names give structured feedback. The backend is a DETERMINISTIC turn
-  * simulator: k-th stream() call replays k-th turn, and turn functions may read
-  * the recorded request (so the parent's await_agent can reference the REAL
-  * child id from the delegate feedback).
+  * simulator that routes by request CONTENT (roles/message texts — RAI-092
+  * STAB-01), and turn functions may read the request (so the parent's
+  * await_agent can reference the REAL child id from the delegate feedback).
+  * Content routing is load-order-independent: parent and child dispatch
+  * concurrently, so a call-INDEXED simulator (k-th call replays k-th turn)
+  * raced under load — the parent's next round could claim the child's turn
+  * (answer mismatch, tries != 6; nightly finding 2026-10-05, A/B proven).
   */
 object AgentLoopDelegationSpec extends ZIOSpecDefault:
 
@@ -27,16 +30,15 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
   private val c2 = ToolCallId("call-2")
   private val c3 = ToolCallId("call-3")
 
-  /** Turn-simulating backend: k-th call replays k-th turn with the recorded
-    * request in scope; `parkIf` parks a matching call on the gate — used to
-    * hold the child mid-run for cancel tests.
+  /** Content-routed turn backend (RAI-092 STAB-01): the route function picks
+    * the turn from the request CONTENT (message count / role / text /
+    * tool_call_id), never from a call index — the parent/child dispatch order
+    * is not deterministic under load, so only content coordination keeps the
+    * scenario load-order-independent (same discipline as the anonymous backends
+    * in the max_children and cancel_agent tests below).
     */
-  private final class TurnBackend(
-      turns: Vector[ModelRequest => Vector[ModelEvent]],
-      parkIf: Option[ModelRequest => Boolean] = None,
-      gate: Option[Promise[Nothing, Unit]] = None
-  ) extends ModelBackend:
-    private val counter = AtomicInteger(0)
+  private final class TurnBackend(route: ModelRequest => Vector[ModelEvent])
+      extends ModelBackend:
     private val recorded = new CopyOnWriteArrayList[ModelRequest]()
 
     def capabilities: ModelCapabilities =
@@ -52,23 +54,9 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
     def stream(input: ModelRequest): ZStream[Scope, RaiderError, ModelEvent] =
       ZStream.unwrap:
         ZIO.succeed:
-          val k = counter.getAndIncrement()
           recorded.add(input)
-          // DETERMINISTIC park: by request CONTENT, not call index — the
-          // parent/child fork order is not deterministic under load.
-          // NOTE: `empty *> s` would END the combined stream without
-          // pulling s (zip semantics) — park must be `++` + drain.
-          val parkStream: ZStream[Any, Nothing, Nothing] =
-            (parkIf, gate) match
-              case (Some(p), Some(g)) if p(input) =>
-                ZStream.fromZIO(g.await).drain
-              case _ => ZStream.empty
-          val body: ZStream[Scope, RaiderError, ModelEvent] =
-            parkStream ++ ZStream.fromIterable(
-              if k < turns.length then turns(k)(input)
-              else Vector(ModelEvent.Finished(AttemptId(s"t$k"), "stop"))
-            )
-          ZStream(ModelEvent.Started(AttemptId(s"t$k"))) ++ body
+          ZStream(ModelEvent.Started(a)) ++
+            ZStream.fromIterable(route(input))
 
   private def lims(
       llm: Int = 1,
@@ -104,43 +92,59 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
       "delegate → await_agent → final: one root budget, maxLLM=1, no deadlock"
     ) {
       live {
+        // scripted turns (content-routed below; hoisted vals — a leading
+        // `=` lambda binding is not parseable in a for-comprehension)
+        val parentDelegate = Vector( // parent turn 1: delegate
+          ModelEvent.ToolCallReady(
+            a,
+            c1,
+            "delegate",
+            """{"agent":"scout","input":"find x"}"""
+          ),
+          ModelEvent.Finished(a, "r")
+        )
+        val childAnswer = Vector( // child scout: plain answer
+          ModelEvent.TextDelta(a, "found x"),
+          ModelEvent.Finished(a, "stop")
+        )
+        val parentAwait = (req: ModelRequest) =>
+          Vector( // parent turn 2: await the REAL child id
+            ModelEvent.ToolCallReady(
+              a,
+              c2,
+              "await_agent",
+              s"""{"child_id":"${childIdOf(req)}"}"""
+            ),
+            ModelEvent.Finished(a, "r")
+          )
+        val parentFinal = Vector( // parent turn 3: final
+          ModelEvent.TextDelta(a, "child said: found x"),
+          ModelEvent.Finished(a, "stop")
+        )
+        // ROUTING BY CONTENT, not by call index: the parent's next round and
+        // the child's first round race for the same maxLLM=1 slot, so the
+        // arrival order is not deterministic under load (RAI-092 STAB-01;
+        // nightly finding 2026-10-05). Roles/texts distinguish every caller:
+        // parent start "u", child input "find x", delegate feedback carries
+        // tool_call_id call-1, await feedback carries call-2.
+        val delegationRoute = (input: ModelRequest) =>
+          val single = input.messages.size == 1
+          val head =
+            input.messages.headOption.map(_.content).getOrElse("")
+          val delegateDone = input.messages.exists(m =>
+            m.role == "tool" && m.content.contains("call-1")
+          )
+          val awaitDone = input.messages.exists(m =>
+            m.role == "tool" && m.content.contains("call-2")
+          )
+          if single && head == "u" then parentDelegate
+          else if single && head == "find x" then childAnswer
+          else if awaitDone then parentFinal
+          else parentAwait(input)
         for
           jobs <- JobManager.make()
           adm <- Admission.make(lims())
-          backend = new TurnBackend(
-            Vector(
-              _ =>
-                Vector( // parent turn 1: delegate
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c1,
-                    "delegate",
-                    """{"agent":"scout","input":"find x"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector( // child scout: plain answer
-                  ModelEvent.TextDelta(a, "found x"),
-                  ModelEvent.Finished(a, "stop")
-                ),
-              req =>
-                Vector( // parent turn 2: await the REAL child id
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c2,
-                    "await_agent",
-                    s"""{"child_id":"${childIdOf(req)}"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector( // parent turn 3: final
-                  ModelEvent.TextDelta(a, "child said: found x"),
-                  ModelEvent.Finished(a, "stop")
-                )
-            )
-          )
+          backend = new TurnBackend(delegationRoute)
           root = AgentLoop.newRoot()
           toolset <- ZIO.fromEither(
             raider.runtime.delegate.DelegationToolset.make(
@@ -187,28 +191,31 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
       "unknown agent → structured feedback, loop continues to a final text"
     ) {
       live {
+        // (route hoisted: a leading `=` lambda binding is not parseable in a
+        // for-comprehension)
+        val unknownAgentRoute = (input: ModelRequest) =>
+          if input.messages.size == 1 then
+            Vector(
+              ModelEvent.ToolCallReady(
+                a,
+                c1,
+                "delegate",
+                """{"agent":"nope","input":"x"}"""
+              ),
+              ModelEvent.Finished(a, "r")
+            )
+          else
+            Vector(
+              ModelEvent.TextDelta(a, "recovered"),
+              ModelEvent.Finished(a, "stop")
+            )
         for
           jobs <- JobManager.make()
           adm <- Admission.make(lims())
-          backend = new TurnBackend(
-            Vector(
-              _ =>
-                Vector(
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c1,
-                    "delegate",
-                    """{"agent":"nope","input":"x"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector(
-                  ModelEvent.TextDelta(a, "recovered"),
-                  ModelEvent.Finished(a, "stop")
-                )
-            )
-          )
+          // Content-routed (STAB-01): round 1 = single "u" (delegate to an
+          // unknown agent); the refusal spawns NO child, so the next parent
+          // request is any multi-message one — deterministic either way.
+          backend = new TurnBackend(unknownAgentRoute)
           root = AgentLoop.newRoot()
           toolset <- ZIO.fromEither(
             raider.runtime.delegate.DelegationToolset.make(
@@ -336,28 +343,29 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
     },
     test("await_agent on an unknown child → structured feedback") {
       live {
+        // Content-routed (STAB-01): round 1 = single "u" (await an unknown
+        // child); the structured refusal spawns NO child, so the next parent
+        // request is any multi-message one. No concurrent caller exists.
+        val unknownChildRoute = (input: ModelRequest) =>
+          if input.messages.size == 1 then
+            Vector(
+              ModelEvent.ToolCallReady(
+                a,
+                c1,
+                "await_agent",
+                """{"child_id":"j_9999"}"""
+              ),
+              ModelEvent.Finished(a, "r")
+            )
+          else
+            Vector(
+              ModelEvent.TextDelta(a, "fine"),
+              ModelEvent.Finished(a, "stop")
+            )
         for
           jobs <- JobManager.make()
           adm <- Admission.make(lims())
-          backend = new TurnBackend(
-            Vector(
-              _ =>
-                Vector(
-                  ModelEvent.ToolCallReady(
-                    a,
-                    c1,
-                    "await_agent",
-                    """{"child_id":"j_9999"}"""
-                  ),
-                  ModelEvent.Finished(a, "r")
-                ),
-              _ =>
-                Vector(
-                  ModelEvent.TextDelta(a, "fine"),
-                  ModelEvent.Finished(a, "stop")
-                )
-            )
-          )
+          backend = new TurnBackend(unknownChildRoute)
           root = AgentLoop.newRoot()
           toolset <- ZIO.fromEither(
             raider.runtime.delegate.DelegationToolset.make(
@@ -519,7 +527,7 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
         adm <- Admission.make(lims(tools = 1))
         bad1 = raider.runtime.delegate.DelegationToolset.make(
           jobs,
-          TurnBackend(Vector.empty),
+          TurnBackend(_ => Vector(ModelEvent.Finished(a, "stop"))),
           adm,
           lims(tools = 1).fold(e => throw e, identity),
           ToolRegistry.empty,
@@ -535,7 +543,7 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
           .fold(e => throw e, identity)
         bad2 = raider.runtime.delegate.DelegationToolset.make(
           jobs,
-          TurnBackend(Vector.empty),
+          TurnBackend(_ => Vector(ModelEvent.Finished(a, "stop"))),
           adm,
           lims(tools = 2).fold(e => throw e, identity),
           shadowRegistry,
@@ -561,7 +569,7 @@ object AgentLoopDelegationSpec extends ZIOSpecDefault:
         toolset = raider.runtime.delegate.DelegationToolset
           .make(
             jobs,
-            TurnBackend(Vector.empty),
+            TurnBackend(_ => Vector(ModelEvent.Finished(a, "stop"))),
             adm,
             limsV(),
             base,

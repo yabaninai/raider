@@ -1,0 +1,8 @@
+{
+  "agent": "worker-c",
+  "generated_at": "2026-10-06T10:30:00Z",
+  "modules": {
+    "billing": {"status": "in_progress", "items": 8},
+    "ui": {"status": "done", "items": 4}
+  }
+}

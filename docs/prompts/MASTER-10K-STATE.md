@@ -1,5 +1,11 @@
 # Raider 10K — Agent State Registry & Yabanin Discovery Master Prompt
 
+> HISTORICAL — do not execute this prompt as an active assignment.
+> Owner revision 2026-10-05: [roadmap-12k](../roadmap-12k.md) and
+> [current execution prompt](opencode-12k-parallel.txt) supersede its order.
+> Local state is P5; all Yabanin discovery/integration is P11, only after P10/M4.
+> In particular, the early discovery task below is deferred to P11.
+
 You are working on Raider, a self-hosting agent harness (Scala 3 + ZIO 2).
 This prompt launches the **state workstream** of the long-range roadmap
 (`docs/roadmap-10k.md` v2, §3.4–§3.5, Phase 3 + the Phase-7 discovery): an

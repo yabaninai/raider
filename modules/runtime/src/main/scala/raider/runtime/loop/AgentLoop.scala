@@ -13,6 +13,7 @@ import raider.core.{
 }
 import raider.runtime.admission.{Admission, SlotKind}
 import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd}
+import raider.runtime.events.ToolOutcome
 import zio.{Duration, Scope, ZIO}
 import zio.json.ast.Json
 import zio.json.EncoderOps
@@ -49,6 +50,26 @@ import java.util.concurrent.atomic.AtomicLong
   * Final validation: the answer must be non-empty and marker-free — the loop
   * never injects `InternalMarker` anywhere, and a backend answer that carries
   * it is an OutputValidation defect, not a pass.
+  *
+  * Event emission (RAI-058): `events` is an OPTIONAL context binding this run
+  * to one job/root/session of an EventHub (ADR-024 §2.3/§6); `None` (the
+  * default) = zero overhead. Emission seams, in program order:
+  *   - `Diagnostics("round N started")` — RoundStarted equivalent;
+  *   - `Waiting(Slot)` (RELIABLE, bounded) before each Model/Tool slot wait;
+  *   - `ModelCallStarted(round, model, Some(n))` → stream pass →
+  *     `ModelCallFinished(round, durationMs, usage = unknown)` — the real
+  *     round, never -1; Finished is emitted on failure too; usage is honestly
+  *     unknown (no cost is known at this level);
+  *   - `ToolStarted(callId, tool, argsSummary ≤512)` → `ToolFinished(callId,
+  *     tool, Succeeded | Timeout | Cancelled | Failed(reason))` — INCLUDING the
+  *     failure path (today's trace emits nothing on failure); refusals are
+  *     documented as `ToolFinished(Failed("refused: ..."))` without a
+  *     ToolStarted;
+  *   - `Diagnostics("round N text: …")` — TextReceived equivalent.
+  * Emission never breaks the run (failure-absorbing, see [[LoopEvents]]); the
+  * existing `trace` callback keeps its exact call points and event types (its
+  * round fields now carry the real round instead of the old -1 hardcode); job
+  * status/Terminal remain a job-layer obligation (RAI-059).
   */
 final case class AgentLoop(
     backend: ModelBackend,
@@ -58,8 +79,15 @@ final case class AgentLoop(
     root: RootId,
     attemptEstimate: CostEstimate = CostEstimate.Unknown,
     trace: raider.core.trace.TraceEvent => zio.UIO[Unit] = _ => zio.ZIO.unit,
-    systemPrompt: Option[String] = None
+    systemPrompt: Option[String] = None,
+    events: Option[LoopEvents] = None
 ):
+
+  /** Event emission (RAI-058): `None` = zero-overhead no-op at every seam. */
+  private def ev(f: LoopEvents => zio.UIO[Unit]): zio.UIO[Unit] =
+    events match
+      case Some(e) => f(e)
+      case None    => zio.ZIO.unit
 
   /** One agent run: bounded tool rounds until a validated final text.
     *
@@ -129,17 +157,22 @@ final case class AgentLoop(
       trace(
         raider.core.trace.TraceEvent.RoundStarted(AgentLoop.now(), round)
       ) *>
-        attempt(messages).flatMap:
+        // RoundStarted equivalent (RAI-058): no dedicated payload case in the
+        // frozen family — Diagnostics text, bounded by LoopEvents
+        ev(_.diagnostics(s"round $round started")) *>
+        attempt(messages, round).flatMap:
           case AttemptResult.Final(text) =>
             trace(
               raider.core.trace.TraceEvent
                 .TextReceived(AgentLoop.now(), round, text.take(200))
             ) *>
+              // TextReceived equivalent (RAI-058)
+              ev(_.diagnostics(s"round $round text: ${text.take(200)}")) *>
               ZIO.fromEither(validateFinal(text)).as(text)
           case AttemptResult.ToolRound(text, calls) =>
             for
               // §6 default: serialized dispatch in emission order
-              results <- ZIO.foreach(calls.toList)(dispatch)
+              results <- ZIO.foreach(calls.toList)(c => dispatch(c, round))
               assistant =
                 if text.trim.isEmpty then Nil
                 else List(RequestMessage(AgentLoop.AssistantRole, text))
@@ -152,7 +185,8 @@ final case class AgentLoop(
             yield answer
 
   private def attempt(
-      messages: List[RequestMessage]
+      messages: List[RequestMessage],
+      round: Int
   ): ZIO[Any, RaiderError, AttemptResult] =
     val toolDefs = tools.names.map { n =>
       tools.lookup(n).map { t =>
@@ -164,11 +198,38 @@ final case class AgentLoop(
       case None      => messages
     val request =
       ModelRequest(model, allMessages, AgentLoop.MaxOutputTokens, toolDefs)
+    // Observed wall time of the stream pass (honest, never invented)
+    val startedAt = System.currentTimeMillis()
     trace(
-      raider.core.trace.TraceEvent.ModelCall(AgentLoop.now(), -1, messages.size)
+      raider.core.trace.TraceEvent
+        .ModelCall(AgentLoop.now(), round, messages.size)
     ) *>
+      // RELIABLE, bounded (RAI-058): the run is about to wait for the Model
+      // slot; a publish Backpressure is absorbed and the run continues
+      ev(_.waitingSlot) *>
       admission.withSlot(SlotKind.Model, root, attemptEstimate, None):
-        ZIO.scoped(collect(backend.stream(request))).map(r => (r, MicroUsd(0)))
+        ev(_.modelCallStarted(round, model, messages.size)) *>
+          ZIO
+            .scoped(collect(backend.stream(request)))
+            .map(r => (r, MicroUsd(0)))
+            // Finished on success AND on failure: the call has terminated;
+            // usage is honestly unknown (no cost is known at this level)
+            .tapBoth(
+              _ =>
+                ev(
+                  _.modelCallFinished(
+                    round,
+                    System.currentTimeMillis() - startedAt
+                  )
+                ),
+              _ =>
+                ev(
+                  _.modelCallFinished(
+                    round,
+                    System.currentTimeMillis() - startedAt
+                  )
+                )
+            )
 
   private def collect(
       events: ZStream[Scope, RaiderError, ModelEvent]
@@ -200,12 +261,14 @@ final case class AgentLoop(
     * `x.call.y` member-select chains here, so no such chain survives.
     */
   private def dispatch(
-      toolCall: ToolCall
+      toolCall: ToolCall,
+      round: Int
   ): ZIO[Any, RaiderError, RequestMessage] =
     // NOTE: one select per val — Scala 3.9 chokes (E046 cyclic) on
     // `x.call.y` member-select chains in this file, so none survive.
     val callName = extractName(toolCall)
     val callId: ToolCallId = extractCallId(toolCall)
+    val callIdStr = callId.value
     val argsJson = extractArgs(toolCall)
     tools.lookup(callName) match
       case None =>
@@ -213,12 +276,21 @@ final case class AgentLoop(
         trace(
           raider.core.trace.TraceEvent.ToolCallRefused(
             AgentLoop.now(),
-            -1,
+            round,
             callName,
-            callId.value,
+            callIdStr,
             "unknown_tool"
           )
         ) *>
+          // Documented refusal outcome (RAI-058): ToolFinished(Failed)
+          // WITHOUT a preceding ToolStarted — the tool never started
+          ev(
+            _.toolFinished(
+              callIdStr,
+              callName,
+              ToolOutcome.Failed(LoopEvents.refusedUnknownTool)
+            )
+          ) *>
           ZIO.succeed:
             val nameJson = callName.toJson
             toolMessage(
@@ -229,44 +301,95 @@ final case class AgentLoop(
         Json.decoder.decodeJson(argsJson) match
           case Left(err) =>
             val errJson = err.toJson
-            ZIO.succeed(
-              toolMessage(
-                callId,
-                s"""{"error":"invalid_arguments","detail":$errJson}"""
+            // Documented refusal outcome (RAI-058), symmetric to unknown tool
+            ev(
+              _.toolFinished(
+                callIdStr,
+                callName,
+                ToolOutcome.Failed(LoopEvents.refusedInvalidArgs)
               )
-            )
+            ) *>
+              ZIO.succeed(
+                toolMessage(
+                  callId,
+                  s"""{"error":"invalid_arguments","detail":$errJson}"""
+                )
+              )
           case Right(_) =>
             trace(
               raider.core.trace.TraceEvent.ToolCallStarted(
                 AgentLoop.now(),
-                -1,
+                round,
                 tool.name,
-                callId.value,
+                callIdStr,
                 argsJson.take(200)
               )
             ) *>
+              // RELIABLE, bounded (RAI-058): about to wait for the Tool slot
+              ev(_.waitingSlot) *>
               admission
                 .withSlotFree(SlotKind.Tool, root, None):
                   ZIO.scoped:
-                    tool
-                      .invoke(argsJson)
-                      .timeout(Duration.fromMillis(tool.timeoutMs))
-                      .flatMap:
-                        case None =>
-                          ZIO.fail(
-                            RaiderError.DeadlineExceeded(
-                              s"tool '${tool.name}' exceeded timeoutMs=${tool.timeoutMs}"
+                    ev(_.toolStarted(callIdStr, tool.name, argsJson)) *>
+                      // Interruption during the call bypasses tapBoth AND
+                      // catchAllCause alike (ZIO interruption is not a catchable
+                      // cause) — the honest Cancelled outcome is therefore
+                      // registered as a finalizer: onInterrupt runs it on the
+                      // interrupted fiber before it dies, uninterruptibly, so
+                      // the emission completes and is never lost. Scoped to the
+                      // call: a refusal before ToolStarted emits nothing.
+                      (tool
+                        .invoke(argsJson)
+                        .timeout(Duration.fromMillis(tool.timeoutMs))
+                        .flatMap:
+                          case None =>
+                            ZIO.fail(
+                              RaiderError.DeadlineExceeded(
+                                s"tool '${tool.name}' exceeded timeoutMs=${tool.timeoutMs}"
+                              )
+                            )
+                          case Some(output) => ZIO.succeed(output)
+                        )
+                        .onInterrupt(
+                          ZIO.uninterruptible(
+                            ev(
+                              _.toolFinished(
+                                callIdStr,
+                                tool.name,
+                                ToolOutcome.Cancelled
+                              )
                             )
                           )
-                        case Some(output) => ZIO.succeed(output)
+                        )
                 .flatMap(output => deliver(toolCall, tool, output))
+                // ToolFinished on EVERY definitive exit, including failure:
+                // timeout → Timeout, cancellation refusal → Cancelled,
+                // anything else → Failed(reason) (RAI-058)
+                .tapBoth(
+                  err =>
+                    ev(
+                      _.toolFinished(
+                        callIdStr,
+                        tool.name,
+                        AgentLoop.toolOutcomeOf(err)
+                      )
+                    ),
+                  _ =>
+                    ev(
+                      _.toolFinished(
+                        callIdStr,
+                        tool.name,
+                        ToolOutcome.Succeeded
+                      )
+                    )
+                )
                 .tap(resultMsg =>
                   trace(
                     raider.core.trace.TraceEvent.ToolCallFinished(
                       AgentLoop.now(),
-                      -1,
+                      round,
                       tool.name,
-                      callId.value,
+                      callIdStr,
                       resultMsg.content.take(300),
                       success = true
                     )
@@ -348,6 +471,20 @@ object AgentLoop:
   private[loop] val MaxToolResultChars = 2000 // truncate large tool results
 
   private def now(): String = java.time.Instant.now().toString
+
+  /** Maps a DEFINITIVE tool dispatch failure to its observed outcome (RAI-058):
+    * `DeadlineExceeded` (tool timeout) → `Timeout`; a post-permit root
+    * cancellation refusal → `Cancelled`; everything else → `Failed(reason)`
+    * with the typed error detail (bounded). Unclear stays unclear: no outcome
+    * is invented beyond the typed error itself.
+    */
+  private[loop] def toolOutcomeOf(err: RaiderError): ToolOutcome =
+    err match
+      case _: RaiderError.DeadlineExceeded => ToolOutcome.Timeout
+      case _: RaiderError.Cancelled        => ToolOutcome.Cancelled
+      case other =>
+        ToolOutcome.Failed(other.detail.take(LoopEvents.maxReasonChars))
+
 end AgentLoop
 
 private[loop] sealed trait AttemptResult

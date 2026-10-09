@@ -1,8 +1,10 @@
 package raider.cli
 
-import raider.cli.run.{CliArgs, HeadlessRunner}
+import raider.cli.run.{CliArgs, HeadlessRunner, PluginCli}
 import zio.Unsafe
+import zio.json.{DeriveJsonEncoder, EncoderOps, JsonEncoder}
 
+import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** Headless entrypoint (RAI-022 slice): stdout JSON result line, stderr
@@ -51,24 +53,88 @@ object Main:
 
   private val BoundedStopMillis = 5000L
 
+  // ---------------------------------------------------------------------------
+  // `plugin` subcommand routing (RAI-083, P4.B completion)
+  // ---------------------------------------------------------------------------
+
+  /** Failure wire shape of the plugin command: ONE plain-JSON line on stdout
+    * (mirrors `PluginCli.FailureOut` — the error text stays a single field).
+    */
+  private final case class PluginFailure(error: String)
+
+  private object PluginFailure:
+    given JsonEncoder[PluginFailure] = DeriveJsonEncoder.gen[PluginFailure]
+
+  /** RAI-083: the `plugin list|install <jar>|remove <name>|enable <name>|
+    * disable <name>` subcommand routes BEFORE the CliArgs parse (and before
+    * chat), so plugin arguments are never interpreted as run/chat flags. The
+    * catalog directory is `PluginCli.defaultPluginsDir` (honors
+    * `RAIDER_PLUGINS_DIR`); the dispatch itself is `PluginCli.execute` — the
+    * accepted RAI-075 core, no second validation logic (ADR-025 §4).
+    *
+    * Returns None when argv does not target `plugin` (chat/run fall through
+    * unchanged); otherwise the JSON line for stdout plus the exit code per
+    * result.scala (ci-runtime §8): 0 success, `ExitCodes.ConfigInvalid` (21)
+    * typed failure.
+    *
+    * The explicit `pluginsDir` parameter is the test seam (a JVM cannot mutate
+    * its own environment — same slice boundary as `PluginCli.execute`); `main`
+    * passes the production default. Pure routing: no stdout writes, no
+    * `System.exit` — parallel Main-level calls are safe (PLCLI-03).
+    */
+  def pluginCommand(
+      argv: Array[String],
+      pluginsDir: Path
+  ): Option[(Int, String)] =
+    if argv.nonEmpty && argv(0) == "plugin" then
+      Some(
+        PluginCli.execute(argv.toList.drop(1), pluginsDir) match
+          case Right(json) => (raider.core.result.ExitCodes.Success, json)
+          case Left(detail) =>
+            (
+              raider.core.result.ExitCodes.ConfigInvalid,
+              PluginFailure(detail).toJson
+            )
+      )
+    else None
+
   def main(argv: Array[String]): Unit =
+    // RAI-083: `plugin ...` dispatch happens BEFORE the run/chat parsing.
+    pluginCommand(argv, PluginCli.defaultPluginsDir()) match
+      case Some((code, line)) =>
+        System.out.println(line)
+        // System.exit does not flush piped stdout: flush explicitly
+        System.out.flush()
+        System.exit(code)
+      case None => () // fall through to the unchanged chat/run paths below
+
     // `chat` mode: interactive session with context continuity
     if argv.nonEmpty && argv(0) == "chat" then
-      Unsafe.unsafe { implicit u =>
-        val exitCode = zio.Runtime.default.unsafe
-          .run(
-            raider.cli.chat.ChatLoop.run(
-              provider = argOr(argv, "--provider", "openai"),
-              baseUrl = argOr(argv, "--base-url", "http://127.0.0.1:8081/v1"),
-              model = argOr(argv, "--model", detectModel()),
-              apiKey = argOr(argv, "--api-key", "no-key"),
-              workspace = argOrOpt(argv, "--workspace"),
-              resume = argOrOpt(argv, "--resume")
+      // RAI-064: --api-key is REMOVED — reject it with a typed error pointing
+      // at the env path. Secrets must not appear in argv/shell history, and the
+      // value is NEVER echoed (only the static hint is printed).
+      if argv.contains("--api-key") then
+        System.err.println(
+          "raider: RA-CFG: --api-key is removed: secrets must not appear in " +
+            "argv/shell history; set RAIDER_API_KEY (env) or RAIDER_API_KEY_CMD " +
+            "(helper) instead"
+        )
+        System.exit(raider.core.result.ExitCodes.ConfigInvalid)
+      else
+        Unsafe.unsafe { implicit u =>
+          val exitCode = zio.Runtime.default.unsafe
+            .run(
+              raider.cli.chat.ChatLoop.run(
+                provider = argOr(argv, "--provider", "openai"),
+                baseUrl = argOr(argv, "--base-url", "http://127.0.0.1:8081/v1"),
+                model = argOr(argv, "--model", detectModel()),
+                workspace = argOrOpt(argv, "--workspace"),
+                resume = argOrOpt(argv, "--resume")
+              )
             )
-          )
-          .getOrThrow()
-        System.exit(exitCode)
-      }
+            .getOrThrow()
+          System.exit(exitCode)
+        }
     else
       CliArgs.parse(argv.toList) match
         case Left(err) =>

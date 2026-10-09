@@ -112,6 +112,39 @@ python3 scripts/quality/quality.py verify artifacts/quality/<run>/manifest.json 
 make quality-full                             # everything local (test+fmt+scan+gates+smokes)
 ```
 
+**Change detection (RAI-054).** Two baseline sources, same
+classifier/evidence contract — never a second, weaker runner:
+
+- **Git mode** (default): `git status --porcelain -z --untracked-files=all` in
+  the repo root — staged, unstaged, untracked and deleted paths; renames
+  expand as delete+add so the origin keeps its profiles. Git-ignored files are
+  invisible here.
+- **Manifest mode** (snapshot lanes without `.git`): `--base-manifest P` or
+  `QUALITY_BASE_MANIFEST=P` diffs against an immutable inventory manifest
+  (created once with `python3 scripts/quality/quality.py inventory --out P`).
+  The diff covers added/modified/deleted paths, mode and symlink target; a
+  missing or corrupt baseline is a hard error. Record
+  `Git unavailable: isolated snapshot` in your report and never fall back to
+  running checks in a shared root checkout.
+- A clean tree (either mode) selects the minimum `fast` profile; no git AND no
+  manifest is a hard error, never a silent fast run.
+- Evidence run ids are `<YYYYmmdd-HHMMSS>-<pid>-<seq>` — parallel executes get
+  distinct run directories.
+
+**Profile classification.** The classifier maps each changed file through
+`path_profiles` in the registry to a per-file profile list
+(`{path: [profiles]}`): `modules/|contracts/` → static+unit+contracts,
+`docs/|README|AGENTS.md` → docs, `scripts/` → self+static, build files →
+static+contracts, and so on. A changed path matching NO pattern is a hard
+`__unmapped__` refusal — extend the registry, don't bypass it. The executed
+plan is the union over changed files; `make quality-changed` (no
+`QUALITY_EXECUTE`) prints the plan without running anything.
+
+**Parallel lanes.** Isolated workers work in separate worktrees or snapshot
+copies with their own baseline; shared contracts, `build.sbt`, the gate
+registry and the board each have a single owner. Full rules and the
+assignment template: `docs/parallel-development.md`.
+
 Profiles: `fast` (9-gate minimum), `static`, `unit`, `contracts`, `docs`,
 `runtime`, `tools`, `transport` (provider stands), `repl` (tests + REPL
 smoke), `ci` (tests + CLI smoke). Evidence binds to the source fingerprint —
