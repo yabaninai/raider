@@ -71,43 +71,50 @@ final class ReadTool(workspace: Workspace):
       )
     else
       resolveSafe(relativePath).flatMap { real =>
-        ZIO
-          .attemptBlocking {
-            val bytes = Files.readAllBytes(real)
-            if bytes.contains(0.toByte) then
-              Left(
-                RaiderError.ToolFailed(
-                  s"binary file (NUL byte) is not read as text: $relativePath"
-                )
-              )
-            else
-              val text =
-                new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
-              val lines =
-                if text.isEmpty then Vector.empty
-                else text.split("\n", -1).toVector.map(_.stripSuffix("\r"))
-              val total = lines.length
-              val from = math.min(offsetLine, total)
-              val until = math.min(from + maxLines, total)
-              Right(
-                ReadResult(
-                  content = lines.slice(from, until).toList,
-                  totalLines = total,
-                  truncated = until < total,
-                  sha256 = ReadTool.sha256Hex(bytes),
-                  bytes = bytes.length
-                )
-              )
-          }
-          .mapError(e =>
-            RaiderError.ToolFailed(
-              s"read failed for '$relativePath': ${e.getMessage}"
+        if Files.isDirectory(real) then
+          ZIO.fail(
+            RaiderError.InputValidation(
+              s"fs_read expects a regular file, got a directory: $relativePath (use fs_search/fs_tree/proc_run ls for directories)"
             )
           )
-          .flatMap {
-            case Left(err)  => ZIO.fail(err)
-            case Right(res) => ZIO.succeed(res)
-          }
+        else
+          ZIO
+            .attemptBlocking {
+              val bytes = Files.readAllBytes(real)
+              if bytes.contains(0.toByte) then
+                Left(
+                  RaiderError.InputValidation(
+                    s"binary file (NUL byte) is not read as text: $relativePath"
+                  )
+                )
+              else
+                val text =
+                  new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
+                val lines =
+                  if text.isEmpty then Vector.empty
+                  else text.split("\n", -1).toVector.map(_.stripSuffix("\r"))
+                val total = lines.length
+                val from = math.min(offsetLine, total)
+                val until = math.min(from + maxLines, total)
+                Right(
+                  ReadResult(
+                    content = lines.slice(from, until).toList,
+                    totalLines = total,
+                    truncated = until < total,
+                    sha256 = ReadTool.sha256Hex(bytes),
+                    bytes = bytes.length
+                  )
+                )
+            }
+            .mapError(e =>
+              RaiderError.ToolFailed(
+                s"read failed for '$relativePath': ${e.getMessage}"
+              )
+            )
+            .flatMap {
+              case Left(err)  => ZIO.fail(err)
+              case Right(res) => ZIO.succeed(res)
+            }
       }
 
   /** Deleted/changed mid-read: Files.readAllBytes on a vanished file is a typed
@@ -130,7 +137,14 @@ final class ReadTool(workspace: Workspace):
               )
             )
           else if !Files.exists(raw) then
-            Left(RaiderError.ToolFailed(s"file not found: $relativePath"))
+            // Model-correctable domain condition (ADR-026): a missing path is
+            // structured feedback the model can act on, not a crash-flavored
+            // defect — InputValidation rides the toolOf policy-denial channel.
+            Left(
+              RaiderError.InputValidation(
+                s"file not found: $relativePath (verify the path; use fs_search/fs_tree to list)"
+              )
+            )
           else
             val real = raw.toRealPath()
             if !real.startsWith(workspace.rootReal) then

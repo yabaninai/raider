@@ -1,0 +1,41 @@
+{
+  "runId": "run-tiny-001",
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "phase",
+      "name": "investigate"
+    },
+    {
+      "id": "n1",
+      "kind": "model_call"
+    },
+    {
+      "id": "n2",
+      "kind": "tool_call",
+      "recovery": "ReadOnly"
+    },
+    {
+      "id": "n3",
+      "kind": "tool_call",
+      "recovery": "Mutating"
+    }
+  ],
+  "edges": [
+    {
+      "from": "n0",
+      "to": "n1",
+      "kind": "control"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "kind": "control"
+    },
+    {
+      "from": "n1",
+      "to": "n3",
+      "kind": "control"
+    }
+  ]
+}

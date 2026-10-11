@@ -7,8 +7,7 @@ import raider.runtime.events.{
   EventPayload,
   SessionReducer,
   SessionSnapshot,
-  UsageSnapshot,
-  WaitReason
+  StatusText
 }
 import raider.runtime.jobs.JobStatus
 import raider.cli.run.EventExport
@@ -69,55 +68,51 @@ object StatusLine:
             Fold(snap, round, Some(e.payload))
         )
 
-  /** Render ONE line from a fold. Pure and total; never multi-line. The latest
-    * envelope wins over the coarse job status (the job layer carries no model
-    * round / wait reason — those live in the loop's events); a job with no
-    * events at all renders as `queued`.
+  /** Render ONE line from a fold. Pure and total; never multi-line.
+    *
+    * RAI-097: every status word and the counters are single-sourced in
+    * [[raider.runtime.events.StatusText]] — the chat carries NO local
+    * status/cost formatting anymore. What remains local is the RAI-060
+    * latest-event policy plus the loop-only facts a snapshot cannot carry: the
+    * model round number and the retry backoff delay (the loop emits
+    * `Waiting(Slot)` right before every model/tool dispatch while the job
+    * status itself stays Running, so the LATEST event's word wins over the
+    * folded status; the folded snapshot body takes over only when neither the
+    * latest event nor the round/active-tool tracks carry a word). A folded
+    * terminal status outranks everything: Terminal is exactly one event and the
+    * last one (RAI-059 job authority).
     */
   def render(f: Fold): String =
     val snap = f.snapshot
-    val body =
-      if JobStatus.terminal.contains(snap.status) then
-        s"terminal ${lower(snap.status)}"
-      else
-        f.latest match
-          case None =>
-            if snap.status == JobStatus.Queued then "queued" else fallback(f)
-          case Some(EventPayload.RetryScheduled(_, delayMs, _)) =>
-            s"retry in ${delayMs}ms"
-          case Some(EventPayload.ToolStarted(_, tool, _))  => s"tool $tool"
-          case Some(EventPayload.ToolProgress(_, tool, _)) => s"tool $tool"
-          case Some(EventPayload.Waiting(reason)) =>
-            s"waiting(${lower(reason)})"
-          case Some(EventPayload.ModelCallStarted(r, _, _)) =>
-            s"model round $r"
-          case Some(EventPayload.ModelCallFinished(r, _, _)) =>
-            s"model round $r"
-          case Some(EventPayload.JobStatusChanged(_, to, reason)) =>
-            to match
-              case JobStatus.Waiting =>
-                s"waiting(${reason.fold("unknown")(lower)})"
-              case JobStatus.WaitingApproval => "waiting(approval)"
-              case JobStatus.Cancelling      => "cancelling"
-              case _                         => fallback(f)
-          case _ => fallback(f)
-    s"$body | ${cost(snap.usage)}"
+    val body: String =
+      snap.status match
+        case t: JobStatus.Terminal => StatusText.terminalText(t)
+        case _ =>
+          word(f).getOrElse:
+            snap.activeTool match
+              case Some((tool, _)) => StatusText.toolText(tool)
+              case None =>
+                f.round.fold(StatusText.body(snap))(r => s"model round $r")
+    s"$body | ${StatusText.counters(snap)}"
 
-  private def fallback(f: Fold): String =
-    f.snapshot.activeTool match
-      case Some((tool, _)) => s"tool $tool"
-      case None            => f.round.fold("running")(r => s"model round $r")
-
-  private def lower(s: Any): String = s.toString.toLowerCase
-
-  /** Honest cost rendering (ADR-024 §2.4): a cost nobody observed is UNKNOWN,
-    * never $0 — the pristine (no BudgetChanged yet) snapshot and the loop's
-    * `unknown = true` usage both render as `cost unknown`.
-    */
-  private def cost(u: UsageSnapshot): String =
-    if u.unknown || (u.reserved.value == 0L && u.observed.value == 0L) then
-      "cost unknown"
-    else f"cost $$${u.observed.value.toDouble / 1000000.0}%.6f"
+  /** The latest event's status word, via the frozen StatusText formatters. */
+  private def word(f: Fold): Option[String] =
+    f.latest match
+      case Some(EventPayload.RetryScheduled(_, delayMs, _)) =>
+        Some(s"retry in ${delayMs}ms") // loop-only fact: the backoff delay
+      case Some(EventPayload.ModelCallStarted(r, _, _)) =>
+        Some(s"model round $r") // loop-only fact: the round number
+      case Some(EventPayload.ModelCallFinished(r, _, _)) =>
+        Some(s"model round $r")
+      case Some(EventPayload.ToolStarted(_, tool, _)) =>
+        Some(StatusText.toolText(tool))
+      case Some(EventPayload.ToolProgress(_, tool, _)) =>
+        Some(StatusText.toolText(tool))
+      case Some(EventPayload.Waiting(reason)) =>
+        Some(StatusText.waitingText(Some(reason)))
+      case Some(EventPayload.JobStatusChanged(_, to, reason)) =>
+        StatusText.statusWord(to, reason)
+      case _ => None
 
   /** A started renderer: its fiber and the highest seq folded so far (the
     * catch-up probe used before interrupting the fiber).

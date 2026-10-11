@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "name": "raider",
+    "version": "0.1.0-SNAPSHOT",
+    "scalaVersion": "3.9.0",
+    "jdkVersion": "21"
+  },
+  "runId": "run-deep-001",
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "phase",
+      "parentId": null,
+      "seq": 1,
+      "atMs": 0,
+      "inputs": [],
+      "dataRef": "d0"
+    },
+    {
+      "id": "n1",
+      "kind": "model_call",
+      "parentId": "n0",
+      "seq": 2,
+      "atMs": 95,
+      "inputs": [],
+      "dataRef": "d1"
+    },
+    {
+      "id": "n2",
+      "kind": "delegation",
+      "parentId": "n1",
+      "seq": 3,
+      "atMs": 260,
+      "inputs": [],
+      "dataRef": "d2"
+    },
+    {
+      "id": "n3",
+      "kind": "model_call",
+      "parentId": "n2",
+      "seq": 4,
+      "atMs": 700,
+      "inputs": [
+        "n1"
+      ],
+      "dataRef": "d3"
+    },
+    {
+      "id": "n4",
+      "kind": "tool_call",
+      "parentId": "n3",
+      "seq": 5,
+      "atMs": 1180,
+      "inputs": [],
+      "dataRef": "d4"
+    }
+  ],
+  "data": {
+    "d0": {
+      "name": "plan",
+      "note": "nightly delegation dry-run"
+    },
+    "d1": {
+      "model": "mock-coder",
+      "round": 1,
+      "prompt": "Разбей задачу на подзадачи и делегируй реализацию.",
+      "response": "Делегирую реализацию фикса агенту worker.",
+      "usage": {
+        "reservedMicroUsd": 2000,
+        "observedMicroUsd": 1850,
+        "unknown": false
+      }
+    },
+    "d2": {
+      "childJobId": "job-0042",
+      "agent": "worker"
+    },
+    "d3": {
+      "model": "mock-coder",
+      "round": 1,
+      "prompt": "Реализуй подзадачу: добавь недостающий тест для parser.",
+      "response": "Готовлю изменение и запускаю проверку.",
+      "usage": null
+    },
+    "d4": {
+      "tool": "grep_search",
+      "callId": "call-091",
+      "recovery": "Idempotent",
+      "outcome": null,
+      "argsSummary": "pattern=TODO limit=20",
+      "resultTail": null
+    }
+  }
+}

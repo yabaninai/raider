@@ -4,13 +4,14 @@ import raider.core.*
 import zio.{Duration, Scope, UIO, ZIO}
 import zio.stream.ZStream
 
-/** Rate-limit backoff decorator (nightly Phase 4.2): retries ONLY
-  * `RaiderError.ProviderRateLimit` (HTTP 429) with exponential backoff — 1s,
-  * 2s, 4s by default, at most `maxRetries` (3) re-attempts. Every other error
-  * propagates unchanged on the first occurrence; a rate-limited attempt is
-  * unambiguous (the request was NOT accepted), so retrying it violates no
-  * mutational-call trust boundary (model calls have no side effects by
-  * contract).
+/** Rate-limit/backoff decorator (nightly Phase 4.2): retries
+  * `RaiderError.ProviderRateLimit` (HTTP 429) and
+  * `RaiderError.ProviderUnavailable` (502/503 — retryable per the §14 taxonomy)
+  * with exponential backoff — 1s, 2s, 4s by default, at most `maxRetries` (3)
+  * re-attempts. Every other error propagates unchanged on the first occurrence;
+  * a rate-limited attempt is unambiguous (the request was NOT accepted), so
+  * retrying it violates no mutational-call trust boundary (model calls have no
+  * side effects by contract).
   *
   * The decorator is transparent on success — events pass through unchanged.
   *
@@ -44,8 +45,11 @@ final case class RateLimitRetries(
     underlying
       .stream(input)
       .catchAll:
-        case rl: RaiderError.ProviderRateLimit if attemptNo < maxRetries =>
-          // exponential: 1s, 2s, 4s, ... (one value feeds hook AND sleep)
+        case rl @ (_: RaiderError.ProviderRateLimit |
+            _: RaiderError.ProviderUnavailable) if attemptNo < maxRetries =>
+          // exponential: 1s, 2s, 4s, ... (one value feeds hook AND sleep);
+          // ProviderUnavailable (502/503) is retryable by the error taxonomy
+          // (retryable=true) and only occurs before any event is emitted
           val delay =
             Duration.fromSeconds(
               baseDelay.getSeconds * math.pow(2, attemptNo).toLong

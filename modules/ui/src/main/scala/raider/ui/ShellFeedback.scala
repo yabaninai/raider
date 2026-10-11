@@ -50,6 +50,20 @@ enum ShellFeedback:
   /** `:state <scope>` with no store attached (card RAI-088): a typed hint. */
   case StateStoreMissing(scope: String)
 
+  /** `:aux` (card LIN-04A): the auxiliary tab screen — title + raw provider
+    * content; [[ShellFeedback.render]] splits it into the exact lines of ONE
+    * printAbove block.
+    */
+  case AuxTab(title: String, content: String)
+
+  /** `:aux` with no auxiliary tab registered (card LIN-04A): a typed hint. */
+  case AuxTabMissing
+
+  /** `:aux` when the provider reports unavailable (card LIN-04A, LIN4-02 stub):
+    * a typed hint — the content is not read.
+    */
+  case AuxTabUnavailable(title: String)
+
   case Hint(error: ShellInputError)
   case Failure(error: RegistryError)
   case Quit
@@ -86,6 +100,12 @@ object ShellFeedback:
         ShellScreens.state(scope, usage)
       case ShellFeedback.StateStoreMissing(scope) =>
         ShellScreens.stateMissing(scope)
+      case ShellFeedback.AuxTab(title, content) =>
+        AuxTabRenderer.screen(title, content)
+      case ShellFeedback.AuxTabMissing =>
+        Vector("hint: no auxiliary tab is registered")
+      case ShellFeedback.AuxTabUnavailable(title) =>
+        Vector(s"hint: auxiliary tab [$title] is not available")
       case ShellFeedback.Hint(error) =>
         ("hint: " + error.message) +: error.hints.map("  " + _)
       case ShellFeedback.Failure(error) =>

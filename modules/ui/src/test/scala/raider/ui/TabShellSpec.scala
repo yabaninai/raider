@@ -6,6 +6,8 @@ import raider.runtime.events.{
   EventHub,
   EventPayload,
   LineTail,
+  SessionReducer,
+  StatusText,
   WaitReason
 }
 import raider.runtime.jobs.JobStatus
@@ -164,12 +166,18 @@ object TabShellSpec extends ZIOSpecDefault:
       status: JobStatus,
       unread: Long
   ): TabView =
+    // The status line is the ONE canonical StatusText render (RAI-097) over a
+    // synthetic snapshot carrying the requested status — never a local string.
+    val snap = SessionReducer
+      .initial(JobId(s"job-$id"), RootId(s"root-$id"), SessionId(""))
+      .copy(status = status)
     TabView(
       TabId(id),
       label,
       JobId(s"job-$id"),
       RootId(s"root-$id"),
       status,
+      StatusText.render(snap),
       unread,
       0L
     )
@@ -276,8 +284,10 @@ object TabShellSpec extends ZIOSpecDefault:
         assertTrue(
           TabBarRenderer.tabBar(Nil, None) ==
             Vector("no open tabs (start one with :new <label>)"),
-          bar(0) == " 1. job-a [Queued]",
-          bar(1) == "*2. job-b [Running] (3 unread)",
+          // the status line is the canonical StatusText render (RAI-097) —
+          // the same literal fixture line as the CLI StatusTextSpec (UNI-01)
+          bar(0) == " 1. job-a [queued | cost unknown]",
+          bar(1) == "*2. job-b [running | cost unknown] (3 unread)",
           bar(2) == TabBarRenderer.hintBar
         )
       },
@@ -656,7 +666,9 @@ object TabShellSpec extends ZIOSpecDefault:
                   _ <- in.offer(":tabs")
                   _ <- collectUntil(out, seen, sec15)(
                     _.exists(l =>
-                      l.startsWith("*1. build") && l.contains("[Waiting]")
+                      l.startsWith("*1. build") && l.contains(
+                        "[waiting(slot) | cost unknown]"
+                      )
                     )
                   )
                   // :prev returns to repl — still ONE command
@@ -668,7 +680,9 @@ object TabShellSpec extends ZIOSpecDefault:
                   _ <- in.offer(":tabs")
                   _ <- collectUntil(out, seen, sec15)(
                     _.exists(l =>
-                      l.startsWith("*2. repl") && l.endsWith("[Queued]")
+                      l.startsWith("*2. repl") && l.endsWith(
+                        "[queued | cost unknown]"
+                      )
                     )
                   )
                   seenAll <- seen.get

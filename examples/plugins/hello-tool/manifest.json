@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "hello-tool",
+  "version": "1.0.0",
+  "artifact": "hello-tool-1.0.0.jar",
+  "sha256": "f65bd144c2a51000d6b2227c024402063e458ef76afa75fc11631a86fe93b5f1",
+  "minApiVersion": 1,
+  "maxApiVersion": 1,
+  "capabilities": [
+    { "kind": "tool", "name": "hello.greet" }
+  ]
+}

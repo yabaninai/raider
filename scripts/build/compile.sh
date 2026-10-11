@@ -65,4 +65,16 @@ fi
 echo "negative fixture correctly rejected (intended type mismatch):"
 grep -m1 "Type Mismatch" artifacts/build/negative.log
 
+# RAI-096 follow-up (coordinator): examples/plugins fixture sources must stay
+# compilable against the product classes (SDK-03 gap from L37 — examples were
+# not covered by any compile gate). Same pinned dotc, product output $OUT.
+PLUGIN_SRC=$(find examples/plugins -path '*/src/main/*' -name '*.scala' -type f 2>/dev/null | sort)
+if [ -n "$PLUGIN_SRC" ]; then
+  PLG_OUT=artifacts/build/classes-examples-plugins
+  rm -rf "$PLG_OUT"; mkdir -p "$PLG_OUT"
+  echo "== compiling examples/plugins fixture plugins =="
+  # shellcheck disable=SC2086
+  java -cp "$COMPILER_CP" dotty.tools.dotc.Main -classpath "$RUNTIME_CP:$OUT" -d "$PLG_OUT" $PLUGIN_SRC || exit $?
+fi
+
 echo "BUILD OK: modules=$(echo "$SOURCES" | wc -l | tr -d ' ') scala files"

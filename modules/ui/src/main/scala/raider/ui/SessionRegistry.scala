@@ -6,7 +6,8 @@ import raider.runtime.events.{
   EventPayload,
   EventHub,
   SessionReducer,
-  SessionSnapshot
+  SessionSnapshot,
+  StatusText
 }
 import raider.runtime.jobs.JobStatus
 import zio.stream.ZStream
@@ -65,8 +66,11 @@ final case class ScrollbackView(
   *
   * `status` is read from the hub's folded snapshot (`EventHub.snapshot`) — the
   * authoritative job state; for a job that has published nothing it falls back
-  * to the tab's local initial state (`Queued`). `lastSeq` is the tab's own
-  * watermark: the last sequence folded into its buffers.
+  * to the tab's local initial state (`Queued`). `statusText` is the ONE
+  * canonical [[StatusText]] line over that SAME authoritative snapshot
+  * (RAI-097): the unified format with the CLI — the tab bar keeps no local
+  * duplicate render. `lastSeq` is the tab's own watermark: the last sequence
+  * folded into its buffers.
   */
 final case class TabView(
     id: TabId,
@@ -74,6 +78,7 @@ final case class TabView(
     jobId: JobId,
     rootId: RootId,
     status: JobStatus,
+    statusText: String,
     unreadCount: Long,
     lastSeq: Long
 )
@@ -616,12 +621,16 @@ object SessionRegistry:
         hubSnap <- hub.snapshot(t.jobId)
         unread <- t.unread.get
         label <- t.label.get
+        // The hub's folded snapshot is the authoritative job state; the ONE
+        // canonical status line renders over exactly that snapshot (RAI-097).
+        snap = hubSnap.getOrElse(local)
       yield TabView(
         t.id,
         label,
         t.jobId,
         t.rootId,
-        status = hubSnap.map(_.status).getOrElse(local.status),
+        status = snap.status,
+        statusText = StatusText.render(snap),
         unreadCount = unread,
         lastSeq = local.lastSeq
       )

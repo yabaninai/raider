@@ -1,0 +1,284 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Raider lineage-data (schemaVersion 1, FROZEN)",
+  "description": "Data resource of a Raider session lineage run (ADR-027, card LIN-02A). The generated lineage program carries no inline data: every node payload lives in `data` and is referenced by `dataRef`. This revision is frozen: any shape change is a new schemaVersion, never a silent change.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generator", "runId", "nodes", "data"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Frozen wire revision of this document; the only allowed value in this revision."
+    },
+    "generator": {
+      "type": "object",
+      "description": "Toolchain that produced the run (pinned environment, ADR-027 pinning).",
+      "additionalProperties": false,
+      "required": ["name", "version", "scalaVersion", "jdkVersion"],
+      "properties": {
+        "name": {
+          "const": "raider"
+        },
+        "version": {
+          "type": "string",
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$",
+          "description": "Semver of the generator build (e.g. 0.1.0-SNAPSHOT)."
+        },
+        "scalaVersion": {
+          "const": "3.9.0",
+          "description": "Pinned Scala 3 version of the language policy."
+        },
+        "jdkVersion": {
+          "type": "string",
+          "pattern": "^[0-9]+$",
+          "description": "JDK major version, string-encoded (e.g. \"21\")."
+        }
+      }
+    },
+    "runId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the recorded run (chat session, headless run or campaign run)."
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/node"
+      },
+      "description": "Call-graph nodes. Array order is causality order: a parent must appear before its children (parents-before-children)."
+    },
+    "data": {
+      "type": "object",
+      "description": "Node-specific payloads keyed by dataRef. Keys must be non-empty strings; every value must match exactly one node-data shape.",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "$ref": "#/definitions/nodeData"
+      }
+    }
+  },
+  "definitions": {
+    "nodeId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "parentId", "seq", "atMs", "inputs"],
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/nodeId",
+          "description": "Unique within the document (invariant checked by the reducer/validator)."
+        },
+        "kind": {
+          "enum": ["model_call", "tool_call", "delegation", "phase"]
+        },
+        "parentId": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/nodeId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Control (tree) edge. null for roots; otherwise a node that appears earlier in `nodes`."
+        },
+        "seq": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Run-scoped monotonically increasing node counter (canonical generators emit 1, 2, 3, ...)."
+        },
+        "atMs": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Offset from run start in milliseconds."
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/nodeId"
+          },
+          "uniqueItems": true,
+          "description": "Dataflow edges: nodeIds whose outputs this node consumes."
+        },
+        "dataRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Key into `data`. Required (non-null) for model_call and tool_call nodes; canonical generators emit it for every node kind."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "const": "model_call"
+              }
+            }
+          },
+          "then": {
+            "required": ["dataRef"]
+          }
+        },
+        {
+          "if": {
+            "required": ["kind"],
+            "properties": {
+              "kind": {
+                "const": "tool_call"
+              }
+            }
+          },
+          "then": {
+            "required": ["dataRef"]
+          }
+        }
+      ]
+    },
+    "modelCallData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "round", "prompt", "response", "usage"],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "round": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Full prompt text (ADR-027: prompts are stored whole, in the data resource, not in code)."
+        },
+        "response": {
+          "type": "string"
+        },
+        "usage": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["reservedMicroUsd", "observedMicroUsd", "unknown"],
+              "properties": {
+                "reservedMicroUsd": {
+                  "type": ["integer", "null"]
+                },
+                "observedMicroUsd": {
+                  "type": ["integer", "null"]
+                },
+                "unknown": {
+                  "type": "boolean"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "toolCallData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "callId", "recovery", "outcome", "argsSummary", "resultTail"],
+      "properties": {
+        "tool": {
+          "type": "string",
+          "minLength": 1
+        },
+        "callId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recovery": {
+          "enum": ["ReadOnly", "Idempotent", "Mutating"]
+        },
+        "outcome": {
+          "oneOf": [
+            {
+              "enum": ["Succeeded", "Failed", "Cancelled", "Timeout"]
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "null = the call had not finished when the artifact was written (unfinished node)."
+        },
+        "argsSummary": {
+          "type": "string"
+        },
+        "resultTail": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "delegationData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["childJobId", "agent"],
+      "properties": {
+        "childJobId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "phaseData": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "note"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "note": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "nodeData": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/modelCallData"
+        },
+        {
+          "$ref": "#/definitions/toolCallData"
+        },
+        {
+          "$ref": "#/definitions/delegationData"
+        },
+        {
+          "$ref": "#/definitions/phaseData"
+        }
+      ],
+      "description": "The four shapes are mutually exclusive (each requires a distinct key the others forbid), so oneOf acts as an exact discriminator. Which shape applies to a dataRef is fixed by the kind of the node referencing it (invariant checked by the reducer/validator)."
+    }
+  }
+}

@@ -19,6 +19,9 @@ import zio.{Queue, Scope, UIO, ZIO}
   *   - The `:plugins`/`:state` screens (RAI-088) read their data from the PURE
   *     [[ShellViews]] providers wired at construction — the shell itself
   *     performs no IO beyond the ONE writer/reader (terminal).
+  *   - The `:aux` screen (LIN-04A, ADR-027 §3.3) is the ONE auxiliary tab: a
+  *     pure [[AuxTabProvider]] wired at construction, display-only — switching
+  *     to it and back never touches the session registry.
   */
 object TabShell:
 
@@ -31,6 +34,10 @@ object TabShell:
   /** Run the shell until `:quit`/EOF. Scoped: the background tab-bar pump (and
     * every hub subscription it forks) is interrupted when the scope exits. The
     * terminal lifetime is the caller's ([[ShellTerminal.jline]] is scoped too).
+    *
+    * `aux` registers the ONE auxiliary tab (card LIN-04A, ADR-027 §3.3): a pure
+    * [[AuxTabProvider]] behind `:aux`, default none. It is display-only —
+    * switching to it and back never touches the session registry.
     */
   def run(
       hub: EventHub,
@@ -38,11 +45,12 @@ object TabShell:
       terminal: ShellTerminal,
       resolver: CloseChoiceResolver,
       config: Config = Config(),
-      views: ShellViews = ShellViews.detached
+      views: ShellViews = ShellViews.detached,
+      aux: Option[AuxTabProvider] = None
   ): ZIO[Scope, Throwable, Unit] =
     for
       pump <- TabBarPump.make(hub, registry, terminal)
-      _ <- loop(registry, terminal, resolver, config, pump, views)
+      _ <- loop(registry, terminal, resolver, config, pump, views, aux)
     yield ()
 
   private def loop(
@@ -51,7 +59,8 @@ object TabShell:
       resolver: CloseChoiceResolver,
       config: Config,
       pump: TabBarPump,
-      views: ShellViews
+      views: ShellViews,
+      aux: Option[AuxTabProvider]
   ): ZIO[Any, Throwable, Unit] =
     terminal.readLine(config.prompt).flatMap {
       case None => ZIO.unit // EOF: same as :quit
@@ -60,7 +69,7 @@ object TabShell:
         // Idle Ctrl+C (JLine already cleared the line) or a blank line: no
         // action, no output — drafts and tabs untouched.
         if trimmed.isEmpty then
-          loop(registry, terminal, resolver, config, pump, views)
+          loop(registry, terminal, resolver, config, pump, views, aux)
         else
           for
             tabs <- registry.tabs
@@ -70,7 +79,7 @@ object TabShell:
                 .parse(line, tabs, focused)
                 .fold(
                   err => ZIO.succeed(ShellFeedback.Hint(err)),
-                  cmd => ShellExecutor.run(cmd, registry, resolver, views)
+                  cmd => ShellExecutor.run(cmd, registry, resolver, views, aux)
                 )
             _ <- terminal.printAbove(ShellFeedback.render(feedback))
             _ <- afterCommand(feedback, pump)
@@ -81,7 +90,8 @@ object TabShell:
               resolver,
               config,
               pump,
-              views
+              views,
+              aux
             )
           yield ()
     }
@@ -109,12 +119,13 @@ object TabShell:
       resolver: CloseChoiceResolver,
       config: TabShell.Config,
       pump: TabBarPump,
-      views: ShellViews
+      views: ShellViews,
+      aux: Option[AuxTabProvider]
   ): ZIO[Any, Throwable, Unit] =
     feedback match
       case ShellFeedback.Quit => ZIO.unit
       case _ =>
-        loop(registry, terminal, resolver, config, pump, views)
+        loop(registry, terminal, resolver, config, pump, views, aux)
 
   /** Background tab-bar pump: one fiber reading signals; `Watch(jobId)`
     * subscribes to the hub for that job and re-renders the bar on EVERY

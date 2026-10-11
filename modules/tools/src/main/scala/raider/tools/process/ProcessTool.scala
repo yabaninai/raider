@@ -136,7 +136,15 @@ final class ProcessTool(
             )
           }
           .mapError(e =>
-            RaiderError.ToolFailed(s"process exec failed: ${e.getMessage}")
+            // Model-correctable spawn failures (ADR-026): missing program /
+            // bad argv is structured feedback; other IO stays fatal.
+            val msg = Option(e.getMessage).getOrElse("")
+            if msg.contains("error=2") || msg.contains("Cannot run program")
+            then
+              RaiderError.InputValidation(
+                s"program not found (check argv[0]): ${msg.take(120)}"
+              )
+            else RaiderError.ToolFailed(s"process exec failed: $msg")
           )
       }
 

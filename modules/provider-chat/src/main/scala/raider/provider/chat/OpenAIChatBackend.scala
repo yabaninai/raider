@@ -46,12 +46,15 @@ final class OpenAIChatBackend private (
     ZStream.unwrap:
       for
         body <- ZIO.fromEither(Wire.encodeRequest(input))
-        req = HttpRequest
+        baseReq = HttpRequest
           .newBuilder(URI.create(cfg.baseUrl + "/chat/completions"))
           .timeout(JDuration.ofMillis(cfg.callTimeoutMs))
           .header("Authorization", s"Bearer ${cfg.apiKey}")
           .header("Content-Type", "application/json")
           .POST(HttpRequest.BodyPublishers.ofString(body, UTF_8))
+        req = OpenAIChatBackend
+          .extraHeaders()
+          .foldLeft(baseReq)((b, h) => b.header(h._1, h._2))
           .build()
         resp <- ZIO
           .fromCompletionStage(
@@ -121,11 +124,42 @@ object OpenAIChatBackend:
             .build()
           new OpenAIChatBackend(cfg, client)
 
+  /** Operator opt-in (ADR-026 sibling): per-request extra HTTP headers for
+    * gateway attribution, e.g. RAIDER_OPENAI_EXTRA_HEADERS='X-Yabanin-Labels:
+    * task=RAI-003,worker=A'. Entries are "Name: value" separated by ';'.
+    * Default: none — the wire stays unchanged.
+    */
+  private def extraHeaders(): List[(String, String)] =
+    sys.env
+      .get("RAIDER_OPENAI_EXTRA_HEADERS")
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map: raw =>
+        raw
+          .split(';')
+          .toList
+          .flatMap: entry =>
+            entry.split(":", 2) match
+              case Array(k, v) if k.trim.nonEmpty => Some((k.trim, v.trim))
+              case _                              => None
+      .getOrElse(Nil)
+
 /** Wire codecs for the non-streaming Chat Completions slice. Explicit shapes
   * (no derivation for the wire): unknown provider fields are ignored, missing
   * mandatory fields are typed StreamProtocol failures, never guessed.
   */
 private[chat] object Wire:
+
+  // Operator opt-in for OpenAI-compatible upstreams that need an extra body
+  // fragment (e.g. Z.AI "thinking":{"type":"disabled"} — thinking-only finals
+  // yield empty content and fail RA-OUT). Default: absent, wire unchanged.
+  private def extraBodyFragment: String =
+    sys.env
+      .get("RAIDER_OPENAI_EXTRA_BODY")
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map(frag => s",$frag")
+      .getOrElse("")
 
   def encodeRequest(input: ModelRequest): Either[RaiderError, String] =
     val msgs = input.messages
@@ -145,7 +179,7 @@ private[chat] object Wire:
           .mkString(",\"tools\":[", ",", "]")
     Right:
       s"""{"model":${input.model.toJson},"messages":$msgs,""" +
-        s""""max_tokens":${input.maxOutputTokens}$toolsJson}"""
+        s""""max_tokens":${input.maxOutputTokens}$toolsJson$extraBodyFragment}"""
 
   // ---- response wire ----
   private final case class FunctionWire(name: String, arguments: String)

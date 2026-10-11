@@ -138,3 +138,11 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-099** [M1 acceptance card (milestone evidence)](m1.md); dependencies: RAI-062, RAI-060; profiles: docs.
 - **RAI-100** [GitHub/GitLab wrappers wiring](m2-p2.md); dependencies: RAI-078; profiles: static, unit, contracts, ci.
 - **RAI-101** [Plugin update/rollback lifecycle](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.
+- **LIN-01** [SessionGraph-модель и редуктор events → граф](lineage.md); dependencies: RAI-004; profiles: static, unit, contracts.
+- **LIN-02** [Проекция граф → валидная Scala-программа](lineage.md); dependencies: LIN-01, RAI-017; profiles: static, unit, contracts, docs.
+- **LIN-03** [Лайв-инкрементальная поддержка графа и проекции](lineage.md); dependencies: LIN-01, LIN-02; profiles: static, unit, runtime.
+- **LIN-04** [Вкладка Lineage в TUI](lineage.md); dependencies: LIN-03; profiles: static, unit, repl, docs.
+- **LIN-05** [Replay-recorded интерпретатор и компаратор графов](lineage.md); dependencies: LIN-02, LIN-03; profiles: static, unit, contracts, eval.
+- **LIN-06** [Live re-run, изоляция мутаций, diff-отчёт](lineage.md); dependencies: LIN-05; profiles: static, unit, runtime, security.
+- **LIN-07** [Частичный replay фаз/поддеревьев](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts.
+- **LIN-08** [Области, пиннинг, каталог](lineage.md); dependencies: LIN-03, LIN-05; profiles: static, unit, docs.

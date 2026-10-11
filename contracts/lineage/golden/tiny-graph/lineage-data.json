@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "generator": {
+    "name": "raider",
+    "version": "0.1.0-SNAPSHOT",
+    "scalaVersion": "3.9.0",
+    "jdkVersion": "21"
+  },
+  "runId": "run-tiny-001",
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "phase",
+      "parentId": null,
+      "seq": 1,
+      "atMs": 0,
+      "inputs": [],
+      "dataRef": "d0"
+    },
+    {
+      "id": "n1",
+      "kind": "model_call",
+      "parentId": "n0",
+      "seq": 2,
+      "atMs": 120,
+      "inputs": [],
+      "dataRef": "d1"
+    },
+    {
+      "id": "n2",
+      "kind": "tool_call",
+      "parentId": "n1",
+      "seq": 3,
+      "atMs": 340,
+      "inputs": [],
+      "dataRef": "d2"
+    },
+    {
+      "id": "n3",
+      "kind": "tool_call",
+      "parentId": "n1",
+      "seq": 4,
+      "atMs": 510,
+      "inputs": [],
+      "dataRef": "d3"
+    }
+  ],
+  "data": {
+    "d0": {
+      "name": "investigate",
+      "note": null
+    },
+    "d1": {
+      "model": "mock-coder",
+      "round": 1,
+      "prompt": "Найди точку входа и объясни, как запустить тесты.",
+      "response": "Точка входа — raider.cli.Main; тесты запускаются командой make quality-changed.",
+      "usage": {
+        "reservedMicroUsd": null,
+        "observedMicroUsd": 1500,
+        "unknown": false
+      }
+    },
+    "d2": {
+      "tool": "read_file",
+      "callId": "call-001",
+      "recovery": "ReadOnly",
+      "outcome": "Succeeded",
+      "argsSummary": "path=README.md",
+      "resultTail": "# Raider development entrypoints (RAI-003 stage B)."
+    },
+    "d3": {
+      "tool": "edit_file",
+      "callId": "call-002",
+      "recovery": "Mutating",
+      "outcome": "Failed",
+      "argsSummary": "path=docs/notes.md",
+      "resultTail": null
+    }
+  }
+}

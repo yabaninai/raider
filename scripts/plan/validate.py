@@ -13,9 +13,9 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 LINK = re.compile(r"\[[^\]\n]+\]\(([^)\n]+)\)")
-CARD = re.compile(r"^## ((?:RAI-\d{3}|YB-RAI-\d{2})(?:\.[a-z]+)?): (.+)$", re.M)
+CARD = re.compile(r"^## ((?:RAI-\d{3}|YB-RAI-\d{2}|LIN-\d{2})(?:\.[a-z]+)?): (.+)$", re.M)
 GROUPS = {"M0": "m0.md", "M1": "m1.md", "M2": "m2-p2.md",
-          "P2": "m2-p2.md", "Yabanin": "yabanin.md"}
+          "P2": "m2-p2.md", "Yabanin": "yabanin.md", "LIN": "lineage.md"}
 
 
 def validate(yabanin_repo=None):
@@ -74,7 +74,7 @@ def validate(yabanin_repo=None):
     by_id = {c["id"]: c for c in cards}
     if len(by_id) != len(cards):
         errors.append("backlog: duplicate card IDs")
-    raider = [c for c in cards if c["id"].startswith("RAI-") and "." not in c["id"]]
+    raider = [c for c in cards if (c["id"].startswith("RAI-") or c["id"].startswith("LIN-")) and "." not in c["id"]]
     companion = [c for c in cards if c["id"].startswith("YB-") and "." not in c["id"]]
     if len(raider) != backlog["raider_count"] or len(companion) != backlog["companion_count"]:
         errors.append("backlog: count metadata mismatch")

@@ -118,6 +118,8 @@ HTTP cancellation: прекратить чтение, закрыть response bo
 
 Process cancellation: сначала graceful interrupt/terminate owned process group, затем bounded kill escalation. Работа с PID reuse и grandchildren требует platform contract. Не убивать чужие процессы и не считать запрошенную отмену подтверждённой.
 
+Реализованная механика отмены (2026-10-10, детали и ссылки file:line — [cancel.md](cancel.md)): guard переходов `JobStatus.canTransition` (`modules/runtime/src/main/scala/raider/runtime/jobs/JobStatus.scala:29-42`); `JobManager.cancel`/`cancelAny` — атомарный переход в `Cancelling`, событийный хук до interrupt'а, гонка отмены с завершением решается одной STM-транзакцией в пользу cancel (`modules/runtime/src/main/scala/raider/runtime/jobs/JobManager.scala:166-248,291-311`); `RaiderScope.close(grace)` — отмена незашитых детей в ограниченном grace с честным `ScopeCloseReport` (не терминальный в grace ребёнок отчётится `Uncertain`) и финализаторы LIFO (`modules/runtime/src/main/scala/raider/runtime/scopes/RaiderScope.scala:77-150`); out-of-band отмена детей делегирования вне model-admission и owner-side дедлайны с исходом `Settled|Uncertain|AlreadyTerminal` (`modules/runtime/src/main/scala/raider/runtime/delegate/DelegationToolset.scala:366-478`). Отмена на уровне HTTP-тела ответа и process-group в этом срезе не реализована — отменяемое здесь есть fiber-interrupt и его перечисленные следствия.
+
 ## 6. Concurrency и лимиты
 
 Есть разные counters:

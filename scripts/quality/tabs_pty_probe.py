@@ -88,7 +88,7 @@ ANSI = re.compile(
 )
 
 HINT_BAR = ("tabs: :tabs :new <label> :switch <n|label> :next :prev "
-            ":rename <label> :close :help :quit")
+            ":rename <label> :close :plugins :state <scope> :help :quit")
 ROW_RE = re.compile(r"^[* ]\d+\. \S+ \[(Queued|Running)\]( \(\d+ unread\))?$")
 
 QUERIES: list[tuple[bytes, bytes]] = [

@@ -28,6 +28,13 @@ enum ShellCommand:
     */
   case State(scope: String)
 
+  /** `:aux` (card LIN-04A, ADR-027 §3.3): switch to the ONE auxiliary tab; the
+    * content comes from the [[AuxTabProvider]] — the UI performs no IO of its
+    * own, and the session registry is never touched (ownership stays with the
+    * session tabs).
+    */
+  case Aux
+
   /** Any non-command input: appended to the focused tab's draft (never an
     * event, never published — ADR-024 §2.5).
     */

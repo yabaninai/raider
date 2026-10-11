@@ -71,15 +71,19 @@ object ShellExecutor:
     io.fold(ShellFeedback.Failure(_), identity)
 
   /** Execute one routed command against the registry. Total: always returns a
-    * typed feedback. The screen providers ([[ShellViews]], card RAI-088) are
-    * PURE snapshot readers consulted once per `:plugins`/`:state` command — the
-    * UI still performs no IO of its own.
+    * typed feedback. The screen providers ([[ShellViews]], card RAI-088; the
+    * [[AuxTabProvider]], card LIN-04A) are PURE snapshot readers consulted once
+    * per `:plugins`/`:state`/`:aux` command — the UI still performs no IO of
+    * its own. `Aux` never touches the registry: a switch to the auxiliary tab
+    * and back leaves focus, unread and drafts with the session tabs (ADR-024
+    * §2.5).
     */
   def run(
       command: ShellCommand,
       registry: SessionRegistry,
       resolver: CloseChoiceResolver,
-      views: ShellViews = ShellViews.detached
+      views: ShellViews = ShellViews.detached,
+      aux: Option[AuxTabProvider] = None
   ): UIO[ShellFeedback] =
     command match
       case ShellCommand.Tabs =>
@@ -133,6 +137,14 @@ object ShellExecutor:
           views.state(scope) match
             case None        => ShellFeedback.StateStoreMissing(scope)
             case Some(usage) => ShellFeedback.State(scope, usage)
+        )
+      case ShellCommand.Aux =>
+        ZIO.succeed(
+          aux match
+            case None => ShellFeedback.AuxTabMissing
+            case Some(p) if !p.available =>
+              ShellFeedback.AuxTabUnavailable(p.title)
+            case Some(p) => ShellFeedback.AuxTab(p.title, p.render)
         )
       case ShellCommand.Quit => ZIO.succeed(ShellFeedback.Quit)
       case ShellCommand.Draft(line) =>

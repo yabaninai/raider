@@ -18,6 +18,7 @@ object CommandRouter:
     ":close",
     ":plugins",
     ":state",
+    ":aux",
     ":help",
     ":quit"
   )
@@ -37,9 +38,10 @@ object CommandRouter:
     *     by `:tabs`), exact label, then unique label prefix; ambiguous or
     *     unknown → typed error listing the alternatives.
     *   - `:close` resolves the FOCUSED tab; no open tabs → typed error.
-    *   - Screen commands (RAI-088) need no open tabs: `:plugins` takes no
+    *   - Screen commands need no open tabs: `:plugins` (RAI-088) takes no
     *     argument, `:state <scope>` requires a scope (missing → typed usage
-    *     error); their data comes from the [[ShellViews]] providers.
+    *     error), `:aux` (LIN-04A) takes no argument; their data comes from the
+    *     providers ([[ShellViews]] / [[AuxTabProvider]]).
     */
   def parse(
       raw: String,
@@ -83,6 +85,10 @@ object CommandRouter:
         case ":state"   =>
           // Screen commands need no open tabs (RAI-088); :state needs a scope
           requireArg(name, rest).map(ShellCommand.State(_))
+        case ":aux" =>
+          // The auxiliary tab (LIN-04A) needs no open tabs and no argument:
+          // its data comes from the provider wired at construction
+          Right(ShellCommand.Aux)
         case _ => Left(ShellInputError.UnknownCommand(name))
 
   private def requireArg(

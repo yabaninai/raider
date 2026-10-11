@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "audit-hook",
+  "version": "1.0.0",
+  "artifact": "audit-hook-1.0.0.jar",
+  "sha256": "5a0c7895bbbd90b0f3974ab4ea255c439353e9a9e27bd23c01ef2e86b3b11044",
+  "minApiVersion": 1,
+  "maxApiVersion": 1,
+  "capabilities": [
+    { "kind": "hook", "name": "audit.runStart" }
+  ]
+}

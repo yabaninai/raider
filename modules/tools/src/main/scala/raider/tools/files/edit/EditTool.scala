@@ -50,8 +50,9 @@ final class EditTool(workspace: Workspace):
     resolveSafe(relativePath).flatMap { real =>
       attemptR {
         if !Files.exists(real) then
+          // Model-correctable domain condition (ADR-026): structured feedback
           Left(
-            RaiderError.ToolFailed(
+            RaiderError.InputValidation(
               s"file not found: $relativePath (use expectedSha256=\"\" to create)"
             )
           )

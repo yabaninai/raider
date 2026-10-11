@@ -6,7 +6,10 @@ package raider.ui
 object TabBarRenderer:
 
   /** The bar: creation order; `*` marks the focused tab; each row carries the
-    * label, the hub-folded job status and the unread badge (suppressed at 0).
+    * label, the session status and the unread badge (suppressed at 0). The
+    * status is the ONE canonical [[raider.runtime.events.StatusText]] line
+    * carried by [[TabView]] (RAI-097 remainder: unified format with the CLI) —
+    * this renderer has no local status format of its own.
     */
   def tabBar(tabs: List[TabView], focused: Option[TabId]): Vector[String] =
     if tabs.isEmpty then Vector("no open tabs (start one with :new <label>)")
@@ -15,7 +18,7 @@ object TabBarRenderer:
         val mark = if focused.contains(t.id) then "*" else " "
         val unread =
           if t.unreadCount > 0 then s" (${t.unreadCount} unread)" else ""
-        s"$mark${i + 1}. ${t.label} [${t.status}]$unread"
+        s"$mark${i + 1}. ${t.label} [${t.statusText}]$unread"
       }.toVector
       rows :+ hintBar
 
@@ -31,10 +34,11 @@ object TabBarRenderer:
     "  :close              close the focused tab (running: hide or cancel choice)",
     "  :plugins            loaded plugins (name/version/active; RAI-088)",
     "  :state <scope>      state store usage/quota for one scope (RAI-088)",
+    "  :aux                the one auxiliary tab (provider-backed; LIN-04A)",
     "  :help               this help",
     "  :quit               exit the shell"
   )
 
   /** The one-line hint bar under every tab-bar render (palette/hint bar). */
   val hintBar: String =
-    "tabs: :tabs :new <label> :switch <n|label> :next :prev :rename <label> :close :plugins :state <scope> :help :quit"
+    "tabs: :tabs :new <label> :switch <n|label> :next :prev :rename <label> :close :plugins :state <scope> :aux :help :quit"

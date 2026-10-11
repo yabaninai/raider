@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "name": "scoped-search",
+  "version": "1.0.0",
+  "artifact": "scoped-search-1.0.0.jar",
+  "sha256": "c0426214b2582df60c58b0965fc59c74473e225d696fcbd1803781d294982c99",
+  "minApiVersion": 1,
+  "maxApiVersion": 1,
+  "capabilities": [
+    { "kind": "tool", "name": "scoped.search" }
+  ]
+}

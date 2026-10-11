@@ -13,6 +13,8 @@ import raider.core.result.{
 import raider.runtime.admission.{Admission, SlotKind}
 import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd, UsageReport}
 import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
+import raider.runtime.lineage.model.{GraphHash, SessionGraph}
+import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
 import raider.runtime.jobs.{JobManager, StatusLedger}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
 import zio.{Promise, Ref, Scope, ZIO}
@@ -138,7 +140,7 @@ object HeadlessRunner:
           ciRef,
           usageRef
         )
-        (outcome, exported) = jobOutcome
+        (outcome, eventsWritten, lineage) = jobOutcome
         ciOpt <- ciRef.get
         usageOpt <- usageRef.get
         finishedAt <- ZIO.succeed(Instant.now())
@@ -164,23 +166,32 @@ object HeadlessRunner:
           runResult,
           args,
           outcome,
-          exported,
+          eventsWritten,
           ciOpt,
-          usageOpt
+          usageOpt,
+          lineage
         )
       yield Outcome(exitCode, workDir, Some(runResult))
 
-  /** RAI-060: the whole run as ONE JobManager job, with ALL envelopes collected
-    * for events.jsonl.
+  /** RAI-060 + LIN-03A-prep: the whole run as ONE JobManager job, with the
+    * per-job envelopes STREAMED into `<workDir>/events.jsonl` as they are
+    * delivered ([[EventsJsonlWriter]]: append + flush per line, JobJournal
+    * JSONL practice) instead of being buffered until the end — a crash or a
+    * cancellation mid-run leaves the honest truncated tail of what was already
+    * flushed.
     *
     * Ordering guarantee (no loss window): the job body is held on a barrier
     * until AFTER the subscriber registered (snapshot + watermark in one hub
     * transaction). At that point exactly ONE envelope exists — the start
     * transition Queued→Running published by `manager.start` before the handle
     * was returned — and it is reconstructed EXACTLY from the subscription
-    * snapshot (its atMs IS the snapshot's updatedAtMs; nothing is invented).
-    * Everything else arrives on the subscribed stream, seq-ordered before the
-    * write ([[EventExport.inOrder]]).
+    * snapshot (its atMs IS the snapshot's updatedAtMs; nothing is invented),
+    * then appended BEFORE the barrier release: it is always the file's first
+    * line. Everything else arrives on the subscribed stream, is re-ordered into
+    * strict per-job seq order ([[EventExport.inOrder]] — the hub relays
+    * reliable and diagnostics classes independently, so ARRIVAL order is
+    * unspecified) and appended line by line; a settled run's file is dense from
+    * 1 and ends with the Terminal envelope.
     *
     * Slow-consumer/overflow policy (hub semantics, documented here per
     * STAT-03): a subscriber queue offers backpressure to the forwarder fibers,
@@ -191,6 +202,24 @@ object HeadlessRunner:
     * `DiagnosticsCoalesced` envelope (best-effort: it rides the diagnostics
     * class), so the file itself carries the coalescing marker without breaking
     * the per-job stream contract (never after Terminal).
+    *
+    * LIN-03B (live lineage, ADR-027): the SAME ordered envelopes — the exact
+    * stream that lands in events.jsonl, snapshot prefix included — ALSO fold
+    * into an in-memory vector on their way to the sink, and after the job
+    * settles the vector reduces through [[LineageReducer]] (the deterministic
+    * campaign fold) into the run's [[SessionGraph]]. The fold shares the drain
+    * discipline of the file: every envelope enters the vector BEFORE its append
+    * can be observed by [[EventExport.awaitCaughtUp]], so when the settled wait
+    * sees `written >= watermark` the vector provably holds the whole exported
+    * prefix — no tail race between "caught up" and "folded". The outcome
+    * travels to [[writeArtifacts]] as
+    * `Option[Either[ReduceError, SessionGraph]]`: `None` = no lineage line
+    * (preflight-failure families; a mid-run cancellation/defect never reaches
+    * this point at all — no line, the events.jsonl checkpoint stays the honest
+    * record), `Left` = a typed reduction error rendered as the honest
+    * `unavailable` line, `Right` = hash + node count in summary.md. No new
+    * artifact is created: the checkpoint IS events.jsonl, and run.json stays
+    * frozen.
     */
   private def executeAsJob(
       args: CliArgs,
@@ -202,67 +231,93 @@ object HeadlessRunner:
       manager: JobManager,
       ciOut: Ref[Option[CiContext]],
       usageOut: Ref[Option[UsageReport]]
-  ): ZIO[Any, Nothing, (Either[RaiderError, String], Vector[EventEnvelope])] =
-    for
-      barrier <- Promise.make[Nothing, JobId]
-      droppedBefore <- hub.droppedDiagnostics
-      job = Task(
-        barrier.await.flatMap { jobId =>
-          val le = LoopEvents(hub, jobId, root, StatusLedger.sessionId)
-          // The observed hub-level diagnostics drop count rides out as a REAL
-          // DiagnosticsCoalesced envelope BEFORE the job settles (so it is
-          // never after Terminal); the marker is best-effort (diagnostics
-          // class), the reliable path is never affected.
-          val emitMarker = hub.droppedDiagnostics.flatMap { dropped =>
-            val lost = dropped - droppedBefore
-            ZIO.when(lost > 0L)(
-              le.emit(EventPayload.DiagnosticsCoalesced(lost))
+  ): ZIO[
+    Any,
+    Nothing,
+    (
+        Either[RaiderError, String],
+        Long,
+        Option[Either[ReduceError, SessionGraph]]
+    )
+  ] =
+    ZIO
+      .acquireReleaseWith(
+        EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
+      )(_.close) { writer =>
+        for
+          barrier <- Promise.make[Nothing, JobId]
+          droppedBefore <- hub.droppedDiagnostics
+          // LIN-03B: the live-fold input — exactly the ordered envelopes that
+          // reach the sink (fold BEFORE append, see the doc above).
+          lineageBuf <- Ref.make(Vector.empty[EventEnvelope])
+          job = Task(
+            barrier.await.flatMap { jobId =>
+              val le = LoopEvents(hub, jobId, root, StatusLedger.sessionId)
+              // The observed hub-level diagnostics drop count rides out as a REAL
+              // DiagnosticsCoalesced envelope BEFORE the job settles (so it is
+              // never after Terminal); the marker is best-effort (diagnostics
+              // class), the reliable path is never affected.
+              val emitMarker = hub.droppedDiagnostics.flatMap { dropped =>
+                val lost = dropped - droppedBefore
+                ZIO.when(lost > 0L)(
+                  le.emit(EventPayload.DiagnosticsCoalesced(lost))
+                )
+              }
+              ZIO
+                .scoped(
+                  execute(
+                    args,
+                    root,
+                    env,
+                    ciFlag,
+                    workDir,
+                    Some(le),
+                    ciOut,
+                    usageOut
+                  )
+                )
+                .foldZIO(
+                  err => emitMarker *> ZIO.fail(err),
+                  ok => emitMarker.as(ok)
+                )
+            }
+          )
+          handle <- manager.start(root, "headless", job)
+          subscribed <- hub.subscribe(handle.id)
+          (snapshot, stream) = subscribed
+          // The start transition is ALWAYS the file's first line: it lives in
+          // the snapshot before any stream envelope can exist (the job body
+          // is held on the barrier) and is appended before the release below.
+          _ <- ZIO.foreachDiscard(
+            EventExport.startTransition(snapshot).toVector
+          )(env => lineageBuf.update(_ :+ env) *> writer.append(env))
+          collector <- EventExport
+            .inOrder(snapshot.lastSeq)(stream)
+            .foreach(env => lineageBuf.update(_ :+ env) *> writer.append(env))
+            .forkDaemon
+          _ <- barrier.succeed(handle.id).unit
+          result <- manager
+            .await(handle)
+            .either
+            .ensuring(
+              EventExport
+                .awaitCaughtUp(hub, handle.id, writer.written)
+                .zipRight(collector.interrupt)
             )
-          }
-          ZIO
-            .scoped(
-              execute(
-                args,
-                root,
-                env,
-                ciFlag,
-                workDir,
-                Some(le),
-                ciOut,
-                usageOut
-              )
-            )
-            .foldZIO(
-              err => emitMarker *> ZIO.fail(err),
-              ok => emitMarker.as(ok)
-            )
-        }
-      )
-      handle <- manager.start(root, "headless", job)
-      collected <- Ref.make(Vector.empty[EventEnvelope])
-      subscribed <- hub.subscribe(handle.id)
-      (snapshot, stream) = subscribed
-      collector <- stream
-        .foreach(e => collected.update(_ :+ e))
-        .forkDaemon
-      prefix = EventExport.startTransition(snapshot)
-      prefixCount = prefix.fold(0)(_ => 1)
-      _ <- barrier.succeed(handle.id).unit
-      result <- manager
-        .await(handle)
-        .either
-        .ensuring(
-          EventExport
-            .awaitCaughtUp(
-              hub,
-              handle.id,
-              collected.get.map(v => (v.size + prefixCount).toLong)
-            )
-            .zipRight(collector.interrupt)
-        )
-      got <- collected.get
-      exported = prefix.toVector ++ got
-    yield (result, exported)
+          lines <- writer.written
+          buffered <- lineageBuf.get
+          // LIN-03B: settled — reduce the folded prefix. Preflight-failure
+          // families produce NO lineage line (the run never formed a
+          // campaign); anything else attempts the reduction and reports the
+          // typed outcome either way (never a crash of the run).
+          lineage = result.fold(
+            e =>
+              if isPreflightFailure(e) then None
+              else Some(LineageReducer.reduce(buffered)),
+            _ => Some(LineageReducer.reduce(buffered))
+          )
+        yield (result, lines, lineage)
+      }
 
   /** Preflight families (args/manifest/load/entry) vs run-time failures. */
   private def isPreflightFailure(e: RaiderError): Boolean = e match
@@ -369,7 +424,7 @@ object HeadlessRunner:
         case CliArgs.Target.Agent(name) =>
           for
             limits <- ZIO.fromEither(
-              BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 48)
+              BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 400)
             )
             admission <- Admission.make(Right(limits))
             // coder = REAL workspace tools, rooted at the invocation's
@@ -425,7 +480,7 @@ object HeadlessRunner:
               .runText(
                 List(RequestMessage("user", input)),
                 limits,
-                math.min(limits.maxAttempts, 12)
+                limits.maxAttempts
               )
               .either
             // RAI-086: capture the REAL final ledger snapshot whether the
@@ -467,14 +522,29 @@ object HeadlessRunner:
           yield text
     yield text
 
+  /** LIN-03A-prep: events.jsonl is NOT written here — it is streamed during the
+    * run by [[executeAsJob]] ([[EventsJsonlWriter]]), so it exists and is
+    * reader-valid from the first flushed line on. `eventsWritten` is the
+    * settled line count for the honest summary line only.
+    *
+    * LIN-03B: `lineage` carries the settled reduction outcome of the SAME
+    * ordered envelopes that were streamed (see [[executeAsJob]]). It renders as
+    * EXACTLY ONE summary.md line: the deterministic [[GraphHash]] + node count
+    * of the reduced campaign graph, or the honest typed
+    * `lineage: unavailable (...)` line when the checkpoint does not reduce.
+    * `None` (preflight-failure families) contributes nothing — the summary
+    * stays byte-identical to the pre-LIN-03B shape. run.json is NOT touched: no
+    * new artifact, no schema change.
+    */
   private def writeArtifacts(
       workDir: Path,
       runResult: RunResult,
       args: CliArgs,
       outcome: Either[RaiderError, String],
-      exported: Vector[EventEnvelope],
+      eventsWritten: Long,
       ci: Option[CiContext],
-      usage: Option[UsageReport]
+      usage: Option[UsageReport],
+      lineage: Option[Either[ReduceError, SessionGraph]]
   ): ZIO[Any, Nothing, Unit] =
     ZIO.attempt {
       Files.createDirectories(workDir)
@@ -511,15 +581,11 @@ object HeadlessRunner:
         StandardCopyOption.REPLACE_EXISTING,
         StandardCopyOption.ATOMIC_MOVE
       )
-      // events.jsonl (RAI-060): REAL per-job EventEnvelope lines —
-      // schemaVersion 1, the zio-json codec from raider.runtime.events,
-      // seq-ordered, no gaps (hub drops never consume a sequence). Replaces
-      // the former two synthetic run.started/run.finished records.
-      Files.writeString(
-        workDir.resolve("events.jsonl"),
-        EventExport.jsonl(exported),
-        UTF_8
-      )
+      // events.jsonl (RAI-060 + LIN-03A-prep): REAL per-job EventEnvelope
+      // lines — schemaVersion 1, the zio-json codec from
+      // raider.runtime.events, seq-ordered, no gaps (hub drops never consume
+      // a sequence) — are STREAMED during the run (see executeAsJob); the
+      // artifact set here stays run.json / summary.md / transcript.json.
       // summary.md — the fixture marker is MANDATORY under --mock
       val fixtureLine =
         if args.mock then
@@ -546,9 +612,17 @@ object HeadlessRunner:
            |- trusted: ${c.trusted}
            |
            |""".stripMargin)
-      Files.writeString(
-        workDir.resolve("summary.md"),
-        s"""# raider run
+      // LIN-03B: ONE lineage line on settled completion — the deterministic
+      // GraphHash of the graph reduced from the SAME ordered envelopes that
+      // were streamed to events.jsonl (the checkpoint), or the honest typed
+      // `unavailable` line when the checkpoint does not reduce. A reduction
+      // error is DATA the summary reports, never a crashed run.
+      val lineageLine = lineage.collect {
+        case Right(g) =>
+          s"- lineage: graph ${GraphHash(g)}, ${g.nodes.size} node(s) (checkpoint: events.jsonl)"
+        case Left(e) => s"- lineage: unavailable ($e)"
+      }
+      val summary = s"""# raider run
            |
            |$statusLine
            |
@@ -557,8 +631,13 @@ object HeadlessRunner:
            |- target: ${targetLine(args.target)}
            |- provider: ${args.provider} (model: ${args.model})
            |$costLine$ciSection- exit code: ${runResult.exitCode}
-           |- events: ${exported.size} event envelope(s) exported (schemaVersion 1)
-           |""".stripMargin,
+           |- events: $eventsWritten event envelope(s) streamed to events.jsonl (schemaVersion 1)
+           |""".stripMargin
+      Files.writeString(
+        workDir.resolve("summary.md"),
+        // appended AFTER the fixed body so a lineage-less run stays
+        // byte-identical to the pre-LIN-03B summary shape
+        summary + lineageLine.fold("")(l => l + "\n"),
         UTF_8
       )
       ()

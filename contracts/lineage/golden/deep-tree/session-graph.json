@@ -1,0 +1,55 @@
+{
+  "runId": "run-deep-001",
+  "nodes": [
+    {
+      "id": "n0",
+      "kind": "phase",
+      "name": "plan"
+    },
+    {
+      "id": "n1",
+      "kind": "model_call"
+    },
+    {
+      "id": "n2",
+      "kind": "delegation",
+      "childJobId": "job-0042"
+    },
+    {
+      "id": "n3",
+      "kind": "model_call"
+    },
+    {
+      "id": "n4",
+      "kind": "tool_call",
+      "recovery": "Idempotent"
+    }
+  ],
+  "edges": [
+    {
+      "from": "n0",
+      "to": "n1",
+      "kind": "control"
+    },
+    {
+      "from": "n1",
+      "to": "n2",
+      "kind": "control"
+    },
+    {
+      "from": "n2",
+      "to": "n3",
+      "kind": "control"
+    },
+    {
+      "from": "n3",
+      "to": "n4",
+      "kind": "control"
+    },
+    {
+      "from": "n1",
+      "to": "n3",
+      "kind": "dataflow"
+    }
+  ]
+}

@@ -14,6 +14,34 @@ Earlier: quality fast 6/6 full-tree (artifacts/quality/20261004-181210), full sb
 test 188 green, coder agent with REAL fs_read/fs_search/proc_run + live openai
 provider — record: [SELFDEV](records/SELFDEV.md).
 
+## Night campaign 2026-10-10 (P-LIN waves W7–W13, parallel lanes)
+
+Владелец разрешил ночную параллельную разработку; провайдер воркеров
+zai/glm-5.3-flash (позже zai-coding-plan, напрямую, без yabanin). Полная
+механика/статусы: `raider-night` registry (temp) + records W7-INTEGRATION,
+W8-W9-INTEGRATION (addendum W10–W11). Интегрировано и прогнано полными root
+гейтами (EXECUTE 7/7, manifests 20261010-060836…224104):
+
+- LIN-01A/B/C + GraphHash-фиксы (W9-F1, F-L28-1/2; BREAKING канонизация
+  задокументирована), LIN-02A/B/C/D + renderer dotc-фикс, view-adapter
+  (cli/lineage), LIN-02 LIN2-01 compile-gate (golden→pinned dotc ЗЕЛЁНЫЙ),
+  LIN-03A live builder + LIN-03B HeadlessRunner summary lineage-хэш,
+  LIN-04A `:aux` + LIN-04B LineageTab provider, LIN-05A corpus + LIN-05B
+  comparator/verifier + LIN5-03 partial replay (reducePartial),
+  LIN-05D RecordedSource (W13, pending review), LIN-08A docs/lineage.md.
+- RAI-072 (events/tabs/cancel docs), RAI-079 (anthropic stand tool-round),
+  RAI-080 (onboarding), RAI-096 (plugins SDK + 3 fixtures; examples теперь
+  в compile.sh), RAI-097 (StatusText единый: cli-chat + tab bar).
+- Ревью-циклы: W8-review (6/7→фиксы закрыты), W9-review (6/7→закрыто),
+  W10-review (3 Major→W11 закрыты), W12-review (5/6→R1/R2 закрыты
+  coordinator'ом, self-fixes на ревью W13), W13-review (pending).
+
+Open (после ночи): LIN-05 full интерпретатор (replay-recorded LLM из записи;
+RecordedSource — преп), LIN-06/07 (live re-run, частичный replay фаз),
+TabShell→REPL wiring (RAI-062-смежное), multi-job export (owner-решение),
+M1-evidence card RAI-099 (coordinator), phase/recovery schema-card (wave-3,
+owner), live-wire verification (владелец: endpoint/бюджет).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
