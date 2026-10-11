@@ -60,6 +60,24 @@ import scala.util.Using
   *   - FCOV-06 — malformed recorded args (duplicate key, unknown key,
   *     non-integer) are typed `ArgsUnreadable`.
   *
+  * W22-R2 (LIN-02D2) — fs_search joined the deterministic recompute set:
+  *
+  *   - SRCH-01 — recorded `query/glob/max_matches` argsSummary recomputes to
+  *     Match against the unchanged fixture tree (glob, no-glob and the global
+  *     match bound with DECLARED truncation); a repeat replay is identical.
+  *   - SRCH-02 — a file added to or removed from the workspace recomputes to
+  *     Mismatch naming exactly `resultTail`.
+  *   - SRCH-03 — escape-shaped globs (absolute path, `..` traversal, NUL) are
+  *     typed `ArgsUnreadable` BEFORE any walk; an inside symlink to an outside
+  *     file is skipped, and the outside decoy content never leaks into the
+  *     report.
+  *   - SRCH-04 — the dispatch stays name-exact: `fs_tree` is still
+  *     `Unsupported` through the replay, and each engine rejects the other's
+  *     tool.
+  *   - SRCH-05 — malformed or bound-violating search args are typed
+  *     `ArgsUnreadable` (missing/duplicate query, unknown key, non-integer and
+  *     out-of-range `max_matches`).
+  *
   * The fixture lineage documents are built in code (the production codec path
   * is covered by the golden-fixture specs); the fixture WORKSPACE is real
   * temporary files on disk — the only IO the recompute is allowed to do.
@@ -95,6 +113,39 @@ object ToolReplaySpec extends ZIOSpecDefault:
       Some(ToolOutcome.Succeeded),
       Vector.empty,
       dataRef.map(DataRef(_))
+    )
+
+  /** W22-R2 fixture helpers: an fs_search ToolCall node and its recorded
+    * ToolCallData (the argsSummary drives the whole recompute — the graph model
+    * carries no args by design, ADR-027 §2).
+    */
+  private def searchNode(
+      id: String,
+      seq: Long,
+      callId: String,
+      dataRef: String
+  ): SessionNode.ToolCall =
+    toolNode(
+      id,
+      seq,
+      "fs_search",
+      callId,
+      RecoveryClass.ReadOnly,
+      Some(dataRef)
+    )
+
+  private def searchData(
+      callId: String,
+      argsSummary: String,
+      resultTail: Option[String]
+  ): NodeData.ToolCallData =
+    NodeData.ToolCallData(
+      tool = "fs_search",
+      callId = callId,
+      recovery = "ReadOnly",
+      outcome = Some("Succeeded"),
+      argsSummary = argsSummary,
+      resultTail = resultTail
     )
 
   /** Fixture document. Emission order is deliberately NOT `(seq, id)`-sorted:
@@ -912,6 +963,541 @@ object ToolReplaySpec extends ZIOSpecDefault:
         unreadableDetail(unk) == "unsupported args keys: bogus",
         unreadableDetail(nonint) ==
           "args key 'offset' is not an integer: abc",
+        report.render.contains("error=args-unreadable")
+      )
+    },
+    test(
+      "SRCH-01: fs_search calls recompute against the fixture workspace — glob, no-glob and match-bound (declared truncation) all Match; repeat is identical"
+    ) {
+      var report1Opt: Option[ToolReplayReport] = None
+      var report2Opt: Option[ToolReplayReport] = None
+      withWorkspace(
+        "README.md" -> "# Read\nTODO: write docs\n",
+        "docs/notes.md" -> "plain one\nplain two",
+        "src/App.scala" -> "object App {\n  // TODO fix\n}"
+      ) { ws =>
+        val graph = SessionGraph(
+          RootId("run-srch"),
+          SessionId("sess-srch"),
+          Vector(
+            searchNode("t-s1", 1, "call-s1", "d-s1"),
+            searchNode("t-s2", 2, "call-s2", "d-s2"),
+            searchNode("t-s3", 3, "call-s3", "d-s3")
+          )
+        )
+        val doc = LineageDataDocument(
+          schemaVersion = 1,
+          generator = Generator,
+          runId = "run-srch",
+          nodes = Vector(
+            DataNode(
+              "t-s1",
+              NodeKind.ToolCall,
+              None,
+              1,
+              10,
+              Vector.empty,
+              Some("d-s1")
+            ),
+            DataNode(
+              "t-s2",
+              NodeKind.ToolCall,
+              None,
+              2,
+              11,
+              Vector.empty,
+              Some("d-s2")
+            ),
+            DataNode(
+              "t-s3",
+              NodeKind.ToolCall,
+              None,
+              3,
+              12,
+              Vector.empty,
+              Some("d-s3")
+            )
+          ),
+          data = Map(
+            "d-s1" -> searchData(
+              "call-s1",
+              "query=TODO glob=*.md max_matches=10",
+              // glob matches FILE NAMES (production rule): README.md + the
+              // notes.md are scanned, App.scala is not
+              Some(
+                "README.md:2:TODO: write docs\ntruncated=false files_scanned=2"
+              )
+            ),
+            "d-s2" -> searchData(
+              "call-s2",
+              "query=TODO",
+              Some(
+                "README.md:2:TODO: write docs\nsrc/App.scala:2:  // TODO fix\ntruncated=false files_scanned=3"
+              )
+            ),
+            // the GLOBAL match bound stops after the first match: DECLARED
+            // truncation, the rest of the walk is never scanned
+            "d-s3" -> searchData(
+              "call-s3",
+              "query=TODO glob=*.md max_matches=1",
+              Some(
+                "README.md:2:TODO: write docs\ntruncated=true files_scanned=1"
+              )
+            )
+          )
+        )
+        report1Opt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+        report2Opt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+      }
+      val report1 = report1Opt.orNull
+      val report2 = report2Opt.orNull
+      assertTrue(
+        report1.toolNodes == 3,
+        report1.entries.map(_.nodeId) == Vector("t-s1", "t-s2", "t-s3"),
+        report1.entries.forall(_.comparison == Right(ToolComparison.Match)),
+        report1.entries.find(_.nodeId == "t-s1").get.recomputed == Some(
+          NodeData.ToolCallData(
+            "fs_search",
+            "call-s1",
+            "ReadOnly",
+            Some("Succeeded"),
+            "query=TODO glob=*.md max_matches=10",
+            Some(
+              "README.md:2:TODO: write docs\ntruncated=false files_scanned=2"
+            )
+          )
+        ),
+        report1.entries
+          .find(_.nodeId == "t-s2")
+          .get
+          .recomputed
+          .get
+          .resultTail ==
+          Some(
+            "README.md:2:TODO: write docs\nsrc/App.scala:2:  // TODO fix\ntruncated=false files_scanned=3"
+          ),
+        report1.entries
+          .find(_.nodeId == "t-s3")
+          .get
+          .recomputed
+          .get
+          .resultTail ==
+          Some("README.md:2:TODO: write docs\ntruncated=true files_scanned=1"),
+        report1 == report2,
+        report1.render == report2.render
+      )
+    },
+    test(
+      "SRCH-02: a file ADDED to or REMOVED from the workspace recomputes to Mismatch naming exactly resultTail"
+    ) {
+      def baseline(runId: String): (SessionGraph, LineageDataDocument) =
+        val graph = SessionGraph(
+          RootId(runId),
+          SessionId("sess-srch"),
+          Vector(searchNode("t-s1", 1, "call-s1", "d-s1"))
+        )
+        val doc = LineageDataDocument(
+          schemaVersion = 1,
+          generator = Generator,
+          runId = runId,
+          nodes = Vector(
+            DataNode(
+              "t-s1",
+              NodeKind.ToolCall,
+              None,
+              1,
+              10,
+              Vector.empty,
+              Some("d-s1")
+            )
+          ),
+          data = Map(
+            "d-s1" -> searchData(
+              "call-s1",
+              "query=TODO glob=*.md max_matches=10",
+              Some(
+                "README.md:2:TODO: write docs\ntruncated=false files_scanned=2"
+              )
+            )
+          )
+        )
+        (graph, doc)
+      val (graph, doc) = baseline("run-srch2")
+      var addedOpt: Option[ToolReplayReport] = None
+      var removedOpt: Option[ToolReplayReport] = None
+      withWorkspace(
+        "README.md" -> "# Read\nTODO: write docs\n",
+        "docs/notes.md" -> "plain one\nplain two",
+        "src/App.scala" -> "object App {\n  // TODO fix\n}",
+        // ADDED file matching the glob: the recomputed search result drifts
+        "extra/added.md" -> "TODO here"
+      ) { ws =>
+        addedOpt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+      }
+      withWorkspace(
+        // REMOVED README.md: the search can no longer reproduce the matches
+        "docs/notes.md" -> "plain one\nplain two",
+        "src/App.scala" -> "object App {\n  // TODO fix\n}"
+      ) { ws =>
+        removedOpt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+      }
+      val added = addedOpt.orNull
+      val removed = removedOpt.orNull
+      val addedEntry = added.entries.find(_.nodeId == "t-s1").get
+      val removedEntry = removed.entries.find(_.nodeId == "t-s1").get
+      assertTrue(
+        addedEntry.comparison ==
+          Right(ToolComparison.Mismatch(Vector("resultTail"))),
+        addedEntry.recomputed.get.argsSummary ==
+          "query=TODO glob=*.md max_matches=10",
+        addedEntry.recomputed.get.resultTail ==
+          Some(
+            "README.md:2:TODO: write docs\nextra/added.md:1:TODO here\ntruncated=false files_scanned=3"
+          ),
+        removedEntry.comparison ==
+          Right(ToolComparison.Mismatch(Vector("resultTail"))),
+        removedEntry.recomputed.get.resultTail ==
+          Some("truncated=false files_scanned=1")
+      )
+    },
+    test(
+      "SRCH-03: escape-shaped globs are typed ArgsUnreadable BEFORE any walk; an inside symlink to an outside file is skipped — the outside decoy never leaks"
+    ) {
+      val marker = "DECOY-OUTSIDE-CONTENT-SRCH-never-readable"
+      val outside = Files.createTempDirectory("srch-outside-")
+      val decoy = outside.resolve("decoy-secret.md")
+      // the decoy CONTAINS the query: a defective implementation that (wrongly)
+      // searched outside the workspace would leak it into the recomputed tail
+      Files.writeString(
+        decoy,
+        marker + "\nTODO outside",
+        StandardCharsets.UTF_8
+      )
+      var reportOpt: Option[ToolReplayReport] = None
+      try
+        withWorkspace(
+          "README.md" -> "# Read\nTODO: write docs\n",
+          "docs/notes.md" -> "plain one\nplain two"
+        ) { ws =>
+          // symlink INSIDE the workspace whose NAME matches the glob but whose
+          // target is OUTSIDE — production discipline: skipped, never read
+          Files.createSymbolicLink(
+            ws.resolve("leak.md"),
+            decoy.toAbsolutePath()
+          )
+          def escapeData(callId: String, argsSummary: String) =
+            searchData(
+              callId,
+              argsSummary,
+              // the decoy marker as the recorded tail: a defective Match would
+              // carry it; a typed failure recomputes NOTHING
+              Some(marker)
+            )
+          val doc = LineageDataDocument(
+            schemaVersion = 1,
+            generator = Generator,
+            runId = "run-srch3",
+            nodes = Vector(
+              DataNode(
+                "t-abs",
+                NodeKind.ToolCall,
+                None,
+                1,
+                21,
+                Vector.empty,
+                Some("d-abs")
+              ),
+              DataNode(
+                "t-trav",
+                NodeKind.ToolCall,
+                None,
+                2,
+                22,
+                Vector.empty,
+                Some("d-trav")
+              ),
+              DataNode(
+                "t-nul",
+                NodeKind.ToolCall,
+                None,
+                3,
+                23,
+                Vector.empty,
+                Some("d-nul")
+              ),
+              DataNode(
+                "t-sym",
+                NodeKind.ToolCall,
+                None,
+                4,
+                24,
+                Vector.empty,
+                Some("d-sym")
+              )
+            ),
+            data = Map(
+              "d-abs" -> escapeData(
+                "call-abs",
+                "query=TODO glob=/etc/passwd*"
+              ),
+              "d-trav" -> escapeData("call-trav", "query=TODO glob=../.."),
+              "d-nul" -> escapeData("call-nul", "query=TODO glob=a\u0000b"),
+              // the symlinked leak.md is skipped: same tail as without it
+              "d-sym" -> searchData(
+                "call-sym",
+                "query=TODO glob=*.md max_matches=10",
+                Some(
+                  "README.md:2:TODO: write docs\ntruncated=false files_scanned=2"
+                )
+              )
+            )
+          )
+          val graph = SessionGraph(
+            RootId("run-srch3"),
+            SessionId("sess-srch3"),
+            Vector(
+              searchNode("t-abs", 1, "call-abs", "d-abs"),
+              searchNode("t-trav", 2, "call-trav", "d-trav"),
+              searchNode("t-nul", 3, "call-nul", "d-nul"),
+              searchNode("t-sym", 4, "call-sym", "d-sym")
+            )
+          )
+          reportOpt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+        }
+      finally
+        Files.deleteIfExists(decoy)
+        Using.resource(Files.walk(outside)) { stream =>
+          stream
+            .sorted(java.util.Comparator.reverseOrder[Path]())
+            .forEach(p => { Files.deleteIfExists(p); () })
+          ()
+        }
+      val report = reportOpt.orNull
+      def unreadableDetail(entry: ToolReplayEntry): String =
+        entry.comparison match
+          case Left(RecomputeError.ArgsUnreadable(nodeId, detail)) =>
+            if nodeId == entry.nodeId then detail
+            else "WRONG-NODE:" + nodeId
+          case other => "NOT-ARGS-UNREADABLE:" + other
+      val abs = report.entries.find(_.nodeId == "t-abs").get
+      val trav = report.entries.find(_.nodeId == "t-trav").get
+      val nul = report.entries.find(_.nodeId == "t-nul").get
+      val sym = report.entries.find(_.nodeId == "t-sym").get
+      assertTrue(
+        report.entries.map(_.nodeId) ==
+          Vector("t-abs", "t-trav", "t-nul", "t-sym"),
+        report.entries
+          .filter(_.nodeId != "t-sym")
+          .flatMap(_.recomputed)
+          .isEmpty,
+        unreadableDetail(abs).contains("escapes workspace (absolute path)"),
+        unreadableDetail(trav).contains("escapes workspace (traversal)"),
+        unreadableDetail(nul).contains("contains NUL"),
+        sym.comparison == Right(ToolComparison.Match),
+        sym.recomputed.get.resultTail ==
+          Some("README.md:2:TODO: write docs\ntruncated=false files_scanned=2"),
+        !report.render.contains(marker),
+        !report.render.contains("TODO outside"),
+        !report.toString.contains(marker)
+      )
+    },
+    test(
+      "SRCH-04: the dispatch stays name-exact — fs_tree is still Unsupported through the replay, and each engine rejects the other's tool"
+    ) {
+      var reportOpt: Option[ToolReplayReport] = None
+      var readEngineOnSearch
+          : Option[Either[RecomputeError, NodeData.ToolCallData]] = None
+      var searchEngineOnRead
+          : Option[Either[RecomputeError, NodeData.ToolCallData]] = None
+      withWorkspace(NotesPath -> NotesContent) { ws =>
+        val doc = baselineDoc.copy(
+          nodes = Vector(
+            DataNode(
+              "t-tree",
+              NodeKind.ToolCall,
+              None,
+              1,
+              71,
+              Vector.empty,
+              Some("d-tree")
+            )
+          ),
+          data = Map(
+            "d-tree" -> NodeData.ToolCallData(
+              tool = "fs_tree",
+              callId = "call-tree",
+              recovery = "ReadOnly",
+              outcome = Some("Succeeded"),
+              argsSummary = "depth=2",
+              resultTail = Some("entries=[]")
+            )
+          )
+        )
+        val graph = SessionGraph(
+          RootId("run-srch4"),
+          SessionId("sess-srch4"),
+          Vector(
+            toolNode(
+              "t-tree",
+              1,
+              "fs_tree",
+              "call-tree",
+              RecoveryClass.ReadOnly,
+              Some("d-tree")
+            )
+          )
+        )
+        reportOpt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+        readEngineOnSearch = Some(
+          FsReadRecompute(baselineDoc).recompute(
+            searchNode("t-x", 1, "call-x", "d-x"),
+            ws
+          )
+        )
+        searchEngineOnRead = Some(
+          FsSearchRecompute(baselineDoc).recompute(
+            toolNode(
+              "t-y",
+              1,
+              "fs_read",
+              "call-y",
+              RecoveryClass.ReadOnly,
+              Some("d-a")
+            ),
+            ws
+          )
+        )
+      }
+      val report = reportOpt.orNull
+      val tree = report.entries.head
+      assertTrue(
+        report.entries.map(_.nodeId) == Vector("t-tree"),
+        tree.comparison == Left(RecomputeError.Unsupported("fs_tree")),
+        tree.recomputed.isEmpty,
+        report.render.contains("error=unsupported tool=fs_tree"),
+        readEngineOnSearch.get == Left(RecomputeError.Unsupported("fs_search")),
+        searchEngineOnRead.get == Left(RecomputeError.Unsupported("fs_read"))
+      )
+    },
+    test(
+      "SRCH-05: malformed or bound-violating search args are typed ArgsUnreadable (missing/duplicate query, unknown key, non-integer and out-of-range max_matches)"
+    ) {
+      def malformed(callId: String, argsSummary: String) =
+        searchData(callId, argsSummary, Some("unused"))
+      val doc = LineageDataDocument(
+        schemaVersion = 1,
+        generator = Generator,
+        runId = "run-srch5",
+        nodes = Vector(
+          DataNode(
+            "t-noq",
+            NodeKind.ToolCall,
+            None,
+            1,
+            81,
+            Vector.empty,
+            Some("d-noq")
+          ),
+          DataNode(
+            "t-unk",
+            NodeKind.ToolCall,
+            None,
+            2,
+            82,
+            Vector.empty,
+            Some("d-unk")
+          ),
+          DataNode(
+            "t-dup",
+            NodeKind.ToolCall,
+            None,
+            3,
+            83,
+            Vector.empty,
+            Some("d-dup")
+          ),
+          DataNode(
+            "t-low",
+            NodeKind.ToolCall,
+            None,
+            4,
+            84,
+            Vector.empty,
+            Some("d-low")
+          ),
+          DataNode(
+            "t-high",
+            NodeKind.ToolCall,
+            None,
+            5,
+            85,
+            Vector.empty,
+            Some("d-high")
+          ),
+          DataNode(
+            "t-nonint",
+            NodeKind.ToolCall,
+            None,
+            6,
+            86,
+            Vector.empty,
+            Some("d-nonint")
+          )
+        ),
+        data = Map(
+          "d-noq" -> malformed("call-noq", "glob=*.md"),
+          "d-unk" -> malformed("call-unk", "query=TODO bogus=1"),
+          "d-dup" -> malformed("call-dup", "query=a query=b"),
+          "d-low" -> malformed("call-low", "query=TODO max_matches=0"),
+          "d-high" -> malformed(
+            "call-high",
+            "query=TODO max_matches=10001"
+          ),
+          "d-nonint" -> malformed(
+            "call-nonint",
+            "query=TODO max_matches=abc"
+          )
+        )
+      )
+      val graph = SessionGraph(
+        RootId("run-srch5"),
+        SessionId("sess-srch5"),
+        Vector(
+          searchNode("t-noq", 1, "call-noq", "d-noq"),
+          searchNode("t-unk", 2, "call-unk", "d-unk"),
+          searchNode("t-dup", 3, "call-dup", "d-dup"),
+          searchNode("t-low", 4, "call-low", "d-low"),
+          searchNode("t-high", 5, "call-high", "d-high"),
+          searchNode("t-nonint", 6, "call-nonint", "d-nonint")
+        )
+      )
+      var reportOpt: Option[ToolReplayReport] = None
+      withWorkspace("README.md" -> "# Read\nTODO: write docs\n") { ws =>
+        reportOpt = Some(ToolReplay.replayTools(graph, Some(doc), ws))
+      }
+      val report = reportOpt.orNull
+      def unreadableDetail(entry: ToolReplayEntry): String =
+        entry.comparison match
+          case Left(RecomputeError.ArgsUnreadable(nodeId, detail)) =>
+            if nodeId == entry.nodeId then detail
+            else "WRONG-NODE:" + nodeId
+          case other => "NOT-ARGS-UNREADABLE:" + other
+      assertTrue(
+        report.entries.map(_.nodeId) ==
+          Vector("t-noq", "t-unk", "t-dup", "t-low", "t-high", "t-nonint"),
+        report.entries.flatMap(_.recomputed).isEmpty,
+        unreadableDetail(report.entries.find(_.nodeId == "t-noq").get) ==
+          "argsSummary has no query",
+        unreadableDetail(report.entries.find(_.nodeId == "t-unk").get) ==
+          "unsupported args keys: bogus",
+        unreadableDetail(report.entries.find(_.nodeId == "t-dup").get) ==
+          "duplicate args key 'query'",
+        unreadableDetail(report.entries.find(_.nodeId == "t-low").get) ==
+          "max_matches must be >= 1, got 0",
+        unreadableDetail(report.entries.find(_.nodeId == "t-high").get) ==
+          "max_matches must be <= 10000, got 10001",
+        unreadableDetail(report.entries.find(_.nodeId == "t-nonint").get) ==
+          "args key 'max_matches' is not an integer: abc",
         report.render.contains("error=args-unreadable")
       )
     }
