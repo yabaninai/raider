@@ -11,7 +11,7 @@
 - Продолжать разрешённую работу без промежуточных запросов подтверждения. Не запрашивать повторно уже полученное разрешение.
 - Языковая политика (2026-10-03): продуктовый код — только Scala 3 + ZIO (`modules/**`, `contracts/**`, `examples/**`, tests, HTTP-стенды). Python только в `scripts/plan`, `scripts/quality`, bootstrap glue и замороженных `experiments/**`; в поставку не входит. Для provider-тестов — Scala stand или локально запущенный OpenAI-compatible стенд по явной конфигурации.
 - Не добавлять соседние функции, зависимости, daemon, DSL-макросы или новые abstraction layers по инициативе исполнителя.
-- Владелец явно разрешил параллельную разработку. Coordinator назначает независимые ready задачи до трёх workers в отдельных worktrees/snapshot copies по `docs/parallel-development.md`. Root checkout/shared contracts/build/gate registry/board имеют единственного назначенного owner. Child session не является изолированным checkout; параллельные mutable builds одного checkout запрещены.
+- Владелец явно разрешил параллельную разработку; 2026-10-12 авторизован агрессивный параллелизм: минимум 8 потоков через git worktrees (branch-per-lane, коммиты в свою ветку, merge-интеграция coordinator'ом) по `docs/parallel-development.md` §1a. Snapshot-режим — fallback. Root checkout/shared contracts/build/gate registry/board имеют единственного назначенного owner. Child session не является изолированным checkout; параллельные mutable builds одного checkout запрещены.
 - Не менять соседний Yabanin репозиторий в рамках карточки Raider. Yabanin-изменения получают отдельные карточки и его собственные обязательные правила.
 
 ## Проверки и evidence

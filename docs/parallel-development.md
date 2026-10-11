@@ -10,6 +10,31 @@
 
 Coordinator единолично владеет интеграционным checkout, shared `build.sbt`/`project/**`, public core/DSL signatures, gate registry/thresholds, dependency graph, board и финальной acceptance. Изменять эти файлы может назначенный отдельный owner, пока coordinator удерживает запрет на competing edits. Worker получает feature module/конкретные файлы и tests. Reviewer проверяет другой diff в свежем контексте; не принимает свой implementation.
 
+## 1a. Worktree-режим (решение владельца 2026-10-12: агрессивный параллелизм, минимум 8 потоков)
+
+Владелец явно авторизовал 8+ параллельных lanes через **git worktrees**
+(вместо snapshot-копий). Worktree-режим — primary; snapshot-режим из §2 —
+fallback, когда Git недоступен.
+
+- Подготовка: coordinator коммитит чистое дерево в `main`; на каждый поток:
+  `git worktree add <WT-ROOT>/raider-wt-<N> -b lane/wXX-r<N> main`. Worktree
+  имеет собственный `.git` (файл-ссылку), собственный `target/`, отдельную
+  ветку. `artifacts/tools/m2` копируется в worktree (untracked;
+  bootstrap-SSL окружения — pre-existing).
+- Worker работает ТОЛЬКО в своём worktree/ветке. Коммит в СВОЮ ветку разрешён
+  и обязателен (деливерабл = ветка + RECORD.md); push запрещён; `main` и
+  shared-файлы (build.sbt/project/**, board, docs/tasks/**, docs/adr/**,
+  scripts/**, .gitignore) — только coordinator.
+- Гейты в worktree идут в git-mode (`make quality-changed` без
+  QUALITY_BASE_MANIFEST — классификация vs HEAD ветки). sbtlock не нужен
+  (изолированные target/); shared coursier-cache конкурентно-безопасен.
+- Интеграция: coordinator мержит lane-ветки в `main` последовательно
+  (`git merge --no-ff`), конфликты решает сам, после каждого батча мержей —
+  полные гейты на main. Lane-зелёное ≠ финальное: main-гейты обязательны.
+- REVIEW-поток занимает один из worktree-слотов (read-only, вердикт-файл).
+- Лимит: минимум 8, вверх ограничен только RAM/CPU (18 ядер / 128 GB —
+  эмпирически 8-10 sbt-JVM устойчиво) и числом независимых ready-карточек.
+
 ## 2. Сначала доказать изоляцию
 
 Перед запуском writers записать Git state, installed OpenCode version, доступные task/subagent tools, cwd и baseline fingerprint. На момент аудита repository unborn и все исходники untracked; обычный worktree от HEAD сейчас невозможен.

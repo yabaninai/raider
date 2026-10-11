@@ -29,11 +29,20 @@ docs/prompts/opencode-12k-parallel.txt от actual integrated tree; старые
    после собственной проверки compile+test в root и честно отметь
    «умер до gates, верифицировано coordinator'ом».
 
-ВОЛНЫ (проверенная механика, не менять без причины)
-- Конкурентность: до 10 параллельных lane-workers (разрешение владельца
-  2026-10-10), reviewer занимает слот; уменьшай при нехватке RAM/CPU/ready-
-  задач. Root checkout, build.sbt/project/**, board, docs/tasks/**, docs/adr/**,
-  scripts/** — только coordinator; lanes их НЕ трогают.
+ВОЛНЫ (механика W22+: WORKTREE-режим, решение владельца 2026-10-12)
+- Конкурентность: МИНИМУМ 8 параллельных потоков через git worktrees
+  (branch-per-lane). Snapshot-режим (§ ниже, rsync-копии) — только fallback
+  при недоступном Git. Root checkout, build.sbt/project/**, board,
+  docs/tasks/**, docs/adr/**, scripts/**, .gitignore — только coordinator.
+- Перед волной: чистый коммит в main; `git worktree add <WT>/raider-wt-N
+  -b lane/wXX-rN main`; в каждый worktree скопировать artifacts/tools/m2.
+- Worker: работает в своём worktree, КОММИТИТ в свою ветку (git add -A &&
+  git commit; RECORD.md — в .gitignore, не коммитится), push запрещён, main
+  не трогает. Гейты в git-mode (make quality-changed без base-manifest).
+  sbtlock не нужен (изолированные target/).
+- Интеграция: coordinator мержит lane-ветки последовательно (merge --no-ff),
+  решает конфликты, полные гейты на main после каждого батча. Отменить
+  битую ветку можно git merge --abort / branch -D — код в других ветках жив.
 - Lane = snapshot-копия root БЕЗ .git: rsync -a --exclude .git --exclude
   target --exclude artifacts --exclude .bloop --exclude .metals --exclude
   .DS_Store --exclude '.env*' --exclude .idea $ROOT/ $NIGHT/lane-NN/ ;
