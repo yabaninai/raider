@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 116,
+  "raider_count": 117,
   "companion_count": 3,
   "cards": [
     {
@@ -3422,6 +3422,33 @@
       },
       "non_goals": "Live-модель за replay (LIN-06), изменение ReplayHarness-контракта, второй runner/scheduler.",
       "context": "docs/lineage.md §9.2 «CLI-командная поверхность replay»; ReplayHarness/ReplayModelBackend готовы (§9.1, LIN5-01 end-to-end); ADR-027."
+    },
+    {
+      "id": "LIN-11",
+      "title": "LineageRenderer: компилируемые проекции графов без named-def корней",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-02"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/lineage/proj/**",
+        "modules/dsl/src/test/scala/raider/dsl/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "LineageRenderer эмитит синтаксически-валидную внешнюю область проекции для графов без named-def корней (comment-only тело объекта закрывается легальным statement, например `()`); проекция любого валидного графа компилируется pinned dotc 3.9.0; формат остальных проекций не меняется.",
+      "acceptance": {
+        "normal": "LIN11-01: проекция графа plain-рана (model/tool-only, без named-def) компилируется pinned dotc 3.9.0 (compile-gate).",
+        "error": "LIN11-02: негативный compile-gate: повреждение тела проекции ловится гейтом (негатив остаётся негативом).",
+        "concurrency": "LIN11-03: повторная проекция байт-идентична; golden tiny-graph/deep-tree инварианты LIN2-01 не меняются."
+      },
+      "non_goals": "Изменение frozen lineage-data schema, GraphHash/нормализации компаратора, формата существующих golden-проекций.",
+      "context": "LIN-09 contract-change request (reproducer: object X: + indented comment-only тело → dotc «indented definitions expected, eof found»); LIN2-01 compile-gate; docs/lineage.md §9.1."
     }
   ]
 }

@@ -153,3 +153,4 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-106** [Palette/help в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl, docs.
 - **LIN-09** [Запись lineage-артефактов рядом с продовым раном](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
 - **LIN-10** [CLI-командная поверхность replay](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts, docs.
+- **LIN-11** [LineageRenderer: компилируемые проекции графов без named-def корней](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.

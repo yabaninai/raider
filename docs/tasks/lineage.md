@@ -245,3 +245,27 @@ Status: ready. Milestone: LIN. Dependencies: LIN-05.
 **Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
 
 **Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## LIN-11: LineageRenderer: компилируемые проекции графов без named-def корней
+
+Status: ready. Milestone: LIN. Dependencies: LIN-02.
+
+**Сценарий и контракт.** LineageRenderer эмитит синтаксически-валидную внешнюю область проекции для графов без named-def корней (comment-only тело объекта закрывается легальным statement, например `()`); проекция любого валидного графа компилируется pinned dotc 3.9.0; формат остальных проекций не меняется.
+
+**Context.** LIN-09 contract-change request (reproducer: object X: + indented comment-only тело → dotc «indented definitions expected, eof found»); LIN2-01 compile-gate; docs/lineage.md §9.1.
+
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: LIN11-01: проекция графа plain-рана (model/tool-only, без named-def) компилируется pinned dotc 3.9.0 (compile-gate).
+- Error/adversarial: LIN11-02: негативный compile-gate: повреждение тела проекции ловится гейтом (негатив остаётся негативом).
+- Cancellation/concurrency: LIN11-03: повторная проекция байт-идентична; golden tiny-graph/deep-tree инварианты LIN2-01 не меняются.
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Изменение frozen lineage-data schema, GraphHash/нормализации компаратора, формата существующих golden-проекций.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
