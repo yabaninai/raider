@@ -60,6 +60,19 @@ object ReplChatCommands:
       ":log <id>",
       "show the trace (rounds, tools, results) of a job"
     ),
+    // RAI-110 added the plan-approval lines to Commands.helpText (the chat
+    // surface); the freshness registry follows the source of truth (the
+    // integrated-candidate break the RAI-111 reviewer predicted).
+    Command(
+      ":approve",
+      ":approve",
+      "tab shell: approve the plan proposal (one execution job)"
+    ),
+    Command(
+      ":reject",
+      ":reject",
+      "tab shell: reject (cancel) the live plan phase"
+    ),
     Command(
       ":reset",
       ":reset",
