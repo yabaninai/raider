@@ -84,9 +84,20 @@ TabShellHost хук paletteTerminal). Records: docs/work/records/RAI-103..106.md
 Integrated gates на f893d48: quality-full 10/10 (manifest
 20261012-071006-49099-0001) + профили static/unit/contracts/ci/docs/runtime/
 repl/security 9/9 (manifest 20261012-071243-51219-0001). **RAI-107 Plan mode
-(ADR-028) — обязательная карточка владельца (2026-10-12), lane открыта**;
-follow-ups: RAI-068 freshness chat-команд в палитре, approval-канал/UI plan
-режима, P2S-рендер в input loop (consumer-шаг RAI-104).
+(ADR-028) — обязательная карточка владельца (2026-10-12): accepted** — lane
+rai-107 с handoff partial (мёртвый rate-limit spawn верифицирован вторым
+воркером и сохранён); ADR-028 Accepted (owner mandate); PLAN-01..03 зелёные
+(scripted, 11 тестов); review: код approve, 1 MAJOR evidence-finding
+(record после гейтов сломал собственный fingerprint) закрыт перегоном на
+main; lane-манифесты помечены stale в record (docs/work/records/RAI-107.md).
+Determinism-фиксы на интеграции (детерминизм, не ослабление ассертов):
+71d0aa3 quiescence drain P2W-01; 91a6575 :tabs-render retry P2U-03.
+Финальные integrated gates (main 91a6575): quality-full 10/10 (manifest
+20261012-105946-2326-0001) + профили ci/contracts/docs/repl/runtime/security/
+static/unit 9/9 (manifest 20261012-110432-24403-0001); validate.py passed
+(121 cards). Follow-ups: RAI-068 chat-команды в палитре; approval-канал/UI
+plan-режима; TabShellHost в Main.ttyLoop; ReplayCli в продукт-команду
+`raider`; P2S-рендер consumer-шаг; eval-профиль plan-режима (milestone).
 
 ## Module Status
 

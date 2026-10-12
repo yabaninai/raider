@@ -3457,7 +3457,7 @@
       "dependencies": [
         "RAI-010"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/loop/**",
         "modules/runtime/src/test/scala/raider/runtime/**",
