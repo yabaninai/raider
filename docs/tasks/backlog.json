@@ -3262,7 +3262,7 @@
       "dependencies": [
         "RAI-102"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/repl/src/main/scala/raider/repl/**",
@@ -3290,7 +3290,7 @@
       "dependencies": [
         "RAI-102"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/repl/src/main/scala/raider/repl/**",
@@ -3318,7 +3318,7 @@
       "dependencies": [
         "RAI-102"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/repl/src/main/scala/raider/repl/**",
@@ -3346,7 +3346,7 @@
       "dependencies": [
         "RAI-102"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/repl/src/main/scala/raider/repl/**",

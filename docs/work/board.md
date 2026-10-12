@@ -73,6 +73,21 @@ phase/recovery schema-card; follow-up: wiring TabShellHost в Main.ttyLoop,
 wiring ReplayCli в продукт-команду `raider`. Волна 2: RAI-103..106
 (P2-остатки: drafts/scrollback/unread/palette-help на продуктовой поверхности).
 
+Волна 2 (spawn-режим, 4 lanes; интеграция main f893d48): **RAI-103** drafts
+(P2D-01..03, reviewer approve; продуктовых правок нет — фича-специфичные
+PTY-спеки), **RAI-104** scrollback bounds (P2S-01..03, approve; продуктовый
+TabShellScrollback render), **RAI-105** unread badges (P2U-01..03; blocker
+lane → coordinator determinism-fix 71d0aa3: quiescence drain перед :quit в
+P2W-01 драйвере, badge-маркер недетерминирован), **RAI-106** palette/help
+(P2P-01..03, approve; деривационный каталог из frozen CommandRouter,
+TabShellHost хук paletteTerminal). Records: docs/work/records/RAI-103..106.md.
+Integrated gates на f893d48: quality-full 10/10 (manifest
+20261012-071006-49099-0001) + профили static/unit/contracts/ci/docs/runtime/
+repl/security 9/9 (manifest 20261012-071243-51219-0001). **RAI-107 Plan mode
+(ADR-028) — обязательная карточка владельца (2026-10-12), lane открыта**;
+follow-ups: RAI-068 freshness chat-команд в палитре, approval-канал/UI plan
+режима, P2S-рендер в input loop (consumer-шаг RAI-104).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
