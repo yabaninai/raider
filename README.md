@@ -4,381 +4,97 @@
 
 # Raider
 
-**Scalable agent harness for CI pipelines** — Scala 3 + ZIO 2
+**Scala workflows for coding agents and CI** — Scala 3 + ZIO 2
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-e94560.svg)](LICENSE)
 [![Scala 3](https://img.shields.io/badge/Scala-3.9.0-0f3460?logo=scala&logoColor=white)](https://www.scala-lang.org/)
 [![ZIO 2](https://img.shields.io/badge/ZIO-2.1.26-e94560)](https://zio.dev/)
-[![Tests](https://img.shields.io/badge/tests-193%20passed-brightgreen)](#quality)
-[![Gates](https://img.shields.io/badge/gates-6%2F6-brightgreen)](#quality-gates)
-
-*A self-hosting coding agent that reads, searches, edits and runs code
-in its own repository. Point it at a local or remote LLM and let it work.*
 
 </div>
 
----
+Raider runs a native model/tool loop, a real Scala REPL, and compiled workflows
+in a headless CLI. The coding agent can read, search, edit and patch files,
+inspect a directory tree, and run commands. Direct OpenAI-compatible and
+Anthropic Messages transports are implemented.
 
-## What is Raider
+The project is under development. The examples below exercise current source;
+full SDK packaging and autonomous PR/merge/release workflows are roadmap items.
 
-Raider is an extensible agent harness for CI pipelines. The model gets tools
-(read/search/edit files, run commands) and works on tasks inside your
-repository. Supports OpenAI-compatible and Anthropic-compatible APIs.
+## Try it without a model
 
-## Quick Start
-
-```sh
-# Clone and build
-git clone <repo> && cd scalaagent
-COURSIER_CACHE=/tmp/cc-master sbt --batch compile
-
-# Interactive chat with coding tools (fs_read, fs_search, fs_edit, proc_run)
-sh scripts/selfdev/chat.sh --provider openai
-
-# One-shot task
-sh scripts/selfdev/raider.sh run --agent coder --provider openai \
-  --input "Read README.md and describe this project" --out artifacts/selfdev
-```
-
-## Interactive REPL
-
-The REPL gives you a **real Scala 3 compiler** with agent DSL — you can
-compose pipelines, define agents, and run them against a live LLM.
-
-### Launch the REPL
+Prerequisites: **JDK 21**, `sbt`, `python3`, and the JDK `jar` command. The build
+pins Scala 3.9.0, ZIO 2.1.26 and sbt 1.11.4. First setup resolves dependencies;
+subsequent offline runs can use the populated cache. Run from the checkout root.
 
 ```sh
-# Mock backend (no network, instant responses for testing DSL)
-COURSIER_CACHE=/tmp/cc-master sbt --batch "raiderRepl/runMain raider.repl.Main"
-
-# Live backend (llama.cpp on 8081)
-RAIDER_PROVIDER=openai java -cp "$(COURSIER_CACHE=/tmp/cc-master sbt --batch --error 'export root/runtime:fullClasspath' | tail -1)" raider.repl.Main
+sh scripts/build/user-examples.sh
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
+RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main
 ```
 
-### REPL examples — interactive session transcript
+This is the actual Scala REPL. Default agent answers contain
+`[scripted-fixture]`; the fixture always gives the same answer. It demonstrates
+compiler, composition and job mechanics. The mock does not solve coding tasks.
 
-```
-raider> val x = 1
-val x: Int = 1
-
-raider> case class Point(x: Int, y: Int)
-// defined case class Point
-
-raider> scout.ask("What is 2+2? Reply just the number")
-val res0: String = "4"
-
-raider> val task = scout("Read build.sbt and list modules")
-val task: AgentAsk[String] = AgentAsk@...
-
-raider> task.run()
-val res1: String = "The project has 12 modules: core, runtime, dsl, ..."
-
-raider> worker.start("Read errors.scala and count error families")
-val res2: JobHandle[String] = JobHandle@...
-
-raider> res2.await()
-val res3: String = "There are 18 error families..."
-
-raider> :jobs
-j_1  Succeeded  worker: Read errors.scala...
-
-raider> :quit
-```
-
-### REPL pipeline examples — compose agents
-
-```scala
-// Sequential pipeline: find → fix → verify
-val result = scout("Find all TODO comments in src/").run()
-
-// Parallel: two agents answer the same question
-val (a, b) = all(scout, reviewer).ask("Is this code correct?")
-
-// Map result
-val length = scout("Count lines in README").map(_.length).run()
-
-// Background job — starts immediately, you keep working
-val job = worker.start("Analyze the error handling in AgentLoop.scala")
-// ... do other things ...
-job.await()  // blocks until done
-
-// Multi-turn chat with context
-val chat = openSession(worker)
-chat.ask("Read the file AgentLoop.scala")       // model reads the file
-chat.ask("Now explain the dispatch method")     // model remembers previous read
-```
-
-## CLI — one-shot tasks
+Run **all eight examples**, including a real file edit and failing → passing
+check, without a model or paid calls:
 
 ```sh
-# Run a task with the coder agent (has all tools)
-sh scripts/selfdev/raider.sh run --agent coder --provider openai \
-  --input "Read build.sbt and list the project modules" \
-  --out artifacts/selfdev
-
-# Run from a compiled bundle
-sh scripts/selfdev/raider.sh run --bundle demo-bundle.jar \
-  --workflow inspect --input "test data" --out artifacts/selfdev --mock
-
-# Interactive chat with tools
-sh scripts/selfdev/chat.sh --provider openai
+python3 scripts/quality/user_examples.py
 ```
 
-## Real-Life Examples
+The verifier builds examples, uses disposable workspaces, checks every result,
+and writes per-example transcripts, commands and hashes under
+`artifacts/user-examples/verification-*/`. A failed assertion, timeout or wrong
+exit code makes the command fail.
 
-### Example 1: Read a file and summarize
+## Runnable gallery
 
-```
-Input:  "Read the file called build.sbt using fs_read and tell me
-         what this project is about in one sentence."
+| Example | What you can show today | Guide |
+| --- | --- | --- |
+| 01 Compiler | Values, case classes, typed functions and multiline Scala | [REPL examples](docs/user-guide-repl.md#1-настоящий-scala-compiler) |
+| 02 Lazy/map | Describe an ask first, run it explicitly, transform its result | [REPL examples](docs/user-guide-repl.md#2-ленивый-запрос-и-map) |
+| 03 All/batch | Compose two lazy asks and process an ordered batch | [REPL examples](docs/user-guide-repl.md#3-parallel-all-и-упорядоченный-batch) |
+| 04 Background job | Start work, await the same handle, inspect `:jobs` | [REPL examples](docs/user-guide-repl.md#4-фоновая-job) |
+| 05 Session | Keep user/assistant turns in a conversation object | [REPL examples](docs/user-guide-repl.md#5-session-и-история-turns) |
+| 06 Compiled workflow | Turn a comma-separated task list into a summary using typed `Program.andThen` | [Bundle example](docs/user-guide-repl.md#6-typed-workflow-в-bundle) |
+| 07 Coding loop | Read/search a typo, observe a failed check, edit using SHA-256, run a passing check | [Coding example](docs/user-guide.md#7-исправление-файла-и-проверка-результата) |
+| 08 Observability | Inspect actual run/trace/lineage artifacts and compile the Scala projection | [Artifact example](docs/user-guide.md#8-просмотр-результата-и-дерева-запуска) |
 
-Agent:  → fs_read {"path": "build.sbt", "max_lines": 30}
-        ← 30 lines, sha256=abc123...
+The coding demo uses a **scripted loopback OpenAI-compatible server** written in
+Scala. It chooses predefined tool calls, while Raider performs the actual reads,
+search, edit and processes. The demo proves the integration, not LLM reasoning.
+The compiled task-summary workflow is pure Scala and makes no model calls.
 
-Answer: "This is a Scala 3 + ZIO 2 multi-module project for CI pipelines
-         with 12 modules including core, runtime, tools, and providers."
-```
+## Working with a model
 
-### Example 2: Search for code patterns
+For model-driven coding, configure a local or explicitly budgeted remote endpoint,
+model and credential via `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`. Keep credentials
+out of command arguments. See [current launch/configuration](docs/user-guide.md).
+The docs verifier only contacts its own loopback fixture.
 
-```
-Input:  "Find all occurrences of AgentLoop in scala files."
+Current CLI commands are `run`, `chat`, `plugin`, and `replay`; there is no general
+`raider compile` or `raider test` command. The source launch uses
+`java -cp "$RAIDER_CP" raider.cli.Main`. The Scala REPL entry is
+`raider.repl.Main`; `--tabs` selects a different tab shell, not the Scala eval loop.
 
-Agent:  → fs_search {"query": "AgentLoop", "glob": "**/*.scala"}
-        ← 12 matches across 5 files
+Scala scripts, bundles, plugins and repository commands execute trusted code with
+process permissions. Workspace checks and tool policy do not sandbox that code.
 
-Answer: "AgentLoop is defined in modules/runtime/.../AgentLoop.scala
-         and used in cli, repl, and delegation modules."
-```
-
-### Example 3: Edit a file with sha256 verification
-
-```
-Input:  "Fix the typo in NOTES.txt: change 'Raiedr' to 'Raider'"
-
-Agent:  → fs_read {"path": "NOTES.txt"}                    ← get current sha256
-        ← content: "Raiedr self-dev start", sha256=def456...
-
-        → fs_edit {"path": "NOTES.txt",
-                   "content": "Raider self-dev start",
-                   "expected_sha256": "def456..."}          ← stale-detect
-        ← {"action":"modified","new_sha256":"abc789..."}
-
-Answer: "Fixed the typo. File now reads 'Raider self-dev start'."
-```
-
-### Example 4: Run tests and report
-
-```
-Input:  "Run sbt --batch test and tell me if all tests pass."
-
-Agent:  → proc_run {"argv": ["sbt","--batch","test"], "timeout_s": 300}
-        ← {"exitCode": 0, "stdout": "...193 tests passed..."}
-
-Answer: "All tests pass — 193 tests, 0 failures. Build is green."
-```
-
-## Agent Tools
-
-| Tool | Description | Mutates |
-|---|---|---|
-| `fs_read` | Read a file (bounded, sha256 provenance, workspace containment) | No |
-| `fs_search` | Search text in files (bounded, declared truncation) | No |
-| `fs_edit` | Write a file (expected-sha256, atomic replace, stale-detect) | Yes |
-| `proc_run` | Run a command (argv, no-shell, timeout, bounded output) | Yes |
-| `delegate` | Start a sub-agent (same root budget) | Spawns |
-| `await_agent` | Wait for sub-agent completion | — |
-
-## Observability
-
-Every agent run produces a **trace** — a bounded event log that makes the
-work observable:
-
-### Transcript (per-run JSON)
-
-```json
-{
-  "rootId": "loop_1",
-  "model": "unsloth/Qwen3.8-27B...",
-  "events": [
-    {"RunStarted":  {"at": "...", "model": "...", "messages": 1}},
-    {"RoundStarted":{"at": "...", "round": 1}},
-    {"ModelCall":   {"at": "...", "messageCount": 1}},
-    {"ToolCallStarted": {"at": "...", "tool": "fs_read", "argumentsJson": "..."}},
-    {"ToolCallFinished":{"at": "...", "tool": "fs_read", "resultJson": "..."}},
-    {"TextReceived": {"at": "...", "text": "final answer"}},
-    {"RunFinished":  {"at": "...", "outcome": "Succeeded"}}
-  ]
-}
-```
-
-Written to `transcript.json` in each work directory after every run.
-
-### REPL :log command
-
-```
-raider> :log j_1
-=== trace: j_1 (8 events) ===
-  RUN START  model=builtin:coder messages=1
-  ROUND 1
-    → model call (1 messages)
-    → tool: fs_read (call-1) args: {"path":"README.md"}
-    ← tool: fs_read OK: {"tool_call_id":"call-1","output":...
-  RUN Succeeded: "The project is..."
-```
-
-### :trace command
-
-Shows recent events from the current session:
-```
-raider> :trace
-trace: 24 events
-  → fs_read {"path":"README.md"}
-  ← fs_read: {"tool_call_id":"...","output":...
-  RUN START model=unsloth/Qwen3.8...
-```
-
-### Real-time stderr output
-
-During agent execution, every tool call and model round is printed to stderr:
-```
-[round 1]
-  → fs_read {"path": "README.md", "max_lines": 30}
-  ✓ ← fs_read: {"tool_call_id":"...","output":{"content":"# raider..."}}
-[round 2]
-  → model (2 msgs)
-  ← text: "The project is a Scala 3..."
-```
-
-## Providers
-
-| Provider | Non-streaming | SSE Streaming | Tool Calls |
-|---|---|---|---|
-| OpenAI-compatible (llama.cpp, vLLM, …) | ✅ | ✅ | ✅ |
-| Anthropic Messages (Claude API) | ✅ | ✅ | ✅ |
-| Mock (fixture) | ✅ | — | — |
-
-## Quality Gates
-
-The project enforces quality through a protected gate registry
-(`scripts/quality-policy/registry.json`). Gates are executed via
-`make quality-changed QUALITY_EXECUTE=1`.
-
-### Active Gates (fast profile)
-
-| Gate | Command | What it checks |
-|---|---|---|
-| `self-registry-check` | `quality.py self-check` | Registry integrity + verify-negative self-tests |
-| `sbt-compile` | `sbt compile` | Zero warnings (-Werror) across all 12 modules |
-| `core-contracts-spec` | `ContractsSpec` | Canonical JSON roundtrips, typed negatives |
-| `compile-fixtures` | `compile.sh` | Pinned dotc positive+negative compile fixtures |
-| `plan-validate` | `plan/validate.py` | Docs links, JSON, card metadata |
-| `sbt-test` | `sbt test` | 193 tests across all modules |
-
-### Gate Profiles
-
-| Profile | Gates | When |
-|---|---|---|
-| `fast` | all 6 above | Every code change (default) |
-| `self` | self-registry-check | Quality runner changes |
-| `static` | sbt-compile | All Scala/config changes |
-| `unit` | core-contracts-spec, sbt-test | Behavior changes |
-| `contracts` | core-contracts-spec, compile-fixtures | Public API/schema changes |
-| `runtime` | sbt-test | Runtime/concurrency changes |
-| `docs` | plan-validate | Documentation changes |
-
-### Running Gates
+## Development and evidence
 
 ```sh
-# Full gate suite (default for any change)
+make quality-changed
 make quality-changed QUALITY_EXECUTE=1
-
-# Specific profile only
-make quality-profile PROFILES="static unit"
-
-# Verify evidence freshness
-make quality-verify MANIFEST=artifacts/quality/<run-id>/manifest.json PROFILES=fast
 ```
 
-### Evidence Manifest
+Profiles and exact gate commands come from the
+[protected registry](scripts/quality-policy/registry.json). Evidence is stored in
+`artifacts/quality/<run-id>/manifest.json`. Test/gate counts depend on the checked
+candidate; this README does not present historical counts as current results.
 
-Each gate run produces a JSON manifest with:
-- Source fingerprint (SHA-256 of all tracked files)
-- Per-gate status, exit code, log hash
-- Test summary (passed/failed/skipped)
-- Toolchain snapshot (java, sbt, scala versions)
-
-```sh
-# Verify a manifest against the current tree
-make quality-verify MANIFEST=artifacts/quality/20261004-163645/manifest.json PROFILES=fast
-# [verify] OK — fingerprint fresh
-```
-
-### Trace Listeners
-
-The AgentLoop supports pluggable trace listeners. A listener receives every
-event during execution and can record it, print it, or forward it:
-
-```scala
-val loop = AgentLoop(
-  backend, tools, model, admission, root,
-  trace = ev => myLogger.log(ev)  // pluggable listener
-)
-```
-
-The CLI uses a composite listener that:
-1. **Records** all events into a bounded buffer → written to `transcript.json`
-2. **Prints** tool calls to stderr in real-time (colored output)
-3. **Stores** them for the `:trace` / `:log` REPL commands
-
-## Key Findings (compiler/library bugs found and fixed)
-
-<details>
-<summary>zio-streams: <code>empty *> s</code> drops <code>s</code></summary>
-
-`ZStream.empty *> s` completes the combined stream without pulling `s`
-(zip semantics). Use `++` + `.drain` instead.
-</details>
-
-<details>
-<summary>Scala 3.9: E046 cyclic on member-select chains</summary>
-
-`x.call.y` in certain contexts causes `Recursive value call needs type`.
-Fix: intermediate `val` assignments or rename the parameter.
-</details>
-
-<details>
-<summary>ZIO: non-daemon fork interrupted by supervisor</summary>
-
-`.fork` (not daemon) inside `Unsafe.unsafe {}` — the runtime supervisor
-interrupts children when the parent root fiber completes. Use `.forkDaemon`.
-</details>
-
-<details>
-<summary>java.nio: <code>readNBytes(8192)</code> blocks streaming</summary>
-
-`readNBytes` blocks until exactly N bytes or EOF — wrong for SSE streaming.
-Use `read(buf)` which blocks until ≥1 byte.
-</details>
-
-<details>
-<summary>Shutdown hooks: System.exit from hook deadlocks</summary>
-
-Calling `System.exit` from inside a shutdown hook deadlocks
-`Shutdown.runHooks`. Fix: hook = interrupt + bounded wait + return.
-</details>
-
-## Documentation
-
-| Document | Description |
-|---|---|
-| [docs/selfdev-prompts.md](docs/selfdev-prompts.md) | Prompts for self-hosting |
-| [docs/runtime-contracts.md](docs/runtime-contracts.md) | Runtime contracts (§1–15) |
-| [docs/quality-gates.md](docs/quality-gates.md) | Quality gates specification |
-| [docs/work/board.md](docs/work/board.md) | Execution board (statuses, evidence) |
-| [docs/work/records/](docs/work/records/) | Work records with acceptance evidence |
-| [docs/PROMPT-SELF-IMPROVE.txt](docs/PROMPT-SELF-IMPROVE.txt) | Self-improvement prompt for the coder agent |
-
-## License
+[User guide](docs/user-guide.md) · [REPL and bundle examples](docs/user-guide-repl.md)
+· [Roadmap](docs/roadmap-12k.md) · [Execution board](docs/work/board.md)
+· [Runtime contracts](docs/runtime-contracts.md)
 
 MIT — see [LICENSE](LICENSE).

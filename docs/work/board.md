@@ -1,5 +1,28 @@
 # Raider Execution Board
 
+## Current user documentation / examples 2026-10-13
+
+Owner requested actual-main user docs, verified useful examples and merge to main.
+Visible Luna writer + independent Luna reviewer; coordinator owns integration.
+[User guide](../user-guide.md) and [REPL/bundle gallery](../user-guide-repl.md)
+cover eight runnable examples. Single-command runner:
+`python3 scripts/quality/user_examples.py`.
+Pre-record integrated gallery: eight cases passed, real coding check 1→edit→0,
+lineage Scala compiled; current limitations and scripted markers are explicit.
+[Documentation record](records/USER-DOCS-CURRENT.md).
+
+Separate reviewed corrections discovered by checks:
+[README classifier](records/VERIFIER-README-CLASSIFICATION.md) adds only exact
+README.md docs mapping; [SSE idle read](records/TRANSPORT-SSE-IDLE.md), worker
+`96f02ed`, fixes cancelable owned body read. Existing deadline test reproduced
+twice before fix; final targeted 12/12 and full lane sbt-test passed without
+changed tests/bounds. Earlier failures retained in records.
+
+Final main acceptance after merges/records is the external receipt
+`artifacts/user-docs-final/receipt.json`; no lane-only freshness claim.
+These component results do not announce M3/M4, live model quality, public SDK
+or completed forge SDLC. Next SDK contract remains RAI-116.
+
 ## SDK research / owner decisions 2026-10-12
 
 Приоритет уточнён: **удобный Scala DSL для AI-native SDLC**, один workflow локально

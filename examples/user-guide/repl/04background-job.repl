@@ -1,0 +1,5 @@
+val job = worker.start("background scripted fixture")
+val answer = job.await
+assert(answer.contains("[scripted-fixture]")); println("EXAMPLE-04 PASS (background job awaited)")
+:jobs
+:quit

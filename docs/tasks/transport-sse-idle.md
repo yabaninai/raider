@@ -1,6 +1,7 @@
 # TRANSPORT-SSE-IDLE: idle deadline завершает блокирующее чтение
 
-Status: ready. Date: 2026-10-13. Baseline product: `7702fd0` / `073d617`.
+Status: done (reviewed runtime correction; final main receipt required).
+Date: 2026-10-13. Baseline product: `7702fd0` / `073d617`.
 Separate runtime correction discovered by USER-DOCS-CURRENT verification.
 
 ## Reproduction / result

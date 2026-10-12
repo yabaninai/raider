@@ -1,6 +1,7 @@
 # USER-DOCS-CURRENT: пользовательская документация и проверенная галерея
 
-Status: ready. Date: 2026-10-13. Baseline: `7702fd0` (main, clean).
+Status: done (content/examples; final main evidence in work record).
+Date: 2026-10-13. Baseline: `7702fd0` (main, clean).
 Owner request: изучить текущую основную ветку, обновить user docs, проверить
 каждый демонстрируемый пример и вмержить в основную ветку. Luna — worker,
 primary session — coordinator. Это отдельная documentation/example card.

@@ -208,7 +208,7 @@
    "self",
    "static"
   ],
-  "^docs/|^README|^AGENTS.md": [
+  "^docs/|^README|^README.md|^AGENTS.md": [
    "docs"
   ],
   "^experiments/": [
