@@ -259,6 +259,25 @@ static/unit/contracts/ci/docs/runtime/repl/security 9/9 (manifest
 schema-card (owner), P2S-рендер — закрыт RAI-113; eval-профиль plan-режима —
 corpus готов (RAI-114), регистрация профиля в working-product stage.
 
+**Волна 4c (spawn-режим §1b, base 7702fd0 → main acca49f) + аудит
+обязательств:** зарегистрированы RAI-124/126 (7702fd0, validate 142).
+Lanes: **RAI-124** REPL `:type` (нативный dotty TypeOf через frozen
+engine.eval — БЕЗ исполнения: side-effect-маркер отсутствует, resN не
+сдвигается; helpText/catalog freshness; TYPE-01..03, PTY ×3 flake=0; review
+approve; minors: PTY-оракулы echo-saturation → RAI-130, UX-префикс →
+RAI-130); **RAI-126** PTY-probes COURSIER_CACHE setdefault (3 точки —
+вкл. sbt_run :159 за пределами якоря карточки, отклонение честно
+документировано и одобрено review; CC-01..03 c численной проверкой
+использования кэша вызывающего 0→180 файлов; защищённые верификаторы, review
+approve). Независимый аудит Open Obligations (read-only reviewer, main
+7702fd0): 7 из 18 строк CLOSED/STALE (эвиденция file:line), ключевой gap —
+Anthropic-провод не передаёт tool-definitions (W05); таблица заменена;
+зарегистрированы RAI-127/128/129 (из аудита) + RAI-130 (из review), validate
+146 cards. Интеграция: merges 6f4e9e3/acca49f. Integrated gates на acca49f:
+EXECUTE 10/10 (manifest 20261013-023006-78942-0001), профили 9/9 (manifest
+20261013-023534-82374-0001). Гигиена: RAI-015 (m0.md) перескоупить
+отдельной карточкой. Волна 4d: RAI-127/128/129/130.
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
@@ -311,32 +330,39 @@ corpus готов (RAI-114), регистрация профиля в working-pr
 | RAI-120 IsolatedRerun guard | accepted | [record](records/RAI-120.md); ISO-01..03 fail-closed; review approve |
 | RAI-121 :scrollback precedence | accepted | [record](records/RAI-121.md); SCB-01..03, digit-first = :switch; review approve |
 | RAI-122 tabs_pty_probe sync | accepted | [record](records/RAI-122.md); PROBE-01..03; защищённый верификатор, review approve |
+| RAI-124 REPL :type | accepted | [record](records/RAI-124.md); TYPE-01..03, без исполнения; review approve; follow-ups → RAI-130 |
+| RAI-126 probes COURSIER_CACHE | accepted | [record](records/RAI-126.md); CC-01..03; защищённые верификаторы, review approve |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | M1 | accepted-pending-owner-note | [M1-ACCEPTANCE.md](records/M1-ACCEPTANCE.md) (evidence compiled) |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |
 
 ## Open Obligations
 
-| Obligation | Card/condition |
-| --- | --- |
-| Live-wire verification (real providers) | owner-configured endpoint/budget; without it pending |
-| Edit tool refinements (patch format, multi-file) | RAI-015 remainder |
-| Tool definitions on wire (input_schema per tool) | structured message contract |
-| Child deadlines / OOB-cancel | §11 policy card |
-| send_agent (steering) | RA-CAP currently; RAI-018 |
-| Chat memory in CLI (multi-turn persistence) | RAI-018 remainder |
-| REPL: :type, completion | RAI-019/020 |
-| Journal/artifacts/recovery (§13) | RAI-027 |
-| Packaged distribution, CI adapters | RAI-022 remainder-2, RAI-023..026 |
-| Virtual backoff fixture | with retry card (no retries by design) |
-| Fair admission across DIFFERENT roots | RAI-010/017 integration |
-| Performance profile in registry | RAI-004 stage-aware |
-| Owner sign-off F-14 + runtime profile | strict registry upgrade |
-| Event emission from AgentLoop/JobManager into hub | P1.B/P2.C cards over RAI-055 (cancellation/ownership/budget tests) |
-| Tabs UI on ADR-024 events | RAI-057 → P2.B/C |
-| --api-key credentials-in-argv (CliArgs:67) | new setup card (env/helper refs only) |
-| Probe COURSIER_CACHE fallback → env.setdefault | one-line follow-up with next scripts/quality change |
-| Plugin SPI ADR/design | P4.A (после P0 baseline — baseline готов этой wave) |
+Verified 2026-10-13 (independent audit по main acca49f; file:line-факты в
+записи аудита волны 4c). 7 строк закрыты/stale, 3 owner-gated, открыты:
+
+| Obligation | Card/condition | Status |
+| --- | --- | --- |
+| Live-wire verification (real providers) | OWNER (endpoint/budget) | OWNER-GATED (lineage.md §9.2; ad-hoc live-раунды были, формальной scoped-верификации нет) |
+| Tool definitions on wire — Anthropic | RAI-127 (ready) | OPEN — AnthropicMessagesBackend не передаёт tools/input_schema (OpenAI-провод передаёт); W05 gap |
+| Journal/artifacts/recovery (§13) | RAI-129 (ready, узкий срез) + owner schema-card | OPEN — journal+replay есть; recovery/resume-команд в продукте нет; retention/redaction и wire — отдельно |
+| CI full adapters | RAI-023(full)/024/026 | OPEN — RAI-078/100 accepted; остались trust-preflight/provenance, trusted checks/exit contracts, MVP-приёмка |
+| Fair admission across DIFFERENT roots | RAI-128 (ready) | OPEN — fair FIFO by construction, named ≥2-root теста нет |
+| Performance/eval profile in registry | RAI-004 remainder; working-product stage | OPEN — registry 12 профилей; eval-corpus готов (RAI-114) |
+| send_agent (steering) — REPL facade | RAI-018 remainder / RAI-021 | OPEN (узко) — runtime steering готов (RAI-065/074), FacadeOps.send не подключён |
+| Owner sign-off F-14 | OWNER | OWNER-GATED (RAI-007.md:59-61); runtime-профиль в registry уже есть |
+| Multi-job export / LIN-06 live re-run / phase-recovery schema-card | OWNER + LIN-06 | OWNER-GATED |
+| :type PTY-оракулы дезатурация | RAI-130 (ready) | OPEN — echo-saturation findings RAI-124 |
+| ~~Edit tool refinements~~ | CLOSED | fs_patch+UnifiedDiff+PatchTool; RAI-067 multi-file accepted; RAI-015 в m0.md перескоупить (hygiene) |
+| ~~Child deadlines / OOB-cancel~~ | CLOSED | RAI-063 accepted |
+| ~~Chat memory in CLI~~ | CLOSED | SessionStore, --resume, :compact |
+| ~~REPL: :type, completion~~ | CLOSED | completion RAI-068; :type RAI-124 (merged acca49f) |
+| ~~Virtual backoff fixture~~ | STALE | RateLimitRetries + 2 спеки существуют |
+| ~~Event emission into hub~~ | CLOSED | RAI-058/059 accepted |
+| ~~Tabs UI on ADR-024~~ | CLOSED | RAI-057/061/062/102/108 + RAI-103..106/113 |
+| ~~--api-key in argv~~ | STALE | RAI-064: удалён, typed error |
+| ~~Probe COURSIER_CACHE setdefault~~ | CLOSED | RAI-126 (merged acca49f) |
+| ~~Plugin SPI ADR/design~~ | CLOSED | ADR-025 FROZEN; RAI-066/075/083/096/101 |
 
 ## Key Findings (fixed by fixtures)
 
