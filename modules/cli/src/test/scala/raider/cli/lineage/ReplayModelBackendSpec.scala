@@ -43,17 +43,28 @@ import raider.dsl.lineage.replay.RecordedSource
   *   - LIN6-B-12 — ordinary JSON responses stay plain-text rounds (only the
   *     frozen envelope triggers translation), and a MIXED record plays
   *     ordinally: tool round, then text round.
+  *
+  * LIN-05G additions (W22-R3 — opt-in strict prompt verification):
+  *   - DRIFT-01 — strict mode (`verifyPrompts = true`) + a matching incoming
+  *     prompt (the last `user` message content == the recorded prompt) replays
+  *     each call, ordinally;
+  *   - DRIFT-02 — strict mode + a changed prompt fails typed
+  *     `ReplayBackendError.PromptDrift(n, detail)` over the frozen stream
+  *     channel, with a BOUNDED, content-free error (no full prompt texts);
+  *   - DRIFT-03 — default (`verifyPrompts = false`) keeps the prior behavior: a
+  *     mismatching prompt still replays (positional association untouched).
   */
 object ReplayModelBackendSpec extends ZIOSpecDefault:
 
   private def callData(
       response: String,
-      usage: Option[LineageUsage] = None
+      usage: Option[LineageUsage] = None,
+      prompt: String = "recorded prompt"
   ): NodeData.ModelCallData =
     NodeData.ModelCallData(
       model = "recorded-model",
       round = 1,
-      prompt = "recorded prompt",
+      prompt = prompt,
       response = response,
       usage = usage
     )
@@ -87,11 +98,27 @@ object ReplayModelBackendSpec extends ZIOSpecDefault:
       Nil
     )
 
+  // LIN-05G: a request whose last user message carries an arbitrary prompt —
+  // the incoming side of the strict verification.
+  private def requestWith(prompt: String): ModelRequest =
+    ModelRequest(
+      "recorded-model",
+      List(RequestMessage("user", prompt)),
+      128,
+      Nil
+    )
+
   private def consume(
       backend: ReplayModelBackend,
       turn: Int
   ): ZIO[Scope, RaiderError, Vector[ModelEvent]] =
     backend.stream(request(turn)).runCollect.map(_.toVector)
+
+  private def consumeWith(
+      backend: ReplayModelBackend,
+      prompt: String
+  ): ZIO[Scope, RaiderError, Vector[ModelEvent]] =
+    backend.stream(requestWith(prompt)).runCollect.map(_.toVector)
 
   private def typed(
       result: Either[RaiderError, Vector[ModelEvent]]
@@ -243,6 +270,91 @@ object ReplayModelBackendSpec extends ZIOSpecDefault:
             ),
             again == first
           )
+      },
+      test(
+        "DRIFT-01: strict verifyPrompts + matching prompts replay each call ordinally"
+      ) {
+        val strictDoc = doc(
+          "d1" -> callData("first"),
+          "d2" -> callData("second", prompt = "second recorded prompt")
+        )
+        val backend =
+          ReplayModelBackend(
+            RecordedSource(strictDoc),
+            strictDoc,
+            verifyPrompts = true
+          )
+        for
+          first <- ZIO.scoped(consumeWith(backend, "recorded prompt"))
+          second <- ZIO.scoped(consumeWith(backend, "second recorded prompt"))
+        yield assertTrue(
+          first == expected(1, "first"),
+          second == expected(2, "second")
+        )
+      },
+      test(
+        "DRIFT-02: strict verifyPrompts + changed prompt fails typed bounded PromptDrift"
+      ) {
+        val strictDoc = doc(
+          "d1" -> callData("first"),
+          "d2" -> callData("second", prompt = "second recorded prompt")
+        )
+        val backend =
+          ReplayModelBackend(
+            RecordedSource(strictDoc),
+            strictDoc,
+            verifyPrompts = true
+          )
+        for
+          first <- ZIO.scoped(consumeWith(backend, "recorded prompt")).either
+          second <- ZIO
+            .scoped(consumeWith(backend, "second DRIFTED prompt"))
+            .either
+        yield
+          // The wire channel's message lives in `detail` (StreamProtocol does
+          // not pass `what` to the RuntimeException constructor).
+          val message = second.fold(_.detail, _ => "")
+          assertTrue(
+            // ordinal 1 matched, so it replayed with no failure
+            first.isRight,
+            typed(first) == None,
+            // ordinal 2 drifted: typed over the frozen stream channel
+            second.isLeft,
+            second.fold(_.code, _ => "") == "RA-STREAM",
+            typed(second).exists {
+              case ReplayBackendError.PromptDrift(2, _) => true
+              case _                                    => false
+            },
+            // bounded + content-free: the full prompt texts never appear
+            !message.contains("second recorded prompt"),
+            !message.contains("second DRIFTED prompt"),
+            message.lengthIs <= 256
+          )
+      },
+      test(
+        "DRIFT-03: default verifyPrompts=false keeps prior behavior on a mismatching prompt"
+      ) {
+        val lenient = ReplayModelBackend(RecordedSource(fixtureDoc), fixtureDoc)
+        // A FRESH backend per replay: ordinals are per-instance (LIN6-A-01).
+        val lenientRepeat =
+          ReplayModelBackend(RecordedSource(fixtureDoc), fixtureDoc)
+        val explicitOff =
+          ReplayModelBackend(
+            RecordedSource(fixtureDoc),
+            fixtureDoc,
+            verifyPrompts = false
+          )
+        for
+          run <- ZIO.scoped(
+            consume(lenient, 999)
+          ) // "turn 999" != recorded prompt
+          repeat <- ZIO.scoped(consume(lenientRepeat, 999))
+          explicit <- ZIO.scoped(consume(explicitOff, 999))
+        yield assertTrue(
+          run == expected(1, "first"),
+          repeat == run,
+          explicit == run
+        )
       }
     )
 

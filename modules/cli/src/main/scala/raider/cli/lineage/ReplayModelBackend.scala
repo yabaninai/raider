@@ -39,6 +39,17 @@ enum ReplayBackendError(what: String) extends RuntimeException(what):
         "replay backend exhausted: no recorded model call data"
       )
 
+  /** STRICT-mode prompt drift (LIN-05G): the incoming request's prompt does not
+    * equal the recorded prompt of the (1-based) `requestOrdinal`-th model call.
+    * `detail` is bounded and CONTENT-FREE by construction — lengths and stable
+    * hex fingerprints only; the full prompt texts never enter the error
+    * message, logs or tool output.
+    */
+  case PromptDrift(requestOrdinal: Int, detail: String)
+      extends ReplayBackendError(
+        s"replay backend prompt drift: model request #$requestOrdinal: $detail"
+      )
+
 object ReplayBackendError:
 
   /** Bridges a typed replay failure onto the frozen `RaiderError` stream
@@ -101,6 +112,20 @@ end ReplayBackendError
   * lineage-data are the single source of truth, and a tool round is fully
   * described by its recorded response text.
   *
+  * STRICT PROMPT VERIFICATION (LIN-05G, opt-in): with `verifyPrompts = true`
+  * every stream call ALSO verifies its incoming request before replaying — the
+  * incoming prompt (the content of the LAST `user` message, falling back to the
+  * last message of any role, then to the empty string) must EQUAL the recorded
+  * `ModelCallData.prompt` of the same ordinal, and any difference fails the
+  * stream with a typed [[ReplayBackendError.PromptDrift]] whose detail is
+  * bounded and content-free (lengths + stable hex fingerprints — never the full
+  * texts, nothing logged). The default `false` keeps the association purely
+  * positional and content-blind. Single-round records whose recorded prompt IS
+  * the user message match exactly; multi-round records whose recorded prompt
+  * embeds assistant/tool renderings are EXPECTED to drift — that is the check
+  * working, not a defect. Exact string equality: no normalization, no clocks,
+  * no randomness.
+  *
   * Honest failures and capabilities: exhausting the records fails the stream
   * with a typed [[ReplayBackendError]] (`Overrun` for the (n)-th request beyond
   * the record, `Exhausted` when the source has no model-call data at all).
@@ -117,15 +142,21 @@ end ReplayBackendError
   *   the owning lineage-data document `recorded` was built from (bound by
   *   `RecordedSource(doc)`); kept as construction evidence, never re-read or
   *   re-derived so the document is not a second source of truth.
+  * @param verifyPrompts
+  *   LIN-05G strict mode (default false): verify each incoming request's prompt
+  *   against the recorded prompt of the same ordinal (see the class scaladoc);
+  *   a mismatch fails with [[ReplayBackendError.PromptDrift]].
   */
 final class ReplayModelBackend(
     recorded: RecordedSource,
-    doc: LineageDataDocument
+    doc: LineageDataDocument,
+    verifyPrompts: Boolean = false
 ) extends ModelBackend:
 
   private val AttemptPrefix = "replay-"
   private val FinishReason = "stop"
   private val ToolRoundFinish = "tool_calls"
+  private val UserRole = "user"
 
   // Deterministic playback order: sorted dataRefs filtered to model calls.
   private val records: Vector[(String, NodeData.ModelCallData)] =
@@ -154,7 +185,11 @@ final class ReplayModelBackend(
           k <- ZIO.succeed(nextOrdinal.getAndIncrement())
           events <- records.lift(k) match
             case Some((_, data)) =>
-              ZIO.succeed(replayEvents(AttemptId(attemptId(k)), data))
+              if verifyPrompts then
+                verifyNoDrift(k + 1, input, data).as(
+                  replayEvents(AttemptId(attemptId(k)), data)
+                )
+              else ZIO.succeed(replayEvents(AttemptId(attemptId(k)), data))
             case None =>
               ZIO.fail(
                 ReplayBackendError.toRaiderError(
@@ -164,6 +199,52 @@ final class ReplayModelBackend(
               )
         yield events
       .flatMap(ZStream.fromIterable(_))
+
+  /** STRICT prompt verification (LIN-05G): the incoming prompt (see
+    * [[incomingPrompt]]) must EQUAL the recorded prompt of this call; any
+    * difference fails the stream with a typed, content-free
+    * [[ReplayBackendError.PromptDrift]]. Exact string equality — deterministic,
+    * no normalization, no content logging.
+    */
+  private def verifyNoDrift(
+      n: Int,
+      input: ModelRequest,
+      data: NodeData.ModelCallData
+  ): ZIO[Any, RaiderError, Unit] =
+    val incoming = incomingPrompt(input)
+    if incoming == data.prompt then ZIO.unit
+    else
+      ZIO.fail(
+        ReplayBackendError.toRaiderError(
+          ReplayBackendError.PromptDrift(n, driftDetail(data.prompt, incoming))
+        )
+      )
+
+  /** The incoming prompt under verification (LIN-05G): the content of the LAST
+    * `user` message of the request; a request with no `user` message falls back
+    * to its last message of any role; a request with no messages verifies as
+    * the empty string.
+    */
+  private def incomingPrompt(request: ModelRequest): String =
+    request.messages
+      .findLast(_.role == UserRole)
+      .orElse(request.messages.lastOption)
+      .map(_.content)
+      .getOrElse("")
+
+  /** Bounded, content-free drift detail: prompt LENGTHS and stable hex
+    * fingerprints only — the full prompt texts never enter the error (the
+    * no-content rule of LIN-05G).
+    */
+  private def driftDetail(recorded: String, incoming: String): String =
+    s"recorded prompt (len ${recorded.length}, fp ${fingerprint(recorded)}) " +
+      s"does not match incoming prompt (len ${incoming.length}, fp ${fingerprint(incoming)})"
+
+  // Stable content-free fingerprint: the Java-spec String.hashCode in hex —
+  // deterministic across runs and JVMs, bounded (8 chars), reveals no prompt
+  // content.
+  private def fingerprint(value: String): String =
+    f"${value.hashCode}%08x"
 
   private def attemptId(zeroBased: Int): String =
     s"$AttemptPrefix${zeroBased + 1}"
