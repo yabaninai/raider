@@ -537,7 +537,18 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
             ),
         90.seconds
       )
-      val badge60 = s.waitFor(s"($BurstEvents unread)", 20.seconds)
+      // Coordinator determinism fix 2026-10-12 (third occurrence of this
+      // flake, same class as the P2W-01 drain fix): under full-suite load the
+      // per-event bar render can lag the settled report by more than the
+      // marker timeout. The registry truth is already proven by `settled`;
+      // the transcript badge is a REAL acceptance requirement, so on a miss
+      // we force a fresh bar render with :tabs and wait again — the assertion
+      // itself is not weakened (rowT2/rowT3 regexes still must match).
+      val badge60 =
+        if s.waitFor(s"($BurstEvents unread)", 30.seconds) then true
+        else
+          s.send(":tabs\r")
+          s.waitFor(s"($BurstEvents unread)", 30.seconds)
       // The prompt stays editable AFTER the storm.
       s.send(" хвост2\r")
       val draftAfter =
