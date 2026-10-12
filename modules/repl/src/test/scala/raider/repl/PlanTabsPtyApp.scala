@@ -169,31 +169,44 @@ object PlanTabsPtyApp:
       manager: JobManager,
       reportPath: Path
   ): UIO[Unit] =
+    // NOTE (RAI-114 lane, gate fix): `x = expr` bindings inside this for are
+    // valid Scala 3 for scalac but unparseable for scalameta, so
+    // scalafix-check fails with a ParseError on the whole module. The
+    // `<- ZIO.succeed(...)` form desugars identically.
     for
-      snap = panel.snapshot
+      snap <- ZIO.succeed(panel.snapshot)
       labels <- manager.adminView.map(_.map(_.label).sorted)
       dropped <- wiring.hub.droppedDiagnostics
-      phase = snap.phase.toString.toLowerCase
-      proposalJson = snap.proposal
-        .map(p =>
-          s""""title":"${jsonEsc(p.title)}",""" +
-            s""""steps":[${p.steps
-                .map(s => "\"" + jsonEsc(s) + "\"")
-                .mkString(",")}],"""
-        )
-        .getOrElse("")
-      executionJson = snap.execution
-        .map(e => s""""execution":"${jsonEsc(e)}",""")
-        .getOrElse("")
-      rejectionJson = snap.rejection
-        .map(r => s""""rejection":"${jsonEsc(r)}",""")
-        .getOrElse("")
-      labelsJson = labels.map(l => "\"" + jsonEsc(l) + "\"").mkString(",")
-      json =
+      phase <- ZIO.succeed(snap.phase.toString.toLowerCase)
+      proposalJson <- ZIO.succeed(
+        snap.proposal
+          .map(p =>
+            s""""title":"${jsonEsc(p.title)}",""" +
+              s""""steps":[${p.steps
+                  .map(s => "\"" + jsonEsc(s) + "\"")
+                  .mkString(",")}],"""
+          )
+          .getOrElse("")
+      )
+      executionJson <- ZIO.succeed(
+        snap.execution
+          .map(e => s""""execution":"${jsonEsc(e)}",""")
+          .getOrElse("")
+      )
+      rejectionJson <- ZIO.succeed(
+        snap.rejection
+          .map(r => s""""rejection":"${jsonEsc(r)}",""")
+          .getOrElse("")
+      )
+      labelsJson <- ZIO.succeed(
+        labels.map(l => "\"" + jsonEsc(l) + "\"").mkString(",")
+      )
+      json <- ZIO.succeed(
         s"""{"app":"raider.repl.PlanTabsPtyApp","card":"RAI-110",""" +
           s""""phase":"$phase",$proposalJson$executionJson$rejectionJson""" +
           s""""labels":[$labelsJson],"hubDroppedDiagnostics":$dropped,""" +
           s""""tsMs":${java.lang.System.currentTimeMillis()}}"""
+      )
       _ <- ZIO.attempt(atomicWrite(reportPath, json)).ignore
     yield ()
 
