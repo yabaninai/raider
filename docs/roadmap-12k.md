@@ -36,6 +36,50 @@ LLM или обещание непрерывной 12 000-часовой сес�
 
 ## 1. Что действительно есть
 
+### Ревизия 2026-10-12: встраиваемый SDK внутри текущих фаз
+
+По запросу владельца расширяем полезность существующего runtime: Raider остаётся
+standalone coding agent с настоящим REPL и CI; дополнительный пользовательский
+путь — встраивание агентных workflow в Scala 3 + ZIO приложение. Рабочее
+позиционирование: управляемые агентские workflow с явными лимитами, отменой
+дочерних задач и наблюдаемым результатом, исполняемые одним runtime в приложении,
+REPL и CI. Это проверяемая продуктовая гипотеза, не заявление готовности SDK.
+Владелец подтвердил: Raider + SDK, первый сценарий — CI, текущую волну не
+останавливать. Проект полностью open source; сохраняется существующая MIT/license
+policy. Платная редакция, закрытые SDK-возможности и монетизация в план не входят.
+Продуктовая обратная связь измеряет самостоятельное применение, повторные запуски,
+issues/вклады сообщества и стоимость сопровождения для maintainers.
+
+Исходники сверены на `4b46dc7`: `core` содержит ленивые `Task` и `Program`,
+`dsl` — typed composition, `runtime` — loop/jobs/scopes/admission/budgets;
+удобные launch-операции находятся в `repl/facade`. SDK для авторов плагинов
+(RAI-096) уже имеет собственный scope; он не доказывает удобство встраивания
+runtime в стороннее приложение. `build.sbt` разделяет эти модули, но наличие
+модулей не является проверкой внешнего consumer или опубликованного артефакта.
+
+Текущая волна LIN-13/14/15 и RAI-113/114, обязательства P-LIN, TUI и W01–W18
+сохраняются. Новую верхнеуровневую фазу не вводим. В P0.A/B уточняем границы SDK;
+в P4.C принимаем минимальный внешний consumer; в P7 проверяем прикладную пользу;
+в P10 принимаем поставку. Контракты меняются только отдельной ADR-карточкой с
+независимым review и обновлением потребителей. Детальные руководства и обновление
+всей пользовательской документации остаются P9/P10; короткая команда запуска
+consumer-примера нужна вместе с самим примером для воспроизводимой приёмки.
+
+Первичный SDK-пользователь — разработчик Scala/ZIO приложения; первый прикладной
+сценарий Raider — ограниченное изменение репозитория с проверками в CI. Поиск
+пилотных пользователей начинается в P0.A и продолжается в P7.C/P9.C. При отсутствии
+ответа спрос остаётся `pending`; это не блокирует независимую инженерную работу
+и не превращается в положительную пользовательскую оценку.
+
+Бюджет 13 100 h пока сохраняется как плановый envelope, не как новая оценка
+остатка: переиспользуются существующие P0/P4/P7/P10 пакеты, принятые slices не
+оплачиваются повторно. RAI-115 должен оценить добавочный труд и доступный остаток;
+до назначения implementation coordinator фиксирует used/reserved/remaining и
+конкретное перераспределение внутри пакетов. Если остатка недостаточно — явная
+ревизия scope/estimate по §7, без отмены старой приёмки и без обещания «SDK бесплатно».
+
+### Исторический baseline 2026-10-05
+
 Осмотр исходников на commit `7ee6c0c`, 2026-10-05; это inventory, не новый runtime
 acceptance. Board содержит более свежие session records, чем некоторые верхние
 строки статуса. При каждом запуске сверять исходники, а не повторять старые оценки.
@@ -108,7 +152,7 @@ coordinator или тесты нет. Сумма **13 100 h** (после рев
 | P1 | Живые правдивые статусы и bounded tool progress | 900 | 2 400 |
 | P2 | Вкладки, черновики, scrollback, первый простой TUI | 1 400 | 3 800 |
 | P3 | Удобная координация сабагентов, steering/cancel/review | 1 000 | 4 800 |
-| P4 | Plugin lifecycle, SDK и установка без пересборки | 1 400 | 6 200 |
+| P4 | Plugin lifecycle, embedding SDK и установка без пересборки | 1 400 | 6 200 |
 | P5 | Опциональный локальный agent state и shared blackboard | 900 | 7 100 |
 | P6 | История, восстановление, compaction и контроль бюджета | 1 100 | 8 200 |
 | P7 | Полный standalone coding workflow, REPL и CI | 1 000 | 9 200 |
@@ -123,7 +167,7 @@ coordinator или тесты нет. Сумма **13 100 h** (после рев
 остаток не превращается в новые функции. После фаз пересчитываются estimate-to-complete
 и остаток; экономию не надо искусственно «дорабатывать» до 12 000.
 
-Первые полезные поставки: M1 после P2 (вкладки+статусы), M2 после P4 (плагины),
+Первые полезные поставки: M1 после P2 (вкладки+статусы), M2 после P4 (плагины + минимальный embedding SDK),
 M3 после P7 (полный standalone workflow), M4 после P10 (standalone candidate),
 M5 после P11 (optional gateway suite). Это накопленная трудоёмкость, не календарь:
 независимые пакеты фаз могут перекрываться. При 4 участниках по 30 продуктивных h/нед
@@ -173,9 +217,17 @@ live re-run в изоляции даёт diff-отчёт; CI-гейт валид
 ### P0 — достоверная отправная точка, 400 h
 
 - P0.A **120 h**: source/board/gate reconciliation; matrix W01–W18 «реализовано /
-  доказано / осталось»; проверить текущие send/watch/cancel issues.
+  доказано / осталось»; проверить текущие send/watch/cancel issues. Добавить
+  SDK inventory: public/importable API vs REPL internals, dependency/classpath,
+  три поверхности запуска и gaps внешнего consumer (RAI-115). Собрать до пяти
+  разговоров о повторяющейся задаче, текущем решении и цене ручного контроля;
+  участников/дат пока нет, отсутствие интервью фиксируется явно.
 - P0.B **160 h**: согласовать runtime→UI event seam, snapshot+subscribe,
   ownership/UI focus, progress contract; ADR с независимым review, сохранять ADR-016.
+  Для embedding API отдельная ADR-карточка после RAI-115: lifecycle в host ZIO
+  scope, configuration/tools/policy/budget ownership, typed failures/cancellation,
+  versioning и совместимость существующих REPL/CLI consumers. Сначала доказать,
+  чего не хватает текущему API; дополнительный module/layer заранее не предписан.
 - P0.C **120 h**: JLine inline renderer spike в PTY, установка baseline,
   воспроизводимые UX замеры и первые child cards; описать отдельные verifier cards.
 
@@ -231,7 +283,7 @@ Exit: scout→coder→reviewer workflow; clarification reaches нужного р
 cancel UX06 и budget tests. Не вводить второй scheduler. Если работа уже terminal,
 send явно отклонён или предложен новый turn; никаких обещаний replay мутаций.
 
-### P4 — удобные плагины, 1 400 h
+### P4 — удобные плагины и встраиваемый SDK, 1 400 h
 
 - P4.A **450 h**: narrow versioned Scala SPI (tools/profiles/hooks), manifest,
   compatibility/duplicate-name preflight, controlled classloader/resource lifecycle.
@@ -239,9 +291,19 @@ send явно отклонён или предложен новый turn; ник
   remove/rollback, pinned versions/checksums, user vs workspace config precedence.
 - P4.C **450 h**: SDK/template, документация, три local fixture plugins,
   совместимость API версий, crash/cleanup/failed-install/rollback acceptance.
+  Отдельный slice — минимальный SDK для host Scala/ZIO приложения по reviewed
+  P0.B ADR: существующие core/runtime/dsl/providers, явные tools/policy/limits,
+  без обязательных REPL/compiler/JLine/CLI и production testkit. Consumer собирается
+  вне root aggregate по артефактам из изолированного локального репозитория,
+  без source links или classpath из checkout. Публикация в публичный registry
+  для этой проверки не нужна. Короткий пример + команда запуска идут с кодом;
+  расширенные руководства остаются P10.C.
 
 Exit M2: из UI выбрать локальный JAR → увидеть source/version/capabilities →
 подтвердить доверие → использовать tool; Raider не пересобирается, UX05.
+Дополнительно SDK-01/02 (§6a): один внешний Scala/ZIO consumer выполняет typed
+workflow и корректно завершает owned ресурсы. Принятые plugin slices остаются
+принятыми; незакрытый SDK slice отмечается отдельно и не выдаётся за готовый M2.
 Для удалённых источников bounded download/checksum, никакого shell install script.
 Workspace не активирует code автоматически; plugin config не даёт расширить
 policy/root budget. Hooks не разрешают то, что запрещено core policy. Обновление
@@ -289,8 +351,16 @@ Exit: после crash вкладка показывает interrupted/unknown, 
   и negative cases, protected files, deletion/partial patch errors.
 - P7.B **350 h**: REPL compiler/completion и headless adapters над одним runtime;
   non-TTY/SIGTERM/exits/artifacts/JUnit/trust-boundary acceptance.
+  Один файл определения `Program` используется host ZIO приложением, REPL и
+  compiled CI bundle; adapters отвечают за запуск/ввод/вывод, семантика общая.
 - P7.C **300 h**: corpus bugfix/refactor/new file/review, оба direct wires через
   Scala HTTP stand, installed package golden scenarios, UX01 rehearsal.
+  SDK-03/04: внешний consumer с non-coding typed workflow (например, извлечение
+  сведений и сводка) и CI-сценарий read → edit → failing check → fix → passing
+  check с diff/exit/artifacts. Scripted успех доказывает механизм; качество модели
+  и пользовательская польза получают отдельное evidence. Предложить трём внешним
+  пользователям свои задачи; измерять время до первого результата, нашу помощь,
+  полезность diff и повторное использование, не только успешный запуск.
 
 Exit M3: mapped W01–W16 на одном candidate с actual case evidence, без dependency
 на gateway. Existing accepted slices переиспользовать и закрывать только gaps.
@@ -318,6 +388,11 @@ terminal statuses. Thresholds/baseline определены до прогона.
   Russian/English help, поиск по истории/действиям, plugin onboarding.
 - P9.C **300 h**: usability sessions, terminal matrix и приоритетные UX fixes;
   первое использование, ошибка провайдера, failed plugin и восстановление.
+  Включить результаты SDK/CI пилотов из P7.C: при повторном использовании хотя бы
+  двумя из трёх участников на новой задаче рассмотреть расширение SDK; без этого
+  сначала разобрать причины и сузить/поправить сценарий. Это критерий продуктового
+  решения, не доказательство рынка и не новый engineering gate; нет участников —
+  `pending`, решения о расширении не принимаются автоматически.
 
 Exit: UX01–08 подтверждены применимыми PTY/human evidence; выбор renderer не
 откладывает M1. Комбинации клавиш проверять на macOS/Linux, tmux и заявленных
@@ -327,13 +402,19 @@ terminal emulators; неподдержанный terminal использует �
 
 - P10.A **350 h**: clean install/upgrade/uninstall, reproducible packaging,
   SBOM/notices и существующая license policy, portable examples.
+  Для SDK — координаты/version артефактов, dependency inventory, поддерживаемые
+  Scala/JDK/ZIO на основе pinned toolchain и чистая consumer-сборка (SDK-05);
+  cross-build на дополнительные версии не подразумевается. Public publish —
+  отдельное release-действие.
 - P10.B **350 h**: независимая приёмка всех standalone claims на immutable
   candidate, security/compatibility regressions и найденные defects.
+  Включить SDK-01–05 на тех же product inputs, без подмены свежего evidence
+  зелёной старой lane.
 - P10.C **300 h**: docs/troubleshooting/migration, onboarding evidence, release
   rehearsal и optional capped direct live/comparison при наличии разрешения.
 
 Exit M4: `standalone_engineering_ready` только при полноте W01–W16 + UX/plugin/
-state advertised cases; archived source/toolchain/policy/artifact hashes.
+state advertised cases + SDK-01–05; archived source/toolchain/policy/artifact hashes.
 Это не старый общий `engineering_ready` для W01–W17. W17 и полная W18 остаются
 pending до P11. Публикация не подразумевается созданием release candidate.
 
@@ -376,6 +457,7 @@ fallback. Usage имеет pending/partial/complete; timeout не станови
 | P2.C | P1.C + P2.A/B | P4.A отдельным owner plugin SPI |
 | P3.A/B | P0.B + P1.A | P2 frontend; P3.C ждёт P2.C и A/B |
 | P4.A/B/C | P0 baseline; B после A; SDK/tests C после A, final acceptance C после B | P1/P2/P3 при отдельных files; M2 ждёт M1 и plugin UI integration |
+| P4.C embedding slice | RAI-115 audit → отдельная accepted P0.B ADR → frozen SDK boundary | Consumer acceptance design параллельно текущей волне; общий build/API имеют одного owner; M2 ждёт plugin и embedding acceptance |
 | P5 | P1.C + P4.A; P5.C plugin seam после P4.C | P3/P4 отдельные modules; core store не зависит от remote backend |
 | P6 | P2.C + P3 + P5 | P7 tools/REPL/CI gaps, затем общий recovery acceptance |
 | P7 | P0 gap matrix для независимых fixes | Итог M3 после M2 + P3 + P5 + P6 |
@@ -423,6 +505,7 @@ integrated candidate. Не добавлять CI/runtime scheduler ради orch
 | P0/P1 | RAI-002/004/006/009/010; schema/runtime/budget evidence |
 | P2/P3 | RAI-007/008/017–021; W08–W11; send/watch остаются обязательствами |
 | P4/P5 | RAI-028/029/031 и новые scoped state cards; W13 |
+| P0/P4.C embedding | RAI-115 audit; RAI-002/007–010/017/028; RAI-096 остаётся plugin SDK, новые implementation cards после ADR |
 | P6 | RAI-027/030/036; W08/W14 |
 | P7/P10 | RAI-014–016/022–026/041–047; W01–W16 |
 | P11 | RAI-037–039; W17/W18; YB companion work отдельно |
@@ -452,6 +535,43 @@ snapshot и actual commands/exits/log hashes. Текущий runner нельзя
 соответствующим spec только по зелёному self-check; P0 проверяет и этот gap. Изменение
 inputs после тестов требует affected rerun, operational exclusions только по reviewed
 точному allowlist. Ни board, ни количество spawned workers не доказательство готовности.
+
+## 6a. Приёмка встраиваемого SDK и проверка пользы
+
+Это новые case obligations внутри существующих фаз, не названия готовых gates.
+Coordinator после RAI-115 регистрирует ADR и child cards по 8–24 h с exact paths,
+implementation/integration dependencies и независимым review. Protected verifiers
+и изменение registry — отдельные карточки; существующие проверки не ослабляются.
+
+| Case | Фаза | Наблюдаемый результат |
+| --- | --- | --- |
+| SDK-01 | P4.C | Чистый внешний Scala/ZIO consumer получает versioned JARs, компилирует typed Program и запускает native loop; runtime classpath не содержит repl/compiler/JLine/CLI/testkit; scripted testkit допускается только в test scope |
+| SDK-02 | P4.C | Host scope владеет root/children/resources; normal/failure/cancel и maxLLM=1 проверены; два экземпляра host не делят скрытый global state; construction ленивый; budget/policy denial типизированы; provider/tool config явный |
+| SDK-03 | P7.B/C | Одно определение workflow работает из host приложения, настоящего REPL и compiled CLI bundle: одинаковые нормализованные результат/ошибка, policy/budget и отмена; оба direct wires проходят локальные Scala HTTP stands; SDK допускает non-coding typed workflow без обязательного coding prompt/tools |
+| SDK-04 | P7.C | На внешнем fixture repo CI выполняет read/edit/failing-check/fix/passing-check и выдаёт diff, checks и exit/artifacts; non-TTY/SIGTERM/trust проверены; scripted и live evidence разделены, live только при explicit mode/cap |
+| SDK-05 | P10.A/B | Из immutable candidate получены артефакты и dependency inventory; clean consumer install/compile/run, поддерживаемые версии и compatibility policy проверены независимым reviewer; публичная публикация не подразумевается |
+
+Типы проверяют композицию, но не истинность ответа LLM: structured outputs требуют
+runtime validation и bounded repair по RAI-028. API не должен принуждать host к
+blocking REPL facade или второму scheduler. Новая распределённая budget authority,
+durable workflow engine, RAG/vector-store catalog и SDK других языков сюда не входят.
+
+P-LIN остаётся механизмом записи, объяснения и replay поддерживаемых операций.
+Компилируемость Scala-проекции, равенство графа и исполнение workflow — разные
+claims с отдельным evidence. Превращение произвольной сессии в редактируемую
+программу и durable resume arbitrary Scala callbacks не объявляются свойствами
+SDK; незавершённые acceptance P-LIN сохраняются, а не заменяются этим уточнением.
+
+Следующая доступная карточка SDK — **RAI-115** (P0.A, audit и packet для ADR).
+Она не ждёт завершения всей текущей волны: пишет только свой analysis artifact,
+не меняет build/API/fixtures. После audit coordinator назначает ADR owner,
+затем реализацию минимального embedding path и отдельную consumer acceptance.
+SDK/CI пилоты могут идти после готовности нужного slice до полной M3; их отчёты
+не закрывают W/UX acceptance. Участники, спрос и даты пока не подтверждены.
+Для OSS-поставки P10.C фиксирует поддержку публичного API, правила deprecation,
+канал issues и воспроизводимый consumer-reproducer; новые зависимости и release
+артефакты проходят существующую license policy. Звёзды репозитория не заменяют
+данные об использовании и не являются условием engineering acceptance.
 
 ## 7. Контроль масштаба
 

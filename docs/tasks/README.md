@@ -166,3 +166,4 @@ Markdown содержит full contract, JSON канонический для ID
 - **LIN-15** [LIN-06 scripted acceptance — LIN6-01/02/03 (бюджет/изоляция/отмена)](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.
 - **RAI-113** [Scrollback render consumer в tabs-режиме (P2S consumer step)](m2-p2.md); dependencies: RAI-104, RAI-108; profiles: static, unit, repl.
 - **RAI-114** [Plan-mode eval fixtures: scripted scenario corpus (prereq eval-профиля)](m1.md); dependencies: RAI-107; profiles: static, unit, contracts.
+- **RAI-115** [Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)](m1.md); dependencies: нет; profiles: docs.

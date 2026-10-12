@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 129,
+  "raider_count": 130,
   "companion_count": 3,
   "cards": [
     {
@@ -3777,6 +3777,27 @@
       },
       "non_goals": "contracts/eval/** (protected), scripts/quality/registry.json, продуктовый код loop сверх потребления frozen API, live-провайдеры.",
       "context": "RAI-107 record «Профиль eval отсутствует в component-stage registry... именованный профиль — остающееся milestone obligation»: карточка готовит deterministic corpus, которым будущий eval-профиль сможет мерить план-режим; ADR-028."
+    },
+    {
+      "id": "RAI-115",
+      "title": "Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/research/sdk-embedding-audit.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "На pinned source baseline составить компактную матрицу существующих Program/Task/composition, AgentLoop/JobManager/scopes/admission/budget, provider/tools и REPL/CLI launch boundaries: public support, фактические зависимости, gap для host Scala/ZIO consumer. Спроектировать проверку SDK-01–05 без реализации, определить минимальный путь переиспользования runtime, вопросы отдельного embedding ADR и exact implementation/integration dependencies следующих child cards. Оценить добавочный труд в P0/P4.C/P7/P10 и известный остаток; неизвестные затраты обозначить unknown. Один результат — reviewed audit/assignment packet; оценка этой карточки 8–16 h, не фактически затраченное время.",
+      "acceptance": {
+        "normal": "SDKA-01: каждый API/classpath вывод подкреплён source path/symbol и baseline hash; внешняя consumer acceptance описана для normal, typed failure, cancel и обоих direct wires; сформирован packet для отдельной ADR-карточки.",
+        "error": "SDKA-02: различены plugin SDK, embedding API и blocking REPL facade; нет заявлений о published SDK, live качестве, спросе или durable resume arbitrary Scala; gaps и неизвестный budget remainder записаны явно.",
+        "concurrency": "SDKA-03: audit не меняет API/build/gates/active cards; proposed host lifecycle учитывает isolated instances, root ownership, maxLLM=1 и cancellation; next packets имеют одного owner shared paths и разделённые implementation/integration dependencies."
+      },
+      "non_goals": "Реализация SDK или нового runtime, принятие ADR/public signatures, публикация артефактов, подробные руководства, paid calls, изменение protected verifiers и соседних репозиториев.",
+      "context": "docs/roadmap-12k.md §1 и §6a (ревизия 2026-10-12); runtime-contracts.md §2–3; working-product.md W09/W11/W12/W13/W14. Read-only audit требует существующий baseline, а не принятие всей исторической RAI-002/026; dependencies пусты только для inspection. Изменения контрактов — следующая отдельная ADR-карточка; RAI-096 остаётся plugin SDK."
     }
   ]
 }

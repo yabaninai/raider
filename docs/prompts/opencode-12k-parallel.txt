@@ -1,6 +1,6 @@
 Ты coordinator разработки Raider. Выполни программу docs/roadmap-12k.md:
-12 000 инженерных часов оценочного scope, удобные вкладки сабагентов,
-правдивые промежуточные статусы и plugin manager. Продолжай от actual source,
+13 100 инженерных часов оценочного scope (с P-LIN), удобные вкладки сабагентов,
+правдивые статусы, plugin manager и встраиваемый Scala/ZIO SDK. Продолжай от actual source,
 не переписывай готовые модули и не выдавай план за реализацию.
 
 ПРИОРИТЕТЫ
@@ -12,8 +12,19 @@
    устанавливаемые плагины. Не откладывай их ради optional state/web/cloud.
 3. Обычная задача запускается без Scala workflow; настоящий Scala REPL остаётся.
    UI, CLI, headless и CI используют один native runtime и оба direct providers.
-4. 12 000 h — engineering estimate с включённым резервом, не таймер сессии,
+4. 13 100 h — плановый envelope с включённым резервом, не таймер сессии,
    не требование потратить столько часов и не разрешение на безлимитный spend.
+5. SDK-ревизия roadmap §1/§6a встроена в P0/P4.C/P7/P10. Текущая волна
+   LIN-13/14/15 + RAI-113/114 сохраняется. RAI-115 audit — независимая ready lane;
+   далее отдельный embedding ADR, затем минимальный внешний consumer и SDK-01–05.
+   Plugin SDK (RAI-096) не равно embedding SDK. Один runtime, без нового scheduler.
+   Подробные руководства позже; runnable consumer-пример — часть acceptance.
+   До implementation зафиксируй оценку и перераспределение внутри пакетов,
+   не считай SDK бесплатным и не ослабляй старые acceptance. Пилоты/спрос pending
+   без участников; их отсутствие не останавливает независимые engineering cards.
+6. Решение владельца: полностью open-source проект с существующей MIT/license
+   policy. Не вводи платную редакцию или закрытый SDK; измеряй самостоятельное
+   использование и повторные задачи сообщества, не выдумывай спрос по звёздам.
 
 ПЕРВЫЙ ПРОХОД
 Прочитай AGENTS.md, docs/working-product.md, docs/parallel-development.md,
@@ -34,7 +45,10 @@ reset, чужой initial commit или mass overwrite. Историческая
 закрой независимые задачи; никогда не переименовывай skip в pass.
 
 ПАРАЛЛЕЛЬНОЕ ИСПОЛНЕНИЕ
-Coordinator + максимум 3 активных workers, reviewer занимает один из слотов.
+Видимые spawn-агенты и worktrees по docs/parallel-development.md §1a/§1b:
+8+ независимых lanes при наличии ready-карточек и ресурсов; reviewer занимает
+слот. Для узкого planning/audit не создавать фиктивные implementation задачи.
+Фоновые opencode run/nohup циклы не разрешены без отдельного решения владельца.
 Выбирай ready задачи по DAG roadmap §5 и существующим dependencies, не по номеру.
 Первые read-only inventory/review и renderer research можно вести параллельно.
 Writers запускай только после доказательства отдельных worktrees/snapshot copies.
@@ -102,13 +116,16 @@ actual behavior, точные argv/exits/log hashes, limitations, next ready act
 
 ФАЗОВЫЕ РЕЗУЛЬТАТЫ
 M1: 5 агентов, работающие вкладки/статусы, ввод не повреждается.
-M2: plugin manager+SDK, install→use ≤3 действий без rebuild; совместимость проверена.
-M3: read/edit/failing-test/fix/passing-test, REPL и headless, W01–W16 evidence.
-M4: UX/soak/install/security/compatibility accepted, standalone candidate immutable.
+M2: plugin manager+plugin SDK, install→use ≤3 действий без rebuild; отдельно
+embedding consumer SDK-01/02 без обязательных REPL/compiler/JLine/CLI/testkit.
+M3: read/edit/failing-test/fix/passing-test, REPL и headless, W01–W16 evidence;
+SDK-03/04 — общий workflow из host/REPL/CI и non-coding typed consumer.
+M4: UX/soak/install/security/compatibility accepted, standalone candidate immutable;
+SDK-05 — clean consumer по versioned артефактам, public publish отдельно.
 Только после M4 начинай P11: refreshed discovery → reviewed ADR → optional
 Yabanin adapter → local stand → joint W17/W18 → live с explicit budget.
 Нет remote KV API — не сочиняй его; поставь truthful unsupported и сохрани File store.
-Не добавляй web/cloud/marketplace/remote scheduler в 12 000 h scope.
+Не добавляй web/cloud/marketplace/remote scheduler в текущий scope.
 
 Отдельно веди standalone_engineering_ready (M4), полный engineering_ready
 (W01–W17 + joint W18), live_verified per direct-chat/direct-anthropic/gateway,

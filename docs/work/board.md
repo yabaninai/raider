@@ -1,5 +1,30 @@
 # Raider Execution Board
 
+## Planning revision 2026-10-12: embedding SDK
+
+По запросу владельца SDK встроен в существующие P0/P4.C/P7/P10; критерии
+SDK-01–05 и пилоты P0/P7/P9 описаны в [roadmap](../roadmap-12k.md).
+Scope текущей плановой работы: [ROADMAP-SDK](../tasks/roadmap-sdk-integration.md).
+Результат/review/evidence: [work record](records/ROADMAP-SDK.md).
+Raider остаётся standalone coding product; Scala/ZIO embedding — дополнительный
+пользовательский путь, без новой верхнеуровневой фазы. Подробная пользовательская
+документация отложена. Бюджет 13 100 h — текущий envelope, оценку остатка и
+перераспределение SDK нужно записать до implementation; новые функции не приняты.
+
+**Ready: RAI-115** — P0.A audit публичной SDK-границы и packet для отдельного ADR.
+Allowed output: `docs/research/sdk-embedding-audit.md`; gates: docs. Может идти
+параллельно LIN-13/14/15 и RAI-113/114 без shared code/build edits. Новые
+implementation cards регистрируются после audit/ADR; существующие карточки
+не переоткрываются и не получают чужой scope. Coordinator владеет planning
+файлами; текущую ревизию независимо проверяет видимый read-only spawn-reviewer.
+
+Владелец подтвердил: Raider + SDK, первый сценарий — CI, без остановки текущей
+волны; проект полностью open source (существующая MIT/license policy).
+Пилотные пользователи, сроки и спрос пока не заданы; их уточнение не блокирует
+независимый audit. Платная редакция/закрытые SDK-функции в scope не входят.
+
+## Previous execution status
+
 Current improvement program (2026-10-05): [12,000-hour roadmap](../roadmap-12k.md)
 and [parallel OpenCode prompt](../prompts/opencode-12k-parallel.txt).
 Tabs/statuses/plugins first; all Yabanin work is P11 after accepted standalone M4.
