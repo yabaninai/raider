@@ -140,7 +140,7 @@ object HeadlessRunner:
           ciRef,
           usageRef
         )
-        (outcome, eventsWritten, lineage) = jobOutcome
+        (outcome, eventsWritten, lineage, envelopes) = jobOutcome
         ciOpt <- ciRef.get
         usageOpt <- usageRef.get
         finishedAt <- ZIO.succeed(Instant.now())
@@ -169,7 +169,8 @@ object HeadlessRunner:
           eventsWritten,
           ciOpt,
           usageOpt,
-          lineage
+          lineage,
+          envelopes
         )
       yield Outcome(exitCode, workDir, Some(runResult))
 
@@ -237,7 +238,8 @@ object HeadlessRunner:
     (
         Either[RaiderError, String],
         Long,
-        Option[Either[ReduceError, SessionGraph]]
+        Option[Either[ReduceError, SessionGraph]],
+        Vector[EventEnvelope]
     )
   ] =
     ZIO
@@ -316,7 +318,7 @@ object HeadlessRunner:
               else Some(LineageReducer.reduce(buffered)),
             _ => Some(LineageReducer.reduce(buffered))
           )
-        yield (result, lines, lineage)
+        yield (result, lines, lineage, buffered)
       }
 
   /** Preflight families (args/manifest/load/entry) vs run-time failures. */
@@ -535,6 +537,16 @@ object HeadlessRunner:
     * `None` (preflight-failure families) contributes nothing — the summary
     * stays byte-identical to the pre-LIN-03B shape. run.json is NOT touched: no
     * new artifact, no schema change.
+    *
+    * LIN-09: on a settled REDUCIBLE campaign (`Some(Right(graph))`) the run's
+    * lineage artifacts are written next to events.jsonl/summary.md by
+    * [[RunLineageArtifacts]] (atomic, per-run dir — parallel runs are isolated
+    * structurally). The attempt is best-effort BY CONTRACT: any
+    * projection/store failure becomes ONE typed
+    * `lineage artifacts: unavailable (...)` summary line and NEVER changes the
+    * exit code (LIN9-02). Preflight failures and non-reducible campaigns write
+    * no artifacts and add no line — their existing lineage line already reports
+    * the state honestly.
     */
   private def writeArtifacts(
       workDir: Path,
@@ -544,7 +556,8 @@ object HeadlessRunner:
       eventsWritten: Long,
       ci: Option[CiContext],
       usage: Option[UsageReport],
-      lineage: Option[Either[ReduceError, SessionGraph]]
+      lineage: Option[Either[ReduceError, SessionGraph]],
+      envelopes: Vector[EventEnvelope]
   ): ZIO[Any, Nothing, Unit] =
     ZIO.attempt {
       Files.createDirectories(workDir)
@@ -622,6 +635,19 @@ object HeadlessRunner:
           s"- lineage: graph ${GraphHash(g)}, ${g.nodes.size} node(s) (checkpoint: events.jsonl)"
         case Left(e) => s"- lineage: unavailable ($e)"
       }
+      // LIN-09: settled campaign → lineage.scala + lineage-data.json next to
+      // the run's own events.jsonl (atomic, per-run dir). BEST-EFFORT by
+      // contract: [[RunLineageArtifacts.write]] is total (every failure is
+      // typed), so this can never crash the run or move the exit code — the
+      // honest outcome is data in summary.md. Only a REDUCIBLE campaign
+      // attempts the write: preflight failures and non-reducible campaigns
+      // contribute no line (their lineage line above already reports why).
+      val artifactsLine = lineage.collect { case Right(g) =>
+        RunLineageArtifacts.write(workDir, g, envelopes) match
+          case Right(written) =>
+            s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion 1)"
+          case Left(e) => s"- lineage artifacts: unavailable ($e)"
+      }
       val summary = s"""# raider run
            |
            |$statusLine
@@ -636,8 +662,10 @@ object HeadlessRunner:
       Files.writeString(
         workDir.resolve("summary.md"),
         // appended AFTER the fixed body so a lineage-less run stays
-        // byte-identical to the pre-LIN-03B summary shape
-        summary + lineageLine.fold("")(l => l + "\n"),
+        // byte-identical to the pre-LIN-03B summary shape; the LIN-09
+        // artifacts line rides behind the lineage line for the same reason
+        summary + lineageLine.fold("")(l => l + "\n") +
+          artifactsLine.fold("")(l => l + "\n"),
         UTF_8
       )
       ()
