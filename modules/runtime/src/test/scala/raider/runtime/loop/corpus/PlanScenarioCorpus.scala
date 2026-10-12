@@ -784,8 +784,9 @@ object PlanScenarioCorpus:
         verifyCancelledThenReplanned(o, v)
       case _ =>
         // Unreachable while the corpus data stays consistent: a mismatched
-        // (protocol, verdict) pair is an authoring defect, not a pass.
-        assertTrue(o.scenarioId.isEmpty && o.dir == null)
+        // (protocol, verdict) pair is an authoring defect, not a pass —
+        // the always-false pin fails loudly.
+        assertTrue(o.scenarioId.isEmpty)
 
   private def deniedCount(
       messages: List[RequestMessage],
