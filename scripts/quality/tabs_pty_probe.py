@@ -138,7 +138,7 @@ def classpath() -> str:
         if cp:
             return cp
     env = dict(os.environ)
-    env["COURSIER_CACHE"] = COURSIER_CACHE
+    env.setdefault("COURSIER_CACHE", COURSIER_CACHE)
     res = subprocess.run(
         ["sbt", "--batch", "export raiderUi/Test/fullClasspath"],
         capture_output=True, text=True, env=env, cwd=ROOT, timeout=600)
@@ -156,7 +156,7 @@ def classpath() -> str:
 
 def sbt_run(targets: list[str], log_name: str, timeout: int) -> int:
     env = dict(os.environ)
-    env["COURSIER_CACHE"] = COURSIER_CACHE
+    env.setdefault("COURSIER_CACHE", COURSIER_CACHE)
     res = subprocess.run(
         ["sbt", "--batch"] + targets, capture_output=True, text=True,
         env=env, cwd=ROOT, timeout=timeout)
