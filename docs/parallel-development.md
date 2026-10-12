@@ -35,6 +35,38 @@ fallback, когда Git недоступен.
 - Лимит: минимум 8, вверх ограничен только RAM/CPU (18 ядер / 128 GB —
   эмпирически 8-10 sbt-JVM устойчиво) и числом независимых ready-карточек.
 
+## 1b. Видимые spawn-агенты (решение владельца 2026-10-12 — основной режим исполнения)
+
+Доработки запускаются как **видимые spawn-субагенты в интерактивной сессии
+владельца**, а не фоновыми процессами. Владелец открывает opencode, говорит
+`/raider-wave` (или `/raider-wave <IDs>`) и наблюдает каждую lane как агента
+в TUI в реальном времени.
+
+- Coordinator — primary-сессия с владельцем. Workers — субагенты
+  `raider-worker`, reviewer — `raider-reviewer` (`.opencode/agents/*.md`);
+  диспатч — команда `.opencode/command/raider-wave.md`. Spawn через task tool.
+- Изоляция §1a не ослабляется: worker получает в assignment packet ABSOLUTE
+  worktree path + ветку и адресует все tool calls этим путём. Worktree по
+  умолчанию — `wt/<card-id>` внутри репозитория (gitignored), чтобы spawn-агент
+  оставался в пределах project dir и его permissions; внешний `<WT-ROOT>` —
+  только если владелец явно настроил external_directory allow.
+- Child session сама по себе не worktree — isolation даёт worktree + ветка +
+  absolute paths, а не факт спавна. Все правила §1a (branch-per-lane, запрет
+  push/merge воркером, sequential merge coordinator'ом, main-гейты после
+  батча) действуют без изменений.
+- Запрещено по умолчанию: исполнение карточек фоновыми bash-циклами `opencode
+  run`/`nohup` (night-loop из docs/prompts/opencode-1k-continuation.txt).
+  Ночной headless-режим — только отдельным явным решением владельца,
+  фиксируемым в board с причиной; по умолчанию он не используется.
+- Отчёт lane = финальное сообщение субагента (changed paths, команды/exits,
+  evidence, риски) по формату deliverable агента; coordinator интегрирует и
+  пишет records/board. Не требовать от владельца чтения логов, чтобы узнать
+  статус lane: статус виден в TUI и в отчёте coordinator'а.
+- Fallback (в порядке деградации): (1) task tool недоступен в установленной
+  версии → worker'ы исполняются последовательно в primary-сессии, review
+  параллельно; (2) явное отдельное решение владельца про night-loop. Причина
+  fallback фиксируется в board. Не выдумывать API fields (`cwd` у task и т.п.).
+
 ## 2. Сначала доказать изоляцию
 
 Перед запуском writers записать Git state, installed OpenCode version, доступные task/subagent tools, cwd и baseline fingerprint. На момент аудита repository unborn и все исходники untracked; обычный worktree от HEAD сейчас невозможен.
@@ -45,7 +77,7 @@ Fallback без commits или записи в `.git`: immutable source snapshot
 
 Snapshot copy без `.git` — полноценный supported lane mode. Worker фиксирует `Git unavailable: isolated snapshot`, сверяет root-provided base manifest и cwd; отсутствие Git не заставляет вернуться в общий checkout. RAI-004 обязан поддержать diff по before/after inventory (path/hash/mode/symlink/add/delete; rename может быть delete+add), например через целевой `QUALITY_BASE_MANIFEST`. До реализации этого режима использовать явные scoped bootstrap commands с тем же manifest. Manifest mode проверяет base/current hashes, active path classification и минимум active fast при отсутствии изменений; не пропускает проверки. Flag сначала реализуется и тестируется, только затем используется в отчётах.
 
-Worktree/copy path абсолютный и передаётся каждому tool call. До работы worker доказывает свой cwd и baseline; coordinator убеждается, что output/build directories различаются. OpenCode child session сама по себе не создаёт worktree. Если Task tools нельзя привязать к lane, запускать отдельный OpenCode process с явно поддерживаемым `--dir <lane>` и текущей owner-selected model/config, либо использовать другой подтверждённый isolation механизм. Не выдумывать task API parameter `cwd`, если установленная версия его не имеет.
+Worktree/copy path абсолютный и передаётся каждому tool call. До работы worker доказывает свой cwd и baseline; coordinator убеждается, что output/build directories различаются. OpenCode child session сама по себе не создаёт worktree. Основной режим привязки lane — видимый spawn-субагент (§1b): isolation дают worktree + ветка + absolute paths в packet. Отдельный OpenCode process с `--dir <lane>` — fallback последней очереди (только при недоступности task tool и с записью причины в board); не выдумывать task API parameter `cwd`, если установленная версия его не имеет.
 
 OpenCode 1.18.34 в аудитируемой среде подтверждён командой `--version`; `run --help` поддерживает `--dir`, `--agent`, `--file`. Перед новым запуском перепроверить версию. Командные/agent schemas могут различаться между версиями. Документация: [CLI](https://opencode.ai/docs/cli/), [agents](https://opencode.ai/docs/agents/).
 
