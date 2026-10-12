@@ -53,7 +53,8 @@ object TabShellHost:
 
   /** Host the shell until `:quit`/EOF. Scoped: the terminal and every
     * background pump/hub subscription die with the scope. `:aux` stays
-    * provider-less (typed hint, no LineageTab).
+    * provider-less (typed hint, no LineageTab) — see the RAI-110 overload below
+    * for the plan-tab wiring.
     */
   def run(wiring: Wiring): ZIO[Scope, Throwable, Unit] =
     for
@@ -63,6 +64,29 @@ object TabShellHost:
         TabShell.Config().closePrompt
       )
       _ <- TabShell.run(wiring.hub, wiring.registry, terminal, resolver)
+    yield ()
+
+  /** RAI-110 hook (ADR-028 §3): host the shell with the ONE plan tab. ADDITIVE
+    * overload, paletteTerminal pattern (RAI-106): the provider-less [[run]]
+    * above is byte-identical in behavior. The plan panel supplies
+    *   - the pure AuxTabProvider of the plan tab (`aux = Some(...)`), and
+    *   - the plan-command terminal that intercepts `:approve`/`:reject` BEFORE
+    *     the frozen router sees the line (Commands.planCommands).
+    */
+  def run(wiring: Wiring, plan: PlanPanel): ZIO[Scope, Throwable, Unit] =
+    for
+      terminal <- paletteTerminal
+      resolver = CloseChoiceResolver.fromTerminal(
+        terminal,
+        TabShell.Config().closePrompt
+      )
+      _ <- TabShell.run(
+        wiring.hub,
+        wiring.registry,
+        plan.commandTerminal(terminal),
+        resolver,
+        aux = Some(plan.provider)
+      )
     yield ()
 
 end TabShellHost
