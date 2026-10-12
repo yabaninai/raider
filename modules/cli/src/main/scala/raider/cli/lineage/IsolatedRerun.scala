@@ -1,10 +1,14 @@
 package raider.cli.lineage
 
 import raider.core.RaiderError
-import raider.dsl.lineage.data.LineageDataDocument
+import raider.dsl.lineage.data.{LineageDataDocument, NodeData}
+import raider.dsl.lineage.replay.RecordedSource
 import raider.runtime.lineage.model.SessionGraph
 import raider.runtime.lineage.reduce.ReduceError
+import raider.runtime.budget.BudgetLimits
 
+import zio.json.JsonDecoder
+import zio.json.ast.Json
 import zio.{Runtime, Unsafe}
 
 import java.nio.file.Path
@@ -50,6 +54,16 @@ enum RerunError:
     * [[SessionGraph]].
     */
   case Reduce(error: ReduceError)
+
+  /** LIN6-02 policy refusal, issued BEFORE any dispatch: the record carries
+    * Mutating tool nodes ([[IsolatedRerun.mutatingTools]]) but the requested
+    * replay target is not the isolated copy of the original — the ADR-027 §2
+    * isolation policy («Mutating — только в изолированной копии workspace»)
+    * refuses. `tools` lists the mutating tool names in deterministic (sorted,
+    * distinct) order; no workspace paths — the caller knows the target (the
+    * same no-absolute-path discipline as [[IsolationError.Tampered]]).
+    */
+  case MutatingUnisolated(tools: Vector[String])
 end RerunError
 
 /** Outcome of one isolated re-run: where the throwaway copy lives, whether the
@@ -112,21 +126,25 @@ object IsolatedRerun:
   val RunId = "isolated-rerun"
 
   /** The full pipeline — see the object scaladoc for the layer order and the
-    * ownership/determinism contracts.
+    * ownership/determinism contracts. `limits`/`maxRounds` pass through to
+    * [[ReplayHarness.replay]] (defaults = the frozen fixture ceilings);
+    * LIN6-02(sc) exhausts the budget typed by passing smaller ones.
     */
   def rerun(
       recorded: LineageDataDocument,
       expectedGraph: SessionGraph,
       originalWorkspace: Path,
-      parent: Path
+      parent: Path,
+      limits: BudgetLimits = ReplayHarness.FixtureLimits,
+      maxRounds: Int = ReplayHarness.FixtureMaxRounds
   ): Either[RerunError, RerunOutcome] =
     WorkspaceIsolation.isolate(originalWorkspace, parent) match
       case Left(error) => Left(RerunError.Isolation(error))
       case Right(isolated) =>
         snapshotOriginal(originalWorkspace).flatMap { before =>
-          replay(isolated, recorded).flatMap { run =>
+          replay(isolated, recorded, limits, maxRounds).flatMap { run =>
             run.graph.left.map(RerunError.Reduce(_)).flatMap { actual =>
-              val (matched, report) = verdict(expectedGraph, actual)
+              val (matched, report) = verdict(recorded, expectedGraph, actual)
               verifyUntouched(originalWorkspace, before).map { _ =>
                 RerunOutcome(isolated, matched, report)
               }
@@ -155,13 +173,15 @@ object IsolatedRerun:
     */
   private def replay(
       isolated: Path,
-      recorded: LineageDataDocument
+      recorded: LineageDataDocument,
+      limits: BudgetLimits,
+      maxRounds: Int
   ): Either[RerunError, ReplayHarness.ReplayRun] =
     try
       Right(
         Unsafe.unsafe { implicit unsafe =>
           Runtime.default.unsafe
-            .run(ReplayHarness.replay(isolated, recorded))
+            .run(ReplayHarness.replay(isolated, recorded, limits, maxRounds))
             .getOrThrow()
         }
       )
@@ -169,15 +189,74 @@ object IsolatedRerun:
 
   /** Compare + render (step 4): a divergence renders the deterministic report
     * (match = false); agreement yields the shared-normalized-hash message
-    * (match = true) — a Match is not a report, per [[RunDiffReport]].
+    * (match = true) — a Match is not a report, per [[RunDiffReport]]. The
+    * whole-graph verdict is followed by the PHASED section (LIN6-01sc):
+    * [[phasedSection]] renders one verdict per named phase of the recorded
+    * document — empty for phaseless records, so existing phaseless reports stay
+    * byte-identical.
     */
   private def verdict(
+      recorded: LineageDataDocument,
       expected: SessionGraph,
       actual: SessionGraph
   ): (Boolean, String) =
     RunDiffReport.fromGraphs(expected, actual, RunId) match
-      case Right(report) => (false, report.render)
-      case Left(message) => (true, message)
+      case Right(report) => (false, report.render + phasedSection(recorded))
+      case Left(message) => (true, message + phasedSection(recorded))
+
+  /** The per-phase section of the rerun report (LIN6-01sc): for every phase
+    * recorded in the document, one [[PhaseVerdict]] row — the phase identity,
+    * its slice GraphHash, the whole-slice verify label, one line per DIRECT
+    * child (resolved / obligation / unresolved) and one line per deferred tool
+    * obligation of the slice. Built from the RECORDED side only
+    * ([[PhaseReplay]] over the doc-built graph + [[RecordedSource]]): the live
+    * replayed graph never carries phase grouping (no wire case —
+    * docs/lineage.md §8), so phases are reported as recorded-side structure.
+    * Pure function of the record — a repeat render is byte-identical.
+    */
+  private def phasedSection(recorded: LineageDataDocument): String =
+    val verdicts =
+      PhaseReplay.replayAll(
+        ReplayHarness.recordedGraph(recorded),
+        RecordedSource(recorded)
+      )
+    if verdicts.isEmpty then ""
+    else verdicts.map(renderPhase).mkString("\n", "\n", "")
+
+  /** One phase → its deterministic report lines (see [[phasedSection]]). */
+  private def renderPhase(v: PhaseVerdict): String =
+    val label = v.subtree match
+      case SubtreeVerdict.Resolved(count, _) => s"resolved($count)"
+      case SubtreeVerdict.PartiallyResolved(fs, _) =>
+        s"partially-resolved(${fs.size})"
+    val rows = v.children.map(renderChildRow) ++
+      deferredRows(v.subtree)
+    rows.mkString(
+      s"phase ${v.phaseId.value} name=${v.name} subtree=$label hash=${v.graphHash}",
+      "\n  ",
+      ""
+    )
+
+  private def renderChildRow(row: NodeVerdict): String = row match
+    case NodeVerdict.Resolved(nodeId, dataRef) =>
+      s"child $nodeId resolved dataRef=$dataRef"
+    case NodeVerdict.Obligation(nodeId, None) =>
+      s"child $nodeId obligation structural"
+    case NodeVerdict.Obligation(nodeId, Some(deferred)) =>
+      s"child $nodeId obligation tool=${deferred.tool} recovery=${deferred.recovery}"
+    case NodeVerdict.Unresolved(nodeId, dataRef) =>
+      s"child $nodeId unresolved dataRef=$dataRef"
+
+  /** Deferred tool obligations of the slice (grandchildren included) — the
+    * per-child rows above only cover DIRECT children.
+    */
+  private def deferredRows(verdict: SubtreeVerdict): Vector[String] =
+    val tools = verdict match
+      case SubtreeVerdict.Resolved(_, tools)       => tools
+      case SubtreeVerdict.PartiallyResolved(_, ts) => ts
+    tools.map(t =>
+      s"deferred ${t.nodeId} tool=${t.tool} recovery=${t.recovery}"
+    )
 
   /** Byte-verify the original (step 5): any modified/deleted/added entry is
     * [[RerunError.Isolation]] ([[IsolationError.Tampered]]) — the rerun's core
@@ -191,5 +270,117 @@ object IsolatedRerun:
       .verifyUntouched(original, before)
       .left
       .map(RerunError.Isolation(_))
+
+  // -- LIN6-02: the isolation policy guard (product path) --------------------
+
+  /** Static exec-class tool names of the ADR-027 §6.2 taxonomy (frozen until
+    * the wave-2 schema card). Mirrors the classification LineageReducer applies
+    * when it WRITES the recorded `recovery` verdict — the two sets cite the
+    * same ADR section; unifying them is a schema-card concern (the reducer's
+    * classifier is private to the runtime module).
+    */
+  private val ExecTools = Set("bash", "sh", "process", "python")
+
+  /** Static write-class tool names of the ADR-027 §6.2 taxonomy. */
+  private val WriteTools = Set(
+    "edit",
+    "fs_edit",
+    "write",
+    "fs_write",
+    "apply_patch",
+    "patch",
+    "mv",
+    "rm",
+    "mkdir",
+    "touch"
+  )
+
+  private def isMutatingTool(name: String): Boolean =
+    ExecTools.contains(name) || WriteTools.contains(name)
+
+  /** The Mutating tool names the replay of `recorded` would EXECUTE for real
+    * (LIN6-02 policy input), deterministic (sorted, distinct). Two signals,
+    * because the recorded annotation can under-report what the loop actually
+    * runs (the replay executes the recorded RESPONSE envelope — the IR-02
+    * record's annotation says fs_read while its response carries fs_edit):
+    *   - every `tool_calls` envelope found in the recorded responses (the
+    *     [[ReplayModelBackend]] record convention), classified through the §6.2
+    *     static taxonomy;
+    *   - every `ToolCallData` entry whose recorded `recovery` is `Mutating`
+    *     (the recording-time verdict — trusted verbatim).
+    */
+  def mutatingTools(recorded: LineageDataDocument): Vector[String] =
+    val fromResponses = recorded.data.values.flatMap {
+      case m: NodeData.ModelCallData => responseToolNames(m.response)
+      case _                         => Vector.empty
+    }
+    val fromAnnotations = recorded.data.values.collect {
+      case t: NodeData.ToolCallData if t.recovery == "Mutating" => t.tool
+    }
+    (fromResponses ++ fromAnnotations)
+      .filter(isMutatingTool)
+      .toVector
+      .sorted
+      .distinct
+
+  /** LIN6-02 typed pre-execution refusal (ADR-027 §2: «Mutating-узлы — только в
+    * изолированной копии workspace; отказ до исполнения»): the PRODUCT-path
+    * guard for calling layers that aim the harness mechanics at a chosen
+    * target. A record whose [[mutatingTools]] is non-empty may only be replayed
+    * against a FAITHFUL isolated copy of `original` — the target must be a
+    * different directory whose bytes match the original's current snapshot
+    * (exactly what [[WorkspaceIsolation.isolate]] produces). Refused typed
+    * ([[RerunError.MutatingUnisolated]]) BEFORE any dispatch — the guard reads
+    * files and never starts a replay, a toolset or a backend.
+    *
+    * A ReadOnly record needs no isolation: `Right(())` without checks (the
+    * replay-recorded default contract, LIN-10 precedent).
+    */
+  def requireIsolatedTarget(
+      recorded: LineageDataDocument,
+      original: Path,
+      target: Path
+  ): Either[RerunError, Unit] =
+    val tools = mutatingTools(recorded)
+    if tools.isEmpty then Right(())
+    else if target == original then
+      Left(RerunError.MutatingUnisolated(tools)) // replay in place
+    else
+      try
+        val before = WorkspaceIsolation.snapshot(original)
+        WorkspaceIsolation.verifyUntouched(target, before) match
+          case Right(()) => Right(()) // faithful isolated copy
+          case Left(_)   => Left(RerunError.MutatingUnisolated(tools))
+      catch
+        case error: IllegalStateException =>
+          // snapshot guard refusal (symlink/special/bound) — carried typed,
+          // the same discipline as [[IsolatedRerun.snapshotOriginal]]
+          Left(RerunError.Snapshot(String.valueOf(error.getMessage)))
+
+  /** The tool names of a recorded response's `tool_calls` envelope, if it IS
+    * one (the same record convention [[ReplayModelBackend]] replays: a JSON
+    * object with a non-empty `tool_calls` array of objects carrying `name`).
+    * Anything else is a plain-text response — no names.
+    */
+  private def responseToolNames(response: String): Vector[String] =
+    summon[JsonDecoder[Json]]
+      .decodeJson(response)
+      .toOption
+      .flatMap {
+        case Json.Obj(fields) =>
+          fields.collectFirst { case (_, calls: Json.Arr) =>
+            calls.elements
+          } match
+            case None => None
+            case Some(items) =>
+              val names = items.flatMap {
+                case Json.Obj(member) =>
+                  member.collectFirst { case ("name", Json.Str(v)) => v }
+                case _ => None
+              }
+              if names.isEmpty then None else Some(names.toVector)
+        case _ => None
+      }
+      .getOrElse(Vector.empty)
 
 end IsolatedRerun

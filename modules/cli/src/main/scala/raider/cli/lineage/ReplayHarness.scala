@@ -67,6 +67,19 @@ import java.nio.file.Path
   */
 object ReplayHarness:
 
+  /** The frozen fixture ceilings (LIN-06B-1): maxAttempts=4 admits the full
+    * 2-round/1-tool campaign with headroom. LIN6-02(sc) drives SMALLER ceilings
+    * through `replay(..., limits = ...)` to exhaust the budget typed — the
+    * default keeps every existing harness/replay consumer byte-compatible.
+    */
+  val FixtureLimits: BudgetLimits =
+    BudgetLimits
+      .make(maxAttempts = 4, maxConcurrentLlm = 1, maxConcurrentTools = 1)
+      .fold(e => sys.error(s"fixture bug: limits: $e"), identity)
+
+  /** The frozen fixture round bound (see [[FixtureLimits]]). */
+  val FixtureMaxRounds = 2
+
   /** Recorded-side job name used in the fixture document's node ids/refs. */
   val RecordJob = "job-rec"
 
@@ -251,6 +264,13 @@ object ReplayHarness:
             inputs,
             Some(DataRef(ref))
           )
+        // LIN6-01(sc): a record may carry Phase grouping nodes (the frozen
+        // schema's `phase` kind + PhaseData); the graph model has the kind.
+        // The REDUCER never emits phases (no wire case), so a phased expected
+        // graph diverges from any replayed graph at the phase node — that is
+        // the honest documented semantics (docs/lineage.md §8), not a defect.
+        case (NodeKind.Phase, p: NodeData.PhaseData) =>
+          SessionNode.Phase(id, parent, n.seq, p.name, p.note)
         case _ =>
           sys.error(
             s"fixture bug: node ${n.id} kind ${n.kind} vs data under '$ref'"
@@ -281,22 +301,22 @@ object ReplayHarness:
   /** Runs the campaign: fixture → ReplayModelBackend → real loop over the REAL
     * `fs_read` tool → hub → reducer → compareNormalized against the graph
     * recorded in `doc`.
+    *
+    * `limits`/`maxRounds` default to the frozen fixture ceilings; LIN6-02(sc)
+    * exhausts the budget typed by passing smaller ones (every round and every
+    * tool dispatch is a billable attempt through the same [[Admission]]).
     */
   def replay(
       workspace: Path,
-      doc: LineageDataDocument = document
+      doc: LineageDataDocument = document,
+      limits: BudgetLimits = FixtureLimits,
+      maxRounds: Int = FixtureMaxRounds
   ): ZIO[Any, RaiderError, ReplayRun] =
     for
       toolset <- CodingToolset.make(workspace.toString)
       registry <- ZIO.fromEither(toolset.registry)
       hub <- EventHub.make()
-      limits = BudgetLimits.make(
-        maxAttempts = 4,
-        maxConcurrentLlm = 1,
-        maxConcurrentTools = 1
-      )
-      adm <- Admission.make(limits)
-      lims = limits.fold(e => sys.error(s"fixture bug: limits: $e"), identity)
+      adm <- Admission.make(Right(limits): Either[RaiderError, BudgetLimits])
       backend = ReplayModelBackend(RecordedSource(doc), doc)
       // Subscribe BEFORE the campaign starts (no loss window): the fresh
       // manager's first job is deterministically `j_1` (re-checked below).
@@ -322,8 +342,8 @@ object ReplayHarness:
         Task(
           loop.runText(
             List(RequestMessage("user", UserMessage)),
-            lims,
-            maxRounds = 2
+            limits,
+            maxRounds
           )
         )
       )
