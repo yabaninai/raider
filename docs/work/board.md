@@ -173,6 +173,38 @@ static/unit 9/9 (manifest 20261012-110432-24403-0001); validate.py passed
 plan-режима; TabShellHost в Main.ttyLoop; ReplayCli в продукт-команду
 `raider`; P2S-рендер consumer-шаг; eval-профиль plan-режима (milestone).
 
+**Волна 4 (spawn-режим §1b, 7 lanes + интеграция; base 4b46dc7 → main
+10ea71c):** зарегистрированы LIN-13/14/15 + RAI-113/114 (4b46dc7, validate
+132 cards). Lanes и вердикты: **W22-R8-review** (хвост W20–W21: F-W22R1-1
+единственный finding, закрыт 5ff5318) → **W22-R8** sweep (R1 MAJOR:
+`Gen.int(1,50)` — случайная выборка вместо sweep; fixes 1cc02b3:
+`Gen.fromIterable(1 to 50)` + 7 раздельных ассертов; re-review approve,
+детерминизм 50 seed-файлов ×3 идентичны); **LIN-12** CatalogStore persistence
+(append-очередь/per-path lock/upsert run-dir; LINC-01..03; approve; minors:
+no cross-process, path-нормализация ключа); **LIN-13** lineage §9.2 sync
+(17/17 evidence-ссылок; approve; §10-сопутствующие правки помечены);
+**LIN-14** LIN2-03 race-spec (4 readers vs writer, 0 частичных ×3; approve;
+вскрыл: PlanPanelSpec flake 1/4, baseline scalafix ParseError
+PlanTabsPtyApp:173 из e1a8c9f); **LIN-15** LIN-06 scripted acceptance
+LIN6-01/02/03 (typed-фиксы IsolatedRerun/ReplayHarness с reproducer'ами;
+approve; minor: alias-дыра guard'а — follow-up RAI-117); **RAI-113**
+:scrollback consumer (реестр+PTY P2SR-01..03; approve; minor: precedence
+vs :switch — follow-up RAI-118); **RAI-114** plan-mode eval corpus 6
+сценариев (PEVAL-01..03 ×3; approve). Конфликт PlanTabsPtyApp разрешён в
+пользу superset-фикса RAI-114. Интеграция: merges c98fb77…29d770b + records
+(W22-R8.md собран; LIN-12/RAI-113 перенесены из worktrees).
+Integrated gates на кандидате 10ea71c: quality-full (полный sbt test +
+repl/cli смоки) — первая попытка sbt-test честно упала на известном
+PTY-флейке TabShellUnreadPtySpec под нагрузкой 8 lane-JVM (изолированный
+прогон 3/3 за 40s, флейк не регрессия; честный failed-манифест
+20261012-200222-93693-0001), повтор зелёный; quality-changed EXECUTE 10/10
+(manifest 20261012-200841-98234-0001); профили static/unit/contracts/ci/
+docs/runtime/repl/security 9/9 (manifest 20261012-201326-4234-0001).
+Follow-ups зарегистрированы: RAI-116 (PTY-детерминизм под нагрузкой),
+RAI-117 (canonical-path guard), RAI-118 (:scrollback/:switch precedence).
+Одновременно на main независимо лег SDK-research трек (3a60f93…318fcf4,
+RAI-115) — сохранил, конфликтов с волной 4 нет.
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
@@ -213,6 +245,14 @@ plan-режима; TabShellHost в Main.ttyLoop; ReplayCli в продукт-к�
 | RAI-061 Tab shell (P2.B) | accepted | [W2 record](records/W2-EMITTERS-CANCEL-SHELL.md); SHELL-01..03; 16/16 ui |
 | RAI-060 Status line (P1.C) | accepted | [W3 record](records/W3-PARALLEL-10.md); integrated, gates green |
 | RAI-062 PTY integration (P2.C) | accepted | [RAI-062 record](records/RAI-062.md); PTY-01..03 + M1-DEMO all_pass |
+| LIN-12 Catalog persistence | accepted | [record](records/LIN-12.md); LINC-01..03; review approve (minors: cross-process/path-norm) |
+| LIN-13 lineage §9.2 sync | accepted | [record](records/LIN-13.md); DOC-13-01..03; review approve |
+| LIN-14 LIN2-03 race coverage | accepted | [record](records/LIN-14.md); 0 частичных чтений ×3; review approve |
+| LIN-15 LIN-06 scripted acceptance | accepted | [record](records/LIN-15.md); LIN6-01/02/03(sc); review approve; alias-guard → RAI-117 |
+| RAI-113 :scrollback consumer | accepted | [record](records/RAI-113.md); P2SR-01..03 PTY; review approve; precedence → RAI-118 |
+| RAI-114 plan-mode eval corpus | accepted | [record](records/RAI-114.md); PEVAL-01..03 ×3; review approve |
+| W22-R8 replay sweep | accepted | [record](records/W22-R8.md); 50-seed deterministic ×3; review R1-R3 fixes, re-review approve |
+| RAI-112 M1 evidence refresh | in-progress | lane на интегрированном кандидате (волна 4b) |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | M1 | accepted-pending-owner-note | [M1-ACCEPTANCE.md](records/M1-ACCEPTANCE.md) (evidence compiled) |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |

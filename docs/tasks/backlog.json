@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 132,
+  "raider_count": 135,
   "companion_count": 3,
   "cards": [
     {
@@ -3849,6 +3849,87 @@
       },
       "non_goals": "Изменение TokenRouter, запуск его tests/build, реализация GitHub/GitLab/Forgejo adapter до выбора, реальный PR/push/merge/tag, gateway/P11, paid calls, изменение protected verifiers или gate registry.",
       "context": "docs/research/sdk-roadmap-research-2026-10-12.md; roadmap §6c; owner 2026-10-12 подтвердил full SDLC, automatic commit/merge, programmable checkpoints, local-only release tag/artifacts, generic local runner, forge contract/stand первым. Target HEAD 91e6ce0 с dirty inputs; это consumer discovery, не target acceptance."
+    },
+    {
+      "id": "RAI-119",
+      "title": "PTY-детерминизм под нагрузкой: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-110",
+        "RAI-105",
+        "RAI-113"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "runtime"
+      ],
+      "behavior": "Устранить load-флейки PTY-семейства детерминизм-паттерном прецедентов (71d0aa3 quiescence drain перед :quit; 91a6575 retry со свежим рендером; merge-иммунные счётчики RAI-113): PlanPanelSpec «:reject cancels LIVE plan» (labels без plan-exec, 1/4 под 8-lane нагрузкой), TabShellUnreadPtySpec P2U-03 (промах badge-маркера), MainScrollbackPtySpec (waitQuiet-тайминги). Ассерты НЕ ослаблять: quiescence-drain/повторный рендер/детерминированные маркеры вместо sleep-гонок; полные прогоны raiderRepl/test ×3 и full sbt test ×1 зелёные; flake-наблюдения фиксируются в record с манифестами.",
+      "acceptance": {
+        "normal": "PTYD-01: PlanPanelSpec 10/10 прогонов подряд зелёные, включая прогон под фоновой нагрузкой (параллельный sbt/занятые ядра).",
+        "error": "PTYD-02: TabShellUnreadPtySpec 10/10 прогонов; любой промах маркера лечится детерминизмом, не ослаблением/удлинением timeout.",
+        "concurrency": "PTYD-03: полный raiderRepl/test ×3 + full sbt test ×1 зелёные; в record — honest trail красных прогонов до фикса."
+      },
+      "non_goals": "Продуктовый код modules/repl/src/main, modules/ui, изменение acceptance-семантики P2U/P2SR/PLANUI, удаление PTY-покрытия.",
+      "context": "Волна 4: 3 lane и integrated EXECUTE поймали flake PTY-семейства под 8-parallel-sbt нагрузкой (честный failed-манифест 20261012-200222-93693-0001 и lane-манифесты); изолированные прогоны зелёные — класс деградации детерминизма, не корректности."
+    },
+    {
+      "id": "RAI-120",
+      "title": "IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-15"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "Review-finding LIN-15 (minor, блокер для будущего live-rerun CLI): requireIsolatedTarget сравнивает target==original синтаксически (Path equality) — алиас оригинала (ws.resolve(\"..\").resolve(ws.getFileName), symlink) проходит байт-проверку как «faithful copy», и mutating replay исполнился бы IN-PLACE. Фикс: canonical-сравнение (Files.isSameFile/toRealPath с обработкой MissingFile) ДО исполнения, typed отказ существующим MutatingUnisolated; reproducer-тест алиаса и symlink-алиаса из review; verifyUntouched-дисциплина и существующие LIN6-фикстуры не ослабляются.",
+      "acceptance": {
+        "normal": "ISO-01: алиас-репродуктор reviewer'а — typed отказ ДО исполнения (байты оригинала неизменны, parent без dirt).",
+        "error": "ISO-02: symlink-алиас оригинала — typed отказ; несуществующий target — honest typed-ошибка (не молчаливый pass).",
+        "concurrency": "ISO-03: легитимная изолированная копия проходит guard — существующие LiveRerunScriptedAcceptanceSpec/IsolatedRerunSpec зелёные ×3 без правок ассертов."
+      },
+      "non_goals": "Живая модель (LIN-06 live-wire — owner), смена семантики WorkspaceIsolation/isolate, новые typed-кейсы вне guard'а, каталог LIN-12.",
+      "context": "LIN-15 review finding 1 (обоснование: до подключения guard'а к пользовательским target в CLI-слое); reproducer: guard с target = original.resolve(\"..\").resolve(name) возвращает Right сегодня."
+    },
+    {
+      "id": "RAI-121",
+      "title": ":scrollback precedence — согласование с frozen :switch",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-113"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Review-finding RAI-113 (minor): resolve() в ScrollbackCommands пробует digit-индекс ПОСЛЕДНИМ, а frozen resolveTab (:switch, CommandRouter) — ПЕРВЫМ; docstring при этом заявляет «mirrors the frozen :switch». Карточка выбирает ОДИН вариант и фиксирует его: (a) выровнять порядок резолюции с frozen resolveTab (digit-индекс первым) с corner-case-тестами, или (b) честно переписать docstring под фактический порядок с обоснованием, почему отличие сознательно. Corner-cases pinned: вкладка с label \"2\" против индекса 2; единственная вкладка \"2024-report\" с токеном 2; повтор ×3 без flake. Общий helper с frozen-слоем — только contract-change request (modules/ui не трогаем).",
+      "acceptance": {
+        "normal": "SCB-01: precedence зафиксирован named-тестами на обоих corner-cases; поведение детерминировано.",
+        "error": "SCB-02: docstring==код (претензия «mirrors» либо истинна, либо снята); обзор docs/lineage.md §9.2 — без новых заявлений.",
+        "concurrency": "SCB-03: существующие ScrollbackCommandsSpec/MainScrollbackPtySpec зелёные ×3; изменения не рвут one-writer/printAbove-дисциплину."
+      },
+      "non_goals": "modules/ui/** (frozen CommandRouter/resolveTab), изменение семантики :switch, новые команды, chat-модуль.",
+      "context": "RAI-113 review finding 1: пользователи, выучившие :switch, получат другое разрешение числовых токенов; будущая унификация — общий helper (contract-touching, отдельное решение)."
     }
   ]
 }

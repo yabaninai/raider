@@ -389,3 +389,27 @@ Status: ready. Milestone: LIN. Dependencies: LIN-06.
 **Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
 
 **Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## RAI-120: IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)
+
+Status: ready. Milestone: LIN. Dependencies: LIN-15.
+
+**Сценарий и контракт.** Review-finding LIN-15 (minor, блокер для будущего live-rerun CLI): requireIsolatedTarget сравнивает target==original синтаксически (Path equality) — алиас оригинала (ws.resolve("..").resolve(ws.getFileName), symlink) проходит байт-проверку как «faithful copy», и mutating replay исполнился бы IN-PLACE. Фикс: canonical-сравнение (Files.isSameFile/toRealPath с обработкой MissingFile) ДО исполнения, typed отказ существующим MutatingUnisolated; reproducer-тест алиаса и symlink-алиаса из review; verifyUntouched-дисциплина и существующие LIN6-фикстуры не ослабляются.
+
+**Context.** LIN-15 review finding 1 (обоснование: до подключения guard'а к пользовательским target в CLI-слое); reproducer: guard с target = original.resolve("..").resolve(name) возвращает Right сегодня.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: ISO-01: алиас-репродуктор reviewer'а — typed отказ ДО исполнения (байты оригинала неизменны, parent без dirt).
+- Error/adversarial: ISO-02: symlink-алиас оригинала — typed отказ; несуществующий target — honest typed-ошибка (не молчаливый pass).
+- Cancellation/concurrency: ISO-03: легитимная изолированная копия проходит guard — существующие LiveRerunScriptedAcceptanceSpec/IsolatedRerunSpec зелёные ×3 без правок ассертов.
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Живая модель (LIN-06 live-wire — owner), смена семантики WorkspaceIsolation/isolate, новые typed-кейсы вне guard'а, каталог LIN-12.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.

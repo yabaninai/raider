@@ -171,3 +171,6 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-115** [Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)](m1.md); dependencies: нет; profiles: docs.
 - **RAI-116** [ADR: Scala workflow SDK для local/generic CI и host launch boundary](m1.md); dependencies: RAI-115; profiles: docs.
 - **RAI-117** [ADR: SDLC stages, configurable checkpoints и generic integration/release contract](m1.md); dependencies: RAI-116; profiles: docs.
+- **RAI-119** [PTY-детерминизм под нагрузкой: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec](m2-p2.md); dependencies: RAI-110, RAI-105, RAI-113; profiles: static, unit, repl, runtime.
+- **RAI-120** [IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)](lineage.md); dependencies: LIN-15; profiles: static, unit, contracts, runtime.
+- **RAI-121** [:scrollback precedence — согласование с frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
