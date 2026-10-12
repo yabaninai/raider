@@ -228,7 +228,12 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
           stored <- ZIO.attempt(Files.readString(artifact))
           reparsed = PlanProposal.parse(stored)
           entries <- ZIO.attempt(
-            Files.list(dir).iterator().asScala.map(_.getFileName.toString).toVector
+            Files
+              .list(dir)
+              .iterator()
+              .asScala
+              .map(_.getFileName.toString)
+              .toVector
           )
         yield assertTrue(
           proposal.title == "Ship it",
@@ -266,7 +271,11 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
             maxRepair = 1
           )
           res <- loop
-            .runPlan(List(RequestMessage("user", "plan")), lims(), maxRounds = 4)
+            .runPlan(
+              List(RequestMessage("user", "plan")),
+              lims(),
+              maxRounds = 4
+            )
             .exit
           reqs <- backend.requests
           exists <- ZIO.succeed(
@@ -307,7 +316,11 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
                 maxRepair = maxRepair
               )
               res <- loop
-                .runPlan(List(RequestMessage("user", "p")), lims(), maxRounds = 4)
+                .runPlan(
+                  List(RequestMessage("user", "p")),
+                  lims(),
+                  maxRounds = 4
+                )
                 .exit
               reqs <- backend.requests
               exists <- ZIO.succeed(
@@ -411,7 +424,11 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
           planSnap <- manager.snapshot(planJob)
           execSnap <- manager.snapshot(exec)
           second <- session
-            .approve(List(RequestMessage("user", "again")), lims(), maxRounds = 4)
+            .approve(
+              List(RequestMessage("user", "again")),
+              lims(),
+              maxRounds = 4
+            )
             .flip
           reqsFinal <- backend.requests
           viewFinal <- manager.adminView
@@ -453,7 +470,11 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
             maxRounds = 4
           )
           second <- session
-            .startPlan(List(RequestMessage("user", "p2")), lims(), maxRounds = 4)
+            .startPlan(
+              List(RequestMessage("user", "p2")),
+              lims(),
+              maxRounds = 4
+            )
             .flip
           _ <- session.awaitPlan(planJob)
           exec <- session.approve(
@@ -462,7 +483,11 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
             maxRounds = 4
           )
           third <- session
-            .startPlan(List(RequestMessage("user", "p3")), lims(), maxRounds = 4)
+            .startPlan(
+              List(RequestMessage("user", "p3")),
+              lims(),
+              maxRounds = 4
+            )
             .flip
           view <- manager.adminView
         yield assertTrue(
@@ -535,11 +560,15 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
             cancelled,
             exitPlanCancelled(outcome), // job settled as typed Cancelled
             usage.reservedActive == MicroUsd(0),
-            usage.uncertainTotal == MicroUsd(250L), // interrupted dispatch: never zeroed
+            usage.uncertainTotal == MicroUsd(
+              250L
+            ), // interrupted dispatch: never zeroed
             modelFree == 1 && toolFree == 1, // no permit leak (§7.4/7.5)
             st == PlanSession.Cancelled,
             approveAfterCancel == PlanApprovalError.Cancelled,
-            view1.map(_.status).forall(JobStatus.terminal.contains), // no orphan Running
+            view1
+              .map(_.status)
+              .forall(JobStatus.terminal.contains), // no orphan Running
             reqsAfterCancel.size == 1, // the cancelled dispatch started nothing new
             proposal2.title == "Ship it",
             view2.size == 2, // cancelled plan + repeated plan, no ghosts
@@ -551,8 +580,8 @@ object AgentLoopPlanModeSpec extends ZIOSpecDefault:
     )
   )
 
-  /** A backend whose stream parks on a gate after recording the request —
-    * makes "inside dispatch" deterministic for the cancel test.
+  /** A backend whose stream parks on a gate after recording the request — makes
+    * "inside dispatch" deterministic for the cancel test.
     */
   private final class GatedBackend(
       underlying: ScriptedSequenceBackend,

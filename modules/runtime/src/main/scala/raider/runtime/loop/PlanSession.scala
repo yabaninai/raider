@@ -12,23 +12,23 @@ import zio.{Ref, Semaphore, UIO, ZIO}
   * plan phase.
   *
   * This is composition over the EXISTING job machinery, not a second state
-  * machine: the plan phase and the execution are two ordinary
-  * [[JobManager]] jobs on one root ([[PlanSession.root]]), their lifecycle
-  * statuses/transitions stay owned by `JobManager.canTransition` untouched.
-  * The session itself tracks exactly four composition facts (Idle / Planning /
+  * machine: the plan phase and the execution are two ordinary [[JobManager]]
+  * jobs on one root ([[PlanSession.root]]), their lifecycle
+  * statuses/transitions stay owned by `JobManager.canTransition` untouched. The
+  * session itself tracks exactly four composition facts (Idle / Planning /
   * Approved / Cancelled) and guards exactly the ADR-028 edges:
-  *   - execution NEVER starts before [[approve]] — approval is the only
-  *     edge that creates the execution job (no auto-approve, no timer);
-  *   - [[approve]] creates EXACTLY ONE execution job with the persisted plan
-  *     as its context; a second approval is a typed
+  *   - execution NEVER starts before [[approve]] — approval is the only edge
+  *     that creates the execution job (no auto-approve, no timer);
+  *   - [[approve]] creates EXACTLY ONE execution job with the persisted plan as
+  *     its context; a second approval is a typed
   *     [[PlanApprovalError.AlreadyApproved]] (exactly-once);
-  *   - [[cancelPlan]] interrupts the plan phase like any ordinary job
-  *     (bounded cleanup by the existing admission brackets, quality-gates
-  *     §7.4/7.5); `cancel != approval` — approving a cancelled session is a
-  *     typed [[PlanApprovalError.Cancelled]];
-  *   - a cancelled session may plan again ([[startPlan]] from `Cancelled`) —
-  *     a repeated plan never resurrects the cancelled job, it starts a new one
-  *     on the same root (same budget, honest attempt accounting).
+  *   - [[cancelPlan]] interrupts the plan phase like any ordinary job (bounded
+  *     cleanup by the existing admission brackets, quality-gates §7.4/7.5);
+  *     `cancel != approval` — approving a cancelled session is a typed
+  *     [[PlanApprovalError.Cancelled]];
+  *   - a cancelled session may plan again ([[startPlan]] from `Cancelled`) — a
+  *     repeated plan never resurrects the cancelled job, it starts a new one on
+  *     the same root (same budget, honest attempt accounting).
   */
 final class PlanSession private (
     loop: AgentLoop,
@@ -43,8 +43,8 @@ final class PlanSession private (
   def state: UIO[PlanSession.State] = stateRef.get
 
   /** Starts ONE plan-phase job on the session root. Legal from `Idle` and
-    * `Cancelled` (a repeated plan); anything else is a typed refusal BEFORE
-    * any work (no second concurrent plan, no plan after approval).
+    * `Cancelled` (a repeated plan); anything else is a typed refusal BEFORE any
+    * work (no second concurrent plan, no plan after approval).
     */
   def startPlan(
       messages: List[RequestMessage],
@@ -65,7 +65,9 @@ final class PlanSession private (
               PlanSession.planLabel,
               Task(task)
             )
-            .flatMap(handle => stateRef.set(PlanSession.Planning(handle)).as(handle))
+            .flatMap(handle =>
+              stateRef.set(PlanSession.Planning(handle)).as(handle)
+            )
         case other =>
           ZIO.fail(
             RaiderError.InputValidation(
@@ -79,21 +81,25 @@ final class PlanSession private (
   /** Await the plan job's typed outcome (unpacks the session's Either into the
     * plan-phase error channel; an interrupted job surfaces as `Cancelled`).
     */
-  def awaitPlan(job: PlanSession.PlanJob): ZIO[Any, PlanPhaseError, PlanProposal] =
-    manager.await(job).foldZIO(
-      err => ZIO.fail(PlanPhaseError.Underlying(err)),
-      {
-        case Right(proposal) => ZIO.succeed(proposal)
-        case Left(rejected)  => ZIO.fail(rejected)
-      }
-    )
+  def awaitPlan(
+      job: PlanSession.PlanJob
+  ): ZIO[Any, PlanPhaseError, PlanProposal] =
+    manager
+      .await(job)
+      .foldZIO(
+        err => ZIO.fail(PlanPhaseError.Underlying(err)),
+        {
+          case Right(proposal) => ZIO.succeed(proposal)
+          case Left(rejected)  => ZIO.fail(rejected)
+        }
+      )
 
   /** The approval edge (ADR-028: explicit, owner-driven, exactly-once).
     *
-    * From `Planning`: first awaits the plan job — a successful proposal
-    * creates the execution job (ordinary mode, full registry, SAME root and
-    * admission, plan JSON as the leading context message); a rejected/failed
-    * plan is a typed [[PlanApprovalError.NoPlan]]. From `Cancelled`:
+    * From `Planning`: first awaits the plan job — a successful proposal creates
+    * the execution job (ordinary mode, full registry, SAME root and admission,
+    * plan JSON as the leading context message); a rejected/failed plan is a
+    * typed [[PlanApprovalError.NoPlan]]. From `Cancelled`:
     * [[PlanApprovalError.Cancelled]] (cancel is not approval). From `Approved`:
     * [[PlanApprovalError.AlreadyApproved]] — the second execution job is never
     * created. From `Idle`: [[PlanApprovalError.NoPlan]].
@@ -113,15 +119,22 @@ final class PlanSession private (
             PlanApprovalError.NoPlan("no plan job was started in this session")
           )
         case PlanSession.Planning(handle) =>
-          manager.await(handle).foldZIO(
-            err => ZIO.fail(PlanApprovalError.NoPlan(err.detail)),
-            {
-              case Right(proposal) =>
-                startExecution(proposal, executionMessages, ceilings, maxRounds)
-              case Left(rejected) =>
-                ZIO.fail(PlanApprovalError.NoPlan(rejected.detail))
-            }
-          )
+          manager
+            .await(handle)
+            .foldZIO(
+              err => ZIO.fail(PlanApprovalError.NoPlan(err.detail)),
+              {
+                case Right(proposal) =>
+                  startExecution(
+                    proposal,
+                    executionMessages,
+                    ceilings,
+                    maxRounds
+                  )
+                case Left(rejected) =>
+                  ZIO.fail(PlanApprovalError.NoPlan(rejected.detail))
+              }
+            )
       }
     }
 
@@ -153,10 +166,9 @@ final class PlanSession private (
 
   /** Cancel the running plan phase (bounded cleanup: the ordinary interrupt
     * path of the existing admission/job brackets; §7.4/7.5 invariants). The
-    * session becomes `Cancelled` only when the interrupt was ACTUALLY
-    * delivered to a live plan job; an already-settled plan leaves the session
-    * untouched (its outcome stays honest). Returns whether a live plan job was
-    * cancelled.
+    * session becomes `Cancelled` only when the interrupt was ACTUALLY delivered
+    * to a live plan job; an already-settled plan leaves the session untouched
+    * (its outcome stays honest). Returns whether a live plan job was cancelled.
     */
   def cancelPlan(): UIO[Boolean] =
     gate.withPermit {
@@ -175,7 +187,8 @@ end PlanSession
 
 object PlanSession:
 
-  /** Plan-phase job handle: the typed plan outcome travels in the job result. */
+  /** Plan-phase job handle: the typed plan outcome travels in the job result.
+    */
   type PlanJob = JobHandle[Either[PlanPhaseError, PlanProposal]]
 
   /** Execution job handle: ordinary `runText` answer. */
@@ -185,8 +198,10 @@ object PlanSession:
   sealed trait State
   case object Idle extends State
   final case class Planning(plan: PlanJob) extends State
+
   final case class Approved(execution: ExecJob, proposal: PlanProposal)
       extends State
+
   case object Cancelled extends State
 
   private[loop] val planLabel: String = "plan"

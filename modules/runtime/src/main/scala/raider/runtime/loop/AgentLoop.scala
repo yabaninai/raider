@@ -204,8 +204,8 @@ final case class AgentLoop(
     *     the transition to execution is the explicit approval edge owned by
     *     [[PlanSession]] (PLAN-03);
     *   - the phase lives in the common root budget (every attempt goes through
-    *     the same admission brackets) and is cancellable like any run
-    *     (bounded cleanup, §7.4/7.5).
+    *     the same admission brackets) and is cancellable like any run (bounded
+    *     cleanup, §7.4/7.5).
     *
     * Requires `planMode`; without it the call is a typed refusal before any
     * spend (RA-CFG: plan mode is off by default).
@@ -250,8 +250,8 @@ final case class AgentLoop(
             lastAttemptNo = pm.maxRepairAttempts + 1
           )
 
-  /** One bounded plan attempt: the read-only loop up to the final answer,
-    * then structural validation; malformed → repair or the typed rejection.
+  /** One bounded plan attempt: the read-only loop up to the final answer, then
+    * structural validation; malformed → repair or the typed rejection.
     */
   private def planAttempt(
       messages: List[RequestMessage],
@@ -262,20 +262,21 @@ final case class AgentLoop(
   ): ZIO[Any, PlanPhaseError, PlanProposal] =
     ev(_.diagnostics(s"plan attempt $attemptNo/$lastAttemptNo started")) *>
       runLoop(messages, ceilings, maxRounds, enforceReadOnly = true).foldZIO(
-        err => err match
-          case RaiderError.OutputValidation(what) =>
-            // empty/marker final answer: malformed candidate, repair like any
-            // other rejected shape (bounded, billable — §7.11)
-            repairOrReject(
-              messages,
-              ceilings,
-              maxRounds,
-              candidate = None,
-              reason = what,
-              attemptNo,
-              lastAttemptNo
-            )
-          case other => ZIO.fail(PlanPhaseError.Underlying(other)),
+        err =>
+          err match
+            case RaiderError.OutputValidation(what) =>
+              // empty/marker final answer: malformed candidate, repair like any
+              // other rejected shape (bounded, billable — §7.11)
+              repairOrReject(
+                messages,
+                ceilings,
+                maxRounds,
+                candidate = None,
+                reason = what,
+                attemptNo,
+                lastAttemptNo
+              )
+            case other => ZIO.fail(PlanPhaseError.Underlying(other)),
         candidate =>
           PlanProposal.parse(candidate) match
             case Left(reason) =>
@@ -299,18 +300,20 @@ final case class AgentLoop(
                     )
                   )
                 case Some(dir) =>
-                  PlanStore.write(dir, root, proposal).foldZIO(
-                    e => ZIO.fail(PlanPhaseError.Underlying(e)),
-                    path =>
-                      // human-readable plan line ONLY via Diagnostics
-                      // (ADR-024 frozen family — no new wire event)
-                      ev(
-                        _.diagnostics(
-                          s"plan proposal accepted: ${proposal.title} " +
-                            s"(${proposal.steps.size} step(s)) -> ${path.getFileName}"
-                        )
-                      ) *> ZIO.succeed(proposal)
-                  )
+                  PlanStore
+                    .write(dir, root, proposal)
+                    .foldZIO(
+                      e => ZIO.fail(PlanPhaseError.Underlying(e)),
+                      path =>
+                        // human-readable plan line ONLY via Diagnostics
+                        // (ADR-024 frozen family — no new wire event)
+                        ev(
+                          _.diagnostics(
+                            s"plan proposal accepted: ${proposal.title} " +
+                              s"(${proposal.steps.size} step(s)) -> ${path.getFileName}"
+                          )
+                        ) *> ZIO.succeed(proposal)
+                    )
       )
 
   /** The bounded repair edge (§7.11): feed the rejected candidate and a
@@ -371,9 +374,8 @@ final case class AgentLoop(
   private def hookMetaJson: String =
     s"{\"model\":${model.toJson},\"root\":${root.value.toJson}}"
 
-  /** Extracted argument validation of a run (identical rules for `runText`
-    * and the plan phase): configuration violations are refused BEFORE any
-    * spend.
+  /** Extracted argument validation of a run (identical rules for `runText` and
+    * the plan phase): configuration violations are refused BEFORE any spend.
     */
   private def validateRunArgs(
       messages: List[RequestMessage],

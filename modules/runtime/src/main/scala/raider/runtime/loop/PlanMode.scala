@@ -3,7 +3,13 @@ package raider.runtime.loop
 import raider.core.{RaiderError, RootId, ToolRegistry}
 import raider.core.RecoveryClass
 import zio.json.ast.Json
-import zio.json.{DeriveJsonDecoder, DeriveJsonEncoder, JsonDecoder, JsonEncoder, EncoderOps}
+import zio.json.{
+  DeriveJsonDecoder,
+  DeriveJsonEncoder,
+  JsonDecoder,
+  JsonEncoder,
+  EncoderOps
+}
 import zio.ZIO
 
 import java.nio.charset.StandardCharsets
@@ -47,8 +53,8 @@ object PlanProposal:
             )
           case Right(raw) => validate(raw)
 
-  /** Structural validation + normalization (trim). Total: every malformed
-    * shape yields a bounded reason, never an exception.
+  /** Structural validation + normalization (trim). Total: every malformed shape
+    * yields a bounded reason, never an exception.
     */
   def validate(raw: PlanProposal): Either[String, PlanProposal] =
     val title = raw.title.trim
@@ -76,17 +82,17 @@ object PlanProposal:
 end PlanProposal
 
 /** Typed failures of the plan phase (RAI-107, ADR-028 §2). A runtime-layer ADT:
-  * `RaiderError` is a sealed core family and is NOT extended. `PlanRejected`
-  * is the typed malformed-plan outcome; every model/budget/admission failure
-  * keeps its original typed error under [[Underlying]].
+  * `RaiderError` is a sealed core family and is NOT extended. `PlanRejected` is
+  * the typed malformed-plan outcome; every model/budget/admission failure keeps
+  * its original typed error under [[Underlying]].
   */
 enum PlanPhaseError:
   case PlanRejected(reason: String, planAttempts: Int)
   case Underlying(error: RaiderError)
 
   def code: String = this match
-    case PlanRejected(_, _)  => "RA-PLAN-REJECTED"
-    case Underlying(error)   => error.code
+    case PlanRejected(_, _) => "RA-PLAN-REJECTED"
+    case Underlying(error)  => error.code
 
   def detail: String = this match
     case PlanRejected(reason, attempts) =>
@@ -95,8 +101,8 @@ enum PlanPhaseError:
 
 end PlanPhaseError
 
-/** Typed approval failures of a [[PlanSession]] (RAI-107 / ADR-028: approval
-  * is explicit, exactly-once, and `cancel != approval`).
+/** Typed approval failures of a [[PlanSession]] (RAI-107 / ADR-028: approval is
+  * explicit, exactly-once, and `cancel != approval`).
   */
 enum PlanApprovalError:
   case AlreadyApproved(jobId: String)
@@ -111,13 +117,13 @@ enum PlanApprovalError:
 
 end PlanApprovalError
 
-/** Atomic persistence of the plan artifact "next to the run artifacts"
-  * (ADR-028 §2). The directory is caller-provided (wiring owns the layout);
-  * the file is `<plan-<root>.json>` written tmp+move (`ATOMIC_MOVE`): a reader
-  * never observes a torn plan, and a rejected/cancelled phase writes nothing.
+/** Atomic persistence of the plan artifact "next to the run artifacts" (ADR-028
+  * §2). The directory is caller-provided (wiring owns the layout); the file is
+  * `<plan-<root>.json>` written tmp+move (`ATOMIC_MOVE`): a reader never
+  * observes a torn plan, and a rejected/cancelled phase writes nothing.
   *
-  * Same no-fsync honesty as [[raider.runtime.journal.JobJournal]]: the write
-  * is flushed to the OS page cache only — power-loss durability is not claimed.
+  * Same no-fsync honesty as [[raider.runtime.journal.JobJournal]]: the write is
+  * flushed to the OS page cache only — power-loss durability is not claimed.
   * Environment failures are typed (`JournalFailure` — persistent-artifact
   * failure), never silent.
   */
@@ -133,43 +139,45 @@ object PlanStore:
       root: RootId,
       proposal: PlanProposal
   ): ZIO[Any, RaiderError, Path] =
-    ZIO.attempt {
-      Files.createDirectories(dir)
-      val target = artifactPath(dir, root)
-      val tmp = Files.createTempFile(dir, ".plan-", ".tmp")
-      try
-        Files.writeString(
-          tmp,
-          proposal.toJson + "\n",
-          StandardCharsets.UTF_8
+    ZIO
+      .attempt {
+        Files.createDirectories(dir)
+        val target = artifactPath(dir, root)
+        val tmp = Files.createTempFile(dir, ".plan-", ".tmp")
+        try
+          Files.writeString(
+            tmp,
+            proposal.toJson + "\n",
+            StandardCharsets.UTF_8
+          )
+          Files.move(
+            tmp,
+            target,
+            StandardCopyOption.REPLACE_EXISTING,
+            StandardCopyOption.ATOMIC_MOVE
+          )
+        catch
+          case t: Throwable =>
+            Files.deleteIfExists(tmp)
+            throw t
+        target
+      }
+      .mapError(e =>
+        RaiderError.JournalFailure(
+          s"plan artifact persist failed for root ${root.value}: ${String.valueOf(e)}"
         )
-        Files.move(
-          tmp,
-          target,
-          StandardCopyOption.REPLACE_EXISTING,
-          StandardCopyOption.ATOMIC_MOVE
-        )
-      catch
-        case t: Throwable =>
-          Files.deleteIfExists(tmp)
-          throw t
-      target
-    }.mapError(e =>
-      RaiderError.JournalFailure(
-        s"plan artifact persist failed for root ${root.value}: ${String.valueOf(e)}"
       )
-    )
 
 end PlanStore
 
 /** RAI-107 (ADR-028 §2): the plan-mode binding of one [[AgentLoop]] — the
   * RA-CFG config object of the runtime layer, OFF by default: an AgentLoop
-  * built without `planMode` behaves exactly as before, and `runPlan` on it is
-  * a typed refusal. Fields:
+  * built without `planMode` behaves exactly as before, and `runPlan` on it is a
+  * typed refusal. Fields:
   *   - `fullTools` — the registry of the ordinary execution mode;
   *   - `readOnlyTools` — its strict `RecoveryClass.ReadOnly` subset, the ONLY
-  *     toolset the plan phase advertises to the model and executes
-  *     (enforcement by the frozen recovery classes, never prompt-only);
+  *     toolset the plan phase advertises to the model and executes (enforcement
+  *     by the frozen recovery classes, never prompt-only);
   *   - `artifactsDir` — where [[PlanStore]] persists the accepted proposal
   *     (wiring owns the artifacts layout; ADR-028 "next to the run artifacts");
   *   - `maxRepairAttempts` — the bounded repair budget for malformed plans
@@ -190,8 +198,8 @@ object PlanMode:
   val DefaultMaxRepairAttempts: Int = 2
 
   /** Derives the read-only view of a registry. The subset of a valid registry
-    * is always a valid registry (unique non-empty names, versions, timeouts
-    * are untouched), so the impossible `Left` is a defect, not a case.
+    * is always a valid registry (unique non-empty names, versions, timeouts are
+    * untouched), so the impossible `Left` is a defect, not a case.
     */
   def of(
       full: ToolRegistry,
@@ -199,9 +207,9 @@ object PlanMode:
       maxRepairAttempts: Int = DefaultMaxRepairAttempts
   ): PlanMode =
     ToolRegistry.build(
-      full.names.flatMap(n => full.lookup(n)).filter(t =>
-        t.recovery == RecoveryClass.ReadOnly
-      )
+      full.names
+        .flatMap(n => full.lookup(n))
+        .filter(t => t.recovery == RecoveryClass.ReadOnly)
     ) match
       case Right(ro) =>
         PlanMode(full, ro, artifactsDir, maxRepairAttempts)
