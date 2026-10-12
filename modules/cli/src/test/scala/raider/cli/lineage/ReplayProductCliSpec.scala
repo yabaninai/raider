@@ -377,13 +377,28 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
           .argv == List("replay", "/tmp/run", "--workspace", "/tmp/ws"),
         run.toOption.get.target.isInstanceOf[CliArgs.Target.Agent],
         bare.toOption.get.target.isInstanceOf[CliArgs.Target.Replay],
-        // the run flag surface still rejects replay-only flags: `--workspace`
-        // is a replay/chat flag (long-standing run parse rule, verified by
-        // coordinator probe: parse returns Left Configuration for
-        // `run --workspace`), NOT a run flag
+        // the run parse surface is unchanged: `--workspace` is a LONG-STANDING
+        // legal run flag (flagsWithValue + assemble), so run+workspace parses
+        // Right; a bare `run --workspace` without a target (--agent/--bundle)
+        // still fails with the pre-existing target-required error
         CliArgs
-          .parse(List("run", "--workspace", "w", "--out", "o", "--mock"))
-          .isLeft
+          .parse(
+            List(
+              "run",
+              "--agent",
+              "scout",
+              "--workspace",
+              "w",
+              "--out",
+              "o",
+              "--mock"
+            )
+          )
+          .isRight &&
+          CliArgs
+            .parse(List("run", "--workspace", "w", "--out", "o", "--mock"))
+            .left
+            .exists(_.detail.contains("one of --agent or --bundle"))
       )
     },
     test(
