@@ -176,3 +176,5 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-121** [:scrollback precedence — согласование с frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
 - **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (кандидат по reviewer-риску RAI-119)](m2-p2.md); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
 - **RAI-122** [tabs_pty_probe: синхронизация с ADR-024 honest-unknowns status-text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
+- **RAI-124** [REPL :type — тип выражения без исполнения (RAI-019/020 slice)](m2-p2.md); dependencies: RAI-068; profiles: static, unit, repl.
+- **RAI-126** [PTY-probes COURSIER_CACHE: env.setdefault вместо захардкоженного переопределения](m1.md); dependencies: RAI-122; profiles: static, docs.

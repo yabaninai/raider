@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 137,
+  "raider_count": 139,
   "companion_count": 3,
   "cards": [
     {
@@ -3985,6 +3985,58 @@
       },
       "non_goals": "Изменение PlanSession.approve/reject-семантики (RAI-107 frozen), ADR-028, вторая панель, UI-слой.",
       "context": "RAI-119 review, риск 1: wave-4 класс не воспроизведён (18 попыток), фикс превентивный; рецидив на 8-lane интеграции возможен. Не добавлять продуктовые правки без воспроизведённого reproducer."
+    },
+    {
+      "id": "RAI-124",
+      "title": "REPL :type — тип выражения без исполнения (RAI-019/020 slice)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-068"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Команда :type <expr> в продуктовом REPL печатает тип выражения через РЕАЛЬНЫЙ interpreter-компилятор БЕЗ исполнения выражения: ни эффектов, ни модельных вызовов, ни мутации биндингов сессии; ошибка типизации — честный вывод компилятора (не молчаливое Any/Unit), REPL жив и повтор работает; multiline-ввод поддержан (тот же путь, что :load/paste); регистрация в help/каталоге команд — freshness-прецедент RAI-111 (источник = реестр, без hand-list рассинхрона); TAB-completion/palette не затронуты. Модуль chat (JLine-free правило) не трогается.",
+      "acceptance": {
+        "normal": "TYPE-01: :type для val/def/case class-выражений — точный напечатанный тип (in-process, pinned строки), биндинги сессии после :type идентичны до/после.",
+        "error": "TYPE-02: несуществующий идентификатор/несовместимый тип — сообщение компилятора в выводе, REPL жив, следующая команда исполняется; :type на пустом вводе — usage без падения.",
+        "concurrency": "TYPE-03: PTY живой сессии — :type во время стриминга/после ошибки компиляции; prompt жив, ×3 flake=0; help/каталог содержат :type (freshness-тест)."
+      },
+      "non_goals": "Изменение компилятор-слоя/REPL-пелюды, :kind/:browse и прочие команды, chat JLine-модуль, второй runtime, замена честного вывода на кастомный formatter.",
+      "context": "Board Open Obligations: «REPL: :type, completion | RAI-019/020» — completion закрыт RAI-068, :type остаётся. Прецедент команд REPL-уровня: ReplChatCommands (RAI-111), ScrollbackCommands (RAI-113)."
+    },
+    {
+      "id": "RAI-126",
+      "title": "PTY-probes COURSIER_CACHE: env.setdefault вместо захардкоженного переопределения",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-122"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/tabs_pty_probe.py",
+        "scripts/quality/renderer_pty_probe.py",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "docs"
+      ],
+      "behavior": "Board Open Obligations one-liner: tabs_pty_probe.py (:63/:141) и renderer_pty_probe.py (:71/:122) ПЕРЕОПРЕДЕЛЯЮТ COURSIER_CACHE вызывающего машинно-специфичным абсолютным путём (`env[...] = /var/folders/...`); заменить на env.setdefault с сохранением дефолта (прецедент repl_pty_smoke.py:61). Поведение без явно заданного COURSIER_CACHE — бит-в-бит прежнее; с заданным — probe использует кэш вызывающего. Защищённые верификаторы: функциональные оракулы не трогаются, изменение одной семантики окружения.",
+      "acceptance": {
+        "normal": "CC-01: прогон без COURSIER_CACHE — дефолт-путь, tabs_pty_probe all_pass (behavior прежний).",
+        "error": "CC-02: прогон с явно заданным COURSIER_CACHE=<tmp> — probe использует его (видно по логу/артефакту), не перетирает; повторная передача idempotent.",
+        "concurrency": "CC-03: tabs_pty_probe all_pass ×2 после изменения; diff = только setdefault-семантика (построчно в record)."
+      },
+      "non_goals": "Ослабление оракулов probe, изменение Makefile-дефолта /tmp/cc-master, license_audit/renderer-механики сверх setdefault, gate policy.",
+      "context": "Прецедент уже в дереве: repl_pty_smoke.py:61 env.setdefault. Дефолт-пути в probe — machine-specific /var/folders/... (артефакт lane-инфраструктуры), препятствуют воспроизведению на другом хосте с заданным кэшем."
     }
   ]
 }
