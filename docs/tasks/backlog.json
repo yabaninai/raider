@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 117,
+  "raider_count": 118,
   "companion_count": 3,
   "cards": [
     {
@@ -3449,6 +3449,35 @@
       },
       "non_goals": "Изменение frozen lineage-data schema, GraphHash/нормализации компаратора, формата существующих golden-проекций.",
       "context": "LIN-09 contract-change request (reproducer: object X: + indented comment-only тело → dotc «indented definitions expected, eof found»); LIN2-01 compile-gate; docs/lineage.md §9.1."
+    },
+    {
+      "id": "RAI-107",
+      "title": "Plan mode: read-only plan-фаза и approval-переход (ADR-028)",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-010"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/loop/**",
+        "modules/runtime/src/test/scala/raider/runtime/**",
+        "docs/adr/ADR-028-plan-mode.md"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "eval"
+      ],
+      "behavior": "AgentLoop получает bounded режим plan: toolset сужается по frozen RecoveryClass до ReadOnly (Mutating/Idempotent вызов — typed policy-denial, loop жив); фаза обязана завершиться структурированным PlanProposal (typed PlanRejected при malformed, bounded repair-attempts); артефакт плана персистится рядом с артефактами рана без новых wire-событий (ADR-024 frozen); execution стартует только после явного approval владельца отдельной джобой; план-джоба и execution-джоба — раздельные Phase-записи; plan-фаза живёт в общем root-бюджете и отменяется с bounded cleanup.",
+      "acceptance": {
+        "normal": "PLAN-01: в plan-фазе вызов Mutating/Idempotent инструмента — typed policy-denial; ReadOnly выполняются; scripted backend, без платных вызовов.",
+        "error": "PLAN-02: пустой/неструктурированный план — typed PlanRejected, bounded repair-attempts, артефакт не пишется; валидный план персистится как структурированный PlanProposal.",
+        "concurrency": "PLAN-03: без approval execution не стартует; approval создаёт ровно одну execution-джобу; cancel plan-фазы — bounded cleanup, повторный план возможен (нет orphan/двойного запуска)."
+      },
+      "non_goals": "Второй scheduler/runtime, auto-approve, изменение ADR-024 wire-схемы или публичных core-схем, prompt-only enforcement, sandbox-гарантии поверх tool policy, UI-поверхность (:plan/TUI-экран) — отдельные wiring-карточки.",
+      "context": "Owner mandate 2026-10-12 («RAI-107 Plan mode (ADR-028) — обязательно»); [ADR-028](../adr/ADR-028-plan-mode.md); enforcement по frozen RecoveryClass (core/tool.scala); инварианты 4/5/11 quality-gates §7."
     }
   ]
 }
