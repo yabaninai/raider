@@ -8,7 +8,7 @@ import raider.runtime.lineage.model.SessionGraph
 import raider.runtime.lineage.reduce.ReduceError
 import raider.runtime.lineage.replay.GraphDiff
 
-import zio.{UIO, ZIO}
+import zio.{ExitCode, Scope, UIO, ZIO, ZIOAppArgs, ZIOAppDefault}
 import zio.Unsafe
 
 import java.nio.file.{Files, Path}
@@ -404,17 +404,18 @@ object ReplayCli:
         ExitCodes.ConfigInvalid
       case _ => ExitCodes.RuntimeFailure
 
-  /** Standalone entry: verdict lines on stdout (flushed — `System.exit` does
-    * not flush piped stdout), typed failures and usage on stderr, then the
-    * mapped exit code. Runtime defects crash loudly via `getOrThrow` — never
-    * mapped to a quiet code.
+  /** Standalone entry body: verdict lines on stdout (flushed), typed failures
+    * and usage on stderr, then the mapped exit code as the RETURN value — the
+    * process exit itself belongs to the sanctioned [[ReplayCliMain]] app runner
+    * (forbidden-apis: no raw `System.exit` outside `raider.cli.Main`). Runtime
+    * defects crash loudly via `getOrThrow` — never mapped to a quiet code.
     */
-  def main(argv: Array[String]): Unit =
-    parse(argv.toList) match
+  def exec(argv: List[String]): Int =
+    parse(argv) match
       case Left(usageError) =>
         System.err.println(usageError)
         System.err.flush()
-        System.exit(ExitCodes.ConfigInvalid)
+        ExitCodes.ConfigInvalid
       case Right(config) =>
         Unsafe.unsafe { implicit unsafe =>
           val verdict = zio.Runtime.default.unsafe.run(run(config)).getOrThrow()
@@ -424,11 +425,11 @@ object ReplayCli:
               System.err.println(render(verdict))
               System.err.println(s"exit $code: ${failureExitReason(code)}")
               System.err.flush()
-              System.exit(code)
+              code
             case _ =>
               System.out.println(render(verdict))
               System.out.flush()
-              System.exit(exitCode(verdict))
+              exitCode(verdict)
         }
 
   /** The ci-runtime §8 reason word for a failure exit code (diagnostic line on
@@ -446,3 +447,20 @@ object ReplayCli:
       case other                      => s"failure-$other"
 
 end ReplayCli
+
+/** Sanctioned process entry for the standalone replay command (LIN-10; the
+  * integrated-gate forbidden-apis check requires `System.exit` to stay out of
+  * lane sources — the ZIO app runner owns the final JVM exit, our code only
+  * returns the mapped [[ExitCode]]).
+  */
+object ReplayCliMain extends ZIOAppDefault:
+
+  // ZIOAppDefault.main maps a SUCCESSFUL run to exit 0 regardless of the
+  // returned ExitCode, so the mapped ci-runtime §8 code is delivered through
+  // the sanctioned `exit` helper (Platform.exit) inside run; the trailing
+  // `.as` value only satisfies the signature when the process survives.
+  def run: ZIO[ZIOAppArgs & Scope, Nothing, ExitCode] =
+    ZIO.serviceWithZIO[ZIOAppArgs] { args =>
+      val code = ExitCode(ReplayCli.exec(args.getArgs.toList))
+      exit(code).as(code)
+    }

@@ -285,7 +285,7 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 | Phase/recovery schema-card | Wire-события frozen (13 cases): Phase-узлы строит модель/редуктор, RecoveryClass — статическая таксономия tool-name→класс; wire-расширение — schema-card с independent review, не начата |
 | TabShell-wiring в product REPL | `LineageTab`-provider и `:aux`-seam есть и покрыты тестами, но продуктовый REPL (`modules/cli/chat`) вкладку не подключает |
 | Запись артефактов в каталог рана | HeadlessRunner пишет `events.jsonl` + lineage-строку в summary; `lineage.scala`/`lineage-data.json` рождаются в golden/тестах и compile-gate — продовый ран их рядом с рансом ещё не пишет (обязательство LIN-03/08, §10) |
-| Прочее, честно | `LineageCatalog` — scan без persistence; конкурентное чтение проекции (LIN2-03) покрыто частично; replay-команда есть как **standalone-вход** `raider.cli.lineage.ReplayCli` (LIN-10, свой argv/exit-коды, §10), но в продукт-команду `raider` она ещё не вписана — wiring общего CLI отдельная карточка |
+| Прочее, честно | `LineageCatalog` — scan без persistence; конкурентное чтение проекции (LIN2-03) покрыто частично; replay-команда есть как **standalone-вход** `raider.cli.lineage.ReplayCliMain` (LIN-10, свой argv/exit-коды, §10; entry-раннер — sanctioned ZIOAppDefault после integrated-gate forbidden-apis фикса), но в продукт-команду `raider` она ещё не вписана — wiring общего CLI отдельная карточка |
 
 Карточки P-LIN — `docs/tasks/lineage.md`; контракт — ADR-027. Compile-сторона
 гейта LIN реализована (`LineageCompileGateSpec`); полные milestone-обязательства
@@ -310,7 +310,7 @@ raider run --agent coder --input "Исправь regression и запусти п
   --out artifacts/<run> --mock
 
 # replay-recorded — standalone-вход LIN-10 (recorded-only, без модельных вызовов):
-java -cp <cli-classpath> raider.cli.lineage.ReplayCli artifacts/<run> \
+java -cp <cli-classpath> raider.cli.lineage.ReplayCliMain artifacts/<run> \
   --workspace <workspace-рана>
 #   verdict: match   + graph-hash, exit 0
 #   verdict: mismatch + первый расходящийся узел, exit 10
