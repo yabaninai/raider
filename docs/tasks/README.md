@@ -155,3 +155,9 @@ Markdown содержит full contract, JSON канонический для ID
 - **LIN-10** [CLI-командная поверхность replay](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts, docs.
 - **LIN-11** [LineageRenderer: компилируемые проекции графов без named-def корней](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
 - **RAI-107** [Plan mode: read-only plan-фаза и approval-переход (ADR-028)](m2-p2.md); dependencies: RAI-010; profiles: static, unit, contracts, runtime, eval.
+- **RAI-108** [Продуктовый вход: TabShellHost в Main.ttyLoop (--tabs)](m2-p2.md); dependencies: RAI-102, RAI-062; profiles: static, unit, contracts, repl.
+- **RAI-109** [replay в продукт-команду raider (CLI wiring LIN-10)](lineage.md); dependencies: LIN-09, LIN-10; profiles: static, unit, contracts, ci, docs.
+- **RAI-110** [Plan mode: TUI-экран плана и approval (ADR-028 §3, owner: TUI-экран)](m2-p2.md); dependencies: RAI-107; profiles: static, unit, contracts, repl, runtime.
+- **RAI-111** [Палитра: chat-команды REPL-цикла (RAI-068 follow-up)](m2-p2.md); dependencies: RAI-106, RAI-068; profiles: static, unit, repl.
+- **LIN-12** [Каталог деревьев: persistence (LIN-08 remainder)](lineage.md); dependencies: LIN-08, LIN-09, LIN-10; profiles: static, unit, contracts, ci.
+- **RAI-112** [M1 evidence refresh на интегрированном кандидате (RAI-099 refresh)](m2-p2.md); dependencies: RAI-099; profiles: docs.

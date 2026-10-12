@@ -269,3 +269,51 @@ Status: ready. Milestone: LIN. Dependencies: LIN-02.
 **Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
 
 **Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## RAI-109: replay в продукт-команду raider (CLI wiring LIN-10)
+
+Status: ready. Milestone: LIN. Dependencies: LIN-09, LIN-10.
+
+**Сценарий и контракт.** Подкоманда общего CLI: `raider replay <run-dir> --workspace <dir> [--data <file>]` — паритет флагов и exit-кодов LIN-10 (0/10/20/21/22/23/24/26) через делегирование в ReplayCli.exec (без дублирования логики); docs/lineage.md §10 обновлён на продуктовый вход; standalone ReplayCliMain сохраняется (переходный вход).
+
+**Context.** LIN-10 accepted (standalone entry, reviewer risk 1: wiring отдельной карточкой); docs/lineage.md §10; ci-runtime §8 exit-маппинг.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: LIN13-01: продуктовый вход даёт Match+graph-hash/exit 0 и Mismatch/exit 10 с первым расходящимся узлом (process-смоки через `raider replay`).
+- Error/adversarial: LIN13-02: битый/отсутствующий lineage-data.json — typed + exit 21; usage/незвестный флаг — typed, exit невалидный.
+- Cancellation/concurrency: LIN13-03: параллельные `raider replay` — изолированные workspace (verifyUntouched), без общих записей.
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Live/гибрид-флаги replay (LIN-06), второй runner, смена frozen exit-маппинга, headless JLine-правило.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## LIN-12: Каталог деревьев: persistence (LIN-08 remainder)
+
+Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-09, LIN-10.
+
+**Сценарий и контракт.** LineageCatalog получает persistence: scan-записи (run-dir, graph-hash, verifyPartial-вердикт, pinned-env сводка) сохраняются атомарно (tmp+move/single-writer паттерн LineageDataStore) в каталог кампаний; конкурентные appends атомарны без потерь; reload roundtrip консистентен; chat==headless формат; битый persisted-файл — typed ошибка, не молча.
+
+**Context.** docs/lineage.md §9.2 (LineageCatalog — scan без persistence) и §5; LIN-08 accepted-в-коде; LIN-09/10 дали артефакты и CLI-поверхность.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `modules/runtime/src/test/scala/raider/runtime/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: LINC-01: persist+reload roundtrip — записи идентичны (graph-hash, вердикты); каталог читается replay-CLI поверх.
+- Error/adversarial: LINC-02: повреждённый persisted-каталог — typed error с указанием записи; scan не падает молча.
+- Cancellation/concurrency: LINC-03: параллельные appends из нескольких ранов — atomic, 0 потерь, детерминированный порядок чтения.
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Изменение frozen lineage-data schema, live-wire, UI каталога, распределённый каталог.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 118,
+  "raider_count": 124,
   "companion_count": 3,
   "cards": [
     {
@@ -3478,6 +3478,174 @@
       },
       "non_goals": "Второй scheduler/runtime, auto-approve, изменение ADR-024 wire-схемы или публичных core-схем, prompt-only enforcement, sandbox-гарантии поверх tool policy, UI-поверхность (:plan/TUI-экран) — отдельные wiring-карточки.",
       "context": "Owner mandate 2026-10-12 («RAI-107 Plan mode (ADR-028) — обязательно»); [ADR-028](../adr/ADR-028-plan-mode.md); enforcement по frozen RecoveryClass (core/tool.scala); инварианты 4/5/11 quality-gates §7."
+    },
+    {
+      "id": "RAI-108",
+      "title": "Продуктовый вход: TabShellHost в Main.ttyLoop (--tabs)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-102",
+        "RAI-062"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl"
+      ],
+      "behavior": "Интерактивный запуск продуктового REPL поднимает TabShellHost (вкладки, aux-seam, один writer) за ЯВНЫМ флагом --tabs; без флага legacy-цикл не изменён (regression); переключение дефолта — отдельное owner-решение; при активном флаге переключение вкладок сохраняет draft, typed errors живут, стриминг не рвёт prompt.",
+      "acceptance": {
+        "normal": "P2E-01: `raider repl --tabs` (продуктовый entry) поднимает shell; A→B→A сохраняет draft байт-в-байт (PTY на реальном входе, не только harness).",
+        "error": "P2E-02: неизвестная сессия/команда — typed error; shell и REPL живы.",
+        "concurrency": "P2E-03: burst при активном вводе на продуктовом входе — один writer, prompt редактируем; без --tabs поведение бит-в-бит прежнее (regression-PTY)."
+      },
+      "non_goals": "Смена дефолта входа, chat-модуль (JLine-free правило), новые UI-механики в modules/ui, второй runtime.",
+      "context": "RAI-102 accepted (TabShellHost, follow-up review: подключение в пользовательский вход — обязательный шаг); docs/lineage.md §9.2; ADR-016/024."
+    },
+    {
+      "id": "RAI-109",
+      "title": "replay в продукт-команду raider (CLI wiring LIN-10)",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-09",
+        "LIN-10"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "docs/lineage.md"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "docs"
+      ],
+      "behavior": "Подкоманда общего CLI: `raider replay <run-dir> --workspace <dir> [--data <file>]` — паритет флагов и exit-кодов LIN-10 (0/10/20/21/22/23/24/26) через делегирование в ReplayCli.exec (без дублирования логики); docs/lineage.md §10 обновлён на продуктовый вход; standalone ReplayCliMain сохраняется (переходный вход).",
+      "acceptance": {
+        "normal": "LIN13-01: продуктовый вход даёт Match+graph-hash/exit 0 и Mismatch/exit 10 с первым расходящимся узлом (process-смоки через `raider replay`).",
+        "error": "LIN13-02: битый/отсутствующий lineage-data.json — typed + exit 21; usage/незвестный флаг — typed, exit невалидный.",
+        "concurrency": "LIN13-03: параллельные `raider replay` — изолированные workspace (verifyUntouched), без общих записей."
+      },
+      "non_goals": "Live/гибрид-флаги replay (LIN-06), второй runner, смена frozen exit-маппинга, headless JLine-правило.",
+      "context": "LIN-10 accepted (standalone entry, reviewer risk 1: wiring отдельной карточкой); docs/lineage.md §10; ci-runtime §8 exit-маппинг."
+    },
+    {
+      "id": "RAI-110",
+      "title": "Plan mode: TUI-экран плана и approval (ADR-028 §3, owner: TUI-экран)",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-107"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl",
+        "runtime"
+      ],
+      "behavior": "Экран плана как AuxTabProvider (слот свободен с RAI-102): read-model отображение PlanProposal последней plan-джобы сессии, без IO (дисциплина RAI-088); :approve/:reject — командная поверхность REPL-уровня (Commands), вызывающая PlanSession.approve/reject; approval создаёт ровно одну execution-джобу; reject/cancel — typed, повторный план возможен; modules/ui не меняется (AuxTab API хватает; не хватает — contract-change request).",
+      "acceptance": {
+        "normal": "PLANUI-01: план виден во вкладке; :approve из продуктового shell запускает ровно одну execution-джобу (PTY, ровно-один ассерт).",
+        "error": "PLANUI-02: :reject/:cancel — typed; shell жив; повторный план возможен; второй approve — typed AlreadyApproved.",
+        "concurrency": "PLANUI-03: стриминг во время просмотра плана — рендер без tear, один writer, prompt редактируем."
+      },
+      "non_goals": "Смена ADR-028 runtime-семантики, auto-approve, второй AuxTab, изменение frozen modules/ui, wire-события.",
+      "context": "Owner-решение 2026-10-12: approval UX = TUI-экран плана; RAI-107 accepted (PlanSession.approve/reject API, reviewer risk 3: порядок startPlan→awaitPlan→approve задокументировать); ADR-028 §3."
+    },
+    {
+      "id": "RAI-111",
+      "title": "Палитра: chat-команды REPL-цикла (RAI-068 follow-up)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-106",
+        "RAI-068"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Деривационный каталог ShellPalette расширяется командами REPL-цикла (:jobs/:cancel/:log/:reset и актуальные Commands): source-of-truth — Commands/существующие реестры REPL, НЕ hand-list (freshness-тест против источника); TAB-completion и hint bar включают chat-команды; frozen CommandRouter (modules/ui) не меняется.",
+      "acceptance": {
+        "normal": "PAL2-01: chat-команда находится и исполняется ≤2 нажатий; freshness-тест ловит добавление/удаление команды в Commands.",
+        "error": "PAL2-02: неизвестная команда — typed + ровно одна подсказка; shell жив.",
+        "concurrency": "PAL2-03: palette при активном стриминге — один writer, draft не рвётся (0 torn)."
+      },
+      "non_goals": "Изменение contracts chat-команд (RAI-068 completion-семантика), modules/ui, ручные дубликаты списка команд.",
+      "context": "RAI-106 accepted (reviewer risk: chat-команды вне палитры — отдельная карточка); Commands.helpText как source-of-truth; ADR-028 §3 не затрагивается."
+    },
+    {
+      "id": "LIN-12",
+      "title": "Каталог деревьев: persistence (LIN-08 remainder)",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-08",
+        "LIN-09",
+        "LIN-10"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/runtime/src/main/scala/raider/runtime/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/runtime/src/test/scala/raider/runtime/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "LineageCatalog получает persistence: scan-записи (run-dir, graph-hash, verifyPartial-вердикт, pinned-env сводка) сохраняются атомарно (tmp+move/single-writer паттерн LineageDataStore) в каталог кампаний; конкурентные appends атомарны без потерь; reload roundtrip консистентен; chat==headless формат; битый persisted-файл — typed ошибка, не молча.",
+      "acceptance": {
+        "normal": "LINC-01: persist+reload roundtrip — записи идентичны (graph-hash, вердикты); каталог читается replay-CLI поверх.",
+        "error": "LINC-02: повреждённый persisted-каталог — typed error с указанием записи; scan не падает молча.",
+        "concurrency": "LINC-03: параллельные appends из нескольких ранов — atomic, 0 потерь, детерминированный порядок чтения."
+      },
+      "non_goals": "Изменение frozen lineage-data schema, live-wire, UI каталога, распределённый каталог.",
+      "context": "docs/lineage.md §9.2 (LineageCatalog — scan без persistence) и §5; LIN-08 accepted-в-коде; LIN-09/10 дали артефакты и CLI-поверхность."
+    },
+    {
+      "id": "RAI-112",
+      "title": "M1 evidence refresh на интегрированном кандидате (RAI-099 refresh)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-099"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "Верификационная карточка (без продукт-кода): воспроизвести acceptance-строки M1-ACCEPTANCE на текущем интегрированном кандидате — PTY-вкладки probe (scripts/quality/tabs_pty_probe.py, run-only), repl/cli smokes, полный deterministic suite; зафиксировать свежие manifest-пути/hashes и построчный diff расхождений vs M1-ACCEPTANCE.md в work record (текст возвращается coordinator'у, record коммитит coordinator).",
+      "acceptance": {
+        "normal": "M1R-01: PTY-вкладки probe all_pass на текущем кандидате (свежие транскрипты/summary в artifacts).",
+        "error": "M1R-02: любое расхождение с M1-ACCEPTANCE.md — зафиксировано построчно как finding, не замолчано.",
+        "concurrency": "M1R-03: полный deterministic suite зелёный, манифесты fresh относительно дерева с record."
+      },
+      "non_goals": "Изменение protected verifiers/fixtures/gate policy, продуктовый код, объявление новых capabilities.",
+      "context": "Owner-решение 2026-10-12 (волна 3); RAI-099 accepted; evidence привязан к immutable snapshot — record после гейтов помечает lane-манифесты stale (урок RAI-107), финальное evidence — integrated-манифесты main."
     }
   ]
 }
