@@ -87,9 +87,28 @@ ANSI = re.compile(
     r"|\x1b7|\x1b8"
 )
 
+# RAI-122: both literals below are synced to the product render after the
+# ADR-024 honest-unknowns wave (product commit 6897827). The bar row carries
+# the ONE canonical StatusText render "<body> | <counters>" (RAI-097,
+# modules/runtime/.../statustext.scala, asserted by TabShellSpec:289-290):
+# body is queued | running | cancelling | waiting(<reason|unknown>) |
+# terminal <status> | tool <name>; counters are honest — `cost unknown`
+# or `cost $X.XXXXXX` (never $0), with optional truncated-tail counters.
+# The hint bar lists the full frozen palette including `:aux` (LIN-04A).
+# Both comparisons stay byte-exact full-line matches — render-atomicity
+# oracle strength unchanged (a torn/garbage row still counts malformed).
 HINT_BAR = ("tabs: :tabs :new <label> :switch <n|label> :next :prev "
-            ":rename <label> :close :plugins :state <scope> :help :quit")
-ROW_RE = re.compile(r"^[* ]\d+\. \S+ \[(Queued|Running)\]( \(\d+ unread\))?$")
+            ":rename <label> :close :plugins :state <scope> :aux :help :quit")
+ROW_RE = re.compile(
+    r"^[* ]\d+\. \S+ "
+    r"\[(?:queued|running|cancelling"
+    r"|waiting\((?:approval|slot|admission|budget|childslot|backpressure"
+    r"|unknown)\)"
+    r"|terminal (?:succeeded|failed|cancelled|interrupted|uncertain)"
+    r"|tool \S+)"
+    r" \| (?:cost unknown|cost \$\d+\.\d{6})"
+    r"(?:, tail \+\d+ lines/\+\d+ chars)?\]"
+    r"( \(\d+ unread\))?$")
 
 QUERIES: list[tuple[bytes, bytes]] = [
     (b"\x1b[c", b"\x1b[?62;22c"),
@@ -345,7 +364,18 @@ def pty01(cp: str) -> tuple[bool, dict]:
         ok_report = rep is not None
         # Prompt still live after the streaming storm.
         s.send(":tabs\r")
-        ok_live = s.wait_for("*1. tab1 [Running]", 15)
+        # RAI-122: tab1 is focused here and Running with no active tool and
+        # unobserved cost — the honest StatusText render (ADR-024) is
+        # "[running | cost unknown]"; the legacy "[Running]" never renders.
+        ok_live = s.wait_for("*1. tab1 [running | cost unknown]", 15)
+        # RAI-122 scope note (flagged for independent review): drain any
+        # in-flight tail of the :tabs bar render before :quit. Without this,
+        # the pty echo of the typed ":quit" can land between two bar-row
+        # writes and the cleaned transcript glues them into one line
+        # (" 2. tab2 [...]:quit") — counted as a malformed row (reproduced
+        # 2/2 pre-fix runs, same insertion point). Sequencing guard only:
+        # no pattern, assertion, or all_pass criterion changes.
+        s.pump(0.5)
         s.send(":quit\r")
         code = s.finish(25)
     finally:
