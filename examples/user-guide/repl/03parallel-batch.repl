@@ -1,0 +1,9 @@
+val both = all(
+  scout("fixture task A"),
+  worker("fixture task B")
+).run()
+val ordered = batch(List("first", "second", "third"), parallelism = 2) { label =>
+  scout(s"fixture task $label").map(_ => label)
+}.run()
+assert(both._1.contains("[scripted-fixture]")); assert(both._2.contains("[scripted-fixture]")); assert(ordered == List("first", "second", "third")); println("EXAMPLE-03 PASS (all uses parallel asks; batch preserves input order)")
+:quit

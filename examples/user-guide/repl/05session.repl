@@ -1,0 +1,5 @@
+val chat = openSession(worker)
+val first = chat.ask("first fixture turn")
+val second = chat.ask("second fixture turn")
+assert(first.contains("[scripted-fixture]")); assert(second.contains("[scripted-fixture]")); assert(chat.messages.size == 4); println("EXAMPLE-05 PASS (two turns retained in in-memory session history)")
+:quit

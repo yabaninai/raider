@@ -1,0 +1,4 @@
+val description = scout("This is a scripted fixture prompt").map(_.length)
+val length = description.run()
+assert(length > 0); println(s"EXAMPLE-02 PASS (scripted fixture text length=$length)")
+:quit

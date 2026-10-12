@@ -1,0 +1,8 @@
+val count: Int = 21
+case class Pair(left: Int, right: Int)
+val pair = Pair(count, count + 1)
+def total(p: Pair): Int =
+  p.left + p.right
+
+assert(total(pair) == 43); println("EXAMPLE-01 PASS")
+:quit

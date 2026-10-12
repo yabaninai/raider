@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "bundleId": "user-guide-task-summary",
+  "entries": [
+    {
+      "name": "task-summary",
+      "mainClass": "demo.TaskSummary",
+      "version": 1
+    }
+  ],
+  "declaredTrustLevel": "trusted-local"
+}
