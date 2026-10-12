@@ -277,20 +277,22 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 
 ### 9.2 Чего ещё нет
 
-| Чего нет | Факт |
+| Чего нет | Факт (evidence проверяем на baseline `4b46dc7`) |
 | --- | --- |
-| LIN-06 live re-run с живой моделью и бюджетом | Механика готова (изоляция `WorkspaceIsolation`, бюджет `Admission` в `ReplayHarness`, diff-отчёт `RunDiffReport`), но живого провайдера за replay-раннером нет: `ReplayModelBackend` играет только записи |
-| Live-wire verification | Owner-обязательство (endpoint/бюджет владельца); не проводилась |
-| Multi-job export | `events.jsonl` — события одного job; делегированные дети в единый export не собираются (owner `cli/run/**`, wave-2, ADR-027 §6.4); редуктор и каталог оперируют per-job/per-ран деревьями |
-| Phase/recovery schema-card | Wire-события frozen (13 cases): Phase-узлы строит модель/редуктор, RecoveryClass — статическая таксономия tool-name→класс; wire-расширение — schema-card с independent review, не начата |
-| TabShell-wiring в product REPL | `LineageTab`-provider и `:aux`-seam есть и покрыты тестами, но продуктовый REPL (`modules/cli/chat`) вкладку не подключает |
-| Запись артефактов в каталог рана | HeadlessRunner пишет `events.jsonl` + lineage-строку в summary; `lineage.scala`/`lineage-data.json` рождаются в golden/тестах и compile-gate — продовый ран их рядом с рансом ещё не пишет (обязательство LIN-03/08, §10) |
-| Прочее, честно | `LineageCatalog` — scan без persistence; конкурентное чтение проекции (LIN2-03) покрыто частично; replay-команда вписана в продукт-команду `raider replay` (RAI-109: диспетчер `CliArgs.Target.Replay` → `ReplayCommand` → `ReplayCli.exec`, §10); standalone-вход `ReplayCliMain` остаётся переходным прямым запуском той же цепочки |
+| LIN-06 live re-run с живой моделью и бюджетом | Механика готова (изоляция `WorkspaceIsolation` — `modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`, бюджет `Admission.make` в `ReplayHarness` — `modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala:298`, diff-отчёт `RunDiffReport.scala`), но живого провайдера за replay-раннером нет: `ReplayModelBackend` играет только записи (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`). Открытая карточка — LIN-06 (`docs/tasks/lineage.md`, «LIN-06: Live re-run») |
+| Live-wire verification | Owner-обязательство (endpoint/бюджет владельца); не проводилась. Проверяемый факт: live-провайдера за replay-раннером в коде нет — единственный backend играет записи (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`) |
+| Multi-job export | `events.jsonl` — события одного job (`modules/cli/src/main/scala/raider/cli/run/EventExport.scala:21` — per-job stream); делегированные дети в единый export не собираются (owner `cli/run/**`, wave-2, ADR-027 §6.4); редуктор и каталог оперируют per-job/per-ран деревьями |
+| Phase/recovery schema-card | Wire-события frozen (13 cases — `modules/runtime/src/main/scala/raider/runtime/events/events.scala:26`, ADR-024 §5): Phase-узлы строит модель/редуктор, RecoveryClass — статическая таксономия tool-name→класс; wire-расширение — schema-card с independent review, не начата |
+| ~~TabShell-wiring в product REPL~~ — закрыто (RAI-108) | Продуктовый вход `--tabs` поднимает TabShell: явный флаг и диспетчер `runTabs` в `main` (`modules/repl/src/main/scala/raider/repl/Main.scala:230-242`), `TabShellHost.wiring`/`TabShellHost.run` (`Main.scala:280-288`, `modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); legacy-цикл без флага не изменён; PTY-acceptance P2E-01..03 — `docs/work/records/RAI-108.md` |
+| ~~Запись артефактов в каталог рана~~ — закрыто (LIN-09) | Settled-ран пишет `lineage.scala` + `lineage-data.json` в свой каталог рана рядом с `events.jsonl`/`summary.md` (`modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala:665-677`; писатель `RunLineageArtifacts` — `modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala:52-55`); сбой записи — typed `unavailable`-строка в summary.md, exit-код не меняется. `docs/work/records/LIN-09.md` |
+| Прочее, честно | `LineageCatalog` — scan без persistence (`modules/cli/src/main/scala/raider/cli/lineage/LineageCatalog.scala:87`); persistence каталога — in-flight (карточка LIN-12 в `docs/tasks/lineage.md`). Конкурентное чтение проекции (LIN2-03) покрыто частично — in-flight (карточка LIN-14 в `docs/tasks/lineage.md`). Replay-команда вписана в продукт: `raider replay` → `ReplayCommand` → `ReplayCli.exec` (`modules/cli/src/main/scala/raider/cli/run/ReplayCommand.scala:37`; `docs/work/records/RAI-109.md`, §10); standalone-вход `ReplayCliMain` остаётся переходным прямым запуском той же цепочки |
 
 Карточки P-LIN — `docs/tasks/lineage.md`; контракт — ADR-027. Compile-сторона
 гейта LIN реализована (`LineageCompileGateSpec`); полные milestone-обязательства
-фазы P-LIN (live-wire, multi-job, schema-cards, product wiring) остаются
-открытыми — этот раздел фиксирует фактическое состояние, а не завершение фазы.
+фазы P-LIN (live-wire, multi-job export, phase/recovery schema-card) остаются
+открытыми — TabShell-wiring закрыт RAI-108, запись артефактов рана закрыта
+LIN-09 (см. таблицу выше). Этот раздел фиксирует фактическое состояние, а не
+завершение фазы.
 
 ## 10. Фактические команды и пути (сверено с modules/cli)
 
@@ -299,14 +301,14 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 | `raider run (--bundle <jar> --workflow <name> \| --agent scout\|worker\|coder) (--input <text> \| --input-json <file>) --out <dir> [--mock] [--provider mock\|openai\|anthropic] [--base-url URL] [--model NAME] [--workspace DIR] [--context FILE]` | `CliArgs.parse` (`modules/cli/run/CliArgs.scala`): `--out` обязателен; `--agent` взаимно исключает `--bundle/--workflow`; `--api-key` — типированная ошибка (секреты не в argv) |
 | `<out>/work-<uuid>/` — каталог рана; `run.json`, `events.jsonl`, `summary.md`, `transcript.json` | `HeadlessRunner.writeArtifacts` / конкатенация `--out` + `work-<uuid>` (`modules/cli/run/HeadlessRunner.scala`) |
 | `events.jsonl` — per-job `EventEnvelope`, schemaVersion 1, дубликаты отброшены | `EventExport.jsonl` (`modules/cli/run/EventExport.scala`) |
-| `artifacts/<run>/lineage.scala`, `artifacts/<run>/lineage-data.json` — рядом с рансом, в evidence-fingerprint | Решение ADR-027 §2; запись в каталог рана — обязательство P-LIN (LIN-03/08) |
+| `<out>/work-<uuid>/lineage.scala`, `<out>/work-<uuid>/lineage-data.json` — рядом с `events.jsonl`, в evidence-fingerprint | LIN-09: settled-ран пишет оба артефакта в свой каталог рана (`RunLineageArtifacts.write`, `modules/cli/run/HeadlessRunner.scala:665-677`, атомарно per-run dir); сбой — typed `unavailable`-строка в summary.md, exit-код не меняется (`docs/work/records/LIN-09.md`); решение ADR-027 §2 |
 | `raider replay <run-dir> --workspace <dir> [--data <file>]` — продукт-подкоманда replay-recorded (LIN-10 + RAI-109): полный паритет флагов и exit-кодов со standalone-входом, делегирование в `ReplayCli.exec` (один источник argv-контракта) | Диспетчер `CliArgs.Target.Replay` → `ReplayCommand.outcome` → `ReplayCli.exec` (`modules/cli/run/ReplayCommand.scala`, `modules/cli/lineage/ReplayCli.scala`): stdout — `verdict: match` + нормализованный graph-hash, либо `verdict: mismatch` + `RunDiffReport` (первый расходящийся узел, оба hash); stderr — `typed-error: …`; exit-коды по ci-runtime §8 (`raider.core.result.ExitCodes`): 0 = Match, 10 = Mismatch, 21 = битый/отсутствующий data.json (typed `StoreError.Missing`/`Corrupt`), 20/22/23/24/26 — остальные typed-исходы (`RaiderError`/`ReduceError`/изоляция); параллельные replay — уникальные staging-каталоги, оригинал не пишется (LIN10-03); run.json для replay НЕ создаётся (result = None) |
 | `java -cp <cli-classpath> raider.cli.lineage.ReplayCliMain …` — переходный standalone-вход LIN-10 (та же цепочка; сохранён для прямого запуска без продукт-CLI) | `ReplayCliMain` (sanctioned ZIOAppDefault runner; `modules/cli/lineage/ReplayCli.scala`) |
 
 Примеры:
 
 ```sh
-# headless-ран с lineage-артефактами в artifacts/<run> (после P-LIN):
+# headless-ран; lineage.scala + lineage-data.json пишутся раном в <out>/work-<uuid>/ (LIN-09):
 raider run --agent coder --input "Исправь regression и запусти проверки" \
   --out artifacts/<run> --mock
 
