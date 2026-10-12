@@ -262,7 +262,14 @@ object MainScrollbackPtySpec extends ZIOSpecDefault:
 
   private def boolJson(b: Boolean): String = if b then "true" else "false"
 
-  /** Drive one session; persist evidence even on failure; always close. */
+  /** Drive one session; persist evidence even on failure; always close.
+    *
+    * RAI-119 driver-infra fix (same class as the TabShellUnreadPtySpec att1
+    * reproducer): the evidence dir used to be created only by `persist` — AFTER
+    * the body — so the first spec against a fresh `RAI113_PTY_EVIDENCE_DIR` ran
+    * with the dir missing during the whole session. Create it BEFORE the child
+    * starts; assertions are untouched.
+    */
   private def drive[A](
       name: String,
       tabs: Boolean,
@@ -272,8 +279,11 @@ object MainScrollbackPtySpec extends ZIOSpecDefault:
   ): ZIO[Any, Throwable, A] =
     ZIO.attempt {
       val evidence = sys.env.get("RAI113_PTY_EVIDENCE_DIR") match
-        case Some(dir) => Path.of(dir)
-        case None      => Files.createTempDirectory(s"rai113-pty-$name-ev")
+        case Some(dir) =>
+          val p = Path.of(dir)
+          Files.createDirectories(p)
+          p
+        case None => Files.createTempDirectory(s"rai113-pty-$name-ev")
       val session = PtySession(name, tabs, extraEnv, evidence)
       try body(session)
       catch
