@@ -45,6 +45,29 @@ object ScriptedTabStream:
     */
   val DelayMs: Int = 15
 
+  /** RAI-113 fixture knobs: the burst VOLUME/DENSITY of this fixture stream is
+    * env-tunable so the product-entry PTY acceptance (P2SR-01: a 10k burst with
+    * a visible eviction counter) can drive the REAL entry without changing the
+    * default burst (220/15ms — every RAI-108 anchor unchanged). Mock-gated by
+    * construction: `Main.runTabs` forks this stream ONLY when
+    * `PreludePlan.isScripted`, so a live backend never receives synthetic
+    * events regardless of the environment. Invalid values fall back to the
+    * defaults; drops remain honestly counted by the hub (`droppedDiagnostics`).
+    */
+  private def linesPerTab: Int =
+    sys.env
+      .get("RAI113_SCRIPTED_TAB_LINES")
+      .flatMap(_.toIntOption)
+      .filter(_ > 0)
+      .getOrElse(EventsPerTab)
+
+  private def lineDelayMs: Int =
+    sys.env
+      .get("RAI113_SCRIPTED_TAB_DELAY_MS")
+      .flatMap(_.toIntOption)
+      .filter(_ >= 0)
+      .getOrElse(DelayMs)
+
   /** Diagnostics payload — byte-exact scrollback material. */
   val Payload: String = "x" * 32
 
@@ -101,14 +124,14 @@ object ScriptedTabStream:
           None
         )
       ) *>
-      ZIO.foreachDiscard(1 to EventsPerTab) { i =>
+      ZIO.foreachDiscard(1 to linesPerTab) { i =>
         hub
           .publish(
             view.jobId,
             view.rootId,
             sessionId,
             EventPayload.Diagnostics(eventLine(view.label, i))
-          ) <* ZIO.sleep(Duration.fromMillis(DelayMs.toLong))
+          ) <* ZIO.sleep(Duration.fromMillis(lineDelayMs.toLong))
       }
 
 end ScriptedTabStream

@@ -89,4 +89,33 @@ object TabShellHost:
       )
     yield ()
 
+  /** RAI-113 hook: host the shell with the scrollback command interceptor — the
+    * interactive `:scrollback [tabId]` render (product
+    * `TabShellScrollback.screen`/`render` above the prompt, card RAI-113).
+    * ADDITIVE overload, plan-command pattern (RAI-110): the provider-less
+    * [[run]] and the plan overload are byte-identical in behavior; this one
+    * decorates the palette terminal with [[ScrollbackCommands.commandTerminal]]
+    * so the frozen router never sees a scrollback line. The interceptor holds
+    * no gate — its dispatch is a bounded registry read plus the ONE-writer
+    * `printAbove`, run INLINE so the render lands before the next prompt
+    * redraw.
+    */
+  def run(
+      wiring: Wiring,
+      scrollback: ScrollbackCommands
+  ): ZIO[Scope, Throwable, Unit] =
+    for
+      terminal <- paletteTerminal
+      resolver = CloseChoiceResolver.fromTerminal(
+        terminal,
+        TabShell.Config().closePrompt
+      )
+      _ <- TabShell.run(
+        wiring.hub,
+        wiring.registry,
+        scrollback.commandTerminal(terminal),
+        resolver
+      )
+    yield ()
+
 end TabShellHost
