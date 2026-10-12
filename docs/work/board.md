@@ -92,6 +92,16 @@ rai-107 с handoff partial (мёртвый rate-limit spawn верифициро
 main; lane-манифесты помечены stale в record (docs/work/records/RAI-107.md).
 Determinism-фиксы на интеграции (детерминизм, не ослабление ассертов):
 71d0aa3 quiescence drain P2W-01; 91a6575 :tabs-render retry P2U-03.
+**Волна 3 (решения владельца 2026-10-12):** состав = wiring-тройка
+(RAI-108/109/110) + RAI-111 (палитра) + LIN-12 (catalog persistence) +
+RAI-112 (M1-evidence refresh); approval UX = TUI-экран плана; 4 lanes;
+cleanup worktrees отложен. Зарегистрировано RAI-108..112+LIN-12 (validate
+passed 127 cards, b75c2ec). ИНЦИДЕНТ: 4 spawn-спавна батча 1 упали по
+rate-limit провайдера ПОСЛЕ начала работы — во всех 4 worktrees остался
+незакоммиченный partial. Fallback §1b(1): воркеры исполняются последовательно
+в primary-сессии coordinator'а (причина зафиксирована здесь), review —
+spawn-агентами при восстановлении провайдера; самоприёмка запрещена, мерджи
+только после независимого review.
 Финальные integrated gates (main 91a6575): quality-full 10/10 (manifest
 20261012-105946-2326-0001) + профили ci/contracts/docs/repl/runtime/security/
 static/unit 9/9 (manifest 20261012-110432-24403-0001); validate.py passed
