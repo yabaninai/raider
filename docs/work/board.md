@@ -16,6 +16,15 @@ provider — record: [SELFDEV](records/SELFDEV.md).
 
 ## Night campaign 2026-10-10 (P-LIN waves W7–W13, parallel lanes)
 
+**Решение владельца (2026-10-12):** дальнейшие доработки — только **видимые
+spawn-субагенты** в интерактивной сессии владельца (`/raider-wave`; агенты
+`raider-worker`/`raider-reviewer` в `.opencode/agents/`; механика —
+parallel-development.md §1b). Фоновый bash-цикл ночного запуска
+(opencode-1k-continuation.txt) — **deprecated**; headless-ночной режим — только
+отдельным явным решением владельца. Одновременно открыты параллельные lanes
+TUI/P1/P3-остатков (roadmap ревизия 2026-10-12); W13-review закрыть в первом
+spawn-режиме волной.
+
 Владелец разрешил ночную параллельную разработку; провайдер воркеров
 zai/glm-5.3-flash (позже zai-coding-plan, напрямую, без yabanin). Полная
 механика/статусы: `raider-night` registry (temp) + records W7-INTEGRATION,

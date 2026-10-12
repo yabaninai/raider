@@ -20,6 +20,20 @@ LLM или обещание непрерывной 12 000-часовой сес�
 > Остальные фазы не меняются по содержанию; накопительные суммы сдвинуты.
 > Решения зафиксированы в [ADR-027](adr/ADR-027-session-lineage.md).
 
+> **Ревизия исполнения 2026-10-12 (владелец):** доработки исполняются как
+> **видимые spawn-субагенты** в интерактивной сессии владельца (`/raider-wave`,
+> `.opencode/agents/raider-worker|raider-reviewer`; механика —
+> [parallel-development.md §1b](parallel-development.md)). Фоновые bash-циклы
+> `opencode run`/nohup-night-loop для исполнения карточек запрещены по
+> умолчанию; ночной headless — только отдельным явным решением владельца.
+> Одновременно с остатком P-LIN открыты параллельные lanes: **P2-остатки TUI**
+> (per-tab drafts, scrollback bounds, unread badges, palette/help — P2.B/C
+> остатки поверх принятых RAI-057/061/062), **P1-остатки** (RAI-059/060) и
+> **P3** (RAI-063, send/steering) — зависимости §5 закрыты evidence
+> (P0-WAVE0: ADR-024+renderer spike; W1: events). Это не меняет бюджет фаз:
+> карточки регистрируются и принимаются по общим gates, часы списываются в
+> свои фазы.
+
 ## 1. Что действительно есть
 
 Осмотр исходников на commit `7ee6c0c`, 2026-10-05; это inventory, не новый runtime
@@ -383,11 +397,13 @@ fallback. Usage имеет pending/partial/complete; timeout не станови
 | W6 | Candidate defects | Release acceptance | Docs/usability verification |
 | W7, после M4 | Yabanin adapter | Offline fixtures по frozen contract | Independent review; live при разрешении |
 
-Максимум coordinator + 3 активных workers; reviewer занимает один из трёх слотов.
-Не держать три writer постоянно ценой отсутствия review. Root checkout, shared
-contracts/build/gate registry/board принадлежат coordinator либо одному явно
-назначенному owner. Разработка защищённых verifiers — отдельная карточка и fresh
-review; implementation worker не может переписать ожидаемый результат своего теста.
+Максимум coordinator + 8–10 активных spawn-воркеров (решение владельца
+2026-10-12, supersede лимит «до трёх»; reviewer занимает слот; механика —
+parallel-development.md §1a/§1b). Не держать все writer-слоты постоянно ценой
+отсутствия review. Root checkout, shared contracts/build/gate registry/board
+принадлежат coordinator либо одному явно назначенному owner. Разработка
+защищённых verifiers — отдельная карточка и fresh review; implementation
+worker не может переписать ожидаемый результат своего теста.
 
 Каждый writer получает отдельный worktree или копию immutable snapshot с absolute
 cwd, allowed files и base hash; никакого общего `target/`, изменяемых hardlinks,
