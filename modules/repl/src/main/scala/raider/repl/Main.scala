@@ -272,10 +272,12 @@ object Main:
 
   /** RAI-108: the product tabs run behind --tabs. [[TabShellHost]] owns the
     * terminal (the ONE writer, RAI-061) until `:quit`/EOF; the legacy loop is
-    * NOT running concurrently (one input loop per process). In scripted/mock
-    * mode the fixture stream provider publishes per-tab job streams through the
-    * real EventHub; scoped — shell, hub subscriptions and the fixture stream
-    * die together, then the honest engine shutdown reports active jobs.
+    * NOT running concurrently (one input loop per process). RAI-113: the shell
+    * terminal carries the `:scrollback [tabId]` interceptor (repl-level
+    * decorator — the frozen router never sees the line). In scripted/mock mode
+    * the fixture stream provider publishes per-tab job streams through the real
+    * EventHub; scoped — shell, hub subscriptions and the fixture stream die
+    * together, then the honest engine shutdown reports active jobs.
     */
   private def runTabs(engine: ReplEngine, plan: PreludePlan): Unit =
     Unsafe.unsafe { implicit u =>
@@ -285,7 +287,7 @@ object Main:
             for
               wiring <- TabShellHost.wiring
               _ <- ScriptedTabStream.run(wiring).when(plan.isScripted).fork
-              _ <- TabShellHost.run(wiring)
+              _ <- TabShellHost.run(wiring, ScrollbackCommands(wiring.registry))
             yield ()
           }
         )

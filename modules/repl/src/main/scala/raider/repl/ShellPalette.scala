@@ -43,11 +43,18 @@ object ShellPalette:
   val chatCommands: Vector[String] = ReplChatCommands.names
 
   /** Router catalog first, then the chat commands that are not router commands
-    * (:help/:quit exist on both surfaces — listed once). This is the catalog of
-    * the nearest-command suggestion, the one hint surface that is not frozen.
+    * (:help/:quit exist on both surfaces — listed once), then the RAI-113
+    * scrollback command that is on neither surface (derived from the
+    * [[ScrollbackCommands]] registry — never a hand list here). This is the
+    * catalog of the nearest-command hint, the one hint surface that is not
+    * frozen. TAB completion is NOT extended: `complete` keeps offering only
+    * routable (router) commands — the RAI-111 documented choice for non-router
+    * surfaces.
     */
   val allCommands: Vector[String] =
-    commands ++ chatCommands.filterNot(commands.contains)
+    commands ++ chatCommands.filterNot(commands.contains) ++
+      ScrollbackCommands.names
+        .filterNot(n => commands.contains(n) || chatCommands.contains(n))
 
   /** A name is registered iff the frozen router does not answer
     * `UnknownCommand` for it (probed with no tabs: tab-dependent commands still
