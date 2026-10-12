@@ -20,13 +20,14 @@ object Commands:
       |  :jobs            list jobs started through the facade (id, status, label)
       |  :cancel <id>     request cancellation of a job (false if already terminal)
       |  :log <id>        show the trace (rounds, tools, results) of a job
+      |  :type <expression>  the type of an expression, compiled but not run
       |  :approve         tab shell: approve the plan proposal (one execution job)
       |  :reject          tab shell: reject (cancel) the live plan phase
       |  :reset           clear interpreter bindings; facade prelude is re-imported
       |  :quit            exit the REPL (active jobs are reported, then dropped)
       |Everything else is evaluated as Scala by the in-process compiler.
       |Multiline input: keep typing; a blank line submits the pending buffer.
-      |Not in this slice: :type, job steering (send), completion, live providers.""".stripMargin
+      |Not in this slice: send steering; the dotty :kind/:doc interpreter commands.""".stripMargin
 
   /** RAI-110 machine-readable plan-command registry (source-of-truth surface:
     * the RAI-111 palette freshness reads Commands, not a hand list; the tab
@@ -79,7 +80,14 @@ object Commands:
       case ":quit" | ":q" | ":exit" =>
         false
       case ":type" =>
-        println(":type is not in the W10 slice (tracked as a board obligation)")
+        // RAI-124: forward the query VERBATIM (trimmed) to the engine — the
+        // dotty driver parses its own `:type` command and answers through
+        // ReplCompiler.typeOf: the expression is COMPILED against the live
+        // session state and NEVER RUN (no effects, no model calls, no binding
+        // mutation; resN numbering untouched). A type error is the honest
+        // compiler diagnostic; the empty argument is the driver's own usage
+        // line (":type <expression>").
+        printCaptured(engine, line.trim)
         true
       case ":approve" | ":reject" =>
         println(
@@ -110,6 +118,29 @@ object Commands:
         )
       case EvalResult.RuntimeFailure(m) =>
         println(s"command failed: $m")
+
+  // ----- RAI-124 `:type` input plumbing (pure; unit-tested without Main) ----
+
+  /** True when the TRIMMED line opens a `:type` query: the exact `:type` (the
+    * driver answers with its own usage line) or the `:type <expr>` form. A
+    * near-miss (`:typeFoo`, `:typ`) is NOT a type query — it keeps the ordinary
+    * unknown-command path.
+    */
+  def isTypeQuery(trimmedLine: String): Boolean =
+    trimmedLine == ":type" || trimmedLine.startsWith(":type ")
+
+  /** The single-line command source for a buffered `:type` query. The dotty
+    * command grammar is one physical line (ParseResult's CommandExtract regex
+    * only full-matches a single line), so the multiline pending buffer
+    * flattens: real newlines become spaces, then trim (leading indented `:` or
+    * trailing whitespace would otherwise fall out of the command grammar into a
+    * syntax error). Honest residue: statements spread over lines need explicit
+    * `;` separators after flattening — a missing one is an honest compiler
+    * syntax error, never silent. Triple-quoted literals in a type query are
+    * unaffected in practice: the query never runs, only the type is printed.
+    */
+  def typeQuerySource(buffer: String): String =
+    buffer.replace('\n', ' ').trim
 
 end Commands
 

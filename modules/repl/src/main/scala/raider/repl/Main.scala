@@ -387,7 +387,18 @@ object Main:
         if pending.nonEmpty then
           val src = pending.toString
           pending.clear()
-          submit(src, engine)
+          submitPending(src, engine)
+        true
+      case cmd if pending.isEmpty && Commands.isTypeQuery(cmd.trim) =>
+        // RAI-124: a :type query joins the SAME multiline pending-buffer path
+        // as Scala input (the :load/paste path): keep typing; the balanced
+        // buffer submits as the driver's single-line `:type` command
+        // (Commands.typeQuerySource flattens it).
+        pending.append(cmd).append('\n')
+        if complete(pending.toString) then
+          val src = pending.toString
+          pending.clear()
+          submitPending(src, engine)
         true
       case cmd if pending.isEmpty && cmd.trim.startsWith(":") =>
         Commands.handle(cmd, engine, () => runPrelude(engine))
@@ -396,8 +407,21 @@ object Main:
         if complete(pending.toString) then
           val src = pending.toString
           pending.clear()
-          submit(src, engine)
+          submitPending(src, engine)
         true
+
+  /** Submit an assembled pending buffer: a `:type` query goes through
+    * Commands.handle as the flattened single-line command (RAI-124); anything
+    * else is ordinary Scala input.
+    */
+  private def submitPending(src: String, engine: ReplEngine): Unit =
+    if Commands.isTypeQuery(src.trim) then
+      Commands.handle(
+        Commands.typeQuerySource(src),
+        engine,
+        () => runPrelude(engine)
+      )
+    else submit(src, engine)
 
   private def driveEof(pending: StringBuilder): Unit =
     if pending.nonEmpty then
