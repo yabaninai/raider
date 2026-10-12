@@ -29,9 +29,9 @@ import java.time.Duration as JDuration
   * Two ZIO hazards handled explicitly (found by fixtures, 2026-10-04):
   *   - the end-of-stream flush must run AFTER the chunks: it is built inside
   *     `ZStream.unwrap`, never at stream-construction time;
-  *   - the blocking read must not race its own interruption (that surfaces as a
-  *     raw IOException): the read parks in a daemon fiber and the PROMISE await
-  *     is what carries the typed DeadlineExceeded idle deadline.
+  *   - a blocking read is canceled by closing its owned response body. The
+  *     cancel action releases the read before the race returns its typed idle
+  *     deadline; scope release still closes the body on every stream exit.
   *
   * Idle timeout: `callTimeoutMs` bounds the wait BETWEEN chunks (and the
   * connect phase) — silence beyond it is a typed DeadlineExceeded, not a hang.
@@ -78,7 +78,7 @@ final class OpenAIChatStreamingBackend private (
                 s"transport failure: ${t.getClass.getSimpleName}"
               )
             )
-        )(r => ZIO.succeed(r.body().close()))
+        )(r => ZIO.attemptBlockingIO(r.body().close()).ignore)
       yield
         val is = resp.body()
         val framer = new SseFramer(maxFrameBytes)
@@ -92,12 +92,12 @@ final class OpenAIChatStreamingBackend private (
             (Array[Byte], Unit)
           ]]] =
             ZIO
-              .attemptBlockingIO {
+              .attemptBlockingCancelable {
                 val buf = new Array[Byte](8192)
                 val n = is.read(buf) // blocks until >= 1 byte or EOF
                 if n < 0 then Array.emptyByteArray
                 else java.util.Arrays.copyOfRange(buf, 0, n)
-              }
+              }(ZIO.attemptBlockingIO(is.close()).ignore)
               .mapError(t =>
                 RaiderError.ProviderUnavailable(
                   s"stream read failure: ${t.getClass.getSimpleName}"
