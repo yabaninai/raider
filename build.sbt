@@ -160,6 +160,19 @@ lazy val raiderCli = (project in file("modules/cli"))
   .dependsOn(raiderCore, raiderDsl, raiderRuntime, raiderTools,
              raiderProviderChat, raiderProviderAnthropic)
   .dependsOn(raiderCliFixtures % Test)
+  .settings(
+    // RAI-109 (coordinator): process-level acceptance (`raider replay ...`
+    // through raider.cli.Main) spawns a child JVM whose classpath comes from
+    // java.class.path — without forking that is sbt's own launcher path and
+    // the child cannot see raider classes. Forking gives the test JVM the
+    // real module test classpath (same pattern as raiderRepl).
+    Test / fork := true,
+    // keep the pre-fork CWD: HeadlessRunnerSpec/LineageArtifactsSpec drop
+    // demo-bundle.jar into modules/cli/target relative to the repo root and
+    // scripts/quality/cli_smoke.sh consumes it from there.
+    Test / forkOptions := (Test / forkOptions).value
+      .withWorkingDirectory((ThisBuild / baseDirectory).value)
+  )
 
 // compiled fixture bundle workflow for the cli tests (jarred at test time)
 lazy val raiderCliFixtures = (project in file("modules/cli-fixtures"))
