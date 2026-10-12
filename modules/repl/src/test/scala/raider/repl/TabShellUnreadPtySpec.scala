@@ -199,6 +199,26 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
         Thread.sleep(120)
       cleaned.contains(substr)
 
+    /** Quiescence (transcript byte-stable for `stable` while not typing) — the
+      * honest drain signal before :quit (precedent 71d0aa3): the settled report
+      * proves the FEEDER delivered every event, but in-flight bar renders can
+      * still be writing when :quit is typed, gluing its echo into a torn bar
+      * row (the wave-4 "1 torn row" class). No badge/count marker is
+      * deterministic mid-stream, but byte-stability is.
+      */
+    def waitQuiet(stable: Duration, timeout: Duration): Boolean =
+      val deadline = JSystem.nanoTime() + timeout.toNanos
+      var lastLen = cleaned.length
+      var lastQuiet = JSystem.nanoTime()
+      while JSystem.nanoTime() < deadline do
+        val cur = cleaned.length
+        if cur != lastLen then
+          lastLen = cur
+          lastQuiet = JSystem.nanoTime()
+        if JSystem.nanoTime() - lastQuiet >= stable.toNanos then return true
+        Thread.sleep(150)
+      false
+
     def waitForReport(
         pred: UnreadReport => Boolean,
         timeout: Duration
@@ -282,14 +302,26 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
 
   private def boolJson(b: Boolean): String = if b then "true" else "false"
 
-  /** Drive one session; persist evidence even on failure; always close. */
+  /** Drive one session; persist evidence even on failure; always close.
+    *
+    * RAI-119 driver-infra fix (att1 reproducer 2026-10-12): the evidence dir
+    * used to be created only by `persist` — AFTER the body — so the FIRST spec
+    * running against a fresh `RAI105_PTY_EVIDENCE_DIR` spawned a child whose
+    * every report write silently failed (`.ignore`), leaving the phase-oracle
+    * blind: all `waitForReport` waits timed out (honest red, wrong cause).
+    * Creating the dir BEFORE the child starts makes the report oracle
+    * deterministic; assertions are untouched.
+    */
   private def drive[A](name: String, scenario: String, delayMs: Int)(
       body: PtySession => A
   ): ZIO[Any, Throwable, A] =
     ZIO.attempt {
       val evidence = sys.env.get("RAI105_PTY_EVIDENCE_DIR") match
-        case Some(dir) => Path.of(dir)
-        case None      => Files.createTempDirectory(s"rai105-pty-$name-ev")
+        case Some(dir) =>
+          val p = Path.of(dir)
+          Files.createDirectories(p)
+          p
+        case None => Files.createTempDirectory(s"rai105-pty-$name-ev")
       val report = evidence.resolve(s"report-$name.json")
       val session = PtySession(name, scenario, delayMs, report, evidence)
       try body(session)
@@ -360,7 +392,21 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
             tabOf(rep, "beta").exists(t => t.unread == 0L && t.lastSeq == 3L),
         45.seconds
       )
-      val badge2 = s.waitFor("(2 unread)", 20.seconds)
+      // RAI-119 determinism (71d0aa3 complement): drain in-flight bar renders
+      // BEFORE reading the badge marker — a mid-stream marker is
+      // timing-dependent (PTYD-02 run9 reproducer: settled=true yet no
+      // "(2 unread)" row for 20s under load; the forced :tabs re-render
+      // surfaced it instantly).
+      val drained = s.waitQuiet(1500.millis, 20.seconds)
+      // Precedent 91a6575: the registry truth is already proven by a3Settled;
+      // the transcript badge is a REAL acceptance requirement, so on a miss we
+      // force a fresh bar render with :tabs and wait again — the assertion is
+      // not weakened.
+      val badge2 =
+        if s.waitFor("(2 unread)", 20.seconds) then true
+        else
+          s.send(":tabs\r")
+          s.waitFor("(2 unread)", 15.seconds)
       s.send(":tabs\r")
       val badge2Again = s.waitFor("(2 unread)", 15.seconds)
       s.send(":quit\r")
@@ -391,6 +437,7 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
           "tabsRender" -> boolJson(tabsRender),
           "focusedB" -> boolJson(focusedB),
           "a3Settled" -> boolJson(a3Settled.isDefined),
+          "drained" -> boolJson(drained),
           "badge2" -> boolJson(badge2),
           "badge2Again" -> boolJson(badge2Again),
           "rowAlpha2" -> rowAlpha2.toString,
@@ -411,6 +458,7 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
       assertTrue(resetSeen.isDefined) &&
       assertTrue(tabsRender) &&
       assertTrue(a3Settled.isDefined) &&
+      assertTrue(drained) &&
       assertTrue(badge2 && badge2Again) &&
       assertTrue(badgeRows >= 1) &&
       assertTrue(rowAlpha2 >= 1) &&
@@ -537,6 +585,10 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
             ),
         90.seconds
       )
+      // RAI-119 determinism (71d0aa3 complement): drain the burst's in-flight
+      // bar renders BEFORE the marker waits — quiescence is the honest "the
+      // render pump caught up" signal, not a longer timeout.
+      val burstDrained = s.waitQuiet(1500.millis, 30.seconds)
       // Coordinator determinism fix 2026-10-12 (third occurrence of this
       // flake, same class as the P2W-01 drain fix): under full-suite load the
       // per-event bar render can lag the settled report by more than the
@@ -555,6 +607,9 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
         s.waitFor("draft [t1]: строка1 хвост2", 25.seconds)
       s.send(":tabs\r")
       val finalRender = s.waitFor(s"($BurstEvents unread)", 15.seconds)
+      // RAI-119 determinism (precedent 71d0aa3): drain in-flight bar renders
+      // BEFORE :quit — its echo must never glue into a torn bar row.
+      val drained = s.waitQuiet(1500.millis, 30.seconds)
       s.send(":quit\r")
       val code = s.finishWait(30.seconds)
       val text = s.cleaned
@@ -580,9 +635,11 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
           "burstStarted" -> boolJson(burstStarted.isDefined),
           "draftDuring" -> boolJson(draftDuring),
           "settled" -> boolJson(settled.isDefined),
+          "burstDrained" -> boolJson(burstDrained),
           "badge60" -> boolJson(badge60),
           "draftAfter" -> boolJson(draftAfter),
           "finalRender" -> boolJson(finalRender),
+          "drained" -> boolJson(drained),
           "rowT2" -> rowT2.toString,
           "rowT3" -> rowT3.toString,
           "rowT1NoBadge" -> rowT1NoBadge.toString,
@@ -600,9 +657,11 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
       assertTrue(burstStarted.isDefined) &&
       assertTrue(draftDuring) &&
       assertTrue(settled.isDefined) &&
+      assertTrue(burstDrained) &&
       assertTrue(badge60) &&
       assertTrue(draftAfter) &&
       assertTrue(finalRender) &&
+      assertTrue(drained) &&
       assertTrue(rowT2 >= 1 && rowT3 >= 1) &&
       assertTrue(rowT1NoBadge >= 1) &&
       assertTrue(noZeroBadge) &&

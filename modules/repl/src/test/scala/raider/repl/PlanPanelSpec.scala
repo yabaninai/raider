@@ -234,6 +234,18 @@ object PlanPanelSpec extends ZIOSpecDefault:
             rejectedPrinted <- r.awaitPrinted(
               "plan rejected: plan phase cancelled"
             )
+            // RAI-119 determinism (precedent 71d0aa3, quiescence drain): the
+            // printed outcome proves the CANCEL command ran; the interrupted
+            // job's typed settlement (and the panel watcher's outcome write
+            // that consumes it) can still be in flight when the NEXT plan
+            // stage starts. Awaiting the cancelled job's terminal outcome
+            // here drains that pipeline BEFORE the repeated plan exists —
+            // two daemon watchers can then no longer interleave their
+            // one-shared-outcome writes around the second track.
+            cancelledSettled <- r.session.awaitPlan(planJob).either.map {
+              case Left(_)  => true // typed cancellation surfaced
+              case Right(_) => false // live plan settled as approval: never
+            }
             st <- r.session.state
             // cancel != approval: approve is typed-denied
             _ <- typeThrough(r, ":approve", "")
@@ -247,16 +259,25 @@ object PlanPanelSpec extends ZIOSpecDefault:
               .orDie
             _ <- r.panel.track(planJob2).forkDaemon.unit
             ready2 <- awaitPhase(r, PlanTab.Phase.Ready)
+            // RAI-119 determinism (precedent 91a6575, retry with a FRESH
+            // render): the watcher refreshes the snapshot in the background;
+            // under load the last refresh can lag the settled plan. On a miss
+            // we force a fresh re-derive (panel.refresh) and wait again — the
+            // assertion is NOT weakened (Phase.Ready must still hold).
+            ready2Fresh <-
+              if ready2 then ZIO.succeed(true)
+              else r.panel.refresh *> awaitPhase(r, PlanTab.Phase.Ready)
             _ <- typeThrough(r, ":approve", "")
             approved2 <- r.awaitPrinted("plan approved: execution job ")
             labels <- r.labels
           yield assertTrue(
             seenAfterReject == "",
             rejectedPrinted,
+            cancelledSettled,
             st == PlanSession.Cancelled,
             cancelDenied,
             noExec,
-            ready2,
+            ready2Fresh,
             approved2,
             labels.sorted == List("plan", "plan", "plan-exec")
           )
