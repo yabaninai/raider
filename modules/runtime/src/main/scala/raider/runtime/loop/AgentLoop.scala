@@ -5,6 +5,7 @@ import raider.core.{
   ModelEvent,
   ModelRequest,
   RaiderError,
+  RecoveryClass,
   RequestMessage,
   RootId,
   ToolCall,
@@ -90,7 +91,12 @@ final case class AgentLoop(
     systemPrompt: Option[String] = None,
     events: Option[LoopEvents] = None,
     // RAI-095: optional lifecycle hook host; None (default) = zero overhead
-    plugins: Option[PluginHost] = None
+    plugins: Option[PluginHost] = None,
+    // RAI-107 (ADR-028): optional plan-mode binding; None (default) = plan
+    // mode OFF — `runText` is untouched and `runPlan` refuses typed. When
+    // present, ONLY `runPlan` (the plan phase) enforces the read-only toolset
+    // derived from the frozen `RecoveryClass`; ordinary runs keep full tools.
+    planMode: Option[PlanMode] = None
 ):
 
   /** Event emission (RAI-058): `None` = zero-overhead no-op at every seam. */
@@ -141,6 +147,239 @@ final case class AgentLoop(
       ceilings: BudgetLimits,
       maxRounds: Int
   ): ZIO[Any, RaiderError, String] =
+    runLoop(messages, ceilings, maxRounds, enforceReadOnly = false)
+
+  /** The shared body of `runText` and the plan attempts: identical validation,
+    * traces and hook seams; `enforceReadOnly` is the ONLY difference and is
+    * `false` for ordinary runs (RAI-107: plan enforcement never leaks into the
+    * execution mode).
+    */
+  private def runLoop(
+      messages: List[RequestMessage],
+      ceilings: BudgetLimits,
+      maxRounds: Int,
+      enforceReadOnly: Boolean
+  ): ZIO[Any, RaiderError, String] =
+    validateRunArgs(messages, ceilings, maxRounds) *>
+      trace(
+        raider.core.trace.TraceEvent
+          .RunStarted(AgentLoop.now(), model, messages.size)
+      ) *>
+      // RAI-095: lifecycle hooks run AFTER RunStarted; the read-only
+      // metaJson identifies the run — conversation content never crosses
+      // the SPI seam
+      hookPhase(_.runStart(hookMetaJson)) *>
+      rounds(messages, ceilings, maxRounds, 1, enforceReadOnly).tapBoth(
+        e =>
+          // RAI-095: runFinish BEFORE the RunFailed trace emission
+          hookPhase(_.runFinish(hookMetaJson)) *>
+            trace(
+              raider.core.trace.TraceEvent
+                .RunFailed(AgentLoop.now(), e.code, e.detail.take(160))
+            ),
+        t =>
+          // RAI-095: runFinish BEFORE the RunFinished trace emission
+          hookPhase(_.runFinish(hookMetaJson)) *>
+            trace(
+              raider.core.trace.TraceEvent
+                .RunFinished(AgentLoop.now(), "Succeeded", t.take(160))
+            )
+      )
+
+  /** RAI-107 (ADR-028 §2): the bounded PLAN phase.
+    *
+    * The phase is an adaptation of the ordinary loop, not a second runtime:
+    *   - the model sees ONLY the `RecoveryClass.ReadOnly` tools of the bound
+    *     [[PlanMode]] (surface narrowing), and a Mutating/Idempotent call
+    *     emitted anyway is a typed policy denial (`RA-TOOLDENY`) fed back as a
+    *     structured tool message — the loop stays alive (PLAN-01);
+    *   - the final answer must parse into a [[PlanProposal]]; a malformed
+    *     candidate triggers a bounded repair round (a `plan_rejected`
+    *     structured message; quality-gates §7.11 — every repair is a fresh
+    *     billable loop, bounded by `PlanMode.maxRepairAttempts`); exhausting
+    *     the budget is the typed [[PlanPhaseError.PlanRejected]] and NO
+    *     artifact is written (PLAN-02);
+    *   - an accepted proposal is persisted ATOMICALLY (tmp+move) by
+    *     [[PlanStore]] next to the run artifacts. Execution never starts here:
+    *     the transition to execution is the explicit approval edge owned by
+    *     [[PlanSession]] (PLAN-03);
+    *   - the phase lives in the common root budget (every attempt goes through
+    *     the same admission brackets) and is cancellable like any run
+    *     (bounded cleanup, §7.4/7.5).
+    *
+    * Requires `planMode`; without it the call is a typed refusal before any
+    * spend (RA-CFG: plan mode is off by default).
+    */
+  def runPlan(
+      messages: List[RequestMessage],
+      ceilings: BudgetLimits,
+      maxRounds: Int
+  ): ZIO[Any, PlanPhaseError, PlanProposal] =
+    planMode match
+      case None =>
+        ZIO.fail(
+          PlanPhaseError.Underlying(
+            RaiderError.InputValidation(
+              "plan mode is off: build the AgentLoop with a PlanMode binding (ADR-028) to run a plan phase"
+            )
+          )
+        )
+      case Some(pm) =>
+        if pm.maxRepairAttempts < 0 then
+          ZIO.fail(
+            PlanPhaseError.Underlying(
+              RaiderError.Configuration(
+                s"maxRepairAttempts must be >= 0, got ${pm.maxRepairAttempts}"
+              )
+            )
+          )
+        else if messages.isEmpty then
+          ZIO.fail(
+            PlanPhaseError.Underlying(
+              RaiderError.InputValidation(
+                "agent loop needs at least one message"
+              )
+            )
+          )
+        else
+          planAttempt(
+            messages,
+            ceilings,
+            maxRounds,
+            attemptNo = 1,
+            lastAttemptNo = pm.maxRepairAttempts + 1
+          )
+
+  /** One bounded plan attempt: the read-only loop up to the final answer,
+    * then structural validation; malformed → repair or the typed rejection.
+    */
+  private def planAttempt(
+      messages: List[RequestMessage],
+      ceilings: BudgetLimits,
+      maxRounds: Int,
+      attemptNo: Int,
+      lastAttemptNo: Int
+  ): ZIO[Any, PlanPhaseError, PlanProposal] =
+    ev(_.diagnostics(s"plan attempt $attemptNo/$lastAttemptNo started")) *>
+      runLoop(messages, ceilings, maxRounds, enforceReadOnly = true).foldZIO(
+        err => err match
+          case RaiderError.OutputValidation(what) =>
+            // empty/marker final answer: malformed candidate, repair like any
+            // other rejected shape (bounded, billable — §7.11)
+            repairOrReject(
+              messages,
+              ceilings,
+              maxRounds,
+              candidate = None,
+              reason = what,
+              attemptNo,
+              lastAttemptNo
+            )
+          case other => ZIO.fail(PlanPhaseError.Underlying(other)),
+        candidate =>
+          PlanProposal.parse(candidate) match
+            case Left(reason) =>
+              repairOrReject(
+                messages,
+                ceilings,
+                maxRounds,
+                candidate = Some(candidate),
+                reason,
+                attemptNo,
+                lastAttemptNo
+              )
+            case Right(proposal) =>
+              artifactsDir match
+                case None =>
+                  ZIO.fail(
+                    PlanPhaseError.Underlying(
+                      RaiderError.Configuration(
+                        "plan mode binding lost its artifacts directory"
+                      )
+                    )
+                  )
+                case Some(dir) =>
+                  PlanStore.write(dir, root, proposal).foldZIO(
+                    e => ZIO.fail(PlanPhaseError.Underlying(e)),
+                    path =>
+                      // human-readable plan line ONLY via Diagnostics
+                      // (ADR-024 frozen family — no new wire event)
+                      ev(
+                        _.diagnostics(
+                          s"plan proposal accepted: ${proposal.title} " +
+                            s"(${proposal.steps.size} step(s)) -> ${path.getFileName}"
+                        )
+                      ) *> ZIO.succeed(proposal)
+                  )
+      )
+
+  /** The bounded repair edge (§7.11): feed the rejected candidate and a
+    * structured `plan_rejected` reason back to the model and retry ONCE LESS
+    * than before; exhausting the budget is the typed `PlanRejected` and the
+    * artifact is never written.
+    */
+  private def repairOrReject(
+      messages: List[RequestMessage],
+      ceilings: BudgetLimits,
+      maxRounds: Int,
+      candidate: Option[String],
+      reason: String,
+      attemptNo: Int,
+      lastAttemptNo: Int
+  ): ZIO[Any, PlanPhaseError, PlanProposal] =
+    val boundedReason = reason.take(PlanProposal.MaxReasonChars)
+    if attemptNo >= lastAttemptNo then
+      ev(
+        _.diagnostics(
+          s"plan rejected: $boundedReason (attempts: $lastAttemptNo)"
+        )
+      ) *>
+        ZIO.fail(
+          PlanPhaseError.PlanRejected(boundedReason, lastAttemptNo)
+        )
+    else
+      ev(
+        _.diagnostics(
+          s"plan attempt $attemptNo/$lastAttemptNo rejected: $boundedReason; " +
+            "one bounded repair follows"
+        )
+      ) *>
+        planAttempt(
+          messages ++
+            candidate
+              .filter(_.trim.nonEmpty)
+              .map(t => RequestMessage(AgentLoop.AssistantRole, t)) :+
+            RequestMessage(
+              AgentLoop.UserRole,
+              s"""{"error":"plan_rejected","code":"RA-PLAN-REJECTED","reason":${boundedReason.toJson}}""" +
+                s" Re-emit the complete plan as one JSON object: ${PlanProposal.SchemaHint}."
+            ),
+          ceilings,
+          maxRounds,
+          attemptNo + 1,
+          lastAttemptNo
+        )
+
+  private def artifactsDir: Option[java.nio.file.Path] =
+    planMode.map(_.artifactsDir)
+
+  /** RAI-095: the read-only lifecycle-hook input — run identity only (model,
+    * root), as one JSON document. Never conversation content: the hook SPI
+    * hands over exactly one read-only string, and the loop keeps the envelope
+    * minimal by construction.
+    */
+  private def hookMetaJson: String =
+    s"{\"model\":${model.toJson},\"root\":${root.value.toJson}}"
+
+  /** Extracted argument validation of a run (identical rules for `runText`
+    * and the plan phase): configuration violations are refused BEFORE any
+    * spend.
+    */
+  private def validateRunArgs(
+      messages: List[RequestMessage],
+      ceilings: BudgetLimits,
+      maxRounds: Int
+  ): ZIO[Any, RaiderError, Unit] =
     if messages.isEmpty then
       ZIO.fail(
         RaiderError.InputValidation("agent loop needs at least one message")
@@ -162,45 +401,14 @@ final case class AgentLoop(
             "every round is a billable attempt"
         )
       )
-    else
-      trace(
-        raider.core.trace.TraceEvent
-          .RunStarted(AgentLoop.now(), model, messages.size)
-      ) *>
-        // RAI-095: lifecycle hooks run AFTER RunStarted; the read-only
-        // metaJson identifies the run — conversation content never crosses
-        // the SPI seam
-        hookPhase(_.runStart(hookMetaJson)) *>
-        rounds(messages, ceilings, maxRounds, 1).tapBoth(
-          e =>
-            // RAI-095: runFinish BEFORE the RunFailed trace emission
-            hookPhase(_.runFinish(hookMetaJson)) *>
-              trace(
-                raider.core.trace.TraceEvent
-                  .RunFailed(AgentLoop.now(), e.code, e.detail.take(160))
-              ),
-          t =>
-            // RAI-095: runFinish BEFORE the RunFinished trace emission
-            hookPhase(_.runFinish(hookMetaJson)) *>
-              trace(
-                raider.core.trace.TraceEvent
-                  .RunFinished(AgentLoop.now(), "Succeeded", t.take(160))
-              )
-        )
-
-  /** RAI-095: the read-only lifecycle-hook input — run identity only (model,
-    * root), as one JSON document. Never conversation content: the hook SPI
-    * hands over exactly one read-only string, and the loop keeps the envelope
-    * minimal by construction.
-    */
-  private def hookMetaJson: String =
-    s"{\"model\":${model.toJson},\"root\":${root.value.toJson}}"
+    else ZIO.unit
 
   private def rounds(
       messages: List[RequestMessage],
       ceilings: BudgetLimits,
       maxRounds: Int,
-      round: Int
+      round: Int,
+      enforceReadOnly: Boolean
   ): ZIO[Any, RaiderError, String] =
     if round > maxRounds then
       ZIO.fail(
@@ -216,7 +424,7 @@ final case class AgentLoop(
         // RoundStarted equivalent (RAI-058): no dedicated payload case in the
         // frozen family — Diagnostics text, bounded by LoopEvents
         ev(_.diagnostics(s"round $round started")) *>
-        attempt(messages, round).flatMap:
+        attempt(messages, round, enforceReadOnly).flatMap:
           case AttemptResult.Final(text) =>
             trace(
               raider.core.trace.TraceEvent
@@ -228,7 +436,9 @@ final case class AgentLoop(
           case AttemptResult.ToolRound(text, calls) =>
             for
               // §6 default: serialized dispatch in emission order
-              results <- ZIO.foreach(calls.toList)(c => dispatch(c, round))
+              results <- ZIO.foreach(calls.toList)(c =>
+                dispatch(c, round, enforceReadOnly)
+              )
               assistant =
                 if text.trim.isEmpty then Nil
                 else List(RequestMessage(AgentLoop.AssistantRole, text))
@@ -236,16 +446,22 @@ final case class AgentLoop(
                 messages ++ assistant ++ results,
                 ceilings,
                 maxRounds,
-                round + 1
+                round + 1,
+                enforceReadOnly
               )
             yield answer
 
   private def attempt(
       messages: List[RequestMessage],
-      round: Int
+      round: Int,
+      enforceReadOnly: Boolean
   ): ZIO[Any, RaiderError, AttemptResult] =
-    val toolDefs = tools.names.map { n =>
-      tools.lookup(n).map { t =>
+    // RAI-107: in the plan phase the model is offered ONLY the ReadOnly
+    // subset of the bound PlanMode (surface narrowing by RecoveryClass)
+    val advertised =
+      if enforceReadOnly then planMode.fold(tools)(_.readOnlyTools) else tools
+    val toolDefs = advertised.names.map { n =>
+      advertised.lookup(n).map { t =>
         raider.core.ToolDefinition(n, t.description, t.parametersJsonSchema)
       }
     }.flatten
@@ -318,7 +534,8 @@ final case class AgentLoop(
     */
   private def dispatch(
       toolCall: ToolCall,
-      round: Int
+      round: Int,
+      enforceReadOnly: Boolean
   ): ZIO[Any, RaiderError, RequestMessage] =
     // NOTE: one select per val — Scala 3.9 chokes (E046 cyclic) on
     // `x.call.y` member-select chains in this file, so none survive.
@@ -354,103 +571,144 @@ final case class AgentLoop(
               s"""{"error":"unknown_tool","name":$nameJson}"""
             )
       case Some(tool) =>
-        Json.decoder.decodeJson(argsJson) match
-          case Left(err) =>
-            val errJson = err.toJson
-            // Documented refusal outcome (RAI-058), symmetric to unknown tool
-            ev(
-              _.toolFinished(
-                callIdStr,
-                callName,
-                ToolOutcome.Failed(LoopEvents.refusedInvalidArgs)
-              )
-            ) *>
-              ZIO.succeed(
-                toolMessage(
-                  callId,
-                  s"""{"error":"invalid_arguments","detail":$errJson}"""
+        if enforceReadOnly && tool.recovery != RecoveryClass.ReadOnly then
+          // RAI-107 (PLAN-01): typed policy denial in the plan phase — the
+          // tool is KNOWN but not ReadOnly; the loop stays alive and the
+          // denial travels back as structured feedback (RA-TOOLDENY)
+          planDenial(callName, callId, round)
+        else
+          Json.decoder.decodeJson(argsJson) match
+            case Left(err) =>
+              val errJson = err.toJson
+              // Documented refusal outcome (RAI-058), symmetric to unknown tool
+              ev(
+                _.toolFinished(
+                  callIdStr,
+                  callName,
+                  ToolOutcome.Failed(LoopEvents.refusedInvalidArgs)
                 )
-              )
-          case Right(_) =>
-            trace(
-              raider.core.trace.TraceEvent.ToolCallStarted(
-                AgentLoop.now(),
-                round,
-                tool.name,
-                callIdStr,
-                argsJson.take(200)
-              )
-            ) *>
-              // RELIABLE, bounded (RAI-058): about to wait for the Tool slot
-              ev(_.waitingSlot) *>
-              admission
-                .withSlotFree(SlotKind.Tool, root, None):
-                  ZIO.scoped:
-                    ev(_.toolStarted(callIdStr, tool.name, argsJson)) *>
-                      // Interruption during the call bypasses tapBoth AND
-                      // catchAllCause alike (ZIO interruption is not a catchable
-                      // cause) — the honest Cancelled outcome is therefore
-                      // registered as a finalizer: onInterrupt runs it on the
-                      // interrupted fiber before it dies, uninterruptibly, so
-                      // the emission completes and is never lost. Scoped to the
-                      // call: a refusal before ToolStarted emits nothing.
-                      (tool
-                        .invoke(argsJson)
-                        .timeout(Duration.fromMillis(tool.timeoutMs))
-                        .flatMap:
-                          case None =>
-                            ZIO.fail(
-                              RaiderError.DeadlineExceeded(
-                                s"tool '${tool.name}' exceeded timeoutMs=${tool.timeoutMs}"
+              ) *>
+                ZIO.succeed(
+                  toolMessage(
+                    callId,
+                    s"""{"error":"invalid_arguments","detail":$errJson}"""
+                  )
+                )
+            case Right(_) =>
+              trace(
+                raider.core.trace.TraceEvent.ToolCallStarted(
+                  AgentLoop.now(),
+                  round,
+                  tool.name,
+                  callIdStr,
+                  argsJson.take(200)
+                )
+              ) *>
+                // RELIABLE, bounded (RAI-058): about to wait for the Tool slot
+                ev(_.waitingSlot) *>
+                admission
+                  .withSlotFree(SlotKind.Tool, root, None):
+                    ZIO.scoped:
+                      ev(_.toolStarted(callIdStr, tool.name, argsJson)) *>
+                        // Interruption during the call bypasses tapBoth AND
+                        // catchAllCause alike (ZIO interruption is not a catchable
+                        // cause) — the honest Cancelled outcome is therefore
+                        // registered as a finalizer: onInterrupt runs it on the
+                        // interrupted fiber before it dies, uninterruptibly, so
+                        // the emission completes and is never lost. Scoped to the
+                        // call: a refusal before ToolStarted emits nothing.
+                        (tool
+                          .invoke(argsJson)
+                          .timeout(Duration.fromMillis(tool.timeoutMs))
+                          .flatMap:
+                            case None =>
+                              ZIO.fail(
+                                RaiderError.DeadlineExceeded(
+                                  s"tool '${tool.name}' exceeded timeoutMs=${tool.timeoutMs}"
+                                )
                               )
-                            )
-                          case Some(output) => ZIO.succeed(output)
-                        )
-                        .onInterrupt(
-                          ZIO.uninterruptible(
-                            ev(
-                              _.toolFinished(
-                                callIdStr,
-                                tool.name,
-                                ToolOutcome.Cancelled
+                            case Some(output) => ZIO.succeed(output)
+                          )
+                          .onInterrupt(
+                            ZIO.uninterruptible(
+                              ev(
+                                _.toolFinished(
+                                  callIdStr,
+                                  tool.name,
+                                  ToolOutcome.Cancelled
+                                )
                               )
                             )
                           )
+                  .flatMap(output => deliver(toolCall, tool, output))
+                  // ToolFinished on EVERY definitive exit, including failure:
+                  // timeout → Timeout, cancellation refusal → Cancelled,
+                  // anything else → Failed(reason) (RAI-058)
+                  .tapBoth(
+                    err =>
+                      ev(
+                        _.toolFinished(
+                          callIdStr,
+                          tool.name,
+                          AgentLoop.toolOutcomeOf(err)
                         )
-                .flatMap(output => deliver(toolCall, tool, output))
-                // ToolFinished on EVERY definitive exit, including failure:
-                // timeout → Timeout, cancellation refusal → Cancelled,
-                // anything else → Failed(reason) (RAI-058)
-                .tapBoth(
-                  err =>
-                    ev(
-                      _.toolFinished(
-                        callIdStr,
-                        tool.name,
-                        AgentLoop.toolOutcomeOf(err)
+                      ),
+                    _ =>
+                      ev(
+                        _.toolFinished(
+                          callIdStr,
+                          tool.name,
+                          ToolOutcome.Succeeded
+                        )
                       )
-                    ),
-                  _ =>
-                    ev(
-                      _.toolFinished(
-                        callIdStr,
+                  )
+                  .tap(resultMsg =>
+                    trace(
+                      raider.core.trace.TraceEvent.ToolCallFinished(
+                        AgentLoop.now(),
+                        round,
                         tool.name,
-                        ToolOutcome.Succeeded
+                        callIdStr,
+                        resultMsg.content.take(300),
+                        success = true
                       )
-                    )
-                )
-                .tap(resultMsg =>
-                  trace(
-                    raider.core.trace.TraceEvent.ToolCallFinished(
-                      AgentLoop.now(),
-                      round,
-                      tool.name,
-                      callIdStr,
-                      resultMsg.content.take(300),
-                      success = true
                     )
                   )
-                )
+
+  /** RAI-107 (PLAN-01): the typed plan-phase policy denial. Mirrors the
+    * documented refusal shape (ToolFinished(Failed) WITHOUT a preceding
+    * ToolStarted — the tool never started) and feeds the model a structured
+    * `tool_denied` message carrying the frozen `RA-TOOLDENY` code. The loop
+    * stays alive: the denial is feedback, never a run failure.
+    */
+  private def planDenial(
+      callName: String,
+      callId: ToolCallId,
+      round: Int
+  ): ZIO[Any, RaiderError, RequestMessage] =
+    trace(
+      raider.core.trace.TraceEvent.ToolCallRefused(
+        AgentLoop.now(),
+        round,
+        callName,
+        callId.value,
+        "plan_mode_read_only"
+      )
+    ) *>
+      ev(
+        _.toolFinished(
+          callId.value,
+          callName,
+          ToolOutcome.Failed(LoopEvents.refusedPlanReadOnly)
+        )
+      ) *>
+      ZIO.succeed:
+        val nameJson = callName.toJson
+        toolMessage(
+          callId,
+          s"""{"error":"tool_denied","code":"RA-TOOLDENY","name":$nameJson,""" +
+            """"reason":"plan phase allows read-only tools only"}"""
+        )
 
   /** A definitive tool result must be valid JSON to enter the message envelope;
     * a tool that returns garbage is a ToolFailed defect, not model feedback
@@ -509,6 +767,7 @@ object AgentLoop:
 
   val ToolRole: String = "tool"
   val AssistantRole: String = "assistant"
+  val UserRole: String = "user"
 
   /** Reserved sentinel the loop never injects anywhere; its presence in a final
     * answer is an output-validation defect (marker-free contract).
