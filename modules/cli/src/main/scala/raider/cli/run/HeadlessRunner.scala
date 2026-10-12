@@ -108,6 +108,22 @@ object HeadlessRunner:
       env: Map[String, String],
       ci: Option[String]
   ): ZIO[Any, Nothing, Outcome] =
+    // RAI-109: `raider replay ...` is dispatched BEFORE any run/preflight
+    // machinery — full delegation to the accepted LIN-10 chain
+    // ([[ReplayCommand]] → `ReplayCli.exec`), so the run/chat invocation below
+    // is untouched (same preflight, artifacts, budgets and exit mapping).
+    args.target match
+      case CliArgs.Target.Replay(argv) => ReplayCommand.outcome(argv, args.out)
+      case _                           => runInvocation(args, env, ci)
+
+  /** The unchanged run/chat invocation body (moved verbatim by RAI-109; only
+    * the replay dispatch above was added — no run-path line was edited).
+    */
+  private def runInvocation(
+      args: CliArgs,
+      env: Map[String, String],
+      ci: Option[String]
+  ): ZIO[Any, Nothing, Outcome] =
     ZIO.scoped:
       for
         startedAt <- ZIO.succeed(Instant.now())
@@ -375,6 +391,10 @@ object HeadlessRunner:
   private def targetLine(t: CliArgs.Target): String = t match
     case CliArgs.Target.Bundle(jar, wf) => s"bundle $jar / workflow $wf"
     case CliArgs.Target.Agent(name)     => s"built-in agent $name"
+    // RAI-109: exhaustivity only — the replay target is dispatched to
+    // ReplayCommand BEFORE the run path and never renders a summary line.
+    case CliArgs.Target.Replay(argv) =>
+      s"replay ${argv.drop(1).headOption.getOrElse("<run-dir>")}"
 
   private def checksFor(
       outcome: Either[RaiderError, String]
@@ -423,6 +443,7 @@ object HeadlessRunner:
       keyOpt <- ZIO.fromEither(Credentials.resolve(args.provider, env))
       input <- ZIO.fromEither(args.inputText)
       text <- args.target match
+        case CliArgs.Target.Replay(argv) => replayLeakDefect(argv)
         case CliArgs.Target.Agent(name) =>
           for
             limits <- ZIO.fromEither(
@@ -523,6 +544,12 @@ object HeadlessRunner:
             text <- ZIO.fromEither(slotResult)
           yield text
     yield text
+
+  /** The loud defect for a replay target that reached the run path — see the
+    * RAI-109 note in [[execute]].
+    */
+  private def replayLeakDefect(argv: List[String]): ZIO[Any, Nothing, Nothing] =
+    ZIO.die(IllegalStateException(s"replay target leaked into run: $argv"))
 
   /** LIN-03A-prep: events.jsonl is NOT written here — it is streamed during the
     * run by [[executeAsJob]] ([[EventsJsonlWriter]]), so it exists and is

@@ -66,6 +66,15 @@ object CliArgs:
     final case class Bundle(jar: Path, workflow: String) extends Target
     final case class Agent(name: String) extends Target
 
+    /** RAI-109: the `raider replay` subcommand (LIN-10 product wiring). The
+      * target carries the RAW argv (the `replay` token included) — the flag
+      * surface (`<run-dir>`, `--workspace`, `--data`, usage errors) stays owned
+      * by the accepted LIN-10 `ReplayCli.parse`, so the replay argv contract
+      * has ONE source and the wiring cannot drift from the standalone entry. No
+      * run/chat flag is accepted or validated here.
+      */
+    final case class Replay(argv: List[String]) extends Target
+
   /** Built-in agents: scout/worker = plain mock loops; coder = REAL workspace
     * tools (fs_read/fs_search/proc_run) for self-hosting runs.
     */
@@ -94,12 +103,31 @@ object CliArgs:
       case Nil => Left(RaiderError.Configuration("usage: raider run [options]"))
       case "run" :: rest  => parseRun(rest, Map.empty, mock = false)
       case "chat" :: rest => parseRun(rest, Map.empty, mock = false)
+      // RAI-109: `raider replay ...` — recognized ADDITIVELY (run/chat parse
+      // and errors unchanged); everything after the token is delegated verbatim
+      // to the LIN-10 chain (see [[raider.cli.run.ReplayCommand]]).
+      case replay @ ("replay" :: _) => Right(replayArgs(replay))
       case other :: _ =>
         Left(
           RaiderError.Configuration(
             s"unknown subcommand '$other' (only 'run' exists in this slice)"
           )
         )
+
+  /** The replay subcommand's [[CliArgs]] shell: NO run/chat flag surface —
+    * every replay flag (and its usage errors) is validated later by the frozen
+    * `ReplayCli.exec` on the raw argv, so the product entry keeps exact
+    * flag/exit parity with the standalone LIN-10 entry. `out` is an inert
+    * placeholder: a replay has no `work-<uuid>` invocation root.
+    */
+  private def replayArgs(fullArgv: List[String]): CliArgs =
+    CliArgs(
+      target = Target.Replay(fullArgv),
+      input = None,
+      inputJson = None,
+      out = Paths.get(""),
+      mock = false
+    )
 
   private def parseRun(
       rest: List[String],
