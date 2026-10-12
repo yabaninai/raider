@@ -262,6 +262,14 @@ object LoopEvents:
     */
   val refusedInvalidArgs: String = "refused: invalid arguments"
 
+  /** RAI-107 (ADR-028, PLAN-01): documented refusal outcome of the plan phase —
+    * the tool is known but not `RecoveryClass.ReadOnly`
+    * (`ToolFinished(Failed("refused: plan phase allows read-only tools
+    * only"))`).
+    */
+  val refusedPlanReadOnly: String =
+    "refused: plan phase allows read-only tools only"
+
   /** Envelope schema version of journaled records (ADR-024 §5: "always 1 in
     * this revision"; the hub keeps the same value privately).
     */
