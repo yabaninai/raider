@@ -8,6 +8,7 @@ import org.jline.reader.{
   UserInterruptException
 }
 import org.jline.terminal.{Terminal, TerminalBuilder}
+import zio.ZIO
 import zio.Unsafe
 
 /** W10 REPL entrypoint (fast-path slice).
@@ -57,7 +58,14 @@ object Main:
   private[repl] final case class PreludePlan(
       sources: List[String],
       notices: List[String]
-  )
+  ):
+    /** RAI-108: true when this plan wires the scripted/mock backend (mock
+      * provider, an unresolvable live key, or a live provider whose transport
+      * this slice does not wire) — the ONLY mode where the fixture tab-stream
+      * provider ([[ScriptedTabStream]]) may run; a live backend never gets
+      * synthetic events.
+      */
+    private[repl] def isScripted: Boolean = sources == scriptedSources
 
   private[repl] def preludePlan(
       env: Map[String, String] = sys.env
@@ -219,32 +227,80 @@ object Main:
       case c            => c.toString
 
   def main(args: Array[String]): Unit =
+    // RAI-108: the product tabs entry sits behind the EXPLICIT --tabs flag;
+    // every other argument keeps the historical ignore-behavior, so the legacy
+    // path (piped smoke, scripts) is untouched bit-for-bit.
+    val tabs = args.contains("--tabs")
     val engine =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(ReplEngine.make()).getOrThrow()
       }
     // the banner's backend line needs the interpreter-world session, so the
     // prelude runs first
-    runPrelude(engine)
-    banner(engine)
-    loop(engine)
+    val plan = runPrelude(engine)
+    banner(engine, plan, tabs)
+    if tabs then runTabs(engine, plan) else loop(engine)
 
-  private def banner(engine: ReplEngine): Unit =
+  private def banner(
+      engine: ReplEngine,
+      plan: PreludePlan,
+      tabs: Boolean
+  ): Unit =
     println("Raider REPL (W10 fast-path slice)")
     println("  engine : scala3-repl 3.9.0 (in-process compiler)")
     printCaptured(engine, "raider.repl.facade.ReplCommands.printBackendLine()")
-    println(
-      """  try    : scout.ask("hello")   |   val j = worker.start("bg"); j.await()"""
-    )
-    println("  cmds   : :help :jobs :cancel <id> :reset :quit")
+    if tabs then
+      // Honest mode banner: the shell owns the input loop now; the legacy
+      // command set and the Scala eval loop live in the no-flag mode.
+      println(
+        s"  mode   : tabs — product TabShell (RAI-108); commands: ${raider.ui.CommandRouter.commands.mkString(" ")}"
+      )
+      if plan.isScripted then
+        println(
+          "  stream : scripted fixture feed per tab (mock provider; no network)"
+        )
+      else
+        println(
+          "  stream : live backend wired; tab streams follow jobs started by the runtime"
+        )
+      println("  note   : Scala eval loop runs WITHOUT --tabs (legacy mode)")
+    else
+      println(
+        """  try    : scout.ask("hello")   |   val j = worker.start("bg"); j.await()"""
+      )
+      println("  cmds   : :help :jobs :cancel <id> :reset :quit")
 
-  private def runPrelude(engine: ReplEngine): Unit =
+  /** RAI-108: the product tabs run behind --tabs. [[TabShellHost]] owns the
+    * terminal (the ONE writer, RAI-061) until `:quit`/EOF; the legacy loop is
+    * NOT running concurrently (one input loop per process). In scripted/mock
+    * mode the fixture stream provider publishes per-tab job streams through the
+    * real EventHub; scoped — shell, hub subscriptions and the fixture stream
+    * die together, then the honest engine shutdown reports active jobs.
+    */
+  private def runTabs(engine: ReplEngine, plan: PreludePlan): Unit =
+    Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe
+        .run(
+          ZIO.scoped {
+            for
+              wiring <- TabShellHost.wiring
+              _ <- ScriptedTabStream.run(wiring).when(plan.isScripted).fork
+              _ <- TabShellHost.run(wiring)
+            yield ()
+          }
+        )
+        .getOrThrow()
+    }
+    shutdown(engine)
+
+  private def runPrelude(engine: ReplEngine): PreludePlan =
     val plan = preludePlan()
     // RAI-090: a live start without a resolvable key explains how to enable
     // live mode BEFORE the banner; the REPL then keeps running the scripted/
     // mock path (also re-printed on :reset, which re-reads the environment).
     plan.notices.foreach(println)
     plan.sources.foreach(src => submit(src, engine, silent = true))
+    plan
 
   private def loop(engine: ReplEngine): Unit =
     if Option(System.console()).isEmpty then pipeLoop(engine)
