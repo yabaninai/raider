@@ -116,7 +116,12 @@ lazy val raiderRepl = (project in file("modules/repl"))
     raiderReplEngine,
     raiderTools,
     raiderProviderChat,
-    raiderProviderAnthropic
+    raiderProviderAnthropic,
+    // RAI-102 contract change (ratified by coordinator 2026-10-12): the
+    // product REPL hosts the accepted raider.ui TabShell (RAI-061). No cycle
+    // (ui depends only on runtime); same pinned JLine 4.0.14. The headless
+    // raiderCli stays JLine-free (quality-gates §12 package smoke unchanged).
+    raiderUi % "compile->compile;test->test"
   )
   .settings(
     run / fork := true,

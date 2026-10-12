@@ -37,13 +37,15 @@ W8-W9-INTEGRATION (addendum W10–W11). Интегрировано и прогн
   LIN-03A live builder + LIN-03B HeadlessRunner summary lineage-хэш,
   LIN-04A `:aux` + LIN-04B LineageTab provider, LIN-05A corpus + LIN-05B
   comparator/verifier + LIN5-03 partial replay (reducePartial),
-  LIN-05D RecordedSource (W13, pending review), LIN-08A docs/lineage.md.
+  LIN-05D RecordedSource (W13, review approve 2026-10-12), LIN-08A docs/lineage.md.
 - RAI-072 (events/tabs/cancel docs), RAI-079 (anthropic stand tool-round),
   RAI-080 (onboarding), RAI-096 (plugins SDK + 3 fixtures; examples теперь
   в compile.sh), RAI-097 (StatusText единый: cli-chat + tab bar).
 - Ревью-циклы: W8-review (6/7→фиксы закрыты), W9-review (6/7→закрыто),
   W10-review (3 Major→W11 закрыты), W12-review (5/6→R1/R2 закрыты
-  coordinator'ом, self-fixes на ревью W13), W13-review (pending).
+  coordinator'ом, self-fixes на ревью W13), W13-review: approve (2026-10-12,
+  первый spawn-режим: независимый raider-reviewer по wt/w13-review;
+  RecordedSourceSpec 11/11 воспроизведены, evidence-binding сверен).
 
 Open (после ночи): LIN-05 full интерпретатор (replay-recorded LLM из записи;
 RecordedSource — преп), LIN-06/07 (live re-run, частичный replay фаз),
