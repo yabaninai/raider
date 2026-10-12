@@ -18,6 +18,17 @@ import raider.ui.ShellInputError
   *
   * Pure: no terminal, no effects. The JLine adapter ([[PaletteCompleter]]) and
   * the unknown-command decorator ([[PaletteShellTerminal]]) consume it.
+  *
+  * RAI-111 adds the chat commands of the REPL cycle (:jobs/:cancel/:log/:reset
+  * + the rest of the Commands surface) as a SECOND derived catalog:
+  * [[chatCommands]] comes from the [[ReplChatCommands]] registry whose
+  * freshness against the source of truth (Commands.helpText) is enforced by
+  * ReplChatPaletteSpec. The shell catalog [[commands]] is UNCHANGED — the
+  * frozen router stays the only executable surface of the TabShell, so TAB
+  * completion keeps offering only routable commands. The combined
+  * [[allCommands]] feeds the nearest-command hint: a near miss of a chat
+  * command suggests it, while a name that IS a chat command never yields the
+  * absurd self-suggestion.
   */
 object ShellPalette:
 
@@ -25,6 +36,18 @@ object ShellPalette:
     * the routing probe (order preserved — it is also the help/hint-bar order).
     */
   val commands: Vector[String] = CommandRouter.commands.filter(isRegistered)
+
+  /** The chat-command catalog of the REPL cycle (card RAI-111): derived from
+    * the [[ReplChatCommands]] companion registry — never a hand list here.
+    */
+  val chatCommands: Vector[String] = ReplChatCommands.names
+
+  /** Router catalog first, then the chat commands that are not router commands
+    * (:help/:quit exist on both surfaces — listed once). This is the catalog of
+    * the nearest-command suggestion, the one hint surface that is not frozen.
+    */
+  val allCommands: Vector[String] =
+    commands ++ chatCommands.filterNot(commands.contains)
 
   /** A name is registered iff the frozen router does not answer
     * `UnknownCommand` for it (probed with no tabs: tab-dependent commands still
@@ -46,21 +69,30 @@ object ShellPalette:
     if prefix.isEmpty then Vector.empty
     else commands.filter(_.startsWith(prefix))
 
-  /** Nearest registered command for an unknown token (card P2P-02): unique
-    * prefix matches win (shortest, then lexicographic); otherwise the
-    * Levenshtein-closest registered command within a small threshold (2,
-    * growing slowly with length). A registered token never yields a suggestion,
-    * and a far-out token (`:zzzz`) yields none — the plain available-commands
-    * hint stays the only hint (P2W-02 behavior unchanged).
+  /** Prefix search over the chat catalog (card RAI-111; the REPL-cycle lookup
+    * behind TAB): an empty prefix yields nothing, mirroring [[complete]].
+    */
+  def completeChat(prefix: String): Vector[String] =
+    if prefix.isEmpty then Vector.empty
+    else chatCommands.filter(_.startsWith(prefix))
+
+  /** Nearest registered command for an unknown token (card P2P-02, extended by
+    * RAI-111 to the combined catalog): unique prefix matches win (shortest,
+    * then lexicographic); otherwise the Levenshtein-closest command within a
+    * small threshold (2, growing slowly with length). A token that IS a command
+    * of either surface never yields a suggestion (in tabs mode a chat name is
+    * simply not routable — hinting it against itself would be absurd), and a
+    * far-out token (`:zzzz`) yields none — the plain available-commands hint
+    * stays the only hint (P2W-02 behavior unchanged).
     */
   def nearest(raw: String): Option[String] =
-    if isRegistered(raw) then None
+    if allCommands.contains(raw) then None
     else
       val byPrefix =
-        commands.filter(_.startsWith(raw)).sortBy(c => (c.length, c))
+        allCommands.filter(_.startsWith(raw)).sortBy(c => (c.length, c))
       byPrefix.headOption.orElse {
         val threshold = math.max(2, raw.length / 4)
-        commands
+        allCommands
           .map(c => c -> levenshtein(raw, c))
           .filter((_, d) => d <= threshold)
           .sortBy((c, d) => (d, c.length, c))
