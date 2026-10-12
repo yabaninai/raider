@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 139,
+  "raider_count": 143,
   "companion_count": 3,
   "cards": [
     {
@@ -4037,6 +4037,115 @@
       },
       "non_goals": "Ослабление оракулов probe, изменение Makefile-дефолта /tmp/cc-master, license_audit/renderer-механики сверх setdefault, gate policy.",
       "context": "Прецедент уже в дереве: repl_pty_smoke.py:61 env.setdefault. Дефолт-пути в probe — machine-specific /var/folders/... (артефакт lane-инфраструктуры), препятствуют воспроизведению на другом хосте с заданным кэшем."
+    },
+    {
+      "id": "RAI-127",
+      "title": "Anthropic tool definitions on wire (structured message contract)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-013"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/provider-anthropic/src/main/scala/raider/provider/anthropic/**",
+        "modules/core/src/main/scala/raider/core/**",
+        "modules/provider-anthropic/src/test/scala/**",
+        "modules/core/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport"
+      ],
+      "behavior": "W05 gap (аудит обязательств 2026-10-12): AnthropicMessagesBackend НЕ передаёт tool-определения на провод — encodeRequest шлёт только model/max_tokens/messages/stream (AnthropicMessagesBackend.scala:22-24 «Tool DEFINITIONS are not yet sent on the wire»; :283-326), тогда как OpenAI-провод передаёт parametersJsonSchema (OpenAIChatBackend.scala:170-179). Карточка: tools-array+input_schema в encodeRequest из существующего structured tool-контракта (тот же источник схем, что OpenAI-провод — без второй hand-written схемы), полный mapping tool_use/tool_result blocks (уже есть) против переданных definitions, streaming-совместимость, typed-негативы (пустой/битый schema — honest поведение), stand tool-round (RAI-079 стенд) с tools на проводе.",
+      "acceptance": {
+        "normal": "ANTH-TD-01: encodeRequest с N tools сериализует tools+input_schema 1:1 контракту; stand tool-round: модель получает definitions и возвращает корректный tool_use (fixture stand, не live).",
+        "error": "ANTH-TD-02: пустой список tools — запрос без tools-поля (совместимо с текущим поведением); невалидная схема — typed-ошибка до отправки, не молчаливая деградация.",
+        "concurrency": "ANTH-TD-03: streaming-раунд с tools — фреймы не теряются (существующие SSE-инварианты); повтор ×3; существующие anthropic-спеки зелёные без ослабления."
+      },
+      "non_goals": "Live-провайдер (owner live-wire), смена OpenAI-провода, второй scheduler, смена frozen RaiderError/wire-событий ADR-024.",
+      "context": "Аудит Open Obligations (2026-10-12, reviewer по main 7702fd0): строка «Tool definitions on wire» — OPEN; W05 требует полный tool round на обоих direct wires; live SELFDEV-раунды работали на OpenAI-проводе."
+    },
+    {
+      "id": "RAI-128",
+      "title": "Cross-root fairness: named-тест ≥2 корней под contention (Admission)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-009"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/runtime/src/test/scala/raider/runtime/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "runtime"
+      ],
+      "behavior": "Board obligation «Fair admission across DIFFERENT roots»: Admission.scala:35 — fair FIFO в одной очереди, но named-теста ≥2 различных RootId под contention нет (BudgetAdmissionSpec.scala:17 — один root). Карточка: property/named-тест — ≥2 корня конкурируют за Model-pool: ни один корень не starv'ится (bounded FIFO-порядок наблюдаем), суммарные лимиты пула не превышаются, per-root бюджеты независимы; при вскрытии дефекта — typed reproducer + отдельная карточка фикса (не чинить молча в тестовой карточке).",
+      "acceptance": {
+        "normal": "FAIR-01: named-тест 2+ корней × N запросов на 1 слот — FIFO без starvation (каждый корень получает слот ≤ k позиций), лимиты пула соблюдены, повтор ×3 детерминирован.",
+        "error": "FAIR-02: негатив-контроль — намеренно несправедливая стратегия (в тест-хелпере) ловится тестом; per-root исчерпание бюджета не блокирует чужие корни.",
+        "concurrency": "FAIR-03: параллельные admissions из обоих корней — 0 потерь/дублей токенов; существующие BudgetAdmissionSpec зелёные ×3."
+      },
+      "non_goals": "Смена семантики Admission (фикс — отдельная карточка), распределённый/мультипроцессный admission, RAI-014 leftovers, gate policy.",
+      "context": "Аудит Open Obligations 2026-10-12: строка OPEN; Admиссия fair-by-construction, но защита от регрессии отсутствует."
+    },
+    {
+      "id": "RAI-129",
+      "title": "§13 recovery remainder: recovery/resume из JobJournal в продуктовых командах (scoping slice)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-027"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "Board obligation «Journal/artifacts/recovery (§13)»: JobJournal+replay и loop-wiring есть (JobJournal.scala:15-49,107,121; AgentLoop.scala:55-62), но recovery/resume-команд в продукте нет. УЗКИЙ срез: продуктовая поверхность resume — перечитать journal завершённого/прерванного рана (typed torn-tail-обработка уже в journal), восстановить наблюдаемое состояние (jobs/артефакты-указатели) и продолжить/переиграть с последнего консистентного пункта БЕЗ replay мутаций (ADR/working-product запрет replay side effects); retention/redaction policy и phase/recovery wire-extension — НЕ в этой карточке (owner schema-card отдельно).",
+      "acceptance": {
+        "normal": "REC-01: resume по journal завершённого рана — состояние восстановлено (named-поля), дублей исполнения нет; exit-код/артефакты консистентны.",
+        "error": "REC-02: torn/incomplete tail — typed обработка (уже существующий семантик journal), resume с последнего консистентного пункта, без молчаливых пропусков; отсутствие journal — honest typed-ошибка.",
+        "concurrency": "REC-03: прерванный ран (SIGTERM-фикстура RAI-022-семейства) → resume — нет повторных side effects; повтор ×3; существующие journal/runner-спеки зелёные."
+      },
+      "non_goals": "Phase/recovery wire-события (owner schema-card), retention/redaction policy, распределённое восстановление, изменение frozen journal-схемы.",
+      "context": "Аудит Open Obligations 2026-10-12 (кандидат №3 приоритета): W08 «journal/archive/reopen» — journal пишется, восстановления в продукте нет; разблокирует owner-решение по schema-card."
+    },
+    {
+      "id": "RAI-130",
+      "title": ":type PTY-оракулы — дезатурация echo-saturation + честный префикс ошибок",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-124"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/repl/src/main/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Review-findings RAI-124 (minor ×2 + риск): (1) TypeCommandsPtySpec bindingType=waitFor(\"Long\") и jobType=waitFor(\"JobHandle[String]\") преднасыщены эхом предыдущих шагов (val counter: Long = 7 / val j: JobHandle[String]) — регрессия «:type не сработал» не ловится оракулом; фикс: ответ проверяется ПОСЛЕ отправки :type (позиция в транскрипте/уникальный sentinel через preceding val с неиспользуемым именем), негатив-контроль обязателен; (2) ошибки типизации :type печатаются с вводящим в заблуждение префиксом «command failed (prelude broken?)» (Commands.scala:116-118) — заменить на честный диагностический текст для type-запросов, не трогая существующую семантику прочих команд.",
+      "acceptance": {
+        "normal": "TYPED-01: негатив-контроль — при отключённой отправке :type оракулы падают; при включённой — зелёные (доказательство не-tautology).",
+        "error": "TYPED-02: ошибка типизации :type — диагност компилятора без ложного prelude-префикса; существующие Commands-спеки зелёные.",
+        "concurrency": "TYPED-03: TypeCommandsPtySpec ×3 flake=0; raiderRepl/test зелёный."
+      },
+      "non_goals": "Компилятор-слой, новые команды (:kind/:doc), chat-модуль, ослабление существующих оракулов TYPE-01..03.",
+      "context": "RAI-124 review: findings 1-2 (PTY-оракулы преднасыщены эхом) + риск 1 (UX-префикс). Страховка TYPE-03 в CI сейчас только в unit-спеке."
     }
   ]
 }

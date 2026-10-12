@@ -178,3 +178,7 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-122** [tabs_pty_probe: синхронизация с ADR-024 honest-unknowns status-text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
 - **RAI-124** [REPL :type — тип выражения без исполнения (RAI-019/020 slice)](m2-p2.md); dependencies: RAI-068; profiles: static, unit, repl.
 - **RAI-126** [PTY-probes COURSIER_CACHE: env.setdefault вместо захардкоженного переопределения](m1.md); dependencies: RAI-122; profiles: static, docs.
+- **RAI-127** [Anthropic tool definitions on wire (structured message contract)](m1.md); dependencies: RAI-013; profiles: static, unit, contracts, transport.
+- **RAI-128** [Cross-root fairness: named-тест ≥2 корней под contention (Admission)](m1.md); dependencies: RAI-009; profiles: static, unit, runtime.
+- **RAI-129** [§13 recovery remainder: recovery/resume из JobJournal в продуктовых командах (scoping slice)](m1.md); dependencies: RAI-027; profiles: static, unit, contracts, ci.
+- **RAI-130** [:type PTY-оракулы — дезатурация echo-saturation + честный префикс ошибок](m2-p2.md); dependencies: RAI-124; profiles: static, unit, repl.
