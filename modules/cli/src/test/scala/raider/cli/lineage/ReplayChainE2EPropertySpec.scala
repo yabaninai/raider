@@ -66,13 +66,15 @@ object ReplayChainE2EPropertySpec extends ZIOSpecDefault:
         throw new IllegalStateException("recorded self-compare failed")
       )
 
-  /** SEQUENTIAL on purpose (one cold-start full-suite run flaked 2/12 under
-    * first-run JIT/zinc load in the same JVM — see RECORD W22-R8): 12 seed
-    * tests × 2 replays of the real loop/hub/toolset stack must not contend with
-    * EACH OTHER on top of whatever else the suite JVM is doing. The
-    * deterministic contract (normalized Match, repeat → same hash) is
-    * scheduling-independent; sequencing only bounds self-inflicted relay
-    * latency inside `ReplayHarness.eventuallyTerminal`'s outer bound.
+  /** SEQUENTIAL on purpose: in one observed cold-start full-suite run, 2 of the
+    * 12 seed tests flaked when the real loop/hub/toolset replays ran
+    * concurrently under first-run JIT/zinc load in the same JVM. Sequencing the
+    * suite is deliberate protection against THIS self-contention: 12 seed tests
+    * × 2 replays of the real stack must not contend with EACH OTHER on top of
+    * whatever else the suite JVM is doing. The deterministic contract
+    * (normalized Match, repeat → same hash) is scheduling-independent;
+    * sequencing only bounds self-inflicted relay latency inside
+    * `ReplayHarness.eventuallyTerminal`'s outer bound.
     */
   def spec = suite("ReplayChainE2EProperty")(
     Seeds.map { seed =>

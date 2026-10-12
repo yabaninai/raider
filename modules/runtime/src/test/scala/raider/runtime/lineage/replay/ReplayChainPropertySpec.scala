@@ -24,8 +24,11 @@ import zio.test.*
   *      root/session ids and zeroed `atMs`. The raw `compare` must still SEE
   *      the identity drift; the normalized compare must not care.
   *
-  * Determinism: the corpus, reducer, hasher and comparator are pure — no
-  * clocks, no RNG beyond the corpus LCG seeded by `seed`. Files go to the
+  * Determinism: the sweep itself is a deterministic enumeration —
+  * `Gen.fromIterable(1 to 50)` runs each seed EXACTLY once (50 runs, no random
+  * sampling, no shrink search), so no seed can be silently skipped the way
+  * random sampling could. The corpus, reducer, hasher and comparator are pure —
+  * no clocks, no RNG beyond the corpus LCG seeded by `seed`. Files go to the
   * runtime target dir (never a source path), one per seed.
   */
 object ReplayChainPropertySpec extends ZIOSpecDefault:
@@ -85,7 +88,10 @@ object ReplayChainPropertySpec extends ZIOSpecDefault:
     test(
       "PROP-01 sweep, seeds 1..50: verify Match + verifyPartial complete + rename-invariant normalized Match"
     ) {
-      check(Gen.int(1, 50)) { seed =>
+      // Deterministic enumeration (review R1): Gen.fromIterable runs each
+      // seed exactly once — 50 runs total, no sampled repeats and no ~13.5%
+      // per-run chance of a randomly-skipped seed under default TestConfig.
+      check(Gen.fromIterable(1 to 50)) { seed =>
         val envelopes = LineageCorpus.campaign(seed)
         val g = reduced(seed, envelopes)
         val hash = GraphHash(g)
@@ -95,40 +101,46 @@ object ReplayChainPropertySpec extends ZIOSpecDefault:
         )
 
         // (1) whole-file verify: exact ReplayMatch of the reduced graph
-        val verifyOk =
-          ReplayVerifier.verify(path, hash) == Right(
-            ReplayMatch(g.rootId, g.sessionId, g.nodes.length, hash)
-          )
+        val verifyResult = ReplayVerifier.verify(path, hash)
+        val verifyExpected =
+          Right(ReplayMatch(g.rootId, g.sessionId, g.nodes.length, hash))
 
-        // (2) partial verify over the INTACT file: complete, same graph/hash
-        val partialOk = ReplayVerifier.verifyPartial(path) match
-          case Right(p) =>
-            p.complete &&
-            p.tail.isEmpty &&
-            p.rootId == g.rootId &&
-            p.sessionId == g.sessionId &&
-            p.nodeCount == g.nodes.length &&
-            p.hash == hash
-          case Left(err) =>
-            throw new IllegalStateException(s"seed $seed partial: $err")
+        // (2) partial verify over the INTACT file: complete, no torn tail,
+        // same graph/hash
+        val partialResult = ReplayVerifier.verifyPartial(path)
+        val partialExpected = Right(
+          PartialReplay(
+            g.rootId,
+            g.sessionId,
+            g.nodes.length,
+            hash,
+            complete = true,
+            tail = None
+          )
+        )
 
         // (3) rename-invariance: raw compare SEES the identity drift, the
         // normalized compare matches BOTH directions on one canonical hash
         val renamed = reduced(seed, renamedCampaign(seed))
         val renamedHash = GraphHash(renamed)
         val normExpected = GraphHash(GraphComparator.normalize(g))
-        val normOk =
-          GraphComparator.compare(g, renamed).isLeft &&
-            renamedHash != hash && // jobs are structure keys of the raw form
-            GraphComparator.compareNormalized(g, renamed) == Right(
-              normExpected
-            ) &&
-            GraphComparator.compareNormalized(renamed, g) == Right(
-              normExpected
-            ) &&
-            GraphHash(GraphComparator.normalize(renamed)) == normExpected
+        val rawCompare = GraphComparator.compare(g, renamed)
+        val normForward = GraphComparator.compareNormalized(g, renamed)
+        val normBackward = GraphComparator.compareNormalized(renamed, g)
+        val renamedNormHash = GraphHash(GraphComparator.normalize(renamed))
 
-        assertTrue(verifyOk, partialOk, normOk)
+        // Separate diagnostic asserts (review R2): each invariant reports
+        // its own expected/actual on failure — nothing weakened, the
+        // conjunction below is exactly the former single boolean.
+        assertTrue(verifyResult == verifyExpected) &&
+        assertTrue(partialResult == partialExpected) &&
+        assertTrue(rawCompare.isLeft) &&
+        assertTrue(
+          renamedHash != hash
+        ) && // jobs are structure keys of the raw form
+        assertTrue(normForward == Right(normExpected)) &&
+        assertTrue(normBackward == Right(normExpected)) &&
+        assertTrue(renamedNormHash == normExpected)
       }
     }
   )
