@@ -88,7 +88,8 @@ end CatalogError
   * HeadlessRunner layout (`<runsRoot>/work-<uuid>/events.jsonl`), reduces every
   * checkpoint through [[ReplayVerifier.verifyPartial]] (the SAME deterministic
   * pipeline as replay verification) and renders the shared chat/headless table
-  * (LIN8-01). Persistence is the NEXT card, not this one.
+  * (LIN8-01). Persistence (LIN-12) lives in [[CatalogStore]] — this object
+  * stays the pure scan over the tree.
   *
   * Scan decisions (documented, deliberate):
   *   - a MISSING runsRoot is the typed `CatalogError.NotFound` — different fact
