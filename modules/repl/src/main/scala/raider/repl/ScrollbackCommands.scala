@@ -28,10 +28,16 @@ import zio.{IO, Task, UIO, ZIO}
   *     command — the RAI-111 documented choice for non-router surfaces).
   *
   * Resolution of the `[tabId]` token mirrors the frozen `:switch <n|label>`
-  * semantics over the public registry read model: 1-based index (the `:tabs`
-  * listing order), exact tab-id value, exact label, unique label prefix. Every
-  * failure — missing token, out-of-range index, unknown/ambiguous label — is
-  * the TYPED `RegistryError.UnknownTab` carrying the raw token (P2SR-02); a
+  * precedence (RAI-121, `CommandRouter.resolveTab`): an all-digit token is the
+  * 1-based index (the `:tabs` listing order) FIRST and exclusively — in range
+  * it resolves, out of range it is the typed `UnknownTab`, and a digit token
+  * NEVER falls through to id/label/prefix (exactly `:switch`: a tab labeled "2"
+  * is not reachable by the token "2", and a lone "2024-report" does not
+  * resurrect an out-of-range "2" as a prefix match). A non-digit token then
+  * tries the registry read-model steps `:switch` does not expose (its tokens
+  * carry no tab ids): exact tab-id value, exact label, unique label prefix.
+  * Every failure — missing token, out-of-range index, unknown/ambiguous label —
+  * is the TYPED `RegistryError.UnknownTab` carrying the raw token (P2SR-02); a
   * failed lookup never creates a phantom tab and the shell stays alive; the
   * command works again immediately after an error.
   *
@@ -120,10 +126,15 @@ object ScrollbackCommands:
       ScrollbackMatch.Parsed(if rest.isEmpty then None else Some(rest))
     else ScrollbackMatch.NotScrollback
 
-  /** Resolve a tab token over the public registry read model (`:switch`
-    * semantics): 1-based index, exact tab-id value, exact label, unique label
-    * prefix. EVERY failure is the typed `RegistryError.UnknownTab` of the raw
-    * token — ambiguity is honest "cannot pick one", not a silent first pick.
+  /** Resolve a tab token with the frozen `:switch` precedence (RAI-121): an
+    * all-digit token is the 1-based `:tabs`-listing index FIRST and exclusively
+    * — exactly `CommandRouter.resolveTab`: in range it resolves, out of range
+    * is the typed `RegistryError.UnknownTab`, and a digit token never falls
+    * through to id/label/prefix. A non-digit token then tries exact tab-id
+    * value (the registry read-model step `:switch` does not have), exact label,
+    * unique label prefix. EVERY failure is the typed `RegistryError.UnknownTab`
+    * of the raw token — ambiguity is honest "cannot pick one", not a silent
+    * first pick.
     */
   def resolve(
       token: String,
@@ -133,6 +144,13 @@ object ScrollbackCommands:
     // guarded before the prefix search; parse never produces it, the direct
     // callers get the honest typed answer).
     if token.isEmpty then Left(RegistryError.UnknownTab(TabId("")))
+    else if token.forall(_.isDigit) then
+      // Frozen `:switch` precedence FIRST (RAI-121): a digit token IS the
+      // 1-based index and never falls through — the out-of-range answer is
+      // the typed unknown, not a label/prefix guess.
+      token.toIntOption match
+        case Some(n) if n >= 1 && n <= tabs.size => Right(tabs(n - 1).id)
+        case _ => Left(RegistryError.UnknownTab(TabId(token)))
     else
       val byId = tabs.filter(_.id.value == token)
       if byId.size == 1 then Right(byId.head.id)
@@ -143,13 +161,7 @@ object ScrollbackCommands:
           val byPrefix = tabs.filter(_.label.startsWith(token))
           byPrefix match
             case single :: Nil => Right(single.id)
-            case _ =>
-              if token.nonEmpty && token.forall(_.isDigit) then
-                token.toIntOption match
-                  case Some(n) if n >= 1 && n <= tabs.size =>
-                    Right(tabs(n - 1).id)
-                  case _ => Left(RegistryError.UnknownTab(TabId(token)))
-              else Left(RegistryError.UnknownTab(TabId(token)))
+            case _             => Left(RegistryError.UnknownTab(TabId(token)))
 
   /** The command edge: resolve the optional token and read the PRODUCT screen
     * through `TabShellScrollback.screen` (the frozen registry propagates its

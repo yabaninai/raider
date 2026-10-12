@@ -3,7 +3,7 @@ package raider.repl
 import raider.core.{JobId, RootId, SessionId}
 import raider.runtime.events.{EventError, EventHub, EventPayload}
 import raider.runtime.jobs.JobStatus
-import raider.ui.{RegistryError, SessionRegistry, ShellTerminal, TabId}
+import raider.ui.{RegistryError, SessionRegistry, ShellTerminal, TabId, TabView}
 import zio._
 import zio.test._
 
@@ -161,6 +161,20 @@ object ScrollbackCommandsSpec extends ZIOSpecDefault:
 
   // ----- token resolution over the public registry read model ----
 
+  /** A `TabView` with the given id and label for the PURE `resolve` corner
+    * cases (RAI-121): the read-model row shape is all the resolver sees.
+    */
+  private def view(id: String, label: String): TabView = TabView(
+    id = TabId(id),
+    label = label,
+    jobId = JobId(s"job-$id"),
+    rootId = RootId(s"root-$id"),
+    status = JobStatus.Queued,
+    statusText = "queued",
+    unreadCount = 0L,
+    lastSeq = 0L
+  )
+
   private val resolution = suite("tab token resolution")(
     test("index, exact id, exact label, unique prefix resolve; rest is typed") {
       ZIO.scoped {
@@ -190,6 +204,51 @@ object ScrollbackCommandsSpec extends ZIOSpecDefault:
           ) &&
           assertTrue(pick("").isLeft) // never the all-labels prefix match
       }
+    },
+    // RAI-121 SCB-01: the frozen `:switch` precedence (digit token FIRST and
+    // exclusively, `CommandRouter.resolveTab`) pinned on the corner cases.
+    test(
+      "RAI-121 SCB-01a: digit token beats a same-text label (frozen :switch precedence)"
+    ) {
+      // The tab labeled "2" sits at index 1; index 2 is "other". The digit
+      // token resolves to INDEX 2 — the same-text label is unreachable,
+      // exactly like `:switch` (the pre-RAI-121 order matched the label).
+      val tabs = List(view("id-a", "2"), view("id-b", "other"))
+      assertTrue(
+        ScrollbackCommands.resolve("2", tabs) == Right(TabId("id-b"))
+      )
+    },
+    test(
+      "RAI-121 SCB-01b: digit token never falls through to a label prefix"
+    ) {
+      // A lone "2024-report" does not resurrect the out-of-range token "2"
+      // as a prefix match — the typed unknown, exactly like `:switch` (the
+      // pre-RAI-121 order prefix-matched and rendered that tab).
+      val tabs = List(view("id-r", "2024-report"))
+      assertTrue(
+        ScrollbackCommands.resolve("2", tabs) ==
+          Left(RegistryError.UnknownTab(TabId("2")))
+      )
+    },
+    test(
+      "RAI-121 SCB-01c: digit token beats an exact tab-id too; non-digit keeps id/label/prefix"
+    ) {
+      // The registry read-model id step sits BELOW the digit index: the
+      // token "2" is index 2 even though a tab's id is literally "2".
+      // Non-digit tokens keep the read-model steps (id, label, prefix).
+      val tabs = List(view("2", "two"), view("id-b", "other"))
+      assertTrue(
+        ScrollbackCommands.resolve("2", tabs) == Right(TabId("id-b"))
+      ) &&
+      assertTrue(
+        ScrollbackCommands.resolve("id-b", tabs) == Right(TabId("id-b"))
+      ) && // non-digit: exact tab-id value
+      assertTrue(
+        ScrollbackCommands.resolve("two", tabs) == Right(TabId("2"))
+      ) && // non-digit: exact label
+      assertTrue(
+        ScrollbackCommands.resolve("tw", tabs) == Right(TabId("2"))
+      ) // non-digit: unique label prefix
     }
   )
 
