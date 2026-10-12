@@ -42,13 +42,22 @@ object TabShellHost:
       registry <- SessionRegistry.make(hub)
     yield Wiring(hub, registry)
 
+  /** RAI-106 hook: the product terminal is the palette-enabled ONE writer
+    * ([[PaletteShellTerminal.jline]] — TAB completion over the registered
+    * command catalog + the nearest-command line on unknown commands). Default
+    * of [[run]]; the frozen ShellTerminal.jline stays available for any seam
+    * that wants the pre-palette surface.
+    */
+  def paletteTerminal: ZIO[Scope, Throwable, ShellTerminal] =
+    PaletteShellTerminal.jline
+
   /** Host the shell until `:quit`/EOF. Scoped: the terminal and every
     * background pump/hub subscription die with the scope. `:aux` stays
     * provider-less (typed hint, no LineageTab).
     */
   def run(wiring: Wiring): ZIO[Scope, Throwable, Unit] =
     for
-      terminal <- ShellTerminal.jline
+      terminal <- paletteTerminal
       resolver = CloseChoiceResolver.fromTerminal(
         terminal,
         TabShell.Config().closePrompt
