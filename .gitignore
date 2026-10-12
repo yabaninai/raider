@@ -20,3 +20,6 @@ __pycache__/
 /https/
 .DS_Store
 RECORD.md
+
+# parallel-lane worktrees (visible spawned agents, parallel-development.md §1b)
+/wt/
