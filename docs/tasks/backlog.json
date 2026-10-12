@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 124,
+  "raider_count": 129,
   "companion_count": 3,
   "cards": [
     {
@@ -3646,6 +3646,137 @@
       },
       "non_goals": "Изменение protected verifiers/fixtures/gate policy, продуктовый код, объявление новых capabilities.",
       "context": "Owner-решение 2026-10-12 (волна 3); RAI-099 accepted; evidence привязан к immutable snapshot — record после гейтов помечает lane-манифесты stale (урок RAI-107), финальное evidence — integrated-манифесты main."
+    },
+    {
+      "id": "LIN-13",
+      "title": "docs/lineage.md §9.2 sync — честность статусов реализации",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-09",
+        "RAI-108",
+        "RAI-109"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/lineage.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "§9.2 привести в соответствие интегрированному состоянию на базовом коммите lane: TabShell-wiring закрыт (RAI-108 --tabs), запись артефактов рана закрыта (LIN-09: lineage.scala/lineage-data.json рядом с events.jsonl/summary), продуктовый вход raider replay (RAI-109) сверить; каждый пункт — evidence-ссылка на record или file:line; открытые пункты (live-wire, multi-job export, phase/recovery schema-card, LIN2-03 coverage, LIN-12 persistence) остаются честно открытыми со ссылками на карточки; ничего не заявлять сверх интегрированного состояния.",
+      "acceptance": {
+        "normal": "DOC-13-01: каждая строка §9.2 несёт evidence-ссылку (record path или file:line), проверяемую на базовом коммите.",
+        "error": "DOC-13-02: ни один in-flight/owner-gated пункт не помечен закрытым; расхождение факта и текста — finding, не умолчание.",
+        "concurrency": "DOC-13-03: docs-профиль зелёный; якоря/ссылки валидны; diff только в docs/lineage.md."
+      },
+      "non_goals": "Продуктовый код, изменение контрактов ADR-027/схем, §9.1-переписывание сверх фактов, board/tasks-файлы.",
+      "context": "docs/lineage.md §9.2 snapshot застал W21: строки TabShell-wiring и «запись артефактов в каталог рана» устарели после RAI-108/LIN-09 (оба accepted, records в docs/work/records/)."
+    },
+    {
+      "id": "LIN-14",
+      "title": "LIN2-03 remainder: конкурентное чтение проекции — snapshot-покрытие",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-02"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/test/scala/raider/dsl/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "Тестовое покрытие LIN2-03 («конкурентное чтение — снапшот»): property-спека — конкурентные чтения LineageDataStore/проекции во время атомарной tmp+move записи видят либо старый, либо новый ПОЛНЫЙ документ, никогда частичный; чтение не маскирует гонку как Missing/Corrupt; детерминированный seed, ≥100 итераций, 3 повтора без flake. Вскрытый дефект — не чинить молча в этой карточке: typed reproducer + contract-change request (фикс — отдельная карточка).",
+      "acceptance": {
+        "normal": "LIN2-03-01: property ≥100 итераций concurrent read/write — 0 частичных чтений (каждое чтение — валидный документ schemaVersion 1).",
+        "error": "LIN2-03-02: 3 повтора зелёные (flake=0); при воспроизведённом дефекте — typed reproducer в record, ассерты не ослаблены.",
+        "concurrency": "LIN2-03-03: повторная проекция чтений байт-идентична для неизменного документа; новые файлы только в allowed paths."
+      },
+      "non_goals": "Изменение LineageDataStore/кодеков/frozen schema, изменение LIN-12 области, утилиты вне спек.",
+      "context": "docs/lineage.md §9.2 «Прочее, честно»: LIN2-03 покрыт частично; store атомарен (tmp+move), формальное конкурентное покрытие отсутствует."
+    },
+    {
+      "id": "LIN-15",
+      "title": "LIN-06 scripted acceptance — LIN6-01/02/03 (бюджет/изоляция/отмена)",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-06"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/lineage/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "Deterministic offline acceptance LIN-06 на готовой механике (IsolatedRerun/WorkspaceIsolation/RunDiffReport/ReplayHarness/Admission), scripted backend с ЯВНОЙ маркировкой scripted: LIN6-01 — isolated rerun завершается, пофазовый diff-отчёт живой-vs-записанный; LIN6-02 — исчерпание бюджета останавливает rerun typed (RerunError.Replay поверх Admission), mutating-узел вне изоляции — отказ ДО исполнения; LIN6-03 — отмена (interrupt) посреди rerun: копия остаётся классифицированной/консистентной, повторный rerun без дублей побочных эффектов. Минимальные typed-фиксы продуктовых файлов allowed paths допустимы, если acceptance вскрывает дефект; каждый фикс — с reproducer в record.",
+      "acceptance": {
+        "normal": "LIN6-01(sc): rerun в изоляции завершается; diff-отчёт пофазовый и детерминированный (повтор — идентичен).",
+        "error": "LIN6-02(sc): бюджет исчерпан — typed остановка до выхода за бюджет; mutating вне изоляции — typed отказ до исполнения (продуктовый путь, не только тест-хелпер).",
+        "concurrency": "LIN6-03(sc): interrupt посреди rerun — нет orphan-записей в оригинал; повторный rerun даёт консистентный вердикт без дублей."
+      },
+      "non_goals": "Живая модель за replay (owner live-wire), LIN-12 каталог, новые wire-события, ослабление verifyUntouched/snapshot-границ.",
+      "context": "W22-review: объекты L52 (LIN-06C)/L53 (LIN-07-full)/L54 accepted; F-W22R1-1 закрыт 5ff5318; IsolatedRerunSpec покрывает happy-path/tamper, но LIN6-02 (бюджет) и LIN6-03 (отмена/повтор) acceptance-кейсы не исполнены как фикстуры."
+    },
+    {
+      "id": "RAI-113",
+      "title": "Scrollback render consumer в tabs-режиме (P2S consumer step)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-104",
+        "RAI-108"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Интерактивная команда :scrollback [tabId] на продуктовой поверхности tabs-режима (--tabs, RAI-108): рендер экрана через продуктовый raider.repl.TabShellScrollback.screen/render (заголовок с evicted-счётчиком + окно байт-в-байт) выше prompt; неизвестный/отсутствующий tabId — typed RegistryError.UnknownTab, shell жив; регистрация команды следует freshness-прецеденту RAI-111 (каталог/help следует за реестром, без рассинхрона); modules/ui не меняется (seam'ов хватает — иначе contract-change request).",
+      "acceptance": {
+        "normal": "P2SR-01: PTY продуктового входа --tabs: burst 10k строк → :scrollback печатает точный header с evicted-счётчиком и окно байт-в-байт; prompt жив.",
+        "error": "P2SR-02: :scrollback ghost — typed UnknownTab в выводе, без падения shell; повторная команда после ошибки работает.",
+        "concurrency": "P2SR-03: стриминг во время рендера — один writer, без tear, prompt редактируем; legacy-вход без --tabs не менялся (regression)."
+      },
+      "non_goals": "modules/ui/**, новые scrollback-механики (bounds/cap — RAI-104 frozen-слой), chat JLine-модуль, второй runtime, смена дефолта входа.",
+      "context": "RAI-104 record «Limitations»: интерактивной shell-команды рендера scrollback нет — «шаг карточек-потребителей (по прецеденту RAI-102: Main.ttyLoop/chat-интеграция — следующий слой)»; RAI-108 закрыл вход --tabs, поверхности: ReplChatCommands/перехватчики repl-уровня."
+    },
+    {
+      "id": "RAI-114",
+      "title": "Plan-mode eval fixtures: scripted scenario corpus (prereq eval-профиля)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-107"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/runtime/src/test/scala/raider/runtime/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "Детерминированный scripted scenario-corpus для plan-режима (RAI-107 accepted): каждое fixture — записанный backend-сценарий (read-only работа, попытка Mutating в plan-фазе, malformed план → bounded repair, approval→ровно одна execution-джоба) с ожидаемыми вердиктами PlanSession/loop; corpus исполняется одной спекой-раннером; fixtures — НОВЫЕ файлы (protected corpus RAI-081 contracts/eval/** не трогается); профиль eval в registry НЕ регистрируется (working-product stage, coordinator).",
+      "acceptance": {
+        "normal": "PEVAL-01: ≥6 сценариев план-режима исполняются детерминированно, ожидаемые вердикты pinned (typed policy-denial, PlanRejected/repair, ровно-один approve).",
+        "error": "PEVAL-02: негативы — malformed план после исчерпания repair → typed PlanRejected без записи артефакта; cancel plan-джобы — bounded cleanup.",
+        "concurrency": "PEVAL-03: 3 повтора — 0 flake; параллельный прогон сценариев изолирован (уникальные TempDir/порты)."
+      },
+      "non_goals": "contracts/eval/** (protected), scripts/quality/registry.json, продуктовый код loop сверх потребления frozen API, live-провайдеры.",
+      "context": "RAI-107 record «Профиль eval отсутствует в component-stage registry... именованный профиль — остающееся milestone obligation»: карточка готовит deterministic corpus, которым будущий eval-профиль сможет мерить план-режим; ADR-028."
     }
   ]
 }

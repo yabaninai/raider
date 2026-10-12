@@ -161,3 +161,8 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-111** [Палитра: chat-команды REPL-цикла (RAI-068 follow-up)](m2-p2.md); dependencies: RAI-106, RAI-068; profiles: static, unit, repl.
 - **LIN-12** [Каталог деревьев: persistence (LIN-08 remainder)](lineage.md); dependencies: LIN-08, LIN-09, LIN-10; profiles: static, unit, contracts, ci.
 - **RAI-112** [M1 evidence refresh на интегрированном кандидате (RAI-099 refresh)](m2-p2.md); dependencies: RAI-099; profiles: docs.
+- **LIN-13** [docs/lineage.md §9.2 sync — честность статусов реализации](lineage.md); dependencies: LIN-09, RAI-108, RAI-109; profiles: docs.
+- **LIN-14** [LIN2-03 remainder: конкурентное чтение проекции — snapshot-покрытие](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
+- **LIN-15** [LIN-06 scripted acceptance — LIN6-01/02/03 (бюджет/изоляция/отмена)](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.
+- **RAI-113** [Scrollback render consumer в tabs-режиме (P2S consumer step)](m2-p2.md); dependencies: RAI-104, RAI-108; profiles: static, unit, repl.
+- **RAI-114** [Plan-mode eval fixtures: scripted scenario corpus (prereq eval-профиля)](m1.md); dependencies: RAI-107; profiles: static, unit, contracts.
