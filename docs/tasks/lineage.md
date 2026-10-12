@@ -197,3 +197,51 @@ Status: todo. Milestone: LIN. Dependencies: LIN-03, LIN-05.
 **Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
 
 **Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## LIN-09: Запись lineage-артефактов рядом с продовым раном
+
+Status: ready. Milestone: LIN. Dependencies: LIN-03.
+
+**Сценарий и контракт.** HeadlessRunner при settle пишет lineage.scala (проекция) и lineage-data.json рядом с events.jsonl/summary рана; запись атомарная в каталог рана; сбой проекции/записи не меняет exit-код рана, но честно отражается в summary; формат chat==headless.
+
+**Context.** docs/lineage.md §9.2 «Запись артефактов в каталог рана» и §10; обязательство LIN-03; ADR-027.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: LIN9-01: продовый ран оставляет валидные lineage.scala + lineage-data.json (frozen schema, compile-gate зелёный на артефактах).
+- Error/adversarial: LIN9-02: сбой проекции — typed диагностика в summary; ран завершается штатным exit-кодом.
+- Cancellation/concurrency: LIN9-03: параллельные раны — артефакты в разных каталогах ранов, без пересечений (atomic per-run).
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Каталог кампаний (LIN-08 scan/persistence), live-wire, изменение frozen lineage-schema.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+
+## LIN-10: CLI-командная поверхность replay
+
+Status: ready. Milestone: LIN. Dependencies: LIN-05.
+
+**Сценарий и контракт.** Standalone CLI-вход replay-цепочки: флаги/команда запускают ReplayHarness по lineage-data.json из рана/каталога, выводят вердикт Match/Mismatch с первым расходящимся узлом и graph-hash, exit-код различает исходы; recorded-only, без модельных вызовов.
+
+**Context.** docs/lineage.md §9.2 «CLI-командная поверхность replay»; ReplayHarness/ReplayModelBackend готовы (§9.1, LIN5-01 end-to-end); ADR-027.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+
+**Acceptance.**
+
+- Normal: LIN10-01: replay по артефактам LIN-09 — Match + graph-hash; Mismatch печатает первый расходящийся узел.
+- Error/adversarial: LIN10-02: отсутствующий/битый lineage-data.json — typed error и невалидный (не нулевой) exit.
+- Cancellation/concurrency: LIN10-03: параллельные replay — изолированные workspace (verifyUntouched), без общих записей.
+
+**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+
+**Non-goals.** Live-модель за replay (LIN-06), изменение ReplayHarness-контракта, второй runner/scheduler.
+
+**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+
+**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.

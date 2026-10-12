@@ -85,12 +85,12 @@ owner), live-wire verification (владелец: endpoint/бюджет).
 | RAI-057 SessionRegistry (P2.A) | accepted | [W1 record](records/W1-EVENTS-TABS.md); real-hub tabs, TAB-01..03, 5/5 |
 | RAI-058 Loop emitters (P1.B-1) | accepted | [W1 record](records/W1-EVENTS-TABS.md); real rounds, outcomes, 109/109 runtime |
 | RAI-064 Credentials env-only | accepted | [W1 record](records/W1-EVENTS-TABS.md); --api-key removed, helper bounded+masked; security-profile obligation open |
-| RAI-059 Jobs/budget/delegation emitters (P1.B-2) | ready | next dispatch; Terminal authority for UI |
+| RAI-059 Jobs/budget/delegation emitters (P1.B-2) | accepted | [W2 record](records/W2-EMITTERS-CANCEL-SHELL.md); EMJ-01..03 18 emission-тестов; Terminal authority for UI |
 | REPL-LIVE-BRIDGE | done | live prelude built in interpreter world (MainBridge classloader split deleted); live Qwen round-trip; 21/21 repl, PTY 13/13, EXECUTE 7/7; [record](records/REPL-LIVE-BRIDGE.md) |
-| RAI-063 OOB cancel/deadlines (P3.B) | ready | stuck-child fix; deps RAI-055 accepted |
-| RAI-061 Tab shell (P2.B) | ready-adjacent | deps RAI-057 accepted; JLine dep → coordinator build edit |
-| RAI-060 Status line (P1.C) | todo | waits RAI-059 (058 accepted) |
-| RAI-062 PTY integration (P2.C) | todo | waits RAI-060+061; M1 exit rehearsal |
+| RAI-063 OOB cancel/deadlines (P3.B) | accepted | [W2 record](records/W2-EMITTERS-CANCEL-SHELL.md); CANCEL-01..03 ×20 ≤5s; 119/119 lane |
+| RAI-061 Tab shell (P2.B) | accepted | [W2 record](records/W2-EMITTERS-CANCEL-SHELL.md); SHELL-01..03; 16/16 ui |
+| RAI-060 Status line (P1.C) | accepted | [W3 record](records/W3-PARALLEL-10.md); integrated, gates green |
+| RAI-062 PTY integration (P2.C) | accepted | [RAI-062 record](records/RAI-062.md); PTY-01..03 + M1-DEMO all_pass |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | M1 | accepted-pending-owner-note | [M1-ACCEPTANCE.md](records/M1-ACCEPTANCE.md) (evidence compiled) |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |

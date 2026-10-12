@@ -146,3 +146,10 @@ Markdown содержит full contract, JSON канонический для ID
 - **LIN-06** [Live re-run, изоляция мутаций, diff-отчёт](lineage.md); dependencies: LIN-05; profiles: static, unit, runtime, security.
 - **LIN-07** [Частичный replay фаз/поддеревьев](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts.
 - **LIN-08** [Области, пиннинг, каталог](lineage.md); dependencies: LIN-03, LIN-05; profiles: static, unit, docs.
+- **RAI-102** [TabShell в продуктовом REPL (chat wiring base)](m2-p2.md); dependencies: RAI-061, RAI-062; profiles: static, unit, contracts, repl.
+- **RAI-103** [Per-tab drafts в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-104** [Scrollback bounds в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-105** [Unread badges в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-106** [Palette/help в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl, docs.
+- **LIN-09** [Запись lineage-артефактов рядом с продовым раном](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
+- **LIN-10** [CLI-командная поверхность replay](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts, docs.

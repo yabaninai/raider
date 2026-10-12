@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 109,
+  "raider_count": 116,
   "companion_count": 3,
   "cards": [
     {
@@ -3224,6 +3224,204 @@
       "non_goals": "См. docs/tasks/lineage.md карточку.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
       "status": "todo"
+    },
+    {
+      "id": "RAI-102",
+      "title": "TabShell в продуктовом REPL (chat wiring base)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-061",
+        "RAI-062"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl"
+      ],
+      "behavior": "Продуктовый chat/REPL-цикл хостит TabShell поверх SessionRegistry: вкладки сессий и aux-seam, единственный writer терминала, редактируемый prompt при активном стриминге; переключение вкладок сохраняет состояние строки ввода; данные UI — только из ADR-024 событий; владение терминалом у shell, а не у ChatLoop.",
+      "acceptance": {
+        "normal": "P2W-01: продуктовый REPL поднимает shell с несколькими вкладками; переключение A→B→A сохраняет строку ввода байт-в-байт (PTY-тест).",
+        "error": "P2W-02: неизвестная сессия/команда — typed error с подсказкой; shell и ран живы.",
+        "concurrency": "P2W-03: burst событий при активном вводе — draft не повреждён, один writer, prompt остаётся редактируемым."
+      },
+      "non_goals": "Fullscreen/alternate screen, новые UI-механики сверх принятых RAI-061/062, второй runtime, изменение runtime-событий.",
+      "context": "RAI-061/062 accepted (TabShell, PTY-01..03 на TabShellPtyApp); gap docs/lineage.md §9.2 «TabShell-wiring в product REPL»; ADR-016/024."
+    },
+    {
+      "id": "RAI-103",
+      "title": "Per-tab drafts в продуктовом REPL (P2-остаток)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-102"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Draft каждой вкладки живёт в продуктовом shell-цикле: ввод, стриминг и фоновый вывод не теряют байты строки при switch/back; drafts изолированы по вкладкам; закрытие вкладки с draft предлагает hide/cancel и не трогает чужие drafts.",
+      "acceptance": {
+        "normal": "P2D-01: переключение A→B→A сохраняет draft A байт-в-байт в продуктовом REPL (PTY).",
+        "error": "P2D-02: close вкладки с draft — подсказка hide/cancel; отказ сохраняет draft.",
+        "concurrency": "P2D-03: 20 streaming mock jobs при активном вводе — draft стабилен, prompt редактируем (UX02)."
+      },
+      "non_goals": "Новая draft-механика в modules/ui (принята в RAI-061), fullscreen, удалённый UI.",
+      "context": "RAI-061 SHELL-01 (draft byte-exact на harness) принят; продуктовая поверхность не подключена — docs/lineage.md §9.2; UX02."
+    },
+    {
+      "id": "RAI-104",
+      "title": "Scrollback bounds в продуктовом REPL (P2-остаток)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-102"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Ограниченный scrollback вкладки рендерится в продуктовом shell: последние N строк Diagnostics/ToolProgress с видимым счётчиком вытеснения; границы держатся на продуктовом цикле, память ограничена, рендер после burst консистентен.",
+      "acceptance": {
+        "normal": "P2S-01: после 10k строк — окно последних N и eviction counter корректны в продуктовом REPL.",
+        "error": "P2S-02: scrollback неизвестной вкладки — typed error, без фантомных вкладок.",
+        "concurrency": "P2S-03: параллельные burst'ы в разные вкладки — bounds держатся, потерь/дублей строк нет."
+      },
+      "non_goals": "Изменение SessionRegistry scrollback-контракта (принят RAI-057), unbounded режимы.",
+      "context": "RAI-057 ScrollbackView+eviction приняты; продуктовый рендер не подключён — docs/lineage.md §9.2; UX07."
+    },
+    {
+      "id": "RAI-105",
+      "title": "Unread badges в продуктовом REPL (P2-остаток)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-102"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
+      "behavior": "Tab bar продуктового shell показывает unread badge из TabStatusChanged-событий: события фоновой вкладки увеличивают счётчик, фокус сбрасывает; 0 подавлен; рендер атомарный (один writer, без tear).",
+      "acceptance": {
+        "normal": "P2U-01: события в фоновой вкладке увеличивают badge, фокус сбрасывает (PTY).",
+        "error": "P2U-02: событие неизвестной вкладки — typed handling, фантомных вкладок нет.",
+        "concurrency": "P2U-03: burst в несколько вкладок — счётчики консистентны, рендер без разрывов."
+      },
+      "non_goals": "Новая семантика unread в SessionRegistry (принята RAI-057), звук/OS-уведомления.",
+      "context": "RAI-057 unread + TabBarRenderer badge приняты; продуктовая поверхность не подключена — docs/lineage.md §9.2; UX05."
+    },
+    {
+      "id": "RAI-106",
+      "title": "Palette/help в продуктовом REPL (P2-остаток)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-102"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/repl/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "docs"
+      ],
+      "behavior": "Palette команд и help/hint bar продуктового shell: доступные shell-команды чата и вкладок доступны ≤2 нажатий, поиск по префиксу; help перечисляет реально зарегистрированные команды (freshness-тест); неизвестная команда — typed error с ближайшей подсказкой.",
+      "acceptance": {
+        "normal": "P2P-01: palette находит и исполняет команду ≤2 нажатий; help актуален.",
+        "error": "P2P-02: неизвестная команда — typed error с подсказкой; shell жив.",
+        "concurrency": "P2P-03: palette при активном стриминге — рендер не рвёт строку ввода, один writer."
+      },
+      "non_goals": "Fullscreen UI, mouse-управление, конфигурируемые keymaps (отдельная карточка).",
+      "context": "CommandRouter/ShellCommand (:plugins/:state, RAI-088) приняты; palette/help на продуктовой поверхности отсутствует — docs/lineage.md §9.2; UX04."
+    },
+    {
+      "id": "LIN-09",
+      "title": "Запись lineage-артефактов рядом с продовым раном",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-03"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "HeadlessRunner при settle пишет lineage.scala (проекция) и lineage-data.json рядом с events.jsonl/summary рана; запись атомарная в каталог рана; сбой проекции/записи не меняет exit-код рана, но честно отражается в summary; формат chat==headless.",
+      "acceptance": {
+        "normal": "LIN9-01: продовый ран оставляет валидные lineage.scala + lineage-data.json (frozen schema, compile-gate зелёный на артефактах).",
+        "error": "LIN9-02: сбой проекции — typed диагностика в summary; ран завершается штатным exit-кодом.",
+        "concurrency": "LIN9-03: параллельные раны — артефакты в разных каталогах ранов, без пересечений (atomic per-run)."
+      },
+      "non_goals": "Каталог кампаний (LIN-08 scan/persistence), live-wire, изменение frozen lineage-schema.",
+      "context": "docs/lineage.md §9.2 «Запись артефактов в каталог рана» и §10; обязательство LIN-03; ADR-027."
+    },
+    {
+      "id": "LIN-10",
+      "title": "CLI-командная поверхность replay",
+      "milestone": "LIN",
+      "dependencies": [
+        "LIN-05"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "docs/lineage.md"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "docs"
+      ],
+      "behavior": "Standalone CLI-вход replay-цепочки: флаги/команда запускают ReplayHarness по lineage-data.json из рана/каталога, выводят вердикт Match/Mismatch с первым расходящимся узлом и graph-hash, exit-код различает исходы; recorded-only, без модельных вызовов.",
+      "acceptance": {
+        "normal": "LIN10-01: replay по артефактам LIN-09 — Match + graph-hash; Mismatch печатает первый расходящийся узел.",
+        "error": "LIN10-02: отсутствующий/битый lineage-data.json — typed error и невалидный (не нулевой) exit.",
+        "concurrency": "LIN10-03: параллельные replay — изолированные workspace (verifyUntouched), без общих записей."
+      },
+      "non_goals": "Live-модель за replay (LIN-06), изменение ReplayHarness-контракта, второй runner/scheduler.",
+      "context": "docs/lineage.md §9.2 «CLI-командная поверхность replay»; ReplayHarness/ReplayModelBackend готовы (§9.1, LIN5-01 end-to-end); ADR-027."
     }
   ]
 }
