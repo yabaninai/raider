@@ -1,46 +1,41 @@
 package raider.repl
 
-import org.jline.reader.{Candidate, Parser}
-import org.jline.reader.impl.DefaultParser
 import raider.ui.CommandRouter
 import zio.test._
-import scala.jdk.CollectionConverters.*
 
 /** RAI-106 unit fixtures for the TAB palette (P2P-01): candidate sets over the
-  * registered catalog via the real JLine parser path (DefaultParser — the
-  * parser the palette LineReader is built with), and inertness outside
-  * `:`-words.
+  * registered catalog through the pure lookup the completer delegates to, and
+  * inertness outside `:`-words. The real JLine TAB path is exercised end to end
+  * by the PTY fixtures (TabShellPalettePtySpec).
   */
 object PaletteCompleterSpec extends ZIOSpecDefault:
-
-  private def candidatesFor(text: String, cursor: Int): Vector[String] =
-    val parsed =
-      new DefaultParser().parse(text, cursor, Parser.ParseContext.COMPLETE)
-    val buffer = new java.util.ArrayList[Candidate]()
-    new PaletteCompleter().complete(null, parsed, buffer)
-    buffer.asScala.toVector.map(_.value)
 
   def spec =
     suite("PaletteCompleterSpec (RAI-106: TAB palette over the catalog)")(
       test("unique prefix completes to the one registered command") {
-        assertTrue(candidatesFor(":pl", 3) == Vector(":plugins")) &&
-        assertTrue(candidatesFor(":he", 3) == Vector(":help")) &&
-        assertTrue(candidatesFor(":sw", 3) == Vector(":switch"))
+        assertTrue(PaletteCompleter.candidates(":pl") == Vector(":plugins")) &&
+        assertTrue(PaletteCompleter.candidates(":he") == Vector(":help")) &&
+        assertTrue(PaletteCompleter.candidates(":sw") == Vector(":switch"))
       },
       test("empty command word lists the whole registered catalog") {
-        val all = candidatesFor(":", 1)
+        val all = PaletteCompleter.candidates(":")
         assertTrue(all == ShellPalette.commands) &&
         assertTrue(all.toSet == CommandRouter.commands.toSet)
       },
       test("no candidates outside ':'-words (TAB stays inert)") {
-        assertTrue(candidatesFor("", 0).isEmpty) &&
-        assertTrue(candidatesFor("val x", 5).isEmpty) &&
-        assertTrue(candidatesFor(":switch al", 10).isEmpty) &&
-        assertTrue(candidatesFor("привет", 6).isEmpty)
+        assertTrue(PaletteCompleter.candidates("").isEmpty) &&
+        assertTrue(PaletteCompleter.candidates("val x").isEmpty) &&
+        assertTrue(PaletteCompleter.candidates(":switch al").isEmpty) &&
+        assertTrue(PaletteCompleter.candidates("привет").isEmpty)
       },
-      test("mid-word cursor only sees the text up to the caret") {
-        assertTrue(candidatesFor(":plugins", 4) == Vector(":plugins")) &&
-        assertTrue(candidatesFor(":state", 3) == Vector(":state"))
+      test("only the trailing token matters (caret semantics)") {
+        assertTrue(
+          PaletteCompleter.candidates(":plugins") == Vector(":plugins")
+        ) &&
+        assertTrue(PaletteCompleter.candidates(":state") == Vector(":state")) &&
+        assertTrue(
+          PaletteCompleter.candidates(":tabs :ne") == Vector(":new", ":next")
+        )
       }
     )
 

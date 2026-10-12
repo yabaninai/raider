@@ -17,6 +17,25 @@ import org.jline.reader.{Candidate, Completer, LineReader, ParsedLine}
   * completion redraw and `printAbove` through the reader's lock, and any
   * completer surprise degrades to zero candidates, never a crash.
   */
+object PaletteCompleter:
+
+  /** Candidates for the text up to the caret (pure — spec-tested; the PTY
+    * fixtures exercise the real TAB path end to end).
+    */
+  def candidates(textUpToCursor: String): Vector[String] =
+    val word = wordAt(textUpToCursor)
+    if word.startsWith(":") then ShellPalette.complete(word) else Vector.empty
+
+  /** The trailing whitespace-delimited token up to the caret — the region the
+    * default JLine parser reports as the current word, so candidate insertion
+    * replaces exactly this token.
+    */
+  private def wordAt(text: String): String =
+    val cut = math.max(text.lastIndexOf(' '), text.lastIndexOf('\t'))
+    if cut < 0 then text else text.substring(cut + 1)
+
+end PaletteCompleter
+
 final class PaletteCompleter extends Completer:
 
   override def complete(
@@ -25,20 +44,11 @@ final class PaletteCompleter extends Completer:
       candidates: java.util.List[Candidate]
   ): Unit =
     try
-      val text = line.line().substring(0, line.cursor())
-      val word = trailingWord(text)
-      if word.startsWith(":") then
-        ShellPalette.complete(word).foreach(c => candidates.add(Candidate(c)))
+      PaletteCompleter
+        .candidates(line.line().substring(0, line.cursor()))
+        .foreach(c => candidates.add(Candidate(c)))
     catch
       case _: Exception =>
         candidates.clear() // defensive: a broken palette must not kill the loop
-
-  /** The trailing whitespace-delimited token up to the caret — the region the
-    * default JLine parser reports as the current word, so candidate insertion
-    * replaces exactly this token.
-    */
-  private def trailingWord(text: String): String =
-    val cut = math.max(text.lastIndexOf(' '), text.lastIndexOf('\t'))
-    if cut < 0 then text else text.substring(cut + 1)
 
 end PaletteCompleter
