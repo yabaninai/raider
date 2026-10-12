@@ -220,6 +220,28 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
         Thread.sleep(120)
       cleaned.contains(substr)
 
+    /** Coordinator determinism fix 2026-10-12 (contract-change from RAI-105):
+      * the settled report proves the FEEDER delivered every event, but the
+      * app's bar renders can still be in flight when :quit is typed — its echo
+      * then glues into a torn bar row (flaky bad==1). Quiescence (transcript
+      * byte-stable for `stable` while the driver is not typing) is the honest
+      * drain signal: a mid-stream badge count is timing-dependent (events
+      * delivered to a FOCUSED tab do not bump unread), so no badge marker is
+      * deterministic here.
+      */
+    def waitQuiet(stable: Duration, timeout: Duration): Boolean =
+      val deadline = JSystem.nanoTime() + timeout.toNanos
+      var lastLen = cleaned.length
+      var lastQuiet = JSystem.nanoTime()
+      while JSystem.nanoTime() < deadline do
+        val cur = cleaned.length
+        if cur != lastLen then
+          lastLen = cur
+          lastQuiet = JSystem.nanoTime()
+        if JSystem.nanoTime() - lastQuiet >= stable.toNanos then return true
+        Thread.sleep(150)
+      false
+
     def waitForReport(
         pred: PtyReport => Boolean,
         timeout: Duration
@@ -358,6 +380,7 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
       )
       s.send(":tabs\r")
       val promptLive = s.waitFor("*1. alpha [", 15.seconds)
+      val drained = s.waitQuiet(1500.millis, 30.seconds)
       s.send(":quit\r")
       val code = s.finishWait(30.seconds)
       val text = s.cleaned
@@ -377,6 +400,7 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
           "draftA2" -> boolJson(draftA2),
           "reportSettled" -> boolJson(rep.isDefined),
           "promptLive" -> boolJson(promptLive),
+          "drained" -> boolJson(drained),
           "barRows" -> rows.toString,
           "barRowsMalformed" -> bad.toString,
           "exit" -> code.toString
@@ -392,6 +416,7 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
       assertTrue(echoA == 1 && echoB == 1) &&
       assertTrue(rep.isDefined) &&
       assertTrue(promptLive) &&
+      assertTrue(drained) &&
       assertTrue(rows >= 300) &&
       assertTrue(bad == 0) &&
       assertTrue(code == 0)
