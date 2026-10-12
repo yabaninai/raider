@@ -119,7 +119,7 @@ def classpath() -> str:
             return cp
     # Fallback: resolve via sbt (dedicated coursier cache), then cache.
     env = dict(os.environ)
-    env["COURSIER_CACHE"] = COURSIER_CACHE
+    env.setdefault("COURSIER_CACHE", COURSIER_CACHE)
     res = subprocess.run(
         ["sbt", "--batch", "export raiderRepl/Test/fullClasspath"],
         capture_output=True, text=True, env=env, cwd=ROOT, timeout=600)
