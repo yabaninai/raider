@@ -60,6 +60,15 @@ object ReplChatCommands:
       ":log <id>",
       "show the trace (rounds, tools, results) of a job"
     ),
+    // RAI-124: :type left the "Not in this slice" prose — it is a dispatched
+    // command now (Commands.handle forwards to the dotty driver's own :type,
+    // which compiles the expression without running it). The freshness
+    // equality in ReplChatPaletteSpec pins this entry against helpText.
+    Command(
+      ":type",
+      ":type <expression>",
+      "the type of an expression, compiled but not run"
+    ),
     // RAI-110 added the plan-approval lines to Commands.helpText (the chat
     // surface); the freshness registry follows the source of truth (the
     // integrated-candidate break the RAI-111 reviewer predicted).
