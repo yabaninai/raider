@@ -11,7 +11,8 @@ import zio.json.JsonDecoder
 import zio.json.ast.Json
 import zio.{Runtime, Unsafe}
 
-import java.nio.file.Path
+import java.io.IOException
+import java.nio.file.{Files, NoSuchFileException, Path}
 
 /** Typed failure of the LIN-06D isolated re-run pipeline (packet R4, ADR-027 §2
   * «live re-run»). The layers of [[IsolatedRerun.rerun]] propagate as DATA,
@@ -335,6 +336,13 @@ object IsolatedRerun:
     *
     * A ReadOnly record needs no isolation: `Right(())` without checks (the
     * replay-recorded default contract, LIN-10 precedent).
+    *
+    * Canonical identity (RAI-120, review finding LIN-15): the in-place refusal
+    * compares `target` against `original` through [[isCanonicalAlias]] —
+    * device/inode identity ([[Files.isSameFile]]), not syntactic `Path`
+    * equality — so a syntactic alias (`ws/../ws`) or a symlink alias of the
+    * original is refused like literal in-place, BEFORE the byte check could
+    * pass it as a «faithful copy».
     */
   def requireIsolatedTarget(
       recorded: LineageDataDocument,
@@ -343,8 +351,10 @@ object IsolatedRerun:
   ): Either[RerunError, Unit] =
     val tools = mutatingTools(recorded)
     if tools.isEmpty then Right(())
-    else if target == original then
-      Left(RerunError.MutatingUnisolated(tools)) // replay in place
+    else if isCanonicalAlias(target, original) then
+      Left(
+        RerunError.MutatingUnisolated(tools)
+      ) // replay in place (aliases too)
     else
       try
         val before = WorkspaceIsolation.snapshot(original)
@@ -356,6 +366,23 @@ object IsolatedRerun:
           // snapshot guard refusal (symlink/special/bound) — carried typed,
           // the same discipline as [[IsolatedRerun.snapshotOriginal]]
           Left(RerunError.Snapshot(String.valueOf(error.getMessage)))
+
+  /** Canonical identity of `target` vs `original` (RAI-120):
+    * [[Files.isSameFile]] — the directory-entry-level comparison that syntactic
+    * `Path` equality misses. Case discipline:
+    *   - syntactic alias / symlink alias of the original → `true` (refused
+    *     in-place by the guard);
+    *   - a MISSING path → `false`: honestly not the original — the byte check
+    *     in [[requireIsolatedTarget]] then refuses it typed
+    *     ([[RerunError.MutatingUnisolated]]), never a silent pass;
+    *   - an undecidable IO failure → `true`: the guard FAILS CLOSED — a
+    *     mutating replay is never risked on an unknown identity answer.
+    */
+  private def isCanonicalAlias(target: Path, original: Path): Boolean =
+    try Files.isSameFile(target, original)
+    catch
+      case _: NoSuchFileException => false // missing path: not the original
+      case _: IOException         => true // undecidable: refuse (fail closed)
 
   /** The tool names of a recorded response's `tool_calls` envelope, if it IS
     * one (the same record convention [[ReplayModelBackend]] replays: a JSON
