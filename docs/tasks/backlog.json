@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 135,
+  "raider_count": 137,
   "companion_count": 3,
   "cards": [
     {
@@ -3930,6 +3930,61 @@
       },
       "non_goals": "modules/ui/** (frozen CommandRouter/resolveTab), изменение семантики :switch, новые команды, chat-модуль.",
       "context": "RAI-113 review finding 1: пользователи, выучившие :switch, получат другое разрешение числовых токенов; будущая унификация — общий helper (contract-touching, отдельное решение)."
+    },
+    {
+      "id": "RAI-122",
+      "title": "tabs_pty_probe: синхронизация с ADR-024 honest-unknowns status-text",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-112",
+        "RAI-062"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/tabs_pty_probe.py",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "docs"
+      ],
+      "behavior": "RAI-112 M1R-01 blocker: frozen probe scripts/quality/tabs_pty_probe.py ждёт legacy-статус («ROW_RE» :92 и wait_for(\"*1. tab1 [Running]\") :348), а продукт с 6897827 (P-LIN W7-W21, ADR-024 honest-unknowns) рендерит honest-статусы вида «[queued | cost unknown]»; продуктовые тесты (TabShellSpec:289) ассертят новый формат — устарел probe, не продукт. Фикс probe: паттерны статусов приведены к ADR-024-формату (все допустимые honest-статусы, без ослабления функциональных оракулов: drafts byte-exact, 1105 событий, losses=0, hub_dropped=0, scrollback 220, eviction), all_pass-критерий сохранён; изменение ЗАЩИЩЁННОГО верификатора — с независимым review; продуктовый код не трогается.",
+      "acceptance": {
+        "normal": "PROBE-01: tabs_pty_probe.py на интегрированном кандидате — all_pass=true (PTY-01/02/03), свежие транскрипты/summary в artifacts/tabs-pty/.",
+        "error": "PROBE-02: негативный контроль — инжектированный дефект (потеря событий/битый draft) по-прежнему ловится probe'ом (негатив остаётся негативом; выполняется на временной копии дерева, не в product).",
+        "concurrency": "PROBE-03: повтор прогона ×3 — стабильный all_pass; оракулы функционального ядра не ослаблены (дифф только в статус-паттернах + сопутствующих сообщениях)."
+      },
+      "non_goals": "Продуктовый код,modules/ui, ослабление функциональных оракулов probe (счётчики/байтовые сравнения), вторая реализация probe, изменение gate policy/registry.",
+      "context": "RAI-112 lane (2e11c51): PTY-01 FAIL 2/2 — байтовая причина установлена (probe ROW_RE :92, wait_for :348); функциональное ядро E1 подтверждено продуктовой стороной. Прецедент: M1-DEMO PTY all_pass был зелёным до ADR-024 honest-unknowns."
+    },
+    {
+      "id": "RAI-123",
+      "title": "PlanPanel outcome scoping: per-job outcomeRef (кандидат по reviewer-риску RAI-119)",
+      "milestone": "P2",
+      "dependencies": [
+        "RAI-119",
+        "RAI-110"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "runtime"
+      ],
+      "behavior": "УСЛОВНАЯ карточка (триггер: рецидив wave-4 класса на интегрированном кандидате ПОСЛЕ RAI-119): два daemon-watcher'а PlanPanel пишут в один приватный outcomeRef в произвольном порядке — потенциальная harness-гонка (RAI-119 reviewer: fix превентивный, реальный механизм wave-4 flake мог быть «approve2 не дошёл до startExecution»). Исполнение ТОЛЬКО при воспроизведённом рецидиве на кандидате: reproducer (нагрузочный стенд RAI-119) → per-job скоупинг outcomeRef в PlanPanel (продуктовый код) → reproducer зелёный ×10 под нагрузкой; существующие PLANUI/PLAN-фикстуры не ослабляются. Без рецидива карточка закрывается как not-triggered с записью наблюдений — без продуктовых правок.",
+      "acceptance": {
+        "normal": "PPS-01: reproducer рецидива зафиксирован (лог/манифест) ДО фикса; после фикса — 10/10 под нагрузкой.",
+        "error": "PPS-02: если рецидива нет — record с числом попыток и наблюдениями, продуктовый diff отсутствует; карточка не «passed», а not-triggered.",
+        "concurrency": "PPS-03: PLAN-спеки RAI-107/114 и PLANUI-спеки RAI-110 зелёные ×3; семантика PlanSession не изменена."
+      },
+      "non_goals": "Изменение PlanSession.approve/reject-семантики (RAI-107 frozen), ADR-028, вторая панель, UI-слой.",
+      "context": "RAI-119 review, риск 1: wave-4 класс не воспроизведён (18 попыток), фикс превентивный; рецидив на 8-lane интеграции возможен. Не добавлять продуктовые правки без воспроизведённого reproducer."
     }
   ]
 }

@@ -174,3 +174,5 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-119** [PTY-детерминизм под нагрузкой: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec](m2-p2.md); dependencies: RAI-110, RAI-105, RAI-113; profiles: static, unit, repl, runtime.
 - **RAI-120** [IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)](lineage.md); dependencies: LIN-15; profiles: static, unit, contracts, runtime.
 - **RAI-121** [:scrollback precedence — согласование с frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
+- **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (кандидат по reviewer-риску RAI-119)](m2-p2.md); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
+- **RAI-122** [tabs_pty_probe: синхронизация с ADR-024 honest-unknowns status-text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
