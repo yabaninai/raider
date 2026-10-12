@@ -63,10 +63,15 @@ object ReplChatPaletteSpec extends ZIOSpecDefault:
           assertTrue(names.contains(":reset"))
         },
         test("out-of-slice names never enter the catalog via prose") {
-          // ":type" appears in the "Not in this slice" line — the strict
-          // command-line parser must not pick it up as a palette entry.
-          assertTrue(!ShellPalette.chatCommands.contains(":type")) &&
-          assertTrue(Commands.helpText.contains("Not in this slice: :type"))
+          // ":kind"/":doc" appear only in the "Not in this slice" line — the
+          // strict command-line parser must not pick them up as palette
+          // entries. RAI-124: ":type" LEFT that line — it is a dispatched
+          // command now (the freshness equality above pins it against
+          // helpText).
+          assertTrue(!ShellPalette.chatCommands.contains(":kind")) &&
+          assertTrue(!ShellPalette.chatCommands.contains(":doc")) &&
+          assertTrue(ShellPalette.chatCommands.contains(":type")) &&
+          assertTrue(Commands.helpText.contains("Not in this slice:"))
         }
       ),
       suite("derived lookup surfaces")(
