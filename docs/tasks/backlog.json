@@ -3143,7 +3143,7 @@
       },
       "non_goals": "См. docs/tasks/lineage.md карточку.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "accepted"
     },
     {
       "id": "LIN-06",
@@ -3233,7 +3233,7 @@
         "RAI-061",
         "RAI-062"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/repl/src/main/scala/raider/repl/**",
@@ -3375,7 +3375,7 @@
       "dependencies": [
         "LIN-03"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/**"
@@ -3402,7 +3402,7 @@
       "dependencies": [
         "LIN-05"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/**",
         "modules/cli/src/test/scala/raider/cli/**",
@@ -3430,7 +3430,7 @@
       "dependencies": [
         "LIN-02"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/lineage/proj/**",
         "modules/dsl/src/test/scala/raider/dsl/lineage/**",

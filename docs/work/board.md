@@ -53,6 +53,26 @@ TabShell→REPL wiring (RAI-062-смежное), multi-job export (owner-реш�
 M1-evidence card RAI-099 (coordinator), phase/recovery schema-card (wave-3,
 owner), live-wire verification (владелец: endpoint/бюджет).
 
+## Spawn campaign 2026-10-12 (visible agents, §1b; coordinator)
+
+Волна 1 (spawn-режим, 4 lanes): **W13-review LIN-05D approve** (независимый
+reviewer, RecordedSourceSpec 11/11 воспроизведены); **LIN-09** lineage-артефакты
+ряда рана (RunLineageArtifacts + 6 тестов; reviewer approve; contract-change →
+LIN-11); **LIN-10** standalone replay CLI (ReplayCli; reviewer approve;
+integrated-gate поймал forbidden System.exit → integration-fix 60bccc5:
+sanctioned ZIOAppDefault entry `ReplayCliMain`, process-смок exit 21
+воспроизведён); **RAI-102** TabShell в продуктовом REPL (contract-change
+исполнен: build.sbt edge raiderRepl→raiderUi; TabShellHost + настоящие PTY
+P2W-01..03; reviewer approve); **LIN-11** LineageRenderer `()` closer для
+def-free графов (reviewer approve). Интеграция: main 60bccc5, merges
+978194a/3f050e0/af4ff7f/56f244e. Integrated gates на кандидате 150700f:
+quality-full passed 10/10 (manifest 20261012-050132-69438-0001) + профили
+static/unit/contracts/ci/docs/runtime/repl/security passed 9/9 (manifest
+20261012-050347-70594-0001). Открытое (owner): live-wire, multi-job export,
+phase/recovery schema-card; follow-up: wiring TabShellHost в Main.ttyLoop,
+wiring ReplayCli в продукт-команду `raider`. Волна 2: RAI-103..106
+(P2-остатки: drafts/scrollback/unread/palette-help на продуктовой поверхности).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
