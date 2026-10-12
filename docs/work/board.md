@@ -205,6 +205,37 @@ RAI-117 (canonical-path guard), RAI-118 (:scrollback/:switch precedence).
 Одновременно на main независимо лег SDK-research трек (3a60f93…318fcf4,
 RAI-115) — сохранил, конфликтов с волной 4 нет.
 
+**Волна 4b (spawn-режим §1b, base 9a43224 → main 6790c6f):** RAI-116..118
+перенумерованы при регистрации в RAI-119..121 (коллизия с SDK-треком,
+взявшим RAI-116/117). Lanes и вердикты: **RAI-119** PTY-детерминизм (3
+тест-файла; драйвер-infra att1 reproducer: evidence-dir до старта child;
+PlanPanel drain+refresh-retry; TabShellUnreadPty waitQuiet-drain + fresh-render
+retry run9; PTYD-01/02 10/10 под load 156–164, PTYD-03 raiderRepl ×3 +
+full sbt test; review approve; честно: PlanPanel wave-4 класс не воспроизведён
+за 18 попыток — фикс превентивный, рецидив → условная RAI-123);
+**RAI-120** IsolatedRerun canonical-path guard (isSameFile до байт-проверки,
+fail-closed на missing/IO; ISO-01..03; review approve; minors: типизация
+guard-отказов огрублена — учесть в LIN-15 wiring-карточке);
+**RAI-121** :scrollback digit-first precedence (сверен построчно с frozen
+:switch, ассерты не правились — UUID never all-digit; SCB-01..03; review
+approve; в lane верифицирован partial мёртвого rate-limit spawn — второй
+случай инцидента, паттерн воспроизводим); **RAI-112** M1-evidence refresh —
+M1R-01 BLOCKED: frozen tabs_pty_probe ждёт legacy `[Running]`, продукт
+рендерит ADR-024 honest-статусы → **RAI-122** (защищённый верификатор:
+ROW_RE = грамматика StatusText, ok_live → «[running | cost unknown]», :aux в
+HINT_BAR, pump-guard перед :quit; review approve по обоим scope-пунктам,
+негативный контроль PROBE-02 держит); M1R-01 повторён на кандидате ×3
+all_pass → **RAI-112 done** (addendum в record).
+Интеграция: merges 81dad02/8829796/8809e16/05bbe60/7fd2776; evidence RAI-119
+(artifacts/rai-119) и RAI-122 (artifacts/rai-122-evidence) перенесены в root.
+Integrated gates на кандидате 7fd2776: EXECUTE 10/10 (manifest
+20261012-233255-59159-0001, полный sbt test без флейков), профили
+static/unit/contracts/ci/docs/runtime/repl/security 9/9 (manifest
+20261012-233800-62893-0001); validate 140 cards. Открытое: RAI-123
+(условная, по рецидиву PlanPanel-гонки), LIN-06 live-wire/multi-job/
+schema-card (owner), P2S-рендер — закрыт RAI-113; eval-профиль plan-режима —
+corpus готов (RAI-114), регистрация профиля в working-product stage.
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
@@ -252,7 +283,11 @@ RAI-115) — сохранил, конфликтов с волной 4 нет.
 | RAI-113 :scrollback consumer | accepted | [record](records/RAI-113.md); P2SR-01..03 PTY; review approve; precedence → RAI-118 |
 | RAI-114 plan-mode eval corpus | accepted | [record](records/RAI-114.md); PEVAL-01..03 ×3; review approve |
 | W22-R8 replay sweep | accepted | [record](records/W22-R8.md); 50-seed deterministic ×3; review R1-R3 fixes, re-review approve |
-| RAI-112 M1 evidence refresh | in-progress | lane на интегрированном кандидате (волна 4b) |
+| RAI-112 M1 evidence refresh | accepted | [record + addendum](records/RAI-112.md); M1R-01..03 met на 7fd2776 (probe ×3 all_pass после RAI-122) |
+| RAI-119 PTY-детерминизм | accepted | [record](records/RAI-119.md); PTYD-01/02 10/10 под нагрузкой; review approve; рецидив → RAI-123 |
+| RAI-120 IsolatedRerun guard | accepted | [record](records/RAI-120.md); ISO-01..03 fail-closed; review approve |
+| RAI-121 :scrollback precedence | accepted | [record](records/RAI-121.md); SCB-01..03, digit-first = :switch; review approve |
+| RAI-122 tabs_pty_probe sync | accepted | [record](records/RAI-122.md); PROBE-01..03; защищённый верификатор, review approve |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | M1 | accepted-pending-owner-note | [M1-ACCEPTANCE.md](records/M1-ACCEPTANCE.md) (evidence compiled) |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |
