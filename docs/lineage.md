@@ -2,7 +2,8 @@
      Контракт: ADR-027 (docs/adr/ADR-027-session-lineage.md) и карточки
      P-LIN (docs/tasks/lineage.md). Новых продуктовых решений не вносит.
      Команды/пути сверены с modules/cli (CliArgs.scala, HeadlessRunner.scala,
-     EventExport.scala), events — raider.runtime.events (ADR-024 §5). -->
+     EventExport.scala, ReplayCli.scala), events — raider.runtime.events
+     (ADR-024 §5). -->
 
 # Session lineage: дерево вызовов как валидная Scala-программа
 
@@ -265,6 +266,11 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
   `modules/cli/src/main/scala/raider/cli/lineage/RunDiffReport.scala`
 - каталог деревьев (scan runsRoot → verifyPartial-статусы, chat==headless) —
   `modules/cli/src/main/scala/raider/cli/lineage/LineageCatalog.scala`
+- standalone replay-вход (LIN-10): CLI-команда над `ReplayHarness` — вердикт
+  Match/Mismatch + graph-hash + первый расходящийся узел, typed-ошибки
+  (`StoreError`/`IsolationError`/`RaiderError`/`ReduceError`), exit-коды по
+  ci-runtime §8, изоляция workspace (`verifyUntouched`) —
+  `modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala` (§10)
 
 Каждый слой покрыт behavioral-спеками рядом с кодом
 (`modules/*/src/test/scala/**/lineage/**`).
@@ -279,7 +285,7 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 | Phase/recovery schema-card | Wire-события frozen (13 cases): Phase-узлы строит модель/редуктор, RecoveryClass — статическая таксономия tool-name→класс; wire-расширение — schema-card с independent review, не начата |
 | TabShell-wiring в product REPL | `LineageTab`-provider и `:aux`-seam есть и покрыты тестами, но продуктовый REPL (`modules/cli/chat`) вкладку не подключает |
 | Запись артефактов в каталог рана | HeadlessRunner пишет `events.jsonl` + lineage-строку в summary; `lineage.scala`/`lineage-data.json` рождаются в golden/тестах и compile-gate — продовый ран их рядом с рансом ещё не пишет (обязательство LIN-03/08, §10) |
-| Прочее, честно | `LineageCatalog` — scan без persistence; конкурентное чтение проекции (LIN2-03) покрыто частично; CLI-командная поверхность replay (флаги/команды) не вводилась — replay-цепочка пока библиотечный слой `raider.cli.lineage`, не продукт-команды |
+| Прочее, честно | `LineageCatalog` — scan без persistence; конкурентное чтение проекции (LIN2-03) покрыто частично; replay-команда есть как **standalone-вход** `raider.cli.lineage.ReplayCli` (LIN-10, свой argv/exit-коды, §10), но в продукт-команду `raider` она ещё не вписана — wiring общего CLI отдельная карточка |
 
 Карточки P-LIN — `docs/tasks/lineage.md`; контракт — ADR-027. Compile-сторона
 гейта LIN реализована (`LineageCompileGateSpec`); полные milestone-обязательства
@@ -294,6 +300,7 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 | `<out>/work-<uuid>/` — каталог рана; `run.json`, `events.jsonl`, `summary.md`, `transcript.json` | `HeadlessRunner.writeArtifacts` / конкатенация `--out` + `work-<uuid>` (`modules/cli/run/HeadlessRunner.scala`) |
 | `events.jsonl` — per-job `EventEnvelope`, schemaVersion 1, дубликаты отброшены | `EventExport.jsonl` (`modules/cli/run/EventExport.scala`) |
 | `artifacts/<run>/lineage.scala`, `artifacts/<run>/lineage-data.json` — рядом с рансом, в evidence-fingerprint | Решение ADR-027 §2; запись в каталог рана — обязательство P-LIN (LIN-03/08) |
+| `ReplayCli [replay] <run-dir> --workspace <dir> [--data <file>]` — standalone replay-recorded вход (LIN-10): читает `<run-dir>/lineage-data.json` (или `--data`), изолирует одноразовую копию `--workspace` (`WorkspaceIsolation.isolate`+`verifyUntouched`), проигрывает запись через `ReplayHarness` (recorded-only, модельных вызовов нет), печатает вердикт | `ReplayCli` (`modules/cli/lineage/ReplayCli.scala`): stdout — `verdict: match` + нормализованный graph-hash, либо `verdict: mismatch` + `RunDiffReport` (первый расходящийся узел, оба hash); stderr — `typed-error: …`; exit-коды по ci-runtime §8 (`raider.core.result.ExitCodes`): 0 = Match, 10 = Mismatch, 21 = битый/отсутствующий data.json (typed `StoreError.Missing`/`Corrupt`), 20/22/23/24/26 — остальные typed-исходы (`RaiderError`/`ReduceError`/изоляция); параллельные replay — уникальные staging-каталоги, оригинал не пишется (LIN10-03) |
 
 Примеры:
 
@@ -302,12 +309,18 @@ P2 вперёд — решение владельца, ADR-027 §3.3):
 raider run --agent coder --input "Исправь regression и запусти проверки" \
   --out artifacts/<run> --mock
 
-# replay-recorded (по умолчанию) и гибрид — командная поверхность replay
-# определяется карточками LIN-05/07; этот документ не вводит новых флагов.
+# replay-recorded — standalone-вход LIN-10 (recorded-only, без модельных вызовов):
+java -cp <cli-classpath> raider.cli.lineage.ReplayCli artifacts/<run> \
+  --workspace <workspace-рана>
+#   verdict: match   + graph-hash, exit 0
+#   verdict: mismatch + первый расходящийся узел, exit 10
+#   typed-error (битый/отсутствующий lineage-data.json), exit 21
+# (вписывание в продукт-команду `raider` — отдельная карточка, `run/**` — другая lane)
 ```
 
-Флаги replay/live в этом документе **не придумываются**: командная поверхность
-воспроизведения фиксируется карточками LIN-05–07 и сменой публичного контракта
+Флаги replay/live в продукт-команду `raider` этим не вводятся: standalone-вход
+фиксирует свою поверхность в `raider.cli.lineage` (LIN-10); вписывание в общий
+CLI и live/гибрид-флаги — отдельные карточки и смена публичного контракта
 (отдельный ADR при необходимости).
 
 ## 11. Связанные документы
