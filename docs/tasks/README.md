@@ -5,7 +5,9 @@
 Актуальное уточнение 2026-10-03: [working target](../working-product.md), [parallel runbook](../parallel-development.md), [stage-aware gates](../quality-gates.md). Старые IDs сохранены; milestone приёмка и полезный coding-agent результат различаются.
 
 
-53 Raider cards и 3 optional Yabanin companion cards. Все имеют статус todo; это проверяемая программа разработки, а не выполненный board.
+Актуальные IDs, статусы и зависимости — в [backlog.json](backlog.json) и
+[execution board](../work/board.md). Исходные 53 Raider cards расширены последующими
+ревизиями; todo/ready/accepted определяются по текущим карточкам и их evidence.
 
 | Scope | Документ |
 | --- | --- |
@@ -167,3 +169,5 @@ Markdown содержит full contract, JSON канонический для ID
 - **RAI-113** [Scrollback render consumer в tabs-режиме (P2S consumer step)](m2-p2.md); dependencies: RAI-104, RAI-108; profiles: static, unit, repl.
 - **RAI-114** [Plan-mode eval fixtures: scripted scenario corpus (prereq eval-профиля)](m1.md); dependencies: RAI-107; profiles: static, unit, contracts.
 - **RAI-115** [Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)](m1.md); dependencies: нет; profiles: docs.
+- **RAI-116** [ADR: Scala workflow SDK для local/generic CI и host launch boundary](m1.md); dependencies: RAI-115; profiles: docs.
+- **RAI-117** [ADR: SDLC stages, configurable checkpoints и generic integration/release contract](m1.md); dependencies: RAI-116; profiles: docs.

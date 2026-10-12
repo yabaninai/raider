@@ -5,18 +5,24 @@
 Текущая очередность улучшений (2026-10-05): [план на 12 000 часов](roadmap-12k.md)
 и [prompt параллельного исполнения](prompts/opencode-12k-parallel.txt).
 Ревизия 2026-10-12: embedding SDK для Scala/ZIO встроен в P0/P4.C/P7/P10
-существующего roadmap (SDK-01–05); ближайший шаг — RAI-115 audit, затем
-отдельная ADR-карточка. Текущая lineage/TUI волна сохраняется; подробные
+существующего roadmap (SDK-01–05); RAI-115 audit принят, ближайший шаг —
+RAI-116 ADR. Текущая lineage/TUI волна сохраняется; подробные
 пользовательские руководства остаются поздней работой. Это план, не SDK release.
 Владелец подтвердил полностью open-source направление с существующей MIT/license
 policy; первый прикладной сценарий — CI, метрика пользы — внешнее использование.
+После дополнительного исследования владелец уточнил: удобный Scala DSL для
+AI-native SDLC, first path — один workflow локально и в generic local CI;
+первый target — код TokenRouter, gateway отдельно P11. Цель включает automatic
+commit/PR/merge и local tag/release artifacts, checkpoints задаются в workflow.
+Forge не выбран: contract + local stand сначала. Experimental preview до M4;
+RAI-115 audit → RAI-116 launch ADR → RAI-117 SDLC ADR, roadmap §6b/§6c.
 Runtime/CLI/REPL уже присутствуют в исходниках; исторические статусы ниже не actual
 inventory. Старые acceptance сохраняются; Yabanin/W17 — последняя фаза P11,
 после самостоятельного candidate P10. Общая W18 принимается после P11.
 
 Исходный план: 2026-10-02; execution revision: 2026-10-03. Есть feasibility spike, продуктовый runtime ещё не реализован. Actual status сверять по code и board.
 
-Итоговый scope: CI-primary; удобный реальный REPL; оба direct API protocols; optional Yabanin; 53 Raider cards и 3 optional companion cards. Текущий entrypoint: `opencode` → `/raider-finish` (`/raider-build` alias), [инструкция и prompt](handoff-opencode.md).
+Итоговый scope: CI-primary; удобный реальный REPL; оба direct API protocols; optional Yabanin; актуальные карточки и зависимости — в [backlog](tasks/backlog.json). Текущий entrypoint: `opencode` → `/raider-finish` (`/raider-build` alias), [инструкция и prompt](handoff-opencode.md).
 
 ## Уточнение после аудита 2026-10-03
 
@@ -69,7 +75,7 @@ python3 scripts/plan/validate.py --out artifacts/plan-review/report.json
 - Все примеры DSL и commands в пакете — целевые контракты. Их работоспособность надо доказать карточками и compiler/PTY gates.
 - Сначала RAI-001: проверка toolchain, headless execution и REPL embedding. Она может уточнить технический способ исполнения, но не упрощать REPL до парсера пары команд.
 - Bootstrap: RAI-001 → RAI-003 build → RAI-002 compile/schema contract → RAI-004 gates; затем vertical slice.
-- Нет автоматического push/deploy/merge: этот пакет описывает разработку и локальную приёмку.
+- SDK/SDLC-ревизия включает automatic commit/PR/merge по контракту RAI-117 и выбранной policy; первым принимается generic local stand, реальный forge adapter выбирается позже. Release — local tag и artifacts, без push release tag, package/image publication или deploy. Старая граница CI/runtime меняется отдельным ADR; текущее планирование не выполняет эти операции в TokenRouter.
 - Нативный минимальный agent loop нужен в MVP. Pi/OpenCode bridges добавляются следующим этапом; они не должны быть единственной возможностью запустить Raider.
 - Язык runtime — Scala. Python допустим для маленького переносимого quality runner/проверок metadata; он не становится агентным runtime.
 - Языковая политика (владелец, 2026-10-03): вся дальнейшая разработка — Scala 3 + ZIO. `modules/**`, `contracts/**`, `examples/**`, продуктовые tests и test-стенды — только Scala. Python ограничен: `scripts/plan/validate.py`, `scripts/quality/**` (runner RAI-004), glue `scripts/bootstrap.sh` и замороженные исторические `experiments/**`; Python не попадает в поставку и не растёт. Тестовые HTTP-стенды провайдеров пишутся на Scala (JDK built-in HttpServer) внутри модулей; допускается локально запущенный OpenAI-compatible стенд для тестов по явной конфигурации; платные удалённые endpoint'ы — только с owner cap.

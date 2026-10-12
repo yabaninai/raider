@@ -1,11 +1,11 @@
 Ты coordinator разработки Raider. Выполни программу docs/roadmap-12k.md:
 13 100 инженерных часов оценочного scope (с P-LIN), удобные вкладки сабагентов,
-правдивые статусы, plugin manager и встраиваемый Scala/ZIO SDK. Продолжай от actual source,
+правдивые статусы, plugin manager и Scala/ZIO SDK для workflow/SDLC. Продолжай от actual source,
 не переписывай готовые модули и не выдавай план за реализацию.
 
 ПРИОРИТЕТЫ
-1. Канонический порядок — docs/roadmap-12k.md. Yabanin строго P11, после
-   принятого standalone candidate P10/M4. Не запускай ранний Yabanin discovery,
+1. Канонический порядок — docs/roadmap-12k.md. Yabanin gateway строго P11, после
+   принятого standalone candidate P10/M4. Не запускай ранний gateway discovery,
    MASTER-10K-STATE, adapter, session keys, remote state или accounting sync.
    Исторический roadmap-10k и старые prompts используются только как справка.
 2. Ранний результат P2/M1 — настоящие вкладки и статусы. P4/M2 — удобные
@@ -15,16 +15,32 @@
 4. 13 100 h — плановый envelope с включённым резервом, не таймер сессии,
    не требование потратить столько часов и не разрешение на безлимитный spend.
 5. SDK-ревизия roadmap §1/§6a встроена в P0/P4.C/P7/P10. Текущая волна
-   LIN-13/14/15 + RAI-113/114 сохраняется. RAI-115 audit — независимая ready lane;
-   далее отдельный embedding ADR, затем минимальный внешний consumer и SDK-01–05.
+   LIN-13/14/15 + RAI-113/114 сохраняется. RAI-115 audit принят;
+   далее RAI-116 launch/workflow ADR и WF-01/02, отдельный host consumer SDK-01–05.
    Plugin SDK (RAI-096) не равно embedding SDK. Один runtime, без нового scheduler.
    Подробные руководства позже; runnable consumer-пример — часть acceptance.
    До implementation зафиксируй оценку и перераспределение внутри пакетов,
-   не считай SDK бесплатным и не ослабляй старые acceptance. Пилоты/спрос pending
-   без участников; их отсутствие не останавливает независимые engineering cards.
+   не считай SDK бесплатным и не ослабляй старые acceptance. Первый dogfood —
+   владелец/TokenRouter; внешние пилоты и спрос pending, engineering не блокируются.
 6. Решение владельца: полностью open-source проект с существующей MIT/license
    policy. Не вводи платную редакцию или закрытый SDK; измеряй самостоятельное
    использование и повторные задачи сообщества, не выдумывай спрос по звёздам.
+7. Уточнение: первичен удобный Scala DSL для AI-native SDLC, одна definition
+   локально и в generic LOCAL CI; не GitHub Actions first. Forge ещё не выбран:
+   сначала contract/local Scala stand, adapter позже. Target — разработка кода
+   ../tokenrouter, gateway остаётся P11. Любые target edits — его отдельная card.
+8. Конечная цель: plan/implement/check/repair/review→automatic commit/PR/merge→
+   version/changelog/LOCAL tag/build artifacts. Нет push release tag, package/image
+   publish/deploy. Human checkpoints задаёт Scala workflow в пределах owner policy;
+   headless NeedsApproval = завершить invocation, новая invocation проверяет artifacts,
+   durable resume не требуется. RAI-116/117 ADR меняют контракты до implementation.
+9. Workflow preview WF-01/02 допускается до M4 и до host consumer/plugin UI;
+   preview не закрывает milestone целиком; его evidence переиспользуется в M3/M4
+   с проверкой fingerprint и остальных обязательных cases.
+   Pinned toolchain, experimental API, migration при break,
+   trusted local trace data. SDLC-01–05 добавляют scope; оцени его отдельно.
+   До acceptance RAI-117 coordinator регистрирует case→phase→implementation/verifier
+   card IDs, owners/dependencies/estimates; без packets реализация не начинается.
 
 ПЕРВЫЙ ПРОХОД
 Прочитай AGENTS.md, docs/working-product.md, docs/parallel-development.md,
@@ -119,9 +135,13 @@ M1: 5 агентов, работающие вкладки/статусы, вво
 M2: plugin manager+plugin SDK, install→use ≤3 действий без rebuild; отдельно
 embedding consumer SDK-01/02 без обязательных REPL/compiler/JLine/CLI/testkit.
 M3: read/edit/failing-test/fix/passing-test, REPL и headless, W01–W16 evidence;
-SDK-03/04 — общий workflow из host/REPL/CI и non-coding typed consumer.
+SDK-03/04 — общий workflow из host/REPL/CI и non-coding typed consumer;
+WF-01/02 + SDLC-01–04, PR/merge contract на local stand/disposable Git.
 M4: UX/soak/install/security/compatibility accepted, standalone candidate immutable;
+SDK-01–05 + WF-01/02 + SDLC-01–05, включая local release preparation;
 SDK-05 — clean consumer по versioned артефактам, public publish отдельно.
+Реальные forge PR/merge pending до выбора adapter и отдельного acceptance;
+stand не доказывает работу с реальным forge и его branch rules.
 Только после M4 начинай P11: refreshed discovery → reviewed ADR → optional
 Yabanin adapter → local stand → joint W17/W18 → live с explicit budget.
 Нет remote KV API — не сочиняй его; поставь truthful unsupported и сохрани File store.

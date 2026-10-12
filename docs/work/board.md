@@ -1,6 +1,45 @@
 # Raider Execution Board
 
-## Planning revision 2026-10-12: embedding SDK
+## SDK research / owner decisions 2026-10-12
+
+Приоритет уточнён: **удобный Scala DSL для AI-native SDLC**, один workflow локально
+и в generic **локальном CI runner**. Первый consumer — разработка кода
+`../tokenrouter` (Yabanin); gateway integration остаётся P11. Target discovery
+read-only, исходно dirty дерево не менялось. Источники, baseline и hashes:
+[исследование](../research/sdk-roadmap-research-2026-10-12.md).
+
+Подтверждены full SDLC, automatic commit/PR/merge, Scala-configured human
+checkpoints; release = version/changelog/**local tag**/local artifacts без push
+тега, package/image publication или deploy. CI engine/forge не выбраны, сначала
+generic contract и local Scala stand; GitHub Actions не является первым adapter.
+Preview допускается до M4: текущий pinned Scala/ZIO, experimental API с migration,
+no durable resume; trusted local data. Полная milestone acceptance сохраняется.
+
+**RAI-115 accepted (source audit)**: lane `lane/rai-115-sdk-audit`, final `c156f40`,
+независимый reviewer approve; [audit](../research/sdk-embedding-audit.md).
+Lane docs validator / changed / execute / docs profile — exit 0;
+manifest `wt/rai-115-sdk-audit/artifacts/quality/20261012-193634-72162-0001/manifest.json`.
+Это не acceptance SDK implementation. Findings: String bundle boundary,
+launch/lifecycle/admission parity, ignored UsageObserved/zero settlement на текущем
+AgentLoop success path. Accounting claim требует отдельного reproducer/fix gate.
+
+**RAI-116 ready** для отдельного workflow/launch ADR; **RAI-117 todo**, зависит
+от него, описывает SDLC effects/checkpoints/forge/release и пересмотр прежних
+non-goals. Implementation cards назначаются после contracts и оценки остатка;
+текущая волна LIN-13/14/15 + RAI-113/114 продолжается. Budget RAI-115 120–240 h —
+gross estimate до дедупликации, SDLC kit/remote adapter/остаток unknown; не новый
+утверждённый бюджет и не фактически потраченные часы.
+
+Planning scope: [ROADMAP-SDK-RESEARCH](../tasks/roadmap-sdk-research.md).
+Result/review/evidence: [research record](records/ROADMAP-SDK-RESEARCH.md),
+[RAI-115 record](records/RAI-115.md).
+Workflow preview WF-01/02 независим от host embedding/plugin UI/M2/M4;
+SDLC-01–05 и SDK-01–05 остаются явными milestone obligations.
+
+## Previous planning revision 2026-10-12: embedding SDK
+
+Исторический snapshot до дополнительного исследования выше; текущий статус
+RAI-115 — accepted, следующая готовая SDK-карточка — RAI-116.
 
 По запросу владельца SDK встроен в существующие P0/P4.C/P7/P10; критерии
 SDK-01–05 и пилоты P0/P7/P9 описаны в [roadmap](../roadmap-12k.md).
@@ -11,7 +50,7 @@ Raider остаётся standalone coding product; Scala/ZIO embedding — до�
 документация отложена. Бюджет 13 100 h — текущий envelope, оценку остатка и
 перераспределение SDK нужно записать до implementation; новые функции не приняты.
 
-**Ready: RAI-115** — P0.A audit публичной SDK-границы и packet для отдельного ADR.
+**На момент этой ревизии ready: RAI-115** — P0.A audit публичной SDK-границы и packet для отдельного ADR.
 Allowed output: `docs/research/sdk-embedding-audit.md`; gates: docs. Может идти
 параллельно LIN-13/14/15 и RAI-113/114 без shared code/build edits. Новые
 implementation cards регистрируются после audit/ADR; существующие карточки

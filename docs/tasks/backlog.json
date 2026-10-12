@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 130,
+  "raider_count": 132,
   "companion_count": 3,
   "cards": [
     {
@@ -3783,7 +3783,7 @@
       "title": "Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/research/sdk-embedding-audit.md"
       ],
@@ -3798,6 +3798,57 @@
       },
       "non_goals": "Реализация SDK или нового runtime, принятие ADR/public signatures, публикация артефактов, подробные руководства, paid calls, изменение protected verifiers и соседних репозиториев.",
       "context": "docs/roadmap-12k.md §1 и §6a (ревизия 2026-10-12); runtime-contracts.md §2–3; working-product.md W09/W11/W12/W13/W14. Read-only audit требует существующий baseline, а не принятие всей исторической RAI-002/026; dependencies пусты только для inspection. Изменения контрактов — следующая отдельная ADR-карточка; RAI-096 остаётся plugin SDK."
+    },
+    {
+      "id": "RAI-116",
+      "title": "ADR: Scala workflow SDK для local/generic CI и host launch boundary",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-115"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/adr/ADR-029-workflow-sdk.md",
+        "docs/runtime-contracts.md",
+        "docs/product-repl.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "По reviewed RAI-115 зафиксировать отдельный ADR SDK: первым автор пишет Scala workflow и запускает локально и в generic CI, host embedding вторичен. Согласовать Program/Task и explicit services, String bundle v1 vs typed internals/codecs, один root/admission/ledger, scope/ownership/cancel/error, classpath и experimental compatibility на pinned Scala/ZIO. Спроектировать WF-01/02 и SDK-01/02/03, migration consumers и точные implementation packets 8–24 h; сопоставить reused/added/unknown труд по фазам. UI event ADR не является dependency. Не фиксировать новые signatures без review и consumer migration plan.",
+      "acceptance": {
+        "normal": "SDKADR-01: решение сопоставляет альтернативы с actual code и первым local/CI workflow; WF/SDK cases, consumers, versioning, owner paths и dependency packets перечислены, независимый reviewer одобрил контракт.",
+        "error": "SDKADR-02: typed Scala composition не выдаётся за typed bundle wire; no durable resume/no hidden Runtime.default/no second scheduler; unknown pricing и UsageObserved settlement gap не скрываются, отдельная runtime card требуется до обещания accounting.",
+        "concurrency": "SDKADR-03: scopes/concurrent runs/maxLLM=1/cancel и общий ledger имеют проверяемые cases; authoring preview не ждёт host consumer, plugin UI или M4; current wave и frozen UI seam не блокируются."
+      },
+      "non_goals": "Реализация runtime/DSL, изменение build/gate policy, public publish, fork TUI, Scala cross-build, SDLC forge/release effects (RAI-117), paid calls.",
+      "context": "docs/roadmap-12k.md §6a–6c; RAI-115 audit; owner 2026-10-12: Scala workflow local+CI first, удобный AI-native SDLC DSL, pinned Scala/ZIO experimental API с migration, preview до M4, no crash resume. Бюджет implementation unknown до reconciliation."
+    },
+    {
+      "id": "RAI-117",
+      "title": "ADR: SDLC stages, configurable checkpoints и generic integration/release contract",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-116"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "docs/adr/ADR-030-sdlc-workflow.md",
+        "docs/ci-runtime.md",
+        "docs/runtime-contracts.md",
+        "docs/research/sdk-roadmap-research-2026-10-12.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "Зафиксировать SDLC contract поверх RAI-116: task/plan/implement/checks/bounded repair/review, настраиваемые в Scala human checkpoints, automatic commit/PR/merge, version/changelog/local tag/build artifacts. Первый consumer — код ../tokenrouter, gateway остаётся P11. Сначала generic local CI и Scala forge stand, платформа не выбрана. Пересмотреть старые запреты CI §6/runtime §11 только в явно разрешённом capability scope; сохранить repo rules, source/candidate/check evidence binding, ambiguous-effect reconciliation, headless NeedsApproval с новой invocation вместо durable resume. Сформировать SDLC-01–05 verifier/implementation packets и отдельную estimate добавочного kit/SCM/release scope; real forge acceptance pending до выбора adapter. До acceptance ADR coordinator регистрирует case→phase/M3/M4→implementation/verifier card IDs с owners, allowed paths, dependencies и estimates; worker готовит packet, shared registry меняет coordinator. Implementation ждёт reviewed contract, estimate и зарегистрированные verifier packets.",
+      "acceptance": {
+        "normal": "SDLCADR-01: stages/inputs/results/loop limits/checkpoint и integration policies проверяемы, local stand/disposable Git cases перечислены; target commands/working-source hashes и правила перепроверки TokenRouter записаны; coordinator зарегистрировал exact implementation/verifier IDs и owners/dependencies/estimates для каждого SDLC case; M3 требует SDLC-01–04 на stand/disposable Git, M4 также SDLC-05; независимый review одобрил контракт.",
+        "error": "SDLCADR-02: stale candidate/ref/approval, failed checks, denied/expired capability, timeout после PR/merge/tag, существующий tag/version и failed artifact build имеют honest outcome; нет blind mutation retry, pushed release tag, package/image publish или deploy.",
+        "concurrency": "SDLCADR-03: один integration owner, latest target/head перепроверяются, изменённый candidate получает новые affected checks; workflow не расширяет owner capabilities; CI orchestrator остаётся владельцем jobs/approval/secrets, новый runtime/daemon не вводится."
+      },
+      "non_goals": "Изменение TokenRouter, запуск его tests/build, реализация GitHub/GitLab/Forgejo adapter до выбора, реальный PR/push/merge/tag, gateway/P11, paid calls, изменение protected verifiers или gate registry.",
+      "context": "docs/research/sdk-roadmap-research-2026-10-12.md; roadmap §6c; owner 2026-10-12 подтвердил full SDLC, automatic commit/merge, programmable checkpoints, local-only release tag/artifacts, generic local runner, forge contract/stand первым. Target HEAD 91e6ce0 с dirty inputs; это consumer discovery, не target acceptance."
     }
   ]
 }

@@ -3,7 +3,7 @@
 Редакция владельца от 2026-10-05. Каноническая очередность дальнейшей разработки;
 заменяет последовательность и бюджет [roadmap v2](roadmap-10k.md).
 Результат: один локальный Raider с вкладками сабагентов, понятными промежуточными
-статусами и устанавливаемыми плагинами. **Yabanin — исключительно P11, последняя
+статусами и устанавливаемыми плагинами. **Yabanin gateway — исключительно P11, последняя
 фаза после приёмки самостоятельного продукта.**
 
 Это оценка оставшегося инженерного труда, а не уже выполненные часы, время работы
@@ -65,8 +65,9 @@ runtime в стороннее приложение. `build.sbt` разделяе
 всей пользовательской документации остаются P9/P10; короткая команда запуска
 consumer-примера нужна вместе с самим примером для воспроизводимой приёмки.
 
-Первичный SDK-пользователь — разработчик Scala/ZIO приложения; первый прикладной
-сценарий Raider — ограниченное изменение репозитория с проверками в CI. Поиск
+Первичный SDK-пользователь — автор Scala workflow для AI-native SDLC; первый
+прикладной сценарий — разработка TokenRouter локально и в generic CI (уточнение
+ниже). Host Scala/ZIO приложение остаётся дополнительной поверхностью SDK. Поиск
 пилотных пользователей начинается в P0.A и продолжается в P7.C/P9.C. При отсутствии
 ответа спрос остаётся `pending`; это не блокирует независимую инженерную работу
 и не превращается в положительную пользовательскую оценку.
@@ -77,6 +78,38 @@ consumer-примера нужна вместе с самим примером �
 до назначения implementation coordinator фиксирует used/reserved/remaining и
 конкретное перераспределение внутри пакетов. Если остатка недостаточно — явная
 ревизия scope/estimate по §7, без отмены старой приёмки и без обещания «SDK бесплатно».
+
+### Уточнение владельца после исследования SDK, 2026-10-12
+
+Главное отличие SDK — удобство описания AI-native SDLC обычной Scala. Первый
+успех пользователя: написать workflow, выполнить локально и запустить тот же
+workflow на **локальном CI runner**. Система CI ещё не выбрана; GitHub Actions
+не является первым адаптером. Forge для PR/merge тоже не выбран: сначала общий
+контракт и локальный Scala HTTP stand, затем выбранный adapter отдельной карточкой.
+
+Первый проект — `../tokenrouter` (Yabanin), **разработка его кода**, не подключение
+его gateway. Владелец подтвердил это различие: P11 остаётся последним; read-only
+consumer discovery и SDLC requirements разрешены сейчас, изменения TokenRouter
+получают отдельные его карточки. Текущий checkout TokenRouter dirty; baseline и
+hashes прочитанных inputs записаны в [исследовании](research/sdk-roadmap-research-2026-10-12.md).
+
+Цель — полный цикл: задача/план → реализация → checks/repair → review → commit/PR
+→ merge → version/changelog/**локальный tag**/release artifacts. Commit/merge
+автоматические по заданной policy; human checkpoints настраивает автор Scala
+workflow. Push release tag, публикация пакетов/контейнеров и deploy в первый
+сценарий не входят. Это расширяет старые non-goals CI/runtime контрактов:
+изменение оформляется отдельным ADR (RAI-117), до него запреты реализации сохраняются.
+
+Experimental workflow preview разрешён до M4 с собственным ограниченным
+acceptance (§6b). Текущий pinned Scala 3 + ZIO toolchain; изменения preview API
+разрешены с миграцией. Поддержка всех Scala 3/JDK, stable API и public publish не
+обещаются. Crash resume не требуется: interrupted/unknown и явная новая invocation.
+Подробные записи preview используются только с доверенными локальными данными;
+политика более широкого экспорта/retention отложена и не объявляется реализованной.
+
+Основание очередности: [исследование рынка/SDLC](research/sdk-roadmap-research-2026-10-12.md)
+и RAI-115 source audit. Generic ZIO facade/DSL уже есть у альтернатив, поэтому
+обещание удобства проверяется на собственном SDLC workflow, а не числом combinators.
 
 ### Исторический baseline 2026-10-05
 
@@ -228,6 +261,10 @@ live re-run в изоляции даёт diff-отчёт; CI-гейт валид
   scope, configuration/tools/policy/budget ownership, typed failures/cancellation,
   versioning и совместимость существующих REPL/CLI consumers. Сначала доказать,
   чего не хватает текущему API; дополнительный module/layer заранее не предписан.
+  RAI-116 сначала фиксирует workflow-authoring/local/CI boundary, включая только
+  необходимый host launch. Это отдельный ADR от уже принятого UI event seam;
+  P1/P2 не ждут SDK, а SDK не ждёт plugin UI. RAI-117 фиксирует SDLC effects и
+  checkpoint/forge/release contract; решения не выдаются за реализацию.
 - P0.C **120 h**: JLine inline renderer spike в PTY, установка baseline,
   воспроизводимые UX замеры и первые child cards; описать отдельные verifier cards.
 
@@ -291,8 +328,13 @@ send явно отклонён или предложен новый turn; ник
   remove/rollback, pinned versions/checksums, user vs workspace config precedence.
 - P4.C **450 h**: SDK/template, документация, три local fixture plugins,
   совместимость API версий, crash/cleanup/failed-install/rollback acceptance.
+  Первый SDK slice — Scala workflow authoring и путь local→compiled bundle→generic
+  headless CI (WF-01/02, §6b), до полноценного host consumer. Переиспользовать
+  Program/Task/andThen/all/batch; новые SDLC helpers получают предметный contract,
+  не требуют parser/macros или отдельного graph runtime.
   Отдельный slice — минимальный SDK для host Scala/ZIO приложения по reviewed
-  P0.B ADR: существующие core/runtime/dsl/providers, явные tools/policy/limits,
+  RAI-116 ADR (отдельный SDK contract внутри P0.B, без зависимости от UI seam):
+  существующие core/runtime/dsl/providers, явные tools/policy/limits,
   без обязательных REPL/compiler/JLine/CLI и production testkit. Consumer собирается
   вне root aggregate по артефактам из изолированного локального репозитория,
   без source links или classpath из checkout. Публикация в публичный registry
@@ -361,9 +403,17 @@ Exit: после crash вкладка показывает interrupted/unknown, 
   и пользовательская польза получают отдельное evidence. Предложить трём внешним
   пользователям свои задачи; измерять время до первого результата, нашу помощь,
   полезность diff и повторное использование, не только успешный запуск.
+  Основной прикладной workflow — TokenRouter SDLC (§6c): local/generic CI,
+  configurable checkpoints, проверенные stage outputs, затем automatic
+  commit/PR/merge и local release artifacts. Это новая контрактная область
+  RAI-117; до implementation отдельно оценить её добавочный объём и verifier work.
+  Generic bugfix corpus W02/W16 сохраняется; CI adapters не создают второй scheduler.
 
-Exit M3: mapped W01–W16 на одном candidate с actual case evidence, без dependency
-на gateway. Existing accepted slices переиспользовать и закрывать только gaps.
+Exit M3: mapped W01–W16 + WF-01/02 + SDLC-01–04 на одном candidate с actual
+case evidence, без dependency на gateway. SDLC-03/04 здесь подтверждают generic
+contract на local stand/disposable Git; real forge PR/merge остаётся pending.
+SDLC-05 добавляется к M4. Existing accepted slices переиспользовать и закрывать
+только gaps.
 Live verification и OpenCode comparison имеют отдельные бюджет/статус, не выводятся
 из offline tests. Незавершённые W не прятать за количеством green unit tests.
 
@@ -414,16 +464,21 @@ terminal emulators; неподдержанный terminal использует �
   rehearsal и optional capped direct live/comparison при наличии разрешения.
 
 Exit M4: `standalone_engineering_ready` только при полноте W01–W16 + UX/plugin/
-state advertised cases + SDK-01–05; archived source/toolchain/policy/artifact hashes.
+state advertised cases + SDK-01–05 + WF-01/02 + SDLC-01–05;
+archived source/toolchain/policy/artifact hashes. SDLC engineering acceptance
+идёт на disposable repos/local stand; реальные forge claims получают отдельное
+evidence выбранного adapter, без которого остаются pending.
 Это не старый общий `engineering_ready` для W01–W17. W17 и полная W18 остаются
 pending до P11. Публикация не подразумевается созданием release candidate.
 
 ### P11 — Yabanin, последняя фаза, 1 100 h
 
-**Hard dependency: M4 accepted.** До этого никаких Yabanin-specific client
-modules, discovery задач в соседнем repo, ADR-023 implementation, labels/session
-keys, remote state или accounting sync. Существующие исторические материалы
-сохраняются; direct custom base URL и generic plugin/state seams не интеграция.
+**Hard dependency: M4 accepted.** До этого не начинать Yabanin gateway client
+modules, discovery его gateway/session/accounting integration, ADR-023 implementation,
+labels/session keys, remote state или accounting sync. Read-only discovery TokenRouter
+как проекта для SDLC разрешён сейчас; отдельно авторизованные target cards исполняются
+по его правилам и не реализуют gateway integration Raider. Существующие исторические
+материалы сохраняются; direct custom base URL и generic plugin/state seams не интеграция.
 
 - P11.A **250 h**: refresh read-only discovery actual deployment/contracts,
   ADR интеграции, offline schemas/stand и capabilities; не доверять старому OpenAPI.
@@ -457,7 +512,9 @@ fallback. Usage имеет pending/partial/complete; timeout не станови
 | P2.C | P1.C + P2.A/B | P4.A отдельным owner plugin SPI |
 | P3.A/B | P0.B + P1.A | P2 frontend; P3.C ждёт P2.C и A/B |
 | P4.A/B/C | P0 baseline; B после A; SDK/tests C после A, final acceptance C после B | P1/P2/P3 при отдельных files; M2 ждёт M1 и plugin UI integration |
-| P4.C embedding slice | RAI-115 audit → отдельная accepted P0.B ADR → frozen SDK boundary | Consumer acceptance design параллельно текущей волне; общий build/API имеют одного owner; M2 ждёт plugin и embedding acceptance |
+| P4.C embedding slice | RAI-115 audit → accepted RAI-116 SDK ADR внутри P0.B → frozen SDK boundary; UI event ADR не dependency | Consumer acceptance design параллельно текущей волне; общий build/API имеют одного owner; M2 ждёт plugin и embedding acceptance |
+| Workflow preview (P4.C/P7.B) | RAI-115 → RAI-116 ADR → WF-01/02 | Текущие P-LIN/P1/P2/P3; preview не ждёт M1/plugin UI/M2, host SDK-01/02 или M4 |
+| SDLC kit (P7/P10) | RAI-117 contract + отдельная estimate; реализация после RAI-116 boundary | Pure stage fixtures/local stand параллельно runtime implementation; внешние mutations только после effect contract acceptance |
 | P5 | P1.C + P4.A; P5.C plugin seam после P4.C | P3/P4 отдельные modules; core store не зависит от remote backend |
 | P6 | P2.C + P3 + P5 | P7 tools/REPL/CI gaps, затем общий recovery acceptance |
 | P7 | P0 gap matrix для независимых fixes | Итог M3 после M2 + P3 + P5 + P6 |
@@ -547,7 +604,7 @@ implementation/integration dependencies и независимым review. Protec
 | --- | --- | --- |
 | SDK-01 | P4.C | Чистый внешний Scala/ZIO consumer получает versioned JARs, компилирует typed Program и запускает native loop; runtime classpath не содержит repl/compiler/JLine/CLI/testkit; scripted testkit допускается только в test scope |
 | SDK-02 | P4.C | Host scope владеет root/children/resources; normal/failure/cancel и maxLLM=1 проверены; два экземпляра host не делят скрытый global state; construction ленивый; budget/policy denial типизированы; provider/tool config явный |
-| SDK-03 | P7.B/C | Одно определение workflow работает из host приложения, настоящего REPL и compiled CLI bundle: одинаковые нормализованные результат/ошибка, policy/budget и отмена; оба direct wires проходят локальные Scala HTTP stands; SDK допускает non-coding typed workflow без обязательного coding prompt/tools |
+| SDK-03 | P7.B/C | Одно определение workflow работает из host приложения, настоящего REPL и compiled CLI bundle: одинаковые нормализованные результат/ошибка, policy/budget и отмена; оба direct wires проходят локальные Scala HTTP stands; non-coding typed workflow без обязательного coding prompt/tools. Bundle v1 сейчас String→String: typed internals не доказывают typed wire; codec/schema change только через ADR |
 | SDK-04 | P7.C | На внешнем fixture repo CI выполняет read/edit/failing-check/fix/passing-check и выдаёт diff, checks и exit/artifacts; non-TTY/SIGTERM/trust проверены; scripted и live evidence разделены, live только при explicit mode/cap |
 | SDK-05 | P10.A/B | Из immutable candidate получены артефакты и dependency inventory; clean consumer install/compile/run, поддерживаемые версии и compatibility policy проверены независимым reviewer; публичная публикация не подразумевается |
 
@@ -562,16 +619,83 @@ claims с отдельным evidence. Превращение произволь
 программу и durable resume arbitrary Scala callbacks не объявляются свойствами
 SDK; незавершённые acceptance P-LIN сохраняются, а не заменяются этим уточнением.
 
-Следующая доступная карточка SDK — **RAI-115** (P0.A, audit и packet для ADR).
-Она не ждёт завершения всей текущей волны: пишет только свой analysis artifact,
-не меняет build/API/fixtures. После audit coordinator назначает ADR owner,
-затем реализацию минимального embedding path и отдельную consumer acceptance.
+RAI-115 — source audit (P0.A); после независимого review следующая карточка
+**RAI-116** фиксирует workflow authoring/launch contract, затем **RAI-117** — SDLC
+effects/acceptance packet. Ready/accepted сверять с board. Реализация начинается
+с local/CI workflow path, host consumer — дополнительная отдельная приёмка.
 SDK/CI пилоты могут идти после готовности нужного slice до полной M3; их отчёты
 не закрывают W/UX acceptance. Участники, спрос и даты пока не подтверждены.
 Для OSS-поставки P10.C фиксирует поддержку публичного API, правила deprecation,
 канал issues и воспроизводимый consumer-reproducer; новые зависимости и release
 артефакты проходят существующую license policy. Звёзды репозитория не заменяют
 данные об использовании и не являются условием engineering acceptance.
+
+## 6b. Ранний workflow preview и зависимости
+
+`workflow_preview_eligible` — отдельный component результат, не M2/M3/M4 и не
+stable SDK. Условия: reviewed RAI-116 boundary, изолированная установка нужных
+артефактов, WF-01/02 на одном immutable candidate, declared versions/limitations,
+одна команда примера. Shared source не копируется в consumers, одинаковый workflow
+не подменяется двумя похожими implementations. Public publish отдельно.
+
+| Case | Обязательный observable result |
+| --- | --- |
+| WF-01 | Авторский Scala source компилируется pinned compiler, запускается локально через dev/REPL path и как compiled bundle в non-TTY generic local CI; input/result/error/artifacts сопоставимы; String boundary v1 явно указана; lazy definition не вызывает модель/tools |
+| WF-02 | Один root/ledger и per-call admission во всех adapters; maxLLM=1 с child не deadlock; внешняя отмена завершает owned ресурсы; invalid input/policy/provider failure/cap дают typed outcome; два run не делят случайное global state |
+
+Первая демонстрация использует deterministic backend/local stands. Затем тот же
+сценарий допускает явно настроенный direct provider с mode/cap. Offline proof не
+доказывает качество модели. Чистый host consumer SDK-01/02 сохраняется для P4/M2,
+полная parity SDK-03 для P7; они не блокируют отзыв о готовом workflow preview.
+
+Первый SDLC example должен позволять заменить этап, добавить tool/check, выбрать
+checkpoint и ограничить repair/review loop обычной Scala. Не вводить новые
+абстракции только ради красивого примера. Публичный смысл stages/inputs/outputs,
+retry и approval фиксируется RAI-116/117 до реализации helpers.
+
+## 6c. TokenRouter AI-native SDLC: конечная цель и поставка slices
+
+Target inventory: `../tokenrouter`, HEAD `91e6ce0`, dirty working inputs отдельно
+хэшированы в research. Никакая worktree mutation или приёмка TokenRouter этим
+планом не выполнена. Его команды, policy и fingerprints перечитываются на каждом
+назначении; любые target edits — отдельные карточки его репозитория.
+
+| Slice / case | Фаза | Результат и негативная приёмка |
+| --- | --- | --- |
+| SDLC-01: task→plan→implement→check→review | P7.A/C | Stage inputs/outputs и review verdict структурированы; checks запускаются trusted runner на pinned candidate; repair/rework bounded; отказ/ошибка/исчерпание попыток не дают success; изменённые checks не могут сами авторизовать результат |
+| SDLC-02: configurable human checkpoint | P7.B | Workflow выбирает auto/approval/deny в рамках owner policy. В headless NeedsApproval завершает invocation с artifact/exit; новый запуск проверяет policy/task/repo/base/candidate и истечение решения. Stale/отклонённое решение не расширяет права; durable fiber resume не заявляется |
+| SDLC-03: commit/PR contract + local stand | P7.B/C | Commit привязан к точному tree/checks/review и создаётся в isolated branch. PR lifecycle проверяется Scala stand без выбранного forge; timeout/duplicate/conflict дают truthful outcome и read-only reconciliation перед повтором. Real PR pending до выбранного adapter и его acceptance |
+| SDLC-04: automatic integration | P7.B/C | Один integration owner, expected source/target revisions, обязательные repo checks/review соблюдены; stale refs/conflict/ambiguous merge не считаются успехом. После смены candidate повторить affected checks; stand/disposable Git доказывают протокол, не реальную branch protection |
+| SDLC-05: local release preparation | P7.C/P10.B | Version/changelog из принятого revision; local-only tag; build в отдельный candidate-specific каталог; checksum/build metadata и revision связаны. Существующий tag/version, failed build/cancel — явный outcome; нет push тега, публикации пакетов/образов или deploy |
+
+Полный цикл — подтверждённая конечная цель. Slices принимаются последовательно:
+workflow preview → SDLC-01/02 → SDLC-03/04 на local stand → SDLC-05; реальный
+forge adapter выбирается позднее. Локальный stand не заменяет реальный PR/merge,
+а неполный preview не называется готовым полным SDLC.
+
+TokenRouter уже имеет `make release-artifacts`; он формирует binaries/checksums/
+SBOM или build manifests, но не changelog/tag. Push `v*` в его текущем release
+workflow публикует images и deploys staging; владелец выбрал **локальный tag без
+push**. CI engine и forge пока не выбраны, существующий GitHub origin не означает
+выбор GitHub Actions или первого forge adapter. Generic local invocation,
+versioned artifacts и локальный Scala stand достаточны для начальных fixtures.
+
+Изменения старых non-goals `ci-runtime.md` §6 и `runtime-contracts.md` §11,
+approval schema и SCM/release capabilities требуют RAI-117 ADR и независимого
+review. До acceptance RAI-117 coordinator регистрирует точное соответствие
+SDLC case → фаза/M3/M4 → implementation card ID и отдельный verifier card ID
+(или уже принятый verifier с evidence), owners, allowed paths, dependencies,
+estimate и источник часов. Worker RAI-117 готовит packet в своих allowed paths;
+реестром карточек владеет coordinator. Implementation не начинается до review
+контракта, оценки объёма и регистрации verifier packets. Gate policy/protected
+fixtures меняются только в выделенной verifier card с независимым review.
+Human checkpoints сужают trusted capabilities; их Scala declaration не выдаёт
+дополнительных прав. Trust policy не sandbox для Scala и repo build commands.
+
+Объём SDLC kit/SCM/release добавлен к раннему SDK предположению и пока не оценён
+полностью. До implementation фиксировать отдельную estimate и источник часов
+в P7/P10; approved slices переиспользовать, старые obligations не вычёркивать.
+13100 h — исторический envelope, не подтверждение, что новый scope в нём помещается.
 
 ## 7. Контроль масштаба
 
