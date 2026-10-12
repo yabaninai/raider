@@ -17,7 +17,10 @@ import java.nio.file.{Files, Path}
   *     as `Tampered(file)` (rewrite; delete; added file; deterministic
   *     offender);
   *   - typed errors: a missing original fails `isolate`/`verifyUntouched` as
-  *     `OriginalMissing`.
+  *     `OriginalMissing`;
+  *   - FW1-01/FW1-02 (review F-W22R1-1): `verifyUntouched` writes NOTHING to
+  *     stdout — captured `System.out` is empty on both the success and the
+  *     `Tampered` call, and the typed detail carries no absolute paths.
   *
   * Snapshot keys are workspace-RELATIVE paths (see [[WorkspaceIsolation]]), so
   * the original's snapshot is directly comparable against the copy's.
@@ -62,6 +65,20 @@ object WorkspaceIsolationSpec extends ZIOSpecDefault:
     a.keySet == b.keySet && a.forall { (p, bytes) =>
       b.get(p).exists(other => java.util.Arrays.equals(bytes, other))
     }
+
+  /** Regression harness for review F-W22R1-1 (acceptance FW1-01/FW1-02):
+    * captures `System.out` around a `verifyUntouched` call. `System.out` is
+    * ALWAYS restored — even if `run` throws — so a failure here can never leave
+    * the JVM-level stream redirected for the rest of the test run.
+    */
+  private def captureStdoutAround[A](run: () => A): (String, A) =
+    val originalOut = System.out
+    val captured = new java.io.ByteArrayOutputStream
+    try
+      System.setOut(java.io.PrintStream(captured, true, UTF_8))
+      val result = run()
+      (captured.toString(UTF_8), result)
+    finally System.setOut(originalOut)
 
   def spec: Spec[TestEnvironment & Scope, Any] = suite("WorkspaceIsolation")(
     test(
@@ -160,6 +177,51 @@ object WorkspaceIsolationSpec extends ZIOSpecDefault:
         yield assertTrue(
           isolateVerdict == Left(IsolationError.OriginalMissing(missing)),
           verifyVerdict == Left(IsolationError.OriginalMissing(missing))
+        )
+      }
+    },
+    test(
+      "FW1-01/FW1-02: verifyUntouched prints NOTHING to stdout — no DEBUG lines, no absolute worktree/tmp paths (success and Tampered cases)"
+    ) {
+      ZIO.scoped {
+        for
+          original <- freshDir("raider-r1fix-clean")
+          tampered <- freshDir("raider-r1fix-tampered")
+          _ <- ZIO.attempt(writeTree(original))
+          _ <- ZIO.attempt(writeTree(tampered))
+          cleanSnap <- ZIO.attempt(WorkspaceIsolation.snapshot(original))
+          tamperedSnap <- ZIO.attempt(WorkspaceIsolation.snapshot(tampered))
+          _ <- ZIO.attempt(
+            Files.writeString(
+              tampered.resolve("sub/b.txt"),
+              "TAMPERED\n",
+              UTF_8
+            )
+          )
+          (cleanOut, cleanVerdict) <- ZIO.attempt(
+            captureStdoutAround(() =>
+              WorkspaceIsolation.verifyUntouched(original, cleanSnap)
+            )
+          )
+          (tamperedOut, tamperedVerdict) <- ZIO.attempt(
+            captureStdoutAround(() =>
+              WorkspaceIsolation.verifyUntouched(tampered, tamperedSnap)
+            )
+          )
+          // FW1-02: the typed detail carries the workspace-RELATIVE offender
+          // only — the absolute fixture paths must not appear anywhere.
+          tamperedDetail = tamperedVerdict.fold(_.toString, _ => "")
+          cleanDetail = cleanVerdict.fold(_.toString, _ => "")
+        yield assertTrue(
+          cleanVerdict == Right(()),
+          tamperedVerdict == Left(
+            IsolationError.Tampered(Path.of("sub", "b.txt"))
+          ),
+          cleanOut.isEmpty,
+          tamperedOut.isEmpty,
+          !cleanDetail.contains(original.toString),
+          !tamperedDetail.contains(tampered.toString),
+          !tamperedDetail.contains(original.toString)
         )
       }
     }

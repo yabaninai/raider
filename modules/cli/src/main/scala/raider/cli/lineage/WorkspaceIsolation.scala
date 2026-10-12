@@ -137,15 +137,14 @@ object WorkspaceIsolation:
 
   /** Byte-verifies the original against a pre-run [[snapshot]] (see the object
     * scaladoc for the modified/deleted/added semantics and offender order).
+    * Writes NOTHING to stdout/stderr — the verdict and the workspace-relative
+    * [[IsolationError.Tampered.file]] are the only diagnostics (no absolute
+    * environment paths leak into output; pinned by the FW1 regression test).
     */
   def verifyUntouched(
       original: Path,
       snapshot: Map[Path, Array[Byte]]
   ): Either[IsolationError, Unit] =
-    println(
-      s"DEBUG-verify original=$original isDirectory=${Files.isDirectory(original)} " +
-        s"exists=${Files.exists(original)} cwd=${new java.io.File(".").getAbsolutePath}"
-    )
     if !Files.isDirectory(original) then
       Left(IsolationError.OriginalMissing(original))
     else
