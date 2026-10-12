@@ -1,0 +1,59 @@
+package raider.repl
+
+import raider.runtime.events.EventHub
+import raider.ui.{CloseChoiceResolver, SessionRegistry, ShellTerminal, TabShell}
+import zio.{Scope, UIO, ZIO}
+
+/** Product host of the accepted raider.ui TabShell inside the product REPL
+  * (card RAI-102). Wiring home decided by the ratified contract-change
+  * (coordinator commit 71278c1, 2026-10-12): the interactive product REPL is
+  * `raider.repl` (JLine already first-class here); the headless raiderCli /
+  * chat loop stays JLine-free (quality-gates §12 package smoke unchanged).
+  *
+  *   - The shell OWNS the terminal (RAI-061: the ONE writer is
+  *     `ShellTerminal.printAbove`) — no other component of this host ever
+  *     writes to the terminal, so the editable prompt survives background
+  *     renders (spike RAI-056).
+  *   - Sessions live on the ADR-024 event seam: tabs bind to jobs through
+  *     [[EventHub]] + [[SessionRegistry]] (RAI-057); publishers push envelopes
+  *     into the hub, never into the terminal; the registry never cancels and
+  *     never publishes (ADR-024 §2.5).
+  *   - The aux seam (LIN-04A) is wired WITHOUT a LineageTab provider:
+  *     `TabShell.run` defaults (`views = ShellViews.detached`, `aux = None`),
+  *     so `:aux` renders its typed hint until a provider is attached by a later
+  *     contract step.
+  *
+  * This object is wiring only — no loop, no rendering, no UI mechanics beyond
+  * the accepted RAI-061/062 shell (card non-goals). The PTY-driven acceptance
+  * (TabShellHostPtySpec, P2W-01..03) drives exactly this wiring in a real
+  * pseudo-terminal.
+  */
+object TabShellHost:
+
+  /** Everything the shell and the job side share on the ADR-024 seam. */
+  final case class Wiring(hub: EventHub, registry: SessionRegistry)
+
+  /** Build the seam: one hub (two bounded buffers, ADR-024 §2.3), one registry
+    * folding its events into the tab read model (RAI-057).
+    */
+  def wiring: UIO[Wiring] =
+    for
+      hub <- EventHub.make()
+      registry <- SessionRegistry.make(hub)
+    yield Wiring(hub, registry)
+
+  /** Host the shell until `:quit`/EOF. Scoped: the terminal and every
+    * background pump/hub subscription die with the scope. `:aux` stays
+    * provider-less (typed hint, no LineageTab).
+    */
+  def run(wiring: Wiring): ZIO[Scope, Throwable, Unit] =
+    for
+      terminal <- ShellTerminal.jline
+      resolver = CloseChoiceResolver.fromTerminal(
+        terminal,
+        TabShell.Config().closePrompt
+      )
+      _ <- TabShell.run(wiring.hub, wiring.registry, terminal, resolver)
+    yield ()
+
+end TabShellHost
