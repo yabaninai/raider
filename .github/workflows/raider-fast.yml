@@ -1,0 +1,28 @@
+# RAI-045.a — minimal developer CI (fast lane). Parent scope: docs/tasks/m2-p2.md RAI-045.
+# Offline gates only: no paid/live provider calls, no packaging/release/soak (parent RAI-045).
+# Action pins mirror the existing .github/workflows/ci.yml.
+name: Raider Fast
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+      - uses: coursier/cache-action@v6
+      - name: Bootstrap pinned toolchain (fetches pinned jars from Maven Central; network OK for CI)
+        run: make bootstrap
+      - name: Compile
+        run: make compile
+      - name: Quality gates (git-mode, classify)
+        run: make quality-changed
+      - name: Quality gates (execute)
+        run: make quality-changed QUALITY_EXECUTE=1
