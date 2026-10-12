@@ -170,7 +170,7 @@ object PlanTabsPtyApp:
       reportPath: Path
   ): UIO[Unit] =
     for
-      snap = panel.snapshot
+      snap <- ZIO.succeed(panel.snapshot)
       labels <- manager.adminView.map(_.map(_.label).sorted)
       dropped <- wiring.hub.droppedDiagnostics
       phase = snap.phase.toString.toLowerCase
