@@ -129,6 +129,75 @@ object LineageRendererSpec extends ZIOSpecDefault:
       "        ()\n" +
       "      ()\n"
 
+  // LIN-11: the shape of a plain headless run (scout/coder, no Phase and no
+  // Delegation) — model/tool calls only, so the object body renders comments
+  // only. Comments never bind an indentation region (W10 review finding), so
+  // the pre-fix projection was `object X:` + indented `// ...` and dotc 3.9.0
+  // rejected it with "indented definitions expected, eof found" (LIN-09
+  // reproducer). The fixed renderer closes the body with the legal `()`
+  // statement at the children width.
+  private val plainRunView: LineageView =
+    viewOf(
+      "run-plain-001",
+      Vector(
+        NodeView(
+          "m1",
+          NodeKind.ModelCall("mock-coder", 1),
+          None,
+          Vector(
+            NodeView(
+              "t1",
+              NodeKind.ToolCall("read_file", "ReadOnly"),
+              Some("m1"),
+              Vector.empty,
+              Some("d1")
+            )
+          ),
+          None
+        )
+      )
+    )
+
+  private val plainRunGolden: String =
+    header +
+      "object lineage_run_plain_001:\n" +
+      "  // model(\"mock-coder\", round = 1)\n" +
+      "    // tool(\"read_file\", recovery = \"ReadOnly\") // data: d1\n" +
+      "  ()\n"
+
+  // LIN-11 mixed shape: a named def nested under comment-only ancestors. The
+  // def line itself is a non-comment statement inside the object body, so the
+  // body region binds at the def and NO object-level closer is appended —
+  // renders with a named def anywhere stay byte-identical to the pre-fix
+  // format (LIN2-01 golden invariant).
+  private val nestedDefView: LineageView =
+    viewOf(
+      "run-nested-001",
+      Vector(
+        NodeView(
+          "m1",
+          NodeKind.ModelCall("mock-coder", 1),
+          None,
+          Vector(
+            NodeView(
+              "d1",
+              NodeKind.Delegation("worker"),
+              Some("m1"),
+              Vector.empty,
+              None
+            )
+          ),
+          None
+        )
+      )
+    )
+
+  private val nestedDefGolden: String =
+    header +
+      "object lineage_run_nested_001:\n" +
+      "  // model(\"mock-coder\", round = 1)\n" +
+      "    def delegation_worker(): Unit = ()\n"
+
   // Id-level cycle: distinct node instances whose ids repeat an ancestor id
   // (the tree projection of a graph that was not acyclic).
   private def cyclicView(): LineageView =
@@ -193,6 +262,53 @@ object LineageRendererSpec extends ZIOSpecDefault:
         first == Right(deepChainGolden),
         second == Right(deepChainGolden),
         first.map(_.getBytes("UTF-8").toSeq) == Right(
+          deepChainGolden.getBytes("UTF-8").toSeq
+        )
+      )
+    },
+    test(
+      "LIN11-03: plain run without named-def roots renders the legal `()` closer, byte-identical on repeat"
+    ) {
+      val first = LineageRenderer.render(plainRunView)
+      val second = LineageRenderer.render(plainRunView)
+      assertTrue(
+        first == Right(plainRunGolden),
+        second == Right(plainRunGolden),
+        first.map(_.getBytes("UTF-8").toSeq) == Right(
+          plainRunGolden.getBytes("UTF-8").toSeq
+        ),
+        second.map(_.getBytes("UTF-8").toSeq) == Right(
+          plainRunGolden.getBytes("UTF-8").toSeq
+        )
+      )
+    },
+    test(
+      "LIN11-03: named def anywhere suppresses the object-level closer (mixed shape, byte-identical on repeat)"
+    ) {
+      val first = LineageRenderer.render(nestedDefView)
+      val second = LineageRenderer.render(nestedDefView)
+      assertTrue(
+        first == Right(nestedDefGolden),
+        second == Right(nestedDefGolden),
+        first.map(_.getBytes("UTF-8").toSeq) == Right(
+          nestedDefGolden.getBytes("UTF-8").toSeq
+        )
+      )
+    },
+    test(
+      "LIN11-03: LIN2-01 golden projections unchanged (tiny-graph/deep-tree formats intact)"
+    ) {
+      // Explicit byte-level golden invariance of the two frozen golden
+      // shapes alongside the existing string-equality assertions above: the
+      // LIN-11 closer applies only to def-free trees, so the named-def
+      // golden renders are untouched.
+      val tiny = LineageRenderer.render(tinyView)
+      val deep = LineageRenderer.render(deepChainView)
+      assertTrue(
+        tiny.map(_.getBytes("UTF-8").toSeq) == Right(
+          golden.getBytes("UTF-8").toSeq
+        ),
+        deep.map(_.getBytes("UTF-8").toSeq) == Right(
           deepChainGolden.getBytes("UTF-8").toSeq
         )
       )
@@ -278,11 +394,14 @@ object LineageRendererSpec extends ZIOSpecDefault:
         header +
           "object lineage_run_hostile:\n" +
           "  // model(\"gpt\\n5\\r-x\\x01\", round = 1)\n" +
-          "    // tool(\"tool\\tname\\n2\", recovery = \"line\\rbreak\")\n"
+          "    // tool(\"tool\\tname\\n2\", recovery = \"line\\rbreak\")\n" +
+          // LIN-11: the def-free object body is closed with the legal `()`
+          // statement (comments never bind an indentation region).
+          "  ()\n"
       val rendered = LineageRenderer.render(view)
       assertTrue(
         rendered == Right(expected),
-        rendered.toOption.exists(out => out.linesIterator.length == 4)
+        rendered.toOption.exists(out => out.linesIterator.length == 5)
       )
     },
     test("W9F4-01: data ref with \n stays on its comment line") {

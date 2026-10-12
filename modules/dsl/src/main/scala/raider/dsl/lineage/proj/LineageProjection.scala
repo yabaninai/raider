@@ -164,7 +164,35 @@ object LineageRenderer:
               path -= n.id
             }
 
-      walk(v.roots, Indent).map(_ => out.toString)
+      walk(v.roots, Indent).map { _ =>
+        // The outer object body must contain at least one NON-comment
+        // statement: comments never bind an indentation region (W10 review
+        // finding, L30/L34), so a graph with no named-def nodes (a plain
+        // headless run: model/tool calls only) renders a comment-only body —
+        // no region ever opens and dotc 3.9.0 rejects the projection with
+        // "indented definitions expected, eof found" (LIN-09 reproducer). A
+        // closing `()` at the children width closes the region legally (the
+        // region binds at the closer line itself, same discipline as the
+        // named-def body closers above). Any named def ANYWHERE in the tree
+        // opens the body region at its own line, so only the def-free shape
+        // gains the closer — renders with named defs stay byte-identical
+        // (LIN2-01 golden invariant). Called after a successful acyclic walk,
+        // so the tree scan terminates.
+        if !hasNamedDef(v.roots) then addLine(Indent, "()")
+        out.toString
+      }
+
+  /** Whether any node of the rendered tree becomes a named def (Delegation or
+    * Phase) — i.e. whether the object body will contain at least one
+    * non-comment statement. Only called after a successful acyclic walk, so the
+    * recursion terminates. Deterministic.
+    */
+  private def hasNamedDef(nodes: Vector[NodeView]): Boolean =
+    nodes.exists(n =>
+      n.kind.isInstanceOf[NodeKind.Delegation] ||
+        n.kind.isInstanceOf[NodeKind.Phase] ||
+        hasNamedDef(n.children)
+    )
 
   /** Identifier slug: letters/digits/underscore kept, everything else mapped to
     * `_`; an empty or digit-leading result is prefixed so it is a valid Scala
