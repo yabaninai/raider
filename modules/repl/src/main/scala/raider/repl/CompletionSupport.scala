@@ -25,8 +25,37 @@ import scala.util.control.NonFatal
   * additional locking is required for driver/state safety, and none is added
   * here. The engine-side completion cache keeps its own synchronization as
   * insurance rather than relying on this model.
+  *
+  * CHAT COMMANDS (RAI-111, RAI-068 follow-up): a trailing `:`-word is a console
+  * command (`Commands.handle` intercepts it BEFORE any engine eval in
+  * Main.drive), so asking dotty for completions of ":jo" is meaningless. The
+  * completer answers such words from the derived chat catalog
+  * ([[ShellPalette.completeChat]] over the [[ReplChatCommands]] registry)
+  * WITHOUT touching the engine, exactly the ≤2-presses palette surface of the
+  * shell side. Labels are the command names WITHOUT the leading ':': the parser
+  * below treats ':' as a delimiter, so the word region under the caret excludes
+  * it and insertion must complete only the trailing segment (the same
+  * member-segment semantics as the engine branch).
   */
 object CompletionSupport:
+
+  /** Chat-command candidates for the text up to the caret (pure — spec-tested
+    * without an engine). `Some(labels)` = the word is a `:`-command word and
+    * the labels (colon-less, insertion-ready) are the whole answer; `None` =
+    * not a `:`-word, the engine branch owns the query. A `:`-word with no
+    * catalog match yields `Some(empty)` — still no engine query, and no
+    * candidates.
+    */
+  def chatCandidates(textUpToCursor: String): Option[Vector[String]] =
+    val cut = math.max(
+      textUpToCursor.lastIndexOf(' '),
+      textUpToCursor.lastIndexOf('\t')
+    )
+    val word =
+      if cut < 0 then textUpToCursor else textUpToCursor.substring(cut + 1)
+    if word.startsWith(":") then
+      Some(ShellPalette.completeChat(word).map(_.drop(1)))
+    else None
 
   /** Characters that terminate a completion word. '.' MUST be here: it keeps
     * candidate insertion local to the trailing member segment. Backtick is NOT
@@ -51,12 +80,16 @@ object CompletionSupport:
     ): Unit =
       try
         val prefix = line.line().substring(0, line.cursor())
-        val labels = Unsafe.unsafe { implicit u =>
-          zio.Runtime.default.unsafe
-            .run(engine.completions(prefix))
-            .getOrThrow()
-        }
-        labels.foreach(label => candidates.add(Candidate(label)))
+        CompletionSupport.chatCandidates(prefix) match
+          case Some(labels) =>
+            labels.foreach(label => candidates.add(Candidate(label)))
+          case None =>
+            val labels = Unsafe.unsafe { implicit u =>
+              zio.Runtime.default.unsafe
+                .run(engine.completions(prefix))
+                .getOrThrow()
+            }
+            labels.foreach(label => candidates.add(Candidate(label)))
       catch
         case NonFatal(_) =>
           candidates.clear() // defensive: a broken engine yields no completions
