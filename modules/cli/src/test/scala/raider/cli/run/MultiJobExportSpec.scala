@@ -803,7 +803,7 @@ object MultiJobExportSpec extends ZIOSpecDefault:
         ZIO.scoped {
           for
             dir <- ZIO.attempt(tempDir("rai-144-mje03c")).orDie
-            exported <- driveCampaign(dir) { (hub, manager, release) =>
+            exported <- driveNested(dir) { (hub, manager, join, release) =>
               for
                 releaseChildren <- Promise.make[Nothing, Unit]
                 child <- forkChild(hub, manager, releaseChildren)(le =>
@@ -811,6 +811,13 @@ object MultiJobExportSpec extends ZIOSpecDefault:
                     le.modelCallFinished(1, 5L)
                 )
                 _ <- publishIntroduction(hub, child.id)
+                // Determinism pin (MJE-NESTED discipline): the introduction is
+                // CONNECTED before the campaign can settle — a mid-campaign
+                // introduction must join and strict-refuse MissingTerminal;
+                // without this the pin asserts the scheduler, not the exporter.
+                _ <- pollUntil(
+                  join.segmentsView.map(_.exists(_.childJobId == child.id))
+                )
                 // the child is NEVER released: the campaign settles first
                 _ <- release.succeed(()).unit
               yield ()
@@ -834,7 +841,7 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             // Delegation node — no dangling edges in the partial graph
             childNode.exists(n =>
               n.parent.isDefined && n.parent.get.value
-                .startsWith(exported.parentJobId.value)
+                .startsWith(exported.campaignId.value)
             ),
             partial.map(x => GraphHash(x.graph).length) == Right(64)
           )
