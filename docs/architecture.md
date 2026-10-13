@@ -1,198 +1,174 @@
-# Raider Architecture
+# Raider architecture
 
-Raider is a self-hosting agent harness for CI pipelines: a Scala 3 + ZIO 2
-runtime where a model backend drives workspace tools through ONE bounded loop,
-with budget/admission accounting on every call. This guide explains the module
-structure, the data flow of an agent round, and the resource-control system.
+Raider is a Scala 3 application built on ZIO. Its core contracts describe model backends, tools, tasks, programs, jobs, and run events. The runtime executes agent turns and owns admission, accounting, delegation, and job lifecycle. The REPL and command-line runner provide different ways to enter that runtime.
 
-## 1. Module structure
+This guide follows a request from Scala code through the runtime, describes the main module dependencies, and explains the event and lineage paths that exist in the current code. Links point to implementation files where practical.
 
-```
-raider (root)
-├── raiderCore            frozen types: ModelBackend/ModelEvent, Tool,
-│                         RaiderError, TraceEvent, Task/Bundle/Job, codecs
-├── raiderRuntime         AgentLoop, Admission, BudgetLedger, JobManager,
-│                         DelegationToolset, runtime→UI event seam
-│                         (EventHub/reducer), display decorators
-├── raiderUi              tab/session UI state over the event seam
-│                         (SessionRegistry, TabShell)
-├── raiderDsl             composition interpreter (all / batch, fail-fast)
-├── raiderTestkit         scripted backends and fixtures (used by REPL mock
-│                         wiring; excluded from the headless CLI dependency graph)
-├── raiderTools           CodingToolset: fs_read/fs_search/fs_edit/fs_patch/
-│                         fs_tree/proc_run over a Workspace
-├── raiderProviderChat    OpenAI-compatible transport (+ SSE streaming)
-├── raiderProviderAnthropic  Anthropic Messages transport (+ SSE)
-├── raiderReplEngine      in-process scala3-repl driver (pinned 3.9.0)
-├── raiderRepl            REPL facade + console + live wiring
-├── raiderCli             headless runner + streaming chat (no compiler/JLine)
-└── raiderCliFixtures     compiled demo bundle for runner tests
-```
+## 1. Modules and dependencies
 
-Dependency direction: everything flows down to `raiderCore`. Providers depend
-only on core (plus shared SSE framing from provider-chat). `raiderCli`,
-`raiderRepl` and `raiderUi` are frontends over the same runtime — the CLI is
-headless (no compiler/JLine in its distribution), the REPL embeds the real
-Scala 3 compiler, `raiderUi` is the tab shell (JLine only, no compiler). There
-is no second scheduler: the REPL facade, the chat loop, the headless runner
-and the tab shell all delegate to the same `AgentLoop`.
+The production dependency direction is toward `core`. The diagram shows the main compile-time edges; test-only dependencies are described below it.
 
-## 2. Data flow: one agent round
-
-```
-model ──SSE/HTTP──► ModelBackend.stream ──► ModelEvent stream
-                                              │
-   ┌──────────────────────────────────────────┘
-   ▼
-AgentLoop.collect  (ONE admission attempt: Model slot + BudgetLedger reserve)
-   │  TextDelta…    → accumulated text           (displayed live if wired)
-   │  ToolCallReady → the ONLY executable request (deltas never execute)
-   ▼
-Tool dispatch (sequential, Tool slot, per-tool timeout)
-   │  lookup → validate args JSON → invoke → JSON-validated result
-   │  unknown tool / bad args → structured FEEDBACK message (loop continues)
-   │  definitive failure      → typed failure of the run (no blind retries)
-   ▼
-tool-role message appended (matched by tool_call_id) → next round
-   │
-   ▼
-final text (non-empty, marker-free) → RunFinished trace → caller
+```mermaid
+flowchart BT
+  Runtime --> Core
+  DSL --> Core
+  Tools --> Runtime
+  Tools --> Core
+  ProviderChat --> Core
+  ProviderAnthropic --> ProviderChat
+  ProviderAnthropic --> Core
+  UI --> Runtime
+  Repl --> Core
+  Repl --> Runtime
+  Repl --> DSL
+  Repl --> ReplEngine
+  Repl --> Tools
+  Repl --> ProviderChat
+  Repl --> ProviderAnthropic
+  Repl --> UI
+  CLI --> Core
+  CLI --> DSL
+  CLI --> Runtime
+  CLI --> Tools
+  CLI --> ProviderChat
+  CLI --> ProviderAnthropic
+  ReplEngine --> Core
 ```
 
-Key invariants:
+- [`raiderCore`](../modules/core/src/main/scala/raider/core/) contains the shared contracts and value types: `ModelBackend`, `ModelEvent`, `Tool`, `ToolRegistry`, `Program`, `Task`, `JobHandle`, errors, codecs, and traces. It depends on ZIO and zio-json.
+- [`raiderRuntime`](../modules/runtime/src/main/scala/raider/runtime/) implements `AgentLoop`, admission and the budget ledger, jobs, delegation, runtime events, and lineage graph operations. It depends on core. `raiderTestkit` is a test-scope dependency of runtime, not a production backend.
+- [`raiderDsl`](../modules/dsl/src/main/scala/raider/dsl/) contains typed composition such as `all` and `batch`, plus lineage data, storage, projection, and recorded-source support. It depends on core.
+- [`raiderTools`](../modules/tools/src/main/scala/raider/tools/) implements workspace file and process tools. It depends on core and runtime.
+- [`raiderProviderChat`](../modules/provider-chat/src/main/scala/raider/provider/chat/) implements the OpenAI-compatible Chat transport. [`raiderProviderAnthropic`](../modules/provider-anthropic/src/main/scala/raider/provider/anthropic/) implements the Anthropic Messages transport and reuses the Chat module's SSE framing.
+- [`raiderReplEngine`](../modules/repl-engine/src/main/scala/raider/repl/engine/) embeds the pinned Scala 3 REPL. [`raiderRepl`](../modules/repl/src/main/scala/raider/repl/) wires the facade, compiler, providers, tools, and UI for interactive use. The REPL depends on the testkit for its mock wiring.
+- [`raiderUi`](../modules/ui/src/main/scala/raider/ui/) holds tab and session UI state over runtime events. It depends on runtime and includes JLine terminal support.
+- [`raiderCli`](../modules/cli/src/main/scala/raider/cli/) provides the headless runner, chat, artifacts, and replay command. It depends on core, DSL, runtime, tools, and both provider modules. It does not depend on the REPL engine or UI, so the headless distribution does not include the Scala compiler or JLine.
+- [`raiderCliFixtures`](../modules/cli-fixtures/src/main/scala/raider/fixtures/) supplies a compiled demo workflow to CLI tests.
 
-- **One execution point.** REPL `ask`, chat, `:fix`, headless coder runs and
-  child delegation all ride `AgentLoop.runText`. Nothing re-implements the
-  round semantics.
-- **Traces are data.** Every round/call/result emits `TraceEvent`s; the tracer
-  is an injected `TraceEvent => UIO[Unit]` (stderr echo in interactive
-  frontends, transcript.json in the runner, Ref capture in tests).
-- **Honesty at the edges.** Unknown tools and malformed arguments are feedback,
-  not crashes; crash-flavored tool failures are typed failures, never masked as
-  conversational content. Mutational tool calls are never auto-retried after an
-  ambiguous outcome.
+These edges are defined in [`build.sbt`](../build.sbt). In particular, the REPL, CLI, and UI are not three independent agent runtimes: their work reaches the same runtime loop, while each frontend has its own input and presentation code.
 
-### 2.1 Event seam: how the UI observes a run
+## 2. From a Scala expression to a model turn
 
-Live observability is a one-way publish seam — the runtime emits, consumers
-fold. The hub never calls back into the runtime.
+A REPL expression first describes work. It reaches a backend only when an execution method runs it. `Task` is a lazy wrapper over a ZIO effect; `Task.zio` is the boundary that exposes that effect to the launcher. The DSL composes tasks at this same boundary rather than defining a second execution engine.
 
+```mermaid
+flowchart LR
+  Expr[Scala expression] --> Desc[Program or AgentAsk descriptor]
+  Desc --> Task[Task containing ZIO effect]
+  Task --> Interp[Task.zio / REPL facade or CLI runner]
+  Interp --> Loop[AgentLoop]
+  Loop --> Admission[Admission and BudgetLedger]
+  Admission --> Backend[ModelBackend stream]
+  Backend --> Events[Text and tool-call events]
+  Events --> Dispatch[Sequential tool dispatch]
+  Dispatch --> Backend
+  Events --> Result[Validated final text]
 ```
-AgentLoop emitters (LoopEvents) ──┐
-JobManager transitions (StatusLedger) ──┤──► EventHub ──► StatusLine (chat)
-DelegationToolset (DelegationEvents) ──┘   (reliable |      tabs/registry (raiderUi,
-                                            diagnostics)     SessionRegistry)
+
+The layers have distinct responsibilities:
+
+1. **Scala expression and descriptor.** `scout(prompt)` in the REPL creates an `AgentAsk[String]`; calling `.map` adds typed post-processing. A `Program[I, O]` accepts an input and returns a `Task[O]`. Constructing either does not make a provider request. See [`Program`](../modules/core/src/main/scala/raider/core/program.scala), [`Task`](../modules/core/src/main/scala/raider/core/task.scala), and [`FacadeOps`](../modules/repl/src/main/scala/raider/repl/facade/FacadeOps.scala).
+2. **Composition.** `all(taskA, taskB)` returns a task whose two branches run in parallel and whose result is a typed tuple. It fails fast and interrupts its sibling on failure. `all(programA, programB)` instead creates a program that will build that task for an input. The implementation is in [`Composition.scala`](../modules/dsl/src/main/scala/raider/dsl/composition/Composition.scala).
+3. **Interpreter and facade.** In the REPL, `.run()` calls `Task.zio` and executes it on the REPL runtime. `AgentRef.ask` and the CLI runner also reach the runtime loop; the REPL-specific methods are extension methods rather than core contract members. See [`FacadeOps.scala`](../modules/repl/src/main/scala/raider/repl/facade/FacadeOps.scala) and [`HeadlessRunner.scala`](../modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala).
+4. **Agent loop.** [`AgentLoop.runText`](../modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala) validates the request and round limit, streams model events, dispatches ready tool calls, appends matched tool results to the conversation, and continues until it receives valid final text or returns a typed error. Partial tool-argument deltas are never executed. Unknown tools and malformed arguments are sent back as structured feedback; definitive tool failures fail the run.
+5. **Provider and tools.** A `ModelBackend` translates a provider protocol into normalized `ModelEvent`s. When the model produces `ToolCallReady`, the loop looks up the named tool, validates its JSON arguments, and invokes it. Tool calls run sequentially in model order under a tool slot. The loop does not blindly retry a mutating call after an ambiguous outcome. See [`backend.scala`](../modules/core/src/main/scala/raider/core/backend.scala), [`tool.scala`](../modules/core/src/main/scala/raider/core/tool.scala), and [`CodingToolset.scala`](../modules/tools/src/main/scala/raider/tools/CodingToolset.scala).
+
+### Example: parallel billing review
+
+The repository's [`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl) builds two prompts from one Scala expression and billing policy. `scoutAsk` requests a defect explanation; `testAsk` asks for expected boundary cases as JSON. Both descriptors add a result label with `.map`, then `all(scoutAsk, testAsk).run()` produces a pair of labeled answers.
+
+```scala
+val billingCode = "if subtotalCents > 10000 then 1000 else 0"
+val billingPolicy = "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
+val scoutAsk = scout(s"$billingPolicy Review this Scala expression: $billingCode. Identify the exact boundary defect and give one concrete input/output counterexample. Do not use tools. Reply concisely.").map(answer => ("boundary-review", answer))
+val testAsk = worker(s"$billingPolicy For this Scala expression: $billingCode, Specify the expected discounts required by the policy, not the outputs of the buggy code. Return ONLY a JSON array of [subtotalCents, expectedDiscountCents] pairs for 9999, 10000 and 10001 cents. No markdown or tools.").map(answer => ("test-plan", answer))
+val (review, plan) = all(scoutAsk, testAsk).run()
 ```
 
-- **Routing.** Each of the 13 frozen payload cases is RELIABLE (bounded-wait,
-  typed `Backpressure` on timeout, no silent loss — `Terminal`, `Waiting`,
-  `JobStatusChanged`, `BudgetChanged`, `RetryScheduled`, `Delegated`) or
-  DIAGNOSTICS (non-blocking, dropped only with a counted bump — model/tool
-  progress, `Diagnostics`). Every envelope carries a per-job `seq`, monotonic
-  from 1 and gap-free; consumers reorder by `seq` (the two classes are relayed
-  by independent forwarders, so cross-class arrival order is unspecified).
-- **Authority split.** The loop emits model/tool/wait events and NEVER a
-  terminal status: `JobStatusChanged` and the exactly-one, always-last
-  `Terminal` belong to the job layer (`StatusLedger`). The reducer refuses any
-  event after a terminal snapshot as `Malformed`.
-- **Consumers stay dumb.** `SessionReducer` folds envelopes into a
-  `SessionSnapshot`; `StatusLine` renders one line per change; the
-  `SessionRegistry` keeps per-tab history/scrollback with honest eviction
-  counters. Emission failure never breaks a run, and a slow consumer can never
-  block the loop.
-- **Cancel is outside model admission.** Besides the model-callable
-  `cancel_agent`, the owner/UI channel cancels children directly via
-  `DelegationToolset.cancelOutOfBand` / `cancelAllOutOfBand` (`jobs.cancelAny`
-  with no model round and no second slot) — reachable even when a parked child
-  holds the only model slot. Per-child deadline watchdogs (`setChildDeadline`,
-  bounded by `deadlineGrace`) do the same on expiry; an unobservable outcome
-  past the grace is reported Uncertain, never a fake `Cancelled`.
+In the complete example, the prompts include the buggy expression `subtotalCents > 10000` and a policy that applies a 1000-cent discount at and above 10000 cents. The REPL's mock mode runs the Scala and checks that both labeled responses are non-empty. With the configured OpenAI-compatible path, the example also parses the returned plan and checks the policy cases: 9999 → 0, 10000 → 1000, and 10001 → 1000. Mock responses demonstrate wiring and assertions; they are not model verification.
 
-## 3. Budget & admission system
+This foreground REPL example prints its results. It does not create the CLI run bundle or lineage artifacts described in §7.
 
-Resource control is two-layered:
+Each descriptor becomes its own agent run when the combined task executes. The REPL session supplies the same admission service and limits to both runs, while each run receives its own root ID. The `all` composition does not merge their accounting roots. If one branch fails, `all` interrupts the sibling.
 
-1. **BudgetLimits** (validated construction): `maxConcurrentLlm`,
-   `maxConcurrentTools`, `maxChildren`, `maxDepth`, `maxAttempts`,
-   `queueCapacity`, optional `hardUsdCap` (`MicroUsd` — Long micro-USD; Double
-   money arithmetic is banned by the forbidden-API gate).
-2. **Admission** leases slots per kind (`Model`, `Tool`) in the §6 acquisition
-   order. An `AgentLoop` round = ONE attempt: acquire the Model slot, reserve
-   budget, dispatch the stream, settle on exit. Cancellation accounting is
-   owned by admission brackets: cancel while waiting charges nothing; interrupt
-   after acquire keeps the charge and marks the reservation Uncertain — unknown
-   is never zeroed.
+## 3. Ownership, budgets, and cancellation
 
-Delegation extends this to child agents: `DelegationToolset` exposes
-`delegate` / `await_agent` / `cancel_agent` / `list_agents` as model-callable
-tools over the same `JobManager`. Children share the root's ledger (one
-accounting root), and `maxConcurrentTools >= 2` is REQUIRED because the
-awaiting parent holds a tool slot while children run (BUD-03 no-deadlock
-rule). The `maxLLM=1` parent/cancel interplay (a parent parked behind a child
-can never get a slot to issue `cancel_agent`) is resolved OUTSIDE model
-admission: the out-of-band cancel channel and child deadlines of §2.1 reach
-the same `JobManager` directly.
+Each `AgentLoop` is created with a backend, tool registry, model name, `Admission`, and a root ID. Admission controls model and tool concurrency and uses the shared `BudgetLedger` for attempt reservations. Budget limits include the optional hard USD cap, maximum concurrent model and tool calls, children, nesting depth, attempts, and queue capacity. Configuration is validated before a session or run starts.
 
-Jobs (`JobManager`) own lifecycle: start (daemon fiber, cancellation-safe
-registration), STM status transitions, typed result publication — a final
-status is always published, even for watcher defects (waiters never hang on a
-silent drop).
+For each model or tool dispatch, admission follows a defined order: check queue capacity, wait for a concurrency permit, recheck cancellation, reserve budget, and then dispatch. A successful call settles against observed cost. If the price is unknown, it is recorded as unpriced; an unknown estimate is not treated as free. An unknown-price attempt is refused when a hard cap is required.
 
-## 4. Frontends
+Cancellation accounting depends on whether dispatch began:
 
-### CLI (headless)
+- Cancellation while waiting for a slot makes no reservation.
+- Cancellation after acquiring a slot but before dispatch releases the reservation.
+- Interruption during provider or tool dispatch leaves the attempt charged as uncertain, because the external operation may have completed.
 
-`raider run` loads a jar bundle (`BundleLoader`, manifest-validated) or uses a
-built-in agent (`--agent coder` = CodingToolset + coder system prompt). It
-performs preflight BEFORE any spend, writes artifacts (`run.json`,
-`transcript.json`, `events.jsonl`, `summary.md`) and maps failures to 18
-stable exit-code families. SIGTERM stops through a bounded shutdown hook.
-`raider chat` is the interactive frontend: streaming deltas (stdout), live tool
-echo and a status line folded from the event seam (stderr, one synchronized
-writer), session persistence (`~/.raider/sessions`), conversation
-compaction and the `:fix` compile→errors→model→recompile loop. Credentials
-come only from the environment — `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`;
-`--api-key` in argv is a typed `RA-CFG` error, never a parsed secret.
+`JobManager` owns background jobs and their terminal status. REPL `start` returns a job handle; `await` observes the result of that job and does not start it again. Delegated children share their parent's root accounting and job manager. Awaiting a child does not hold a model slot, so a child can run when `maxConcurrentLlm` is one. The awaiting parent does hold a tool slot, which is why delegation requires at least two tool slots. Owner or UI cancellation uses an out-of-band path to the job manager, so it does not need another model turn. Child deadlines use the same path; if cleanup cannot confirm cancellation before its grace period, the result is reported as uncertain.
+
+See [`Admission.scala`](../modules/runtime/src/main/scala/raider/runtime/admission/Admission.scala), [`BudgetLedger.scala`](../modules/runtime/src/main/scala/raider/runtime/budget/BudgetLedger.scala), [`JobManager.scala`](../modules/runtime/src/main/scala/raider/runtime/jobs/JobManager.scala), and [`DelegationToolset.scala`](../modules/runtime/src/main/scala/raider/runtime/delegate/DelegationToolset.scala).
+
+## 4. Runtime events and UI state
+
+Runtime events provide an observation path for status and progress. The runtime publishes envelopes to an `EventHub`; UI consumers reduce those envelopes into state or render status. This path does not control the agent loop. A slow observer must not become a second execution scheduler.
+
+The hub separates reliable events from diagnostics. Reliable events use bounded waiting and can return a typed backpressure error; diagnostic events are non-blocking and may be dropped with a count. Envelopes have per-job sequence numbers. Reliable and diagnostic forwarders are independent, so consumers should order by sequence rather than assume arrival order across those classes.
+
+The loop reports model and tool activity, but job status and the terminal event belong to the job layer. `StatusLedger` publishes the status transition and exactly one terminal event. `SessionReducer` applies envelopes to snapshots and rejects events after a terminal snapshot. UI state remains a consumer: for example, `SessionRegistry` stores tab history and scrollback, while status views render snapshots.
+
+Optional event bindings mean a loop can run without a hub. Emission failures are absorbed and do not change the run result. See [`events.scala`](../modules/runtime/src/main/scala/raider/runtime/events/events.scala), [`hub.scala`](../modules/runtime/src/main/scala/raider/runtime/events/hub.scala), [`reducer.scala`](../modules/runtime/src/main/scala/raider/runtime/events/reducer.scala), [`StatusLedger.scala`](../modules/runtime/src/main/scala/raider/runtime/jobs/StatusLedger.scala), and [`SessionRegistry.scala`](../modules/ui/src/main/scala/raider/ui/SessionRegistry.scala).
+
+## 5. Frontends and providers
 
 ### REPL
 
-The REPL embeds the pinned scala3-repl in-process. The classloader split is
-real: interpreter-world classes load SELF-FIRST, so the prelude constructs the
-backend, tools, and session inside that interpreter world instead of passing
-console-world statics across the boundary. The facade (`AgentRef.ask`, `all`,
-`batch`, `openSession`) blocks the REPL thread over the same async runtime —
-one semantics, two spellings. With a resolvable key, the OpenAI branch wires
-the SSE streaming backend and coding tools; the Anthropic branch wires the
-Anthropic Messages streaming backend. The Anthropic request currently omits
-tool definitions (RAI-127 remains open), so do not infer tool-call parity.
+The REPL embeds the pinned Scala 3 compiler in-process. Its engine uses a classloader boundary: interpreter-world classes load self-first, and the prelude builds backend, tools, and session objects within that interpreter world. The facade exposes `scout`, `worker`, `ask`, `start`, `all`, and related operations over the common runtime. Interactive streaming output is optional. The REPL can select the OpenAI-compatible or Anthropic-compatible provider when configured.
 
-## 5. Provider transport
+The Anthropic REPL path currently does not send tool definitions, so this wiring does not provide tool-call parity. This is a known limitation, not a property of `AgentLoop` or a claim about the CLI's provider path. See [`Main.scala`](../modules/repl/src/main/scala/raider/repl/Main.scala), [`DottyReplEngine.scala`](../modules/repl-engine/src/main/scala/raider/repl/engine/DottyReplEngine.scala), and [`LiveCredentials.scala`](../modules/repl/src/main/scala/raider/repl/LiveCredentials.scala).
 
-Both providers share one framing layer (`SseFramer`, byte-level, UTF-8-safe,
-bounded frames) with wire-specific semantic parsers. Status mapping is uniform:
-401/403 → `ProviderAuth`, 429 → `ProviderRateLimit`, 5xx →
-`ProviderUnavailable`, else → `StreamProtocol`. The response body is closed on
-every exit path (scope-acquire/release); TCP close is NOT proof upstream
-stopped metering — cost stays Uncertain. `RateLimitRetries` adds 429-only
-exponential backoff (1s/2s/4s, max 3) as a decorator at construction sites;
-everything else stays first-shot.
+### CLI
 
-## 6. Self-hosting
+The headless CLI loads a validated bundle or selects a built-in agent, performs preflight before spending, writes run artifacts, and maps outcomes to stable exit-code families. The interactive `raider chat` frontend adds streaming display, session persistence, and the `:fix` compile/fix loop. Neither path embeds the Scala REPL compiler. See [`CliArgs.scala`](../modules/cli/src/main/scala/raider/cli/run/CliArgs.scala), [`HeadlessRunner.scala`](../modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala), and [`ChatLoop.scala`](../modules/cli/src/main/scala/raider/cli/chat/ChatLoop.scala).
 
-The coder agent (`--agent coder`) is pointed at the Raider workspace itself
-with the six workspace tools; its system prompt enforces READ → UNDERSTAND →
-CHANGE → COMPILE → FIX → TEST → SUMMARIZE. Structured `proc_run` output
-(`parsed` field: `sbt_compile` errors / `sbt_test` summaries) and `:fix` make
-the edit→compile→fix loop explicit and budget-bounded. The quality system the
-agent works inside is documented in `docs/quality-gates.md`.
+Credentials are resolved from environment variables or a configured helper reference. The CLI rejects an API key passed through `--api-key`; secrets do not belong in command arguments. Provider transport maps authentication, rate-limit, unavailable-server, and protocol failures to typed errors. The shared SSE framer handles byte-level UTF-8 boundaries. A rate-limit retry decorator retries 429 responses only, with a bounded schedule; other failures are not retried by that decorator. See [`Credentials.scala`](../modules/cli/src/main/scala/raider/cli/run/Credentials.scala), [`SseFramer.scala`](../modules/provider-chat/src/main/scala/raider/provider/chat/stream/SseFramer.scala), and [`RateLimitRetries.scala`](../modules/runtime/src/main/scala/raider/runtime/display/RateLimitRetries.scala).
 
-## 7. Where to look
+## 6. Workspace tools and self-hosting
 
-| Topic | File |
+The built-in coder uses the workspace toolset: file read, search, edit, patch, tree, and process execution. Tools operate with the process permissions and workspace configuration supplied to them. The REPL and Scala plugins run trusted Scala code with the process's permissions; tool policy does not sandbox arbitrary Scala.
+
+The coder prompt describes a read, understand, change, compile, fix, test, summarize workflow. That prompt is guidance for the agent; the runtime does not guarantee that every model follows those steps. Process output is bounded and includes parsed summaries for known compile and test commands. The quality gate policy is documented in [`quality-gates.md`](quality-gates.md). See [`CoderPrompts.scala`](../modules/cli/src/main/scala/raider/cli/CoderPrompts.scala), [`CodingToolset.scala`](../modules/tools/src/main/scala/raider/tools/CodingToolset.scala), and [`ProcessTool.scala`](../modules/tools/src/main/scala/raider/tools/process/ProcessTool.scala).
+
+## 7. Run events and lineage artifacts
+
+The implemented headless lineage path starts with a settled CLI run. The runner exports that run's event stream, the lineage reader parses it, the reducer constructs a `SessionGraph`, and the projection writes `lineage.scala` plus `lineage-data.json`. The generated Scala file contains the graph's program and task structure; node data such as prompts and tool arguments is stored in the JSON resource. The graph is a projection of events, not the source of truth.
+
+```mermaid
+flowchart LR
+  Run[Headless run] --> Events[events.jsonl]
+  Events --> Reader[LineageEventReader]
+  Reader --> Reducer[LineageReducer]
+  Reducer --> Graph[SessionGraph]
+  Graph --> Projection[LineageProjection]
+  Projection --> Scala[lineage.scala]
+  Projection --> Data[lineage-data.json]
+  Data --> Responses[Recorded model responses]
+  Data --> Expected[Recorded graph]
+  Responses --> Replay[Recorded replay through AgentLoop]
+  Replay --> Actual[Replayed event stream and graph]
+  Expected --> Compare[Graph comparison]
+  Actual --> Compare
+```
+
+The run directory also contains `run.json`, `summary.md`, and `transcript.json`. A settled run writes the two lineage files alongside these artifacts. The summary includes the lineage graph hash; a lineage-artifact write failure is reported as unavailable in the summary and does not replace the run's exit status. The user guide's artifact example describes this output for a CLI run; a standalone REPL `.run()` such as the billing example does not produce this directory.
+
+`raider replay <run-dir> --workspace <dir>` is implemented for recorded replay. It uses recorded model responses, runs the shared agent loop with budget admission, and compares the resulting graph with the recorded graph. A matching graph returns the match verdict; a mismatch reports the first divergent node. The product replay command does not make live provider calls. Live rerun with a model, unified multi-job event export, and wire schema additions for phase and recovery-class data remain outside the implemented replay path. For the full status and artifact layout, see [`lineage.md`](lineage.md), [`RunLineageArtifacts.scala`](../modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala), [`LineageReducer.scala`](../modules/runtime/src/main/scala/raider/runtime/lineage/reduce/LineageReducer.scala), [`LineageProjection.scala`](../modules/dsl/src/main/scala/raider/dsl/lineage/proj/LineageProjection.scala), and [`ReplayCli.scala`](../modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala).
+
+## 8. Further reading
+
+| Topic | Guide or implementation |
 | --- | --- |
-| Frozen contracts | `contracts/`, `docs/runtime-contracts.md` |
-| Gate catalog & stage policy | `docs/quality-gates.md`, `scripts/quality-policy/registry.json` |
-| Provider wire details | `docs/provider-protocols.md` |
-| API reference | `docs/api.md` |
-| Contributing (add tool/provider/tests) | `docs/contributing.md` |
-| Work history | `docs/work/board.md`, `docs/work/records/` |
+| Public runtime contracts | [`runtime-contracts.md`](runtime-contracts.md) |
+| DSL and REPL usage | [`user-guide.md`](user-guide.md), [`product-repl.md`](product-repl.md) |
+| Provider protocols | [`provider-protocols.md`](provider-protocols.md) |
+| Plugins | [`plugins.md`](plugins.md) |
+| Quality checks | [`quality-gates.md`](quality-gates.md) |
+| Session lineage and current status | [`lineage.md`](lineage.md), [ADR-027](adr/ADR-027-session-lineage.md) |
