@@ -35,7 +35,17 @@ object ReplCommands:
     val snapshots = FacadeOps.unsafeRun:
       ZIO.foreach(FacadeOps.allHandles)(h => session.jobs.snapshotAny(h))
     if snapshots.isEmpty then "no jobs started in this session"
-    else snapshots.map(FacadeOps.renderSnapshot).mkString("\n")
+    else
+      snapshots
+        .map { s =>
+          // RAI-132: mark steerable jobs — steering channel open, job not
+          // terminal (terminal jobs refuse sends typed).
+          val mark =
+            if FacadeOps.isSteerable(s.id, s.status) then "  [steerable]"
+            else ""
+          FacadeOps.renderSnapshot(s) + mark
+        }
+        .mkString("\n")
 
   private def cancelText(rawId: String): String =
     FacadeOps.handleById(JobId(rawId)) match
@@ -143,6 +153,17 @@ object ReplCommands:
   /** :cancel <id> — outcome text. */
   def printCancel(rawId: String): Unit =
     println(cancelText(rawId))
+
+  /** :send <id> <text> — the typed steering receipt (RAI-132): queued (applies
+    * at the next model turn), later applied, or rejected with the verbatim
+    * runtime mailbox refusal. Never silent.
+    */
+  def printSend(rawId: String, text: String): Unit =
+    println(sendText(rawId, text))
+
+  private def sendText(rawId: String, text: String): String =
+    FacadeOps.unsafeRun:
+      FacadeOps.sendToJob(JobId(rawId), text).map(SteerReceipt.render)
 
   /** Honest exit warning for active jobs (empty = silent). */
   def printShutdownWarning(): Unit =
