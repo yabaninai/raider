@@ -2,15 +2,17 @@ package raider.repl.facade
 
 import raider.core.{
   JobId,
+  MessageId,
   ModelBackend,
   RaiderError,
   RequestMessage,
   RootId,
   Task
 }
-import raider.runtime.jobs.JobHandle
+import raider.runtime.jobs.{JobHandle, JobStatus}
 import raider.runtime.loop.AgentLoop
-import zio.{Exit, Unsafe, ZIO}
+import raider.runtime.mailbox.{Mailbox, MailboxError, Message}
+import zio.{Chunk, Exit, Promise, Unsafe, ZIO}
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -61,6 +63,31 @@ object FacadeOps:
 
   private[repl] def allHandles: List[JobHandle[?]] =
     started.values.asScala.toList.sortBy(_.id.value)
+
+  // ----- RAI-132: steering surface (facade wiring over the runtime mailbox) --
+
+  /** Steering channels of facade-started jobs: `mailboxP` is fulfilled with the
+    * runtime Mailbox under the REAL job id right after `start` returns (the
+    * same publish-then-await shape as the frozen delegation wiring); `sealedP`
+    * resolves when the terminal watcher closed the mailbox.
+    */
+  private[repl] val steer = ConcurrentHashMap[JobId, SteerChannel]()
+
+  /** Owning session per started job — the JobManager that can snapshot it
+    * (handles from different sessions share this process-global registry).
+    */
+  private[repl] val owners = ConcurrentHashMap[JobId, ReplSession]()
+
+  private val steerSeq = AtomicLong(0)
+
+  private def nextSteerId(): String = s"st-${steerSeq.incrementAndGet()}"
+
+  /** `:jobs` marker (RAI-132): a job is steerable while its steering channel
+    * exists and the job is not terminal — terminal jobs refuse sends typed
+    * (never silently steerable).
+    */
+  def isSteerable(id: JobId, status: JobStatus): Boolean =
+    steer.containsKey(id) && !JobStatus.terminal(status)
 
   private[repl] def unsafeRun[A](eff: ZIO[Any, RaiderError, A]): A =
     Unsafe.unsafe { implicit u =>
@@ -140,13 +167,34 @@ Be concise. Use tools before answering.""".stripMargin
     )
       .runText(messages, session.limits, session.limits.maxAttempts)
 
-  private[repl] def startJob[A](
+  /** RAI-132: the ONE start path of the facade — registers the job (visible in
+    * :jobs/:cancel), opens its steering channel over the runtime Mailbox, and
+    * runs the attempt as a steering-aware turn loop. `g` is the deferred
+    * post-map of a lazy descriptor (applied to the loop's final text exactly
+    * like the previous eager `Task.map` did). Same one runtime, same
+    * textAttemptMessages execution point — steering only adds turn boundaries.
+    */
+  private[repl] def startSteerable[A](
       session: ReplSession,
       agent: AgentRef,
       prompt: String,
-      task: Task[A]
+      g: String => A
   ): JobHandle[A] =
     val n = jobSeq.incrementAndGet()
+    val (mbxP, sealedP) = unsafeRun:
+      for
+        mbxP <- Promise.make[Nothing, Mailbox]
+        p <- Promise.make[Nothing, Unit]
+      yield (mbxP, p)
+    val channel = SteerChannel(mbxP, sealedP)
+    val task = Task(
+      steerableAttempt(
+        session,
+        agent,
+        List(RequestMessage("user", prompt)),
+        channel
+      )
+    ).map(g)
     val handle = unsafeRun:
       session.jobs.start(
         RootId(s"root_job_$n"),
@@ -154,12 +202,205 @@ Be concise. Use tools before answering.""".stripMargin
         task
       )
     started.put(handle.id, handle)
+    owners.put(handle.id, session)
+    steer.put(handle.id, channel)
     // best-effort trace: if the task wraps a traced loop, its events are here
     val traceRef = zio.Unsafe.unsafe { implicit u =>
       zio.Ref.unsafe.make(Vector.empty[raider.core.trace.TraceEvent])(using u)
     }
     traces.put(handle.id, traceRef)
+    // Publish the mailbox under the REAL job id; the daemon watcher seals it
+    // at the observed terminal status and resolves every leftover receipt
+    // (expired — acked but never applied is kept visible, never silent).
+    unsafeRun:
+      Mailbox
+        .make(handle.id, SteerChannel.Capacity)
+        .flatMap(m => mbxP.succeed(m).as(m))
+        .flatMap { mbx =>
+          session.jobs.awaitSettled(handle) *>
+            session.jobs.snapshotAny(handle).flatMap { snap =>
+              snap.status match
+                case t: JobStatus.Terminal => mbx.close(t)
+                case _ => zio.ZIO.unit // unreachable; stay total
+            } *> finalizeExpired(channel, mbx) *>
+            sealedP.succeed(()).unit
+        }
+        .forkDaemon
+        .unit
     handle
+
+  /** RAI-132 turn loop — the facade-side twin of the frozen delegation
+    * childTurns (DelegationToolset RAI-074), consuming the SAME runtime Mailbox
+    * API with the SAME application semantics:
+    *
+    *   1. At EVERY turn boundary the channel's mailbox is drained; a non-empty
+    *      batch is appended as ONE user message
+    *      `owner steering:\n- [msgId] <text>…` (arrival order, ids visible)
+    *      before the next model call — never mid-call, never mid-tool.
+    *   2. Turn 1 runs the initial input; turn N>1 carries the conversation
+    *      forward verbatim (prior messages + the previous final text) plus the
+    *      fresh batch. One textAttemptMessages (the ONE execution point) per
+    *      turn — no second runtime.
+    *   3. The attempt settles at the first boundary whose drain is empty.
+    */
+  private[repl] def steerableAttempt(
+      session: ReplSession,
+      agent: AgentRef,
+      initial: List[RequestMessage],
+      channel: SteerChannel
+  ): ZIO[Any, RaiderError, String] =
+    channel.mailboxP.await.flatMap { mbx =>
+      def steeringSection(
+          drained: Chunk[Message]
+      ): List[RequestMessage] =
+        if drained.isEmpty then Nil
+        else
+          List(
+            RequestMessage(
+              "user",
+              drained
+                .map(m => s"- [${m.id.value}] ${m.content}")
+                .mkString("owner steering:\n", "\n", "")
+            )
+          )
+
+      def runTurn(
+          conversation: List[RequestMessage],
+          drained: Chunk[Message]
+      ): ZIO[Any, RaiderError, String] =
+        val withSteering = conversation ++ steeringSection(drained)
+        markApplied(mbx, channel, drained) *>
+          textAttemptMessages(session, agent, withSteering).flatMap {
+            finalText =>
+              mbx.endTurn *> mbx.drainOnTurnBoundary.flatMap { queued =>
+                if queued.isEmpty then ZIO.succeed(finalText)
+                else
+                  runTurn(
+                    withSteering :+ RequestMessage(
+                      AgentLoop.AssistantRole,
+                      finalText
+                    ),
+                    queued
+                  )
+              }
+          }
+
+      mbx.drainOnTurnBoundary.flatMap(runTurn(initial, _))
+    }
+
+  /** A drained batch is APPLIED at this boundary: its texts are part of the
+    * next model-turn input (visible in the recorded request). Each queued
+    * receipt resolves with the Applied receipt. Applied means "included in the
+    * model input", not "the turn completed" — an interrupted turn keeps the
+    * delivery honest (the mailbox conservation already counted the drain).
+    */
+  private def markApplied(
+      mbx: Mailbox,
+      channel: SteerChannel,
+      drained: Chunk[Message]
+  ): zio.UIO[Unit] =
+    ZIO.foreachDiscard(drained) { m =>
+      Option(channel.pending.remove(m.id)) match
+        case None => zio.ZIO.unit
+        case Some(p) =>
+          p.succeed(
+            Some(SteerReceipt.Applied(mbx.jobId, m.id, m.content))
+          ).unit
+    }
+
+  /** Terminal tail of the watcher: every acked-but-never-applied receipt
+    * resolves as expired (`None`) — a final drain retrieves what the mailbox
+    * still held after the close, then any residual registration is swept.
+    * Nothing hangs, nothing is silently lost.
+    */
+  private def finalizeExpired(
+      channel: SteerChannel,
+      mbx: Mailbox
+  ): zio.UIO[Unit] =
+    mbx.drainOnTurnBoundary.flatMap { late =>
+      ZIO.foreachDiscard(late) { m =>
+        Option(channel.pending.remove(m.id))
+          .fold(zio.ZIO.unit)(_.succeed(None).unit)
+      } *>
+        ZIO.foreachDiscard(channel.pending.values.asScala.toList)(
+          _.succeed(None).unit
+        )
+    }
+
+  /** RAI-132: the facade send/steer channel — delegates to the runtime steering
+    * mailbox of the job's channel. TOTAL: every outcome is a typed receipt,
+    * never an exception, never a silent no-op.
+    *
+    *   - unknown job (or no steering channel) → Rejected(UnknownJob);
+    *   - terminal job → Rejected(TerminalJob) via the owning-session snapshot
+    *     (the mailbox refuses TerminalJob too once the watcher sealed it, so
+    *     the race window is also typed);
+    *   - running job → the mailbox ack (exactly-once per msgId, bounded
+    *     capacity) → Queued; MailboxError.Full → Rejected(Full).
+    */
+  private[repl] def sendToJob(
+      id: JobId,
+      text: String
+  ): ZIO[Any, RaiderError, SteerReceipt] =
+    Option(steer.get(id)) match
+      case None =>
+        ZIO.succeed(
+          SteerReceipt.Rejected(
+            id,
+            MessageId(nextSteerId()),
+            text,
+            MailboxError.UnknownJob(id)
+          )
+        )
+      case Some(channel) =>
+        val mid = MessageId(nextSteerId())
+        terminalStatusOf(id).flatMap {
+          case Some(t) =>
+            ZIO.succeed(
+              SteerReceipt.Rejected(
+                id,
+                mid,
+                text,
+                MailboxError.TerminalJob(id, t)
+              )
+            )
+          case None =>
+            channel.mailboxP.await.flatMap { mbx =>
+              for
+                settled <- Promise.make[Nothing, Option[SteerReceipt.Applied]]
+                _ <- ZIO.succeed(channel.pending.put(mid, settled))
+                acked <- mbx.send(Message(mid, text)).either
+                receipt <- acked match
+                  case Right(ack) =>
+                    mbx.pendingCount.map(p =>
+                      SteerReceipt.Queued(
+                        id,
+                        mid,
+                        text,
+                        p,
+                        ack.duplicate,
+                        settled
+                      )
+                    )
+                  case Left(err) =>
+                    ZIO.succeed:
+                      channel.pending.remove(mid)
+                      SteerReceipt.Rejected(id, mid, text, err)
+              yield receipt
+            }
+        }
+
+  private def terminalStatusOf(
+      id: JobId
+  ): ZIO[Any, Nothing, Option[JobStatus.Terminal]] =
+    (Option(owners.get(id)), Option(started.get(id))) match
+      case (Some(session), Some(handle)) =>
+        session.jobs.snapshotAny(handle).map { snap =>
+          snap.status match
+            case t: JobStatus.Terminal => Some(t)
+            case _                     => None
+        }
+      case _ => ZIO.succeed(None)
 
 // ---------------------------------------------------------------------------
 // AgentAsk: a lazy, typed prompt descriptor (API-03: construction dispatches
@@ -169,12 +410,14 @@ Be concise. Use tools before answering.""".stripMargin
 final class AgentAsk[A] private[facade] (
     val agent: AgentRef,
     val prompt: String,
-    private[facade] val underlying: Task[A]
+    root: Task[String],
+    g: String => A = identity
 ):
+  private[facade] def underlying: Task[A] = root.map(g)
 
   /** Typed post-processing; still lazy, still the one interpreter. */
   def map[B](f: A => B): AgentAsk[B] =
-    new AgentAsk[B](agent, prompt, underlying.map(f))
+    new AgentAsk[B](agent, prompt, root, g.andThen(f))
 
   /** Foreground execution; blocks the REPL thread until the final text. */
   def run()(using ReplSession): A = FacadeOps.unsafeRun(Task.zio(underlying))
@@ -182,9 +425,11 @@ final class AgentAsk[A] private[facade] (
   /** Alias of run() — reads naturally on freshly built descriptors. */
   def ask()(using ReplSession): A = run()
 
-  /** Background start: a registered job handle (visible in :jobs/:cancel). */
+  /** Background start: a registered job handle (visible in :jobs/:cancel),
+    * steerable via `send`/`:send` (RAI-132).
+    */
   def start()(using session: ReplSession): JobHandle[A] =
-    FacadeOps.startJob(session, agent, prompt, underlying)
+    FacadeOps.startSteerable(session, agent, prompt, g)
 
 extension (agent: AgentRef)
 
@@ -203,15 +448,11 @@ extension (agent: AgentRef)
     )
 
   /** Background start: returns a job handle immediately; the fiber is owned by
-    * the session JobManager and survives across REPL submissions.
+    * the session JobManager and survives across REPL submissions. The job is
+    * steerable (RAI-132): `handle.send(...)` / `:send <id> <text>`.
     */
   def start(prompt: String)(using session: ReplSession): JobHandle[String] =
-    FacadeOps.startJob(
-      session,
-      agent,
-      prompt,
-      Task(FacadeOps.textAttempt(session, agent, prompt))
-    )
+    FacadeOps.startSteerable(session, agent, prompt, identity)
 
 extension [A](job: JobHandle[A])
 
@@ -243,13 +484,15 @@ extension [A](job: JobHandle[A])
           }
       }
 
-  /** Send/steer a running conversation. NOT in the W10 subset: typed refusal at
-    * call time (obligation tracked on the board, never a silent no-op).
+  /** Send/steer a running conversation (RAI-132): the text is delegated to the
+    * job's runtime steering mailbox and applied at the NEXT model-turn boundary
+    * (never mid-call, never mid-tool). The typed receipt returns immediately —
+    * [[SteerReceipt.Queued]] (await its `settled` for Applied/expired) or
+    * [[SteerReceipt.Rejected]] with the verbatim mailbox refusal. Never silent;
+    * unknown/terminal/overflow are typed refusals.
     */
-  def send(message: String)(using session: ReplSession): Unit =
-    throw RaiderError.CapabilityUnsupported(
-      "job steering (send) is not in the W10 REPL subset"
-    )
+  def send(message: String)(using session: ReplSession): SteerReceipt =
+    FacadeOps.unsafeRun(FacadeOps.sendToJob(job.id, message))
 
 // ---------------------------------------------------------------------------
 // all / batch: facade spellings over the ONE composition interpreter.

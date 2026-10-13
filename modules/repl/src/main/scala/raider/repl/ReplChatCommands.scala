@@ -55,6 +55,15 @@ object ReplChatCommands:
       ":cancel <id>",
       "request cancellation of a job (false if already terminal)"
     ),
+    // RAI-132: :send left the "Not in this slice" prose — a dispatched command
+    // now (job steering over the runtime mailbox, typed receipts). The
+    // freshness equality in ReplChatPaletteSpec pins this entry against
+    // helpText.
+    Command(
+      ":send",
+      ":send <jobId> <text>",
+      "steer a running job: typed receipt; applies at the next model turn"
+    ),
     Command(
       ":log",
       ":log <id>",

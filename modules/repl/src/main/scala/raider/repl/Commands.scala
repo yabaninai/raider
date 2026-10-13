@@ -19,6 +19,7 @@ object Commands:
       |  :help            this text
       |  :jobs            list jobs started through the facade (id, status, label)
       |  :cancel <id>     request cancellation of a job (false if already terminal)
+      |  :send <jobId> <text>  steer a running job: typed receipt; applies at the next model turn
       |  :log <id>        show the trace (rounds, tools, results) of a job
       |  :type <expression>  the type of an expression, compiled but not run
       |  :approve         tab shell: approve the plan proposal (one execution job)
@@ -27,7 +28,7 @@ object Commands:
       |  :quit            exit the REPL (active jobs are reported, then dropped)
       |Everything else is evaluated as Scala by the in-process compiler.
       |Multiline input: keep typing; a blank line submits the pending buffer.
-      |Not in this slice: send steering; the dotty :kind/:doc interpreter commands.""".stripMargin
+      |Not in this slice: the dotty :kind/:doc interpreter commands.""".stripMargin
 
   /** RAI-110 machine-readable plan-command registry (source-of-truth surface:
     * the RAI-111 palette freshness reads Commands, not a hand list; the tab
@@ -73,6 +74,22 @@ object Commands:
               s"raider.repl.facade.ReplCommands.printLog(\"$id\")",
               typeQuery = false
             )
+        true
+      case ":send" =>
+        // RAI-132 (STR-02): the usage refusal happens HERE — empty/missing
+        // text never dispatches (no engine eval, no mailbox round-trip); the
+        // REPL stays alive either way. A dispatched send surfaces its typed
+        // receipt (queued / applied-later / rejected) verbatim.
+        parseSend(line.trim) match
+          case Some((id, text)) =>
+            printCaptured(
+              engine,
+              s"raider.repl.facade.ReplCommands.printSend(" +
+                s"\"${escapeScala(id)}\", \"${escapeScala(text)}\")",
+              typeQuery = false
+            )
+          case None =>
+            println("usage: :send <jobId> <text>   (see :jobs)")
         true
       case ":reset" =>
         Unsafe.unsafe { implicit u =>
@@ -165,6 +182,39 @@ object Commands:
     */
   def typeQuerySource(buffer: String): String =
     buffer.replace('\n', ' ').trim
+
+  // ----- RAI-132 `:send` input plumbing (pure; unit-tested without Main) ----
+
+  /** Pure parser of a trimmed `:send` line (RAI-132 STR-02): the exact
+    * `:send <jobId> <text>` form with NON-BLANK text yields `(jobId, text)`;
+    * anything else — bare `:send`, missing text, blank text (including a
+    * quotes-only `""`, i.e. a quoted empty string) — is a usage refusal
+    * (`None`) and the caller must NOT dispatch. The returned text is the
+    * verbatim rest of the line (the REPL is not a shell: quotes are literal
+    * steering characters; only the emptiness check sees through one wrapping
+    * quote pair).
+    */
+  def parseSend(trimmedLine: String): Option[(String, String)] =
+    trimmedLine.split("\\s+", 3).toList match
+      case List(":send", id, rest) =>
+        val text = rest.trim
+        val bare =
+          if text.length >= 2 && text.startsWith("\"") && text.endsWith("\"")
+          then text.substring(1, text.length - 1)
+          else text
+        if id.nonEmpty && bare.trim.nonEmpty then Some((id, text)) else None
+      case _ => None
+
+  /** Escapes a `:send` argument into the body of a generated Scala string
+    * literal so quotes, backslashes or control characters cannot break the
+    * command source (same discipline as Main.scalaStr for prelude values).
+    */
+  private[repl] def escapeScala(s: String): String =
+    s.flatMap:
+      case '\\'         => "\\\\"
+      case '"'          => "\\\""
+      case c if c < ' ' => f"\\u${c.toInt}%04x"
+      case c            => c.toString
 
 end Commands
 
