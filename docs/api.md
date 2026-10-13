@@ -1,323 +1,434 @@
-# Raider API Reference
+# Raider API reference
 
-Audience: developers embedding Raider's agent runtime or extending its toolset.
-Everything documented here is product code (Scala 3 + ZIO 2). Frozen contracts
-live in `contracts/` and `docs/runtime-contracts.md`; this page is the
-practical map of the implemented public surface.
+This page maps the Scala 3 + ZIO APIs that exist in this checkout. It is a
+source reference, not a published SDK promise. Frozen contracts are described
+in [runtime contracts](runtime-contracts.md).
 
-## Module map
+## Choose the API surface
 
-| Module (sbt id) | Package root | Purpose |
+Raider has two entry styles that share the same runtime but have different
+types and setup:
+
+| Use case | Surface | Work description |
 | --- | --- | --- |
-| `raiderCore` | `raider.core` | Frozen types: model backend/events, tools, errors, traces, tasks, bundles, ids, codecs |
-| `raiderRuntime` | `raider.runtime` | AgentLoop, admission, budget ledger, jobs, delegation, runtime→UI event seam, display decorators |
-| `raiderUi` | `raider.ui` | Tab/session UI state over the event seam (SessionRegistry, TabShell) |
-| `raiderTools` | `raider.tools` | Workspace tools: fs_read/fs_search/fs_edit/fs_patch/fs_tree/proc_run |
-| `raiderProviderChat` | `raider.provider.chat` | OpenAI-compatible Chat transport (non-streaming + SSE) |
-| `raiderProviderAnthropic` | `raider.provider.anthropic` | Anthropic Messages transport (non-streaming + SSE) |
-| `raiderDsl` | `raider.dsl` | Composition interpreter (all/batch, fail-fast) |
-| `raiderTestkit` | `raider.testkit` | Scripted backends/fixtures (used by REPL mock wiring; excluded from the headless CLI dependency graph) |
-| `raiderReplEngine` | `raider.repl.engine` | In-process scala3-repl driver |
-| `raiderRepl` | `raider.repl` | REPL facade, console, live wiring |
-| `raiderCli` | `raider.cli` | Headless runner + interactive chat (no compiler/JLine) |
+| Interactive work in the Scala REPL | `raider.repl.facade` | `AgentRef`, `AgentAsk`, and REPL extensions such as `ask`, `start`, `all`, and `batch` |
+| Compiled Scala workflow or bundle | `raider.core` | `Task[A]`, `Program[I, O]`, and `BundleWorkflow` |
+| Runtime integration | `raider.runtime` | `AgentLoop`, admission, limits, jobs, delegation, events |
+| New model transport or tool | `raider.core` SPI | `ModelBackend` and `Tool` |
 
-## Core (`raider.core`)
+The REPL prelude creates names such as `scout`, `worker`, and `reviewer` and
+binds a live `ReplSession`. Those names are not global Scala APIs. A compiled
+workflow defines its own `Program`; it does not call `scout.ask` or depend on
+the REPL interpreter. Both paths reach the same runtime execution machinery.
 
-### Model backend
+## Modules
+
+| sbt project | Package | Main contents |
+| --- | --- | --- |
+| `raiderCore` | `raider.core` | Model and tool contracts, errors, tasks, programs, bundles, IDs, codecs |
+| `raiderRuntime` | `raider.runtime` | Agent loop, admission and budgets, jobs, delegation, events |
+| `raiderUi` | `raider.ui` | Event-backed session registry and tab shell |
+| `raiderTools` | `raider.tools` | Workspace tools: `fs_read`, `fs_search`, `fs_edit`, `fs_patch`, `fs_tree`, `proc_run` |
+| `raiderProviderChat` | `raider.provider.chat` | OpenAI-compatible Chat transport, including SSE |
+| `raiderProviderAnthropic` | `raider.provider.anthropic` | Anthropic Messages transport |
+| `raiderDsl` | `raider.dsl` | Lazy composition helpers such as `all` and `batch` |
+| `raiderTestkit` | `raider.testkit` | Scripted model backends and deterministic fixtures |
+| `raiderReplEngine` | `raider.repl.engine` | Scala 3 REPL driver |
+| `raiderRepl` | `raider.repl` | REPL facade, console, and live wiring |
+| `raiderCli` | `raider.cli` | Headless runner and interactive chat |
+
+## Core contracts
+
+### Model backends
+
+One `ModelBackend.stream` call represents one inference attempt. Providers
+normalize their wire events to `ModelEvent`; partial tool-argument fragments
+are not executable.
 
 ```scala
 trait ModelBackend:
-  def capabilities: ModelCapabilities   // streaming / tools / cancellationAck
-  def stream(input: ModelRequest): ZStream[Scope, RaiderError, ModelEvent]
+  def capabilities: ModelCapabilities
+  def stream(input: ModelRequest):
+    ZStream[Scope, RaiderError, ModelEvent]
 ```
 
-- `ModelRequest(model, messages: List[RequestMessage], maxOutputTokens, tools: List[ToolDefinition])`
-- `RequestMessage(role, content)` — roles: `system`, `user`, `assistant`, `tool`
-- `ModelEvent` (sealed): `Started`, `MetadataObserved`, `TextDelta`,
-  `ToolCallDelta`, `ToolCallReady`, `UsageObserved`, `ToolResultObserved`,
-  `Failed`, `Finished`.
-  **Only `ToolCallReady` is executable** — `ToolCallDelta` fragments are never
-  executed by the loop.
-- All events are JSON-codec-derivable (`raider.core.codecs`).
+`ModelRequest` contains `model`, `messages: List[RequestMessage]`,
+`maxOutputTokens`, and `tools: List[ToolDefinition]`. Message roles are
+`system`, `user`, `assistant`, and `tool`. The event variants include
+`Started`, `MetadataObserved`, `TextDelta`, `ToolCallDelta`, `ToolCallReady`,
+`UsageObserved`, `Finished`, and `Failed`. The loop dispatches only
+`ToolCallReady`.
 
-### Tools
+### Implement and register a tool
+
+At the core boundary, tools accept and return JSON strings. The loop validates
+and dispatches these calls through a `ToolRegistry`.
 
 ```scala
-trait Tool:
-  def name: String
-  def version: Int
-  def description: String
-  def recovery: RecoveryClass          // ReadOnly / Mutating
-  def timeoutMs: Long
-  def capabilities: ToolCapabilities   // concurrentSafe
-  def parametersJsonSchema: String     // default: {"type":"object",...}
-  def invoke(argumentsJson: String): ZIO[Scope, RaiderError, String]
+import raider.core.*
+import zio.{Scope, ZIO}
+import zio.json.*
+import zio.json.ast.Json
+import zio.Chunk
+
+final case class EchoArgs(text: String)
+object EchoArgs:
+  given JsonDecoder[EchoArgs] = DeriveJsonDecoder.gen
+
+final class EchoTool extends Tool:
+  val name = "echo"
+  val version = 1
+  val description = "Return the supplied text as JSON."
+  val recovery = RecoveryClass.ReadOnly
+  val timeoutMs = 1000L
+  val capabilities = ToolCapabilities(concurrentSafe = true)
+
+  override val parametersJsonSchema =
+    """{"type":"object","properties":{"text":{"type":"string"}},"required":["text"],"additionalProperties":false}"""
+
+  def invoke(argumentsJson: String): ZIO[Scope, RaiderError, String] =
+    ZIO.fromEither(
+      argumentsJson.fromJson[EchoArgs].left.map(RaiderError.InputValidation.apply)
+    ).map(args => Json.Obj(Chunk("text" -> Json.Str(args.text))).toJson)
+
+val registry: Either[RaiderError, ToolRegistry] =
+  ToolRegistry.of(EchoTool())
 ```
 
-- `ToolRegistry.build(List[Tool])` / `ToolRegistry.of(tool)` return
-  `Either[RaiderError, ToolRegistry]` — construction validates uniqueness,
-  version >= 1, timeout > 0 and declaration of recovery/concurrency classes.
-- `registry.lookup(name): Option[Tool]`, `registry.names: List[String]`.
+`Tool` requires `name`, `version`, `description`, `recovery`, `timeoutMs`,
+`capabilities`, and `invoke`. `parametersJsonSchema` defaults to a permissive
+JSON object schema. `ToolRegistry.of` and `ToolRegistry.build` return
+`Either[RaiderError, ToolRegistry]`; they reject duplicate or empty names,
+versions below 1, and non-positive timeouts. Declare `concurrentSafe` only
+when simultaneous calls are safe. The loop runs tools sequentially today.
 
-### Errors
+Tool recovery is `ReadOnly`, `Idempotent`, or `Mutating`. Mutating operations
+are not automatically retried after an uncertain outcome. Tool code executes
+with the process user's permissions; workspace containment is not a sandbox
+for arbitrary Scala.
 
-`RaiderError` is a sealed hierarchy with stable `code`s (e.g. `RA-CFG`,
-`RA-AUTH`, `RA-RATE`, `RA-TOOL`, `RA-BUDGET`): Configuration, InputValidation,
-OutputValidation, ProviderAuth, ProviderRateLimit, ProviderUnavailable,
-StreamProtocol, ToolDenied, ToolFailed, DeadlineExceeded, Cancelled,
-CapabilityUnsupported, Compilation, ProviderBudget, ToolOutcomeUncertain,
-LocalBudgetExceeded, ChildFailed, JournalFailure.
+### Errors and traces
 
-### Traces
+`RaiderError` is a sealed typed failure family. Stable codes include
+`RA-CFG` (configuration), `RA-INP` (input validation), `RA-AUTH`, `RA-RATE`,
+`RA-TOOLDENY`, `RA-TOOLFAIL`, `RA-DEADLINE`, `RA-CANCEL`, `RA-LBUDGET`, and
+`RA-TOOLUNCERT`. See `modules/core/src/main/scala/raider/core/errors.scala`
+for the complete set.
 
-`raider.core.trace.TraceEvent` (sealed, JSON-codec): `RunStarted`,
-`RoundStarted`, `ModelCall`, `TextReceived`, `ToolCallStarted`,
-`ToolCallFinished`, `ToolCallRefused`, `ChildDelegated`, `ChildAwaited`,
-`RunFinished`, `RunFailed`. Traces are pure data; recording dispatches nothing.
+`raider.core.trace.TraceEvent` is a sealed data model for run, round, model,
+text, tool, delegation, and terminal events. Recording a trace is observational;
+it does not dispatch work.
 
-## Runtime (`raider.runtime`)
+## Lazy `Task` and typed `Program`
 
-### AgentLoop — the single execution point
+`Task[A]` is a lazy wrapper around `ZIO[Any, RaiderError, A]`. Creating,
+mapping, or composing a task does not execute it. `Task.succeed`, `Task.fail`,
+and `Task.apply` construct tasks; `Task.zio(task)` exposes the effect at the
+runtime boundary.
+
+`Program[I, O]` is the compiled workflow contract:
 
 ```scala
-AgentLoop(
+trait Program[I, O]:
+  def apply(input: I): Task[O]
+  infix def andThen[P](next: Program[O, P]): Program[I, P]
+  def mapOutput[P](f: O => P): Program[I, P]
+
+object Program:
+  def fromFunction[I, O](name: String)(body: I => Task[O]): Program[I, O]
+```
+
+The important composition rule is encoded in the types: the first program's
+output must equal the next program's input. Calling `program(input)` creates a
+`Task`; it is not a REPL `.run()` call.
+
+The current source includes a complete deterministic compiled example in
+[`TaskSummary.scala`](../examples/user-guide/bundle/TaskSummary.scala). Its
+essential structure is:
+
+```scala
+import raider.core.{BundleWorkflow, Program, RaiderError, Task}
+import zio.Chunk
+import zio.json.*
+import zio.json.ast.Json
+
+class TaskSummary extends BundleWorkflow:
+  override def name: String = "task-summary"
+
+  override def program: Program[String, String] =
+    val parseChecks: Program[String, List[(String, String)]] =
+      Program.fromFunction("parse-release-checks") { input =>
+        Task.succeed(
+          input.split(",", -1).toList.map(_.trim).filter(_.nonEmpty).map {
+            item =>
+              item.split("=", 2) match
+                case Array(name, status) => name.trim -> status.trim.toLowerCase
+                case _                   => item -> "invalid"
+          }
+        )
+      }
+
+    val evaluate: Program[List[(String, String)], String] =
+      Program.fromFunction("evaluate-release-checks") { checks =>
+        val required = List("tests", "migration", "rollback")
+        val names = checks.map(_._1)
+        val duplicates = names.diff(names.distinct).distinct
+        val unknown = names.filterNot(required.contains)
+        val missing = required.filterNot(names.contains)
+        val invalid = checks.collect {
+          case (name, status) if status != "pass" && status != "pending" => name
+        }
+
+        if duplicates.nonEmpty || unknown.nonEmpty || invalid.nonEmpty then
+          Task.fail(
+            RaiderError.InputValidation(
+              s"invalid checks: ${(duplicates ++ unknown ++ invalid).distinct.sorted.mkString(", ")}"
+            )
+          )
+        else if missing.nonEmpty then
+          Task.fail(
+            RaiderError.InputValidation(
+              s"missing required checks: ${missing.mkString(", ")}"
+            )
+          )
+        else
+          val pending = checks.collect { case (name, "pending") => name }.sorted
+          val passed = checks.collect { case (name, "pass") => name }.sorted
+          val decision = if pending.isEmpty then "READY" else "BLOCKED"
+          val action =
+            if pending.isEmpty then "No follow-up required."
+            else s"Complete: ${pending.mkString(", ")}."
+          val report = Json.Obj(
+            Chunk(
+              "decision" -> Json.Str(decision),
+              "passed" -> Json.Arr(
+                Chunk.fromIterable(passed.map(Json.Str(_)))
+              ),
+              "pending" -> Json.Arr(
+                Chunk.fromIterable(pending.map(Json.Str(_)))
+              ),
+              "action" -> Json.Str(action)
+            )
+          )
+          Task.succeed(report.toJson)
+      }
+
+    parseChecks.andThen(evaluate)
+```
+
+`BundleWorkflow` requires `name` and `program: Program[String, String]`.
+The CLI loads a compiled bundle and selects a named workflow. The example
+validates required release checks and returns JSON; it makes no model or
+network call. The runnable invocation is documented in the
+[user guide](user-guide.md).
+
+## Runtime execution
+
+### Agent loop
+
+`raider.runtime.loop.AgentLoop` is the single model/tool execution point. Its
+constructor freezes the backend, registry, model, admission controller, root,
+and optional observers. The implementation signature is:
+
+```scala
+final case class AgentLoop(
   backend: ModelBackend,
   tools: ToolRegistry,
   model: String,
   admission: Admission,
   root: RootId,
   attemptEstimate: CostEstimate = CostEstimate.Unknown,
-  trace: TraceEvent => UIO[Unit] = _ => ZIO.unit,
-  systemPrompt: Option[String] = None
-).runText(messages, ceilings: BudgetLimits, maxRounds: Int): ZIO[Any, RaiderError, String]
+  trace: raider.core.trace.TraceEvent => zio.UIO[Unit] =
+    _ => zio.ZIO.unit,
+  systemPrompt: Option[String] = None,
+  events: Option[LoopEvents] = None,
+  plugins: Option[PluginHost] = None,
+  planMode: Option[PlanMode] = None
+)
+
+def runText(
+  messages: List[RequestMessage],
+  ceilings: BudgetLimits,
+  maxRounds: Int
+): ZIO[Any, RaiderError, String]
 ```
 
-- Bounded tool rounds; every round is one admission attempt (Model slot +
-  BudgetLedger reservation) around one `backend.stream` pass.
-- Tool dispatch is strictly sequential in model-emitted order (`Tool` slot).
-- Definitive tool failures fail the run typed — mutational tools are never
-  auto-retried (trust boundary).
-- `runText` validates bounds BEFORE any call (`1 <= maxRounds <= maxAttempts`).
+`maxRounds` must be at least 1 and no greater than `ceilings.maxAttempts`.
+Each model round consumes an admission attempt. Ready tool calls run in model
+order under tool admission. Definitive tool failures fail the run; mutating
+tools are not automatically replayed.
 
-### Admission & budget
+### Admission and budgets
 
-- `Admission.make(limits: Either[RaiderError, BudgetLimits])` — slot leases
-  per `SlotKind.Model` / `SlotKind.Tool`; cancel-while-waiting charges nothing.
-- `BudgetLimits.make(hardUsdCap, maxConcurrentLlm, maxConcurrentTools,
-  maxChildren, maxDepth, maxAttempts, queueCapacity)` — validated construction.
-- `MicroUsd(value: Long)` — money is Long-based micro-USD; Double arithmetic
-  on money is banned by the forbidden-API gate.
+`BudgetLimits.make` validates the ceilings and returns
+`Either[RaiderError, BudgetLimits]`. Its current defaults are:
+`hardUsdCap = None`, one concurrent LLM, one concurrent tool, 64 children,
+depth 16, eight attempts, and queue capacity 256. Negative money caps and
+non-positive count limits are rejected.
 
-### Jobs & delegation
+`MicroUsd` stores money as integer micro-USD. Use `MicroUsd.ofDollars(Long)`
+for whole-dollar values; floating-point arithmetic is not used for budgets.
+`Admission.make(limits: Either[RaiderError, BudgetLimits])` returns
+`ZIO[Any, RaiderError, Admission]`. A cancellation while waiting for a slot
+does not charge an attempt; cancellation during dispatch can leave the amount
+uncertain.
 
-- `JobManager.make()` → `start(root, label, task): UIO[JobHandle[A]]`,
-  `await`, `cancelAny`, `snapshotAny`, `adminView`. Cancellation is
-  transactional (STM transition + typed result publication).
-- `DelegationToolset.make(jobs, backend, admission, limits, baseRegistry,
-  allowedAgents, root, defaultChildDeadline = None,
-  deadlineGrace = 5.seconds, delegationEvents = None)` adds model-callable
-  `delegate` / `await_agent` / `cancel_agent` / `list_agents` tools. One root
-  ledger; `maxConcurrentTools >= 2` required (the awaiting parent holds a slot
-  — BUD-03 no-deadlock). Children cannot re-delegate; `send_agent` is
-  deliberately absent.
-- **Out-of-band cancel** (owner/UI channel, never a model-tool round):
-  `cancelOutOfBand(childId): UIO[Boolean]` and
-  `cancelAllOutOfBand: UIO[List[String]]` call `jobs.cancelAny` DIRECTLY — no
-  model admission, no second slot, so cancel stays reachable while a parked
-  child holds the only model slot. Model-tool `cancel_agent` semantics are
-  unchanged.
-- **Child deadlines** (Scala-level API; the delegate tool schema is
-  unchanged): `setChildDeadline(childId, deadline): UIO[Boolean]` (and the
-  `defaultChildDeadline` constructor default) arms an owner-side watchdog that
-  cancels the child out-of-band and settles within `deadlineGrace`.
-  `deadlineOutcome(childId): UIO[Option[DeadlineOutcome]]` reports
-  `Settled` / `Uncertain` / `AlreadyTerminal` (`None` = not fired yet) — past
-  the grace the outcome is Uncertain, never a fake `Cancelled`.
+### Jobs and delegation
 
-### Display decorators (`raider.runtime.display`)
+`JobManager.make(maxRetained = 256, onTransition = None)` returns
+`UIO[JobManager]`. It starts owned jobs and exposes typed handles to await or
+cancel. Awaiting an already completed job observes the same result; it does
+not start the task again.
 
-- `StreamingDisplay(underlying, onTextDelta, onToolCall)` — transparent
-  `ModelBackend` decorator surfacing deltas / ready tool calls to injected
-  sinks while events pass through unchanged.
-- `RateLimitRetries(underlying, maxRetries = 3, baseDelay = 1s)` — retries only
-  `ProviderRateLimit` (HTTP 429) with exponential backoff 1s/2s/4s; everything
-  else is first-shot.
+`DelegationToolset.make(jobs, backend, admission, limits, baseRegistry,
+allowedAgents, root, ...)` returns `Either[RaiderError, DelegationToolset]`.
+It adds model-callable `delegate`, `await_agent`, `cancel_agent`, and
+`list_agents` tools. The parent and children share root limits. At least two
+concurrent tool slots are required to avoid holding the only slot while a
+parent waits for its child. Children cannot delegate further.
 
-### Mailbox (bounded send queue)
+Owner-side cancellation bypasses model tool calls:
+`cancelOutOfBand(childId): UIO[Boolean]` and
+`cancelAllOutOfBand: UIO[List[String]]`. `setChildDeadline(childId, deadline)`
+arms an owner-side deadline; `deadlineOutcome(childId)` reports
+`Settled`, `Uncertain`, or `AlreadyTerminal`. Expiry past the cleanup grace is
+reported as uncertain, not as a successful cancellation.
 
-`raider.runtime.mailbox.Mailbox.make(jobId, capacity)` — bounded per-child queue with message-ID deduplication and ack; `send` → `Ack`; application occurs only at a turn boundary (`drainOnTurnBoundary`/`endTurn`); overflow → typed `MailboxError.Full`; terminal → `TerminalJob` (suggestion to start a new turn). Wiring into delegation is a separate card.
+`raider.runtime.display.StreamingDisplay` decorates a `ModelBackend` and sends
+text deltas and ready tool calls to supplied callbacks. `RateLimitRetries`
+retries HTTP 429 (`ProviderRateLimit`) only; other errors are not retried.
 
-## Runtime → UI event seam (`raider.runtime.events`)
+## Runtime events and UI
 
-The runtime publishes typed envelopes; consumers fold them into local view
-state. The hub is the seam — it never calls back into the runtime, and
-emission never breaks a run (every `EventError` is absorbed by the emitters).
+`EventHub.make(reliableCapacity = 256, diagnosticsCapacity = 1024)` returns
+`UIO[EventHub]`. Its principal operations are:
 
 ```scala
-EventHub.make(reliableCapacity = 256, diagnosticsCapacity = 1024): UIO[EventHub]
-
 trait EventHub:
   def publish(jobId: JobId, rootId: RootId, sessionId: SessionId,
               payload: EventPayload): IO[EventError, Unit]
-  def subscribe(jobId: JobId): UIO[(SessionSnapshot, ZStream[Any, Nothing, EventEnvelope])]
+  def subscribe(jobId: JobId):
+    UIO[(SessionSnapshot, ZStream[Any, Nothing, EventEnvelope])]
   def snapshot(jobId: JobId): UIO[Option[SessionSnapshot]]
   def droppedDiagnostics: UIO[Long]
 ```
 
-- `EventEnvelope(schemaVersion = 1, seq, jobId, rootId, sessionId, atMs,
-  payload)` — the only JSON-crossing wire type of the seam. `seq` is per-job,
-  monotonic from 1, gap-free: a failed publish or a dropped diagnostic consumes
-  no sequence. There is no `stop()` — the hub is a process-lifetime object.
-- 13 frozen `EventPayload` cases, routed by delivery class:
-  RELIABLE — `Terminal`, `Waiting`, `JobStatusChanged`, `BudgetChanged`,
-  `RetryScheduled`, `Delegated` (bounded-wait offer, `EventError.Backpressure`
-  on timeout, no silent loss); DIAGNOSTICS — `ModelCallStarted`/`Finished`,
-  `ToolStarted`/`ToolProgress`/`ToolFinished`, `Diagnostics`,
-  `DiagnosticsCoalesced` (non-blocking, dropped only with a counted
-  `droppedDiagnostics` bump). Cross-class arrival order at a subscriber is
-  unspecified; consumers reorder by `seq` (see `EventExport.inOrder`).
-- `subscribe` is loss-window-free: the subscriber queue is registered and the
-  snapshot read in ONE transaction, then the stream is filtered to
-  `seq > snapshot.lastSeq`. Interrupting the stream unregisters the queue.
-- `SessionReducer.reduce(snapshot, envelope)` is the pure per-job fold:
-  `seq < lastSeq` → `Malformed`; `seq == lastSeq` → idempotent; any event
-  after a terminal status → `Malformed`. `Terminal` is exactly one event and
-  the last one. `SessionSnapshot` is in-memory state, never a wire document.
-- `EventCodecs` — zio-json codecs for the envelope; payloads are discriminated
-  by a `type` field; adding a case is a schema decision (new schemaVersion),
-  never a silent shape change.
+Envelopes carry schema version 1 and per-job sequence numbers. Reliable events
+such as status and terminal changes use bounded delivery; diagnostic events
+may be dropped with a counter. Subscription registers its queue and reads the
+snapshot atomically, so there is no gap between the snapshot and stream.
+`SessionReducer.reduce` is a pure state fold. See
+[`lineage.md`](lineage.md) for the lineage user guide and recorded-run model.
 
-Built-in emitters:
+`SessionRegistry.make(hub)` creates a read model over this event stream. It
+supports tab creation, focus, close/hide, rename, draft editing, history, and
+scrollback. It does not publish events or cancel runtime jobs. A live tab close
+returns a choice for the caller; the caller performs cancellation through the
+runtime API when requested. `TabShell.run` is the JLine command loop over the
+registry.
 
-- `LoopEvents(hub, jobId, rootId, sessionId)` — loop-layer emission points:
-  `Waiting(Slot)` / `RetryScheduled` (reliable); `ModelCallStarted`/`Finished`,
-  `ToolStarted`/`Finished` (incl. documented refusals), `Diagnostics`
-  (diagnostics). The loop observes no cost: usage is always `unknown = true`.
-- `StatusLedger.onTransition(hub, rootId)` — the JOB layer owns
-  `JobStatusChanged` and the single `Terminal`.
-- `DelegationEvents(hub, rootId)` — `Delegated(childJobId, agent)` on fork
-  (child's own stream) and child-completion `Diagnostics` under the per-root
-  lifecycle pool.
+## Workspace tools
 
-## UI (`raider.ui`)
+`CodingToolset.make(workspaceRoot)` wires six tools. Paths are constrained to
+the workspace by realpath checks; denials return structured tool errors.
 
-Read-model tab state over the event seam. The registry NEVER publishes, cancels
-or mutates the runtime — it returns typed decisions for the caller to act on.
-
-- `SessionRegistry.make(hub): UIO[SessionRegistry]` — one hub subscription per
-  tab, started at `create`; envelopes are deduplicated by `(jobId, seq)` and
-  reordered by `seq` before folding. API: `create(jobId, rootId, label)`,
-  `tabs`/`tab` (read model `TabView`: label, jobId, status, unread, lastSeq),
-  `close`, `hide`, `rename`, `focused`/`focus`/`focusNext`/`focusPrev`,
-  `draftAppend`/`draftClear`/`draftGet` (UI-local, never events),
-  `snapshot`/`history`/`scrollback`. Focus is UI state only.
-- `close(tabId)` consults the HUB's authoritative job status: terminal →
-  `CloseDecision.Closed(affected)` (tab removed); live (including a job that
-  published nothing — initial `Queued`) → `RunningChoice(affected)` and the
-  caller chooses via `TabCloseChoice`: `Hide` → `hide` (the job keeps running)
-  or `CancelRequested` → the CALLER cancels through runtime APIs (e.g.
-  `DelegationToolset.cancelOutOfBand`), then calls `close` again. `affected`
-  is the lineage set: other open tabs of the same `rootId`, creation order.
-- Bounds are honest: history = last 200 folded snapshots, scrollback = last
-  500 text lines, each with an `evicted` counter; the newest snapshot — in
-  particular `Terminal` — always survives eviction.
-- `TabShell.run(hub, registry, terminal, resolver)` — thin JLine loop over the
-  registry: `:tabs :new :switch :next :prev :rename :close :help :quit`;
-  non-command input appends to the focused tab's draft. ONE writer (everything
-  visible goes through `ShellTerminal.printAbove`); a background pump
-  re-renders the tab bar on hub events.
-
-## Tools (`raider.tools`)
-
-`CodingToolset.make(workspaceRoot)` wires the six workspace tools (all
-contained to the workspace by realpath; escapes are structured `ToolDenied`
-feedback to the model, never crashes):
-
-| Tool | Arguments (JSON) | Notes |
+| Tool | Main arguments | Behavior |
 | --- | --- | --- |
-| `fs_read` | `{"path","offset"?,"max_lines"?}` | bounded ranged read, returns content + sha256 |
-| `fs_search` | `{"query","glob"?,"max_matches"?}` | literal search, declared truncation |
-| `fs_edit` | `{"path","content","expected_sha256"}` | atomic temp+rename; empty sha = create |
-| `fs_patch` | `{"path","diff","expected_sha256"}` | unified-diff apply; context must match; same sha/atomic contract |
-| `fs_tree` | `{"depth"?,"glob"?}` | bounded tree (default depth 3, max 5; 500 entries; skips .git/target/node_modules) |
-| `proc_run` | `{"argv","cwd"?,"env_allowlist"?,"env_values"?,"timeout_s"?}` | structured argv, no shell; output carries a `parsed` field (`sbt_compile` / `sbt_test`) from `raider.tools.process.OutputParser` |
+| `fs_read` | `path`, optional `offset`, `max_lines` | Bounded ranged read with content and SHA-256 |
+| `fs_search` | `query`, optional `glob`, `max_matches` | Literal search with explicit truncation |
+| `fs_edit` | `path`, `content`, `expected_sha256` | Atomic replacement; empty expected hash means create |
+| `fs_patch` | `path`, `diff`, `expected_sha256` | Context-checked unified diff and atomic replacement |
+| `fs_tree` | optional `depth`, `glob` | Bounded tree; default depth 3, maximum depth 5 and 500 entries |
+| `proc_run` | `argv`, optional `cwd`, environment allowlist/values, `timeout_s` | Structured argv without a shell; bounded process output |
 
-All outputs are single-line JSON matched back by `tool_call_id`. Policy denials
-(containment, bounds, bad args) are structured feedback to the model.
+Process output may include a `parsed` result for `sbt_compile` or `sbt_test`,
+using `raider.tools.process.OutputParser`. Tool results are JSON matched to
+the originating `tool_call_id`. Keep credentials out of tool arguments and
+logs.
 
-## Providers
+## Provider implementations
 
-- `raider.provider.chat.OpenAIChatBackend` — non-streaming OpenAI-compatible
-  Chat (`/v1/chat/completions`); `Config.make(baseUrl, apiKey, callTimeoutMs)`.
-- `raider.provider.chat.stream.OpenAIChatStreamingBackend` — SSE streaming wire
-  (`"stream":true`), idle timeout = `callTimeoutMs`, bounded frame size.
-- `raider.provider.anthropic.AnthropicMessagesBackend` — Anthropic Messages
-  transport, native `tool_use`/`tool_result` response handling, cumulative
-  usage. Current request encoding does not send tool definitions; RAI-127 tracks
-  that open wire-contract gap, so this transport does not yet provide tool-call
-  parity with OpenAI-compatible Chat.
-- Transport mapping: 401/403 → `ProviderAuth`, 429 → `ProviderRateLimit`,
-  5xx → `ProviderUnavailable`, other → `StreamProtocol`.
+- `OpenAIChatBackend` sends non-streaming OpenAI-compatible Chat requests to
+  `/v1/chat/completions`. `Config.make(baseUrl, apiKey, callTimeoutMs)` builds
+  its configuration.
+- `OpenAIChatStreamingBackend` uses SSE with bounded frames and an idle timeout
+  based on `callTimeoutMs`.
+- `AnthropicMessagesBackend` maps Anthropic Messages responses, `tool_use`,
+  `tool_result`, and cumulative usage. Current request encoding does not send
+  tool definitions; RAI-127 tracks this wire-contract gap. Tool-call parity
+  with OpenAI-compatible Chat is therefore not available in this transport.
+- HTTP 401/403 map to `ProviderAuth`, 429 to `ProviderRateLimit`, 5xx to
+  `ProviderUnavailable`, and other unexpected responses to `StreamProtocol`.
 
-## CLI (`raider.cli`)
+## REPL facade
 
-```sh
-# headless run (bundle or built-in agent)
-raider run --bundle app.jar --workflow inspect --input "text" --out dir [--mock]
-raider run --agent coder --provider openai --input "task" --out artifacts/selfdev
+The live prelude in `raider.repl.Main` creates `scout`, `worker`, and other
+`AgentRef` values, wires a `ReplSession`, and makes those names available in
+the interpreter. In that environment, examples are:
 
-# interactive streaming chat
-raider chat [--provider openai] [--base-url URL] [--model NAME]
-            [--workspace PATH] [--resume SESSION]
+```scala
+scout.ask("Find the entry point and explain how to run the tests")
+
+val task = worker("Review the configuration changes") // lazy AgentAsk
+val result = task.run()                                 // foreground execution
+
+val job = worker.start("Inspect the test suite")       // background job
+val answer = job.await()                                // same result on repeat
+
+val (facts, review) = all(scout, reviewer).ask("Assess the parser")
+val summaries = batch(List("parser", "config"), parallelism = 2) { area =>
+  scout(s"Summarize $area")
+}.run()
 ```
 
-Credentials are env-only (see below) — `--api-key` does not exist; passing it
-is a typed `RA-CFG` error.
+These are REPL facade extensions on `AgentRef`, with an implicit `ReplSession`.
+The actual prelude owns provider, tool, and session construction. In Scala
+source, callers can construct a session with
+`ReplSession.make(backend, limits, tools, model, echoStream)`, which returns
+`ZIO[Any, RaiderError, ReplSession]`; the `AgentRef` extensions live in
+`raider.repl.facade` and are not members of `Program`.
 
-Chat commands: `:help :quit :clear :context :tools :trace :save <name>
-:sessions :load <name> :compact :fix :pipe … :delegate …`.
+The facade supports `AgentAsk.map`, `run`, `ask`, and `start`; job-handle
+extensions provide `await`, `cancel`, and `watch`. `all` and `batch` compose
+through `raider.dsl.composition`. `openSession(agent)` returns a multi-turn
+`Chat` whose later asks include earlier user turns and assistant replies.
+Foreground facade calls block the REPL thread. Workflow fibers should use the
+asynchronous runtime APIs instead.
 
-- `raider.cli.chat.SessionStore` — `save/load/list` of `SavedSession`
-  documents under `~/.raider/sessions/<id>.json` (atomic, sanitized ids).
-- `raider.cli.chat.CompileFixLoop` — compile → structured errors → model fix →
-  re-compile, bounded cycles (`:fix`).
-- `raider.cli.chat.StatusLine` — one-line status folded from real hub
-  envelopes (`queued`, `model round N`, `tool <name>`, `waiting(<reason>)`,
-  `retry in <delay>ms`, `terminal <outcome>`, `cost unknown`); written to
-  stderr through the single synchronized `ChatWriter`, never stdout.
-- `raider.cli.run.EventExport` — consumer-side helpers:
-  `inOrder` (reorders a subscribed stream into strict `seq` order),
-  `jsonl` (canonical `events.jsonl` lines, schemaVersion 1),
-  `startTransition` (deterministic pre-subscribe Queued→Running envelope),
-  `awaitCaughtUp` (bounded best-effort tail wait — never a gate).
-- `raider.cli.run.Credentials` — the ONLY credential source is the
-  environment: `RAIDER_API_KEY` (the key; non-empty wins) or
-  `RAIDER_API_KEY_CMD` (helper command; first stdout line is the key,
-  hard-bounded at 10s, command text never logged). `mask(value)` (first 4
-  chars + `***`, else `<redacted>`) is the only printable form. Live
-  providers without either variable fail preflight (`Configuration`) BEFORE
-  any dispatch/spend; the mock provider needs no key.
-- `raider.cli.Main` is the only allowed `System.exit` site (enforced by the
-  forbidden-API gate).
+## CLI entry points
 
-## REPL (`raider.repl`)
+Headless run:
 
-- `:type <expression>` inspects the native Scala type without executing the expression or advancing result bindings (RAI-124). Diagnostic wording and PTY oracle follow-ups are tracked in RAI-130.
+```sh
+raider run --bundle app.jar --workflow inspect --input "Inspect the project" --out artifacts/run --mock
+raider run --agent coder --provider openai --input "Fix the regression" --out artifacts/coder
+```
 
-- `ReplSession.make(backend, limits, tools, model = "scripted",
-  echoStream = false)` — one live session (backend + jobs + admission).
-- Facade (extension methods on `AgentRef`, requires `using ReplSession`):
-  `scout.ask("p")`, `scout("p").run()/.start()`, `all(a, b).ask("p")`,
-  `batch(inputs, par)(f).run()`, `openSession(agent)` (multi-turn), `handle.await()/.cancel()`.
-- The live prelude constructs the provider backend, coding tools, and session
-  inside the Scala interpreter world. This avoids sharing facade statics across
-  the scala3-repl classloader split (`modules/repl/src/main/scala/raider/repl/Main.scala`;
-  the obsolete `MainBridge` was removed). OpenAI and Anthropic live branches
-  are wired when credentials resolve; see the provider limitation above.
-- The REPL system prompt is prepended to every facade model call; with
-  `echoStream = true` deltas print to stdout and tool calls/results to stderr
-  in real time.
+Interactive provider chat:
 
-See also: `docs/architecture.md` (how the pieces compose),
-`docs/contributing.md` (how to extend), `docs/runtime-contracts.md` (frozen
-contracts), `docs/quality-gates.md` (gate catalog).
+```sh
+raider chat [--provider openai] [--base-url URL] [--model NAME] \
+  [--workspace PATH] [--resume SESSION]
+```
+
+The `--api-key` option does not exist. Credentials come from `RAIDER_API_KEY`
+or `RAIDER_API_KEY_CMD`; helper command text and credential values are not
+logged. Live-provider credential preflight happens before dispatch. The mock
+provider does not need a key.
+
+The chat surface includes `:help`, `:quit`, `:clear`, `:context`, `:tools`,
+`:trace`, `:save`, `:sessions`, `:load`, `:compact`, `:fix`, `:pipe`, and
+`:delegate`. `SessionStore` saves and loads session documents under
+`~/.raider/sessions/`. `CompileFixLoop` bounds compile/fix cycles. `StatusLine`
+renders real event status on stderr. `EventExport` provides ordered event
+consumption and canonical JSONL output; `awaitCaughtUp` is bounded best effort,
+not an acceptance gate.
+
+## Related references
+
+- [REPL and typed workflow examples](user-guide-repl.md)
+- [Lineage user guide](user-guide-lineage.md)
+- [Architecture](architecture.md)
+- [Contributing and extension workflow](contributing.md)
+- [Runtime contracts](runtime-contracts.md)
+- [Quality gates](quality-gates.md)
