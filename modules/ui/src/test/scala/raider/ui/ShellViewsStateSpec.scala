@@ -121,7 +121,7 @@ object ShellViewsStateSpec extends ZIOSpecDefault:
       for
         store <- StateStore.memory()
         _ <- store.put(Scope.Agent(job), "alpha", "hello") // 5 bytes
-        _ <- store.put(Scope.Agent(job), "beta", "ё") // 2 bytes UTF-8
+        _ <- store.put(Scope.Agent(job), "beta", "é") // 2 bytes UTF-8
         provider = ShellViews.fromStore(
           store,
           StateStore.Quotas.default,
@@ -163,7 +163,7 @@ object ShellViewsStateSpec extends ZIOSpecDefault:
       for
         store <- StateStore.memory()
         _ <- store.put(Scope.Agent(job), "alpha", "hello") // 5 bytes
-        _ <- store.put(Scope.Agent(job), "beta", "ё") // 2 bytes
+        _ <- store.put(Scope.Agent(job), "beta", "é") // 2 bytes
         views = ShellViews(
           () => Nil,
           ShellViews.fromStore(store, StateStore.Quotas.default, job)

@@ -63,7 +63,7 @@ object InlineRendererSpike:
   private val WidthTable: List[(String, List[Int])] =
     List(
       ("a", List(0x0061)), // 'a'
-      ("ya", List(0x044f)), // Cyrillic 'я'
+      ("ya", List(0x044f)), // code point U+044F
       ("han", List(0x6f22)), // CJK '漢'
       ("emoji", List(0x1f600)), // '😀' (UTF-16 surrogate pair)
       ("combining", List(0x0065, 0x0301)), // 'e' + U+0301 combining acute

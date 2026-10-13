@@ -196,7 +196,7 @@ def main() -> int:
         out = repl.line("Pt(3, 4).x")
         check("SPIKE-01-case-use", "Int = 3" in out, "")
 
-        out = repl.line("val uni = \"проект ✓\"")
+        out = repl.line("val uni = \"project ✓\"")
         check("SPIKE-01-unicode", "uni: String" in out, "")
 
         repl.send("val multi =\r")

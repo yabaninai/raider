@@ -119,7 +119,7 @@ object HttpJsonProbe:
         yield ok
 
       case "json" :: Nil =>
-        val raw = """{"question":"проверь проект","limits":5}"""
+        val raw = """{"question":"check the project","limits":5}"""
         for
           decoded <- check("json-decode")(ZIO.succeed(raw.fromJson[ProbeInput].isRight))
           roundtripOk <- check("json-roundtrip")(

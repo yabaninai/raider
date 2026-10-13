@@ -32,7 +32,7 @@ import java.nio.file.{Files, Path, Paths, StandardCopyOption}
   */
 object TabShellPtyApp:
 
-  /** Diagnostics lines streamed per tab (the card's "200+ событий"). */
+  /** Diagnostics lines streamed per tab (the card's "200+ events"). */
   val EventsPerTab: Int = 220
 
   /** Inter-event delay: 220 * 15ms ≈ 3.3s of streaming per tab, staggered by

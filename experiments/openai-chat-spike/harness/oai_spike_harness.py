@@ -134,21 +134,21 @@ def main() -> int:
     print(f"[harness] mock gateway at {url}")
 
     try:
-        p = java_cli("ask", url, "fast", "проверь проект")
+        p = java_cli("ask", url, "fast", "check the project")
         (OUT / "oai-01-ask.log").write_text(p.stdout + p.stderr)
         check("OAI-01-nonstream",
-              p.returncode == 0 and "[final] Fragments of the answer with русский ✓" in p.stdout
+              p.returncode == 0 and "[final] Fragments of the answer with café ✓" in p.stdout
               and "total=26" in p.stdout,
               f"exit={p.returncode}")
 
-        p = java_cli("ask-stream", url, "fast", "проверь проект")
+        p = java_cli("ask-stream", url, "fast", "check the project")
         (OUT / "oai-02-stream.log").write_text(p.stdout + p.stderr)
         check("OAI-02-stream-equivalence",
-              p.returncode == 0 and "[final] Fragments of the answer with русский ✓" in p.stdout
+              p.returncode == 0 and "[final] Fragments of the answer with café ✓" in p.stdout
               and "sawDone=true" in p.stdout and "total=26" in p.stdout,
               f"exit={p.returncode} fragmented frames reassembled")
 
-        p = java_cli("tool-stream", url, "fast", "найди README")
+        p = java_cli("tool-stream", url, "fast", "find README")
         (OUT / "oai-03-tool.log").write_text(p.stdout + p.stderr)
         tool_line = next((l for l in p.stdout.splitlines() if l.startswith("[tool-call]")), "")
         args_ok = False
@@ -187,13 +187,13 @@ def main() -> int:
               and "noPartialToolExecution=true" in p.stdout and disconnect_seen,
               f"exit={p.returncode} gateway_saw_disconnect={disconnect_seen}")
 
-        p = java_cli("malformed-stream", url, "fast", "проверь")
+        p = java_cli("malformed-stream", url, "fast", "check")
         (OUT / "oai-07-malformed.log").write_text(p.stdout + p.stderr)
         check("OAI-07-malformed-sse",
               p.returncode == 21 and "[classified] StreamProtocol" in p.stdout,
               f"exit={p.returncode}")
 
-        p = java_cli("eof-stream", url, "fast", "проверь")
+        p = java_cli("eof-stream", url, "fast", "check")
         (OUT / "oai-08-eof.log").write_text(p.stdout + p.stderr)
         check("OAI-08-premature-eof",
               p.returncode == 21 and "[classified] StreamProtocol" in p.stdout
@@ -221,9 +221,9 @@ def main() -> int:
             repl.wait_prompt(120)
             out = repl.line("import raider.spike.oai.OpenAiCompatSpike")
             out = repl.line(
-                f'val answer = OpenAiCompatSpike.replAsk("{url}", "{KEY}", "fast", "проверь проект")',
+                f'val answer = OpenAiCompatSpike.replAsk("{url}", "{KEY}", "fast", "check the project")',
                 timeout=120)
-            ok = ('answer: String = "Fragments of the answer with русский ✓"' in out)
+            ok = ('answer: String = "Fragments of the answer with café ✓"' in out)
             rc = repl.finish(30)
             (OUT / "repl-transcript.txt").write_text(repl.clean())
             check("OAI-06-repl-stream", ok and rc == 0,

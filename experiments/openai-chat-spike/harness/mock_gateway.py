@@ -17,7 +17,7 @@ import os
 import threading
 import time
 
-TEXT_PARTS = ["Fragments ", "of the ", "answer ", "with русский ✓"]
+TEXT_PARTS = ["Fragments ", "of the ", "answer ", "with café ✓"]
 USAGE = {"prompt_tokens": 17, "completion_tokens": 9, "total_tokens": 26}
 API_KEY = "test-key-123"
 
