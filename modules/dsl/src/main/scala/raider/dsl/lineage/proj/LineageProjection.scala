@@ -17,7 +17,14 @@ final case class NodeView(
     kind: NodeKind,
     parentId: Option[String],
     children: Vector[NodeView],
-    dataRef: Option[String]
+    dataRef: Option[String],
+    // ADR-031 §2.6: graph dataflow edges — ids of the nodes this node depends
+    // on (mirrors DataNode.inputs on the frozen wire). Defaulted so every
+    // existing 5-argument construction (renderer, SessionGraphView, golden
+    // fixtures) compiles unchanged and LIN2 goldens stay byte-identical;
+    // RAI-141 populates the field from the graph and threads the ids as
+    // values into the projection runtime steps (LineageStep.inputs).
+    inputs: Vector[String] = Vector.empty
 )
 
 trait LineageView:
