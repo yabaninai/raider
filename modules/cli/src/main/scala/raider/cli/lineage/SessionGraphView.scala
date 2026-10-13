@@ -33,6 +33,16 @@ import raider.runtime.lineage.model.{
   *     these kinds (only `model_call`/`tool_call` nodes hold one), so the view
   *     maps them to `None` even though lineage-data v1 emits a dataRef there;
   *     those payloads are simply not addressable from the graph yet.
+  *   - '''NodeId inputs → String''': the exact node ids of the node's dataflow
+  *     edges (`inputs.map(_.value)`), 1:1 in the graph's own edge order — no
+  *     sorting, no dedup, no invention (ADR-031 §2.6). Phases carry no inputs
+  *     by definition ([[SessionNode.Phase.inputs]] is empty), so their view
+  *     inputs degrade honestly to the empty vector.
+  *   - '''ToolCall outcome''': the recorded `ToolOutcome` class is NOT carried
+  *     by the current view schema — `NodeView` (frozen dsl projection type) has
+  *     no outcome field; ADR-031 §2.6 pinned `inputs` only. The adapter invents
+  *     nothing: failed-marker rendering stays renderer work (RAI-141) once the
+  *     view schema carries the outcome class.
   *
   * Structural safety: the graph is validated first ([[SessionGraph.validated]])
   * and every violation becomes a typed [[ViewError.Inconsistent]] — duplicate
@@ -60,7 +70,7 @@ object SessionGraphView:
   /** Deterministic conversion of the whole graph: roots in emission order,
     * children recursively by [[SessionGraph.childrenOf]] (which preserves the
     * emission order per parent), kind → NodeKind 1:1, parentId → parentId,
-    * dataRef → dataRef. Same graph → same view, byte for byte.
+    * dataRef → dataRef, inputs → inputs. Same graph → same view, byte for byte.
     */
   def toView(g: SessionGraph): Either[ViewError, LineageView] =
     g.validated.left.map(inconsistent).flatMap { graph =>
@@ -100,7 +110,14 @@ object SessionGraphView:
               acc.flatMap(vs => build(child, Some(n.id.value)).map(vs :+ _))
             }
             .map(children =>
-              NodeView(n.id.value, k, parentId, children, dataRefOf(n))
+              NodeView(
+                n.id.value,
+                k,
+                parentId,
+                children,
+                dataRefOf(n),
+                inputsOf(n)
+              )
             )
         }
       g.roots
@@ -123,6 +140,15 @@ object SessionGraphView:
       case m: SessionNode.ModelCall => Some(m.dataRef.value)
       case t: SessionNode.ToolCall  => t.dataRef.map(_.value)
       case _                        => None
+
+  /** Dataflow edges → input id strings (ADR-031 §2.6): the exact node ids this
+    * node depends on, 1:1 in the graph's own edge order — no sorting, no dedup,
+    * no invention. Phases carry no inputs by definition
+    * (`SessionNode.Phase.inputs` is empty), so their view inputs degrade
+    * honestly to the empty vector.
+    */
+  private def inputsOf(n: SessionNode): Vector[String] =
+    n.inputs.map(_.value)
 
   /** Structural violations are data: every GraphError becomes a typed
     * Inconsistent with the offending ids in the detail string.

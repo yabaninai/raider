@@ -5,7 +5,12 @@ import zio.json.*
 import zio.test.*
 
 import raider.core.{JobId, RootId, SessionId}
-import raider.dsl.lineage.proj.{LineageRenderer, NodeKind, NodeView}
+import raider.dsl.lineage.proj.{
+  LineageRenderer,
+  LineageView,
+  NodeKind,
+  NodeView
+}
 import raider.runtime.events.ToolOutcome
 import raider.runtime.lineage.model.{
   DataRef,
@@ -29,6 +34,15 @@ import SessionGraphView.ViewError
   * id/kind/labels, no seq/atMs/payload), so the SessionGraph is built from the
   * frozen `lineage-data.json` (which carries every model field) and then
   * cross-checked against the companion's control/dataflow edge sets.
+  *
+  * SGB acceptance (RAI-150, ADR-031 §2.6): the adapter POPULATES
+  * `NodeView.inputs` from the graph's dataflow edges (unit graph: model → tool,
+  * failed tool ← tool, multi-input order; golden deep-tree: the n3 ← n1 edge
+  * crossing the delegation subtree) and degrades honestly to empty vectors
+  * where the model carries no edges (tiny-graph has none). The recorded
+  * `ToolOutcome` class stays model-side: the frozen `NodeView` schema has no
+  * outcome field (ADR-031 §2.6 pinned `inputs` only), so the adapter invents
+  * nothing there — see the work record's contract-change request.
   */
 object SessionGraphViewSpec extends ZIOSpecDefault:
 
@@ -122,6 +136,8 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
 
   /** The golden pipeline: real JSON → SessionGraph → toView → render (twice).
     * Any parse/validation mismatch is an honest Left, never a fixture guess.
+    * The view is carried out too, so the tests pin the POPULATED inputs
+    * (SGB-01) against the frozen documents — never rebuilt from code.
     */
   private def goldenE2E(name: String): Either[String, GoldenOut] =
     for
@@ -138,9 +154,17 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
       view <- SessionGraphView.toView(graph).left.map("toView: " + _)
       first <- LineageRenderer.render(view).left.map("render: " + _)
       second <- LineageRenderer.render(view).left.map("render repeat: " + _)
-    yield GoldenOut(first, second)
+    yield GoldenOut(view, first, second)
 
-  private final case class GoldenOut(first: String, second: String)
+  private final case class GoldenOut(
+      view: LineageView,
+      first: String,
+      second: String
+  )
+
+  /** Every view node of the tree, pre-order (fixture helper for input pins). */
+  private def allNodes(roots: Vector[NodeView]): Vector[NodeView] =
+    roots.flatMap(n => n +: allNodes(n.children))
 
   /** Builds the SessionGraph from the frozen lineage-data document. The
     * contract records only the outcome CLASS for tool calls (no failure
@@ -300,6 +324,11 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
       else Right(())
 
   // ----- unit fixture: one minimal graph exercising ALL four kinds -----------
+  //
+  // Dataflow edges (SGB-01/SGB-02): n2 ← n1 (model response feeds the tool
+  // args), n3 ← n2 (cross-node tool → tool; n3 is the FAILED tool), n5 ←
+  // (n1, n3) (multi-input, edge order preserved). n0 (phase), n1 (first
+  // model), n4 (delegation) carry no edges — honest empty inputs.
 
   private def unitGraph(): SessionGraph =
     SessionGraph(
@@ -326,7 +355,7 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           "read_file",
           RecoveryClass.ReadOnly,
           Some(ToolOutcome.Succeeded),
-          Vector.empty,
+          Vector(NodeId("n1")),
           Some(DataRef("d2"))
         ),
         SessionNode.ToolCall(
@@ -338,7 +367,7 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           "edit_file",
           RecoveryClass.Mutating,
           Some(ToolOutcome.Failed("exit 1")),
-          Vector.empty,
+          Vector(NodeId("n2")),
           None
         ),
         SessionNode.Delegation(
@@ -357,12 +386,23 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           900L,
           2,
           "mock-coder",
-          Vector(NodeId("n1")),
+          Vector(NodeId("n1"), NodeId("n3")),
           DataRef("d5")
         )
       )
     )
 
+  /** Finds a view node by id anywhere in the tree (pre-order); the unit and
+    * golden ids are unique by graph validation, so at most one match exists.
+    */
+  private def findNode(roots: Vector[NodeView], id: String): Option[NodeView] =
+    roots.collectFirst { case n if n.id == id => n }.orElse {
+      val kids = roots.flatMap(_.children)
+      if kids.isEmpty then None else findNode(kids, id)
+    }
+
+  // Expected view mirrors unitGraph's dataflow edges 1:1 (SGB-01): n2 ← n1,
+  // n3 ← n2, n5 ← (n1, n3); honest empties on n0/n1/n4 (SGB-02).
   private val unitExpected: Vector[NodeView] =
     Vector(
       NodeView(
@@ -390,26 +430,32 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
                         NodeKind.ModelCall("mock-coder", 2),
                         Some("n4"),
                         Vector.empty,
-                        Some("d5")
+                        Some("d5"),
+                        Vector("n1", "n3")
                       )
                     ),
-                    None
+                    None,
+                    Vector.empty
                   )
                 ),
-                Some("d2")
+                Some("d2"),
+                Vector("n1")
               ),
               NodeView(
                 "n3",
                 NodeKind.ToolCall("edit_file", "Mutating"),
                 Some("n1"),
                 Vector.empty,
-                None
+                None,
+                Vector("n2")
               )
             ),
-            Some("d1")
+            Some("d1"),
+            Vector.empty
           )
         ),
-        None
+        None,
+        Vector.empty
       )
     )
 
@@ -503,6 +549,67 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SGB-01: NodeView.inputs populated from dataflow edges, edge order preserved (unit graph)"
+    ) {
+      val view = SessionGraphView
+        .toView(unitGraph())
+        .fold(
+          e => throw new IllegalStateException("toView failed: " + e),
+          identity
+        )
+      val node = (id: String) =>
+        findNode(view.roots, id).getOrElse(
+          throw new IllegalStateException("view node missing: " + id)
+        )
+      assertTrue(
+        // model response feeds the tool call (model → tool)
+        node("n2").inputs == Vector("n1"),
+        // cross-node tool → tool edge: the FAILED tool consumes read_file's output
+        node("n3").inputs == Vector("n2"),
+        // multi-input node: both edges, graph edge order (n1 before n3)
+        node("n5").inputs == Vector("n1", "n3"),
+        // inputs are the exact node ids — never payloads/dataRefs
+        node("n2").dataRef == Some("d2") && node("n2").inputs == Vector("n1")
+      )
+    },
+    test(
+      "SGB-02: empty/absent dataflow edges degrade honestly (empty inputs, no invented values)"
+    ) {
+      val graph = unitGraph()
+      val view = SessionGraphView
+        .toView(graph)
+        .fold(
+          e => throw new IllegalStateException("toView failed: " + e),
+          identity
+        )
+      val node = (id: String) =>
+        findNode(view.roots, id).getOrElse(
+          throw new IllegalStateException("view node missing: " + id)
+        )
+      val modelIds = graph.nodes.map(_.id.value).toSet
+      assertTrue(
+        // phase: no inputs by definition
+        node("n0").inputs.isEmpty,
+        // first model call: no upstream edges in the graph → empty, not invented
+        node("n1").inputs.isEmpty,
+        // delegation without edges: empty in the model, empty in the view
+        node("n4").inputs.isEmpty,
+        // every populated input references an existing node id
+        allNodes(view.roots).forall(_.inputs.forall(modelIds.contains))
+      )
+    },
+    test(
+      "SGB-03: conversion is pure and deterministic (repeat ×3 identical, graph untouched)"
+    ) {
+      val graph = unitGraph()
+      val snapshot = graph.nodes.map(n => n.id -> n.inputs)
+      val a = SessionGraphView.toView(graph).map(v => (v.runId, v.roots))
+      val b = SessionGraphView.toView(graph).map(v => (v.runId, v.roots))
+      val c = SessionGraphView.toView(graph).map(v => (v.runId, v.roots))
+      val untouched = graph.nodes.map(n => n.id -> n.inputs) == snapshot
+      assertTrue(a == b, b == c, untouched)
+    },
+    test(
       "VIEW-A-02: golden tiny-graph E2E renders byte-identical, data-free text"
     ) {
       for out <- ZIO
@@ -516,7 +623,10 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           out.second.getBytes(StandardCharsets.UTF_8).toSeq,
         tinyExpectedNames.forall(out.first.contains),
         tinyExpectedRefs.forall(out.first.contains),
-        tinyForbiddenInline.forall(s => !out.first.contains(s))
+        tinyForbiddenInline.forall(s => !out.first.contains(s)),
+        // frozen fixture has NO dataflow edges → every view input degrades
+        // honestly to the empty vector (SGB-02 on real wire data)
+        allNodes(out.view.roots).forall(_.inputs.isEmpty)
       )
     },
     test(
@@ -527,14 +637,24 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           .orDieWith(err =>
             new IllegalStateException("golden pipeline failed: " + err)
           )
-      yield assertTrue(
-        out.first == out.second,
-        out.first.getBytes(StandardCharsets.UTF_8).toSeq ==
-          out.second.getBytes(StandardCharsets.UTF_8).toSeq,
-        deepExpectedNames.forall(out.first.contains),
-        deepExpectedRefs.forall(out.first.contains),
-        deepForbiddenInline.forall(s => !out.first.contains(s))
-      )
+      yield {
+        val n3 = findNode(out.view.roots, "n3").getOrElse(
+          throw new IllegalStateException(
+            "golden deep-tree: view node n3 missing"
+          )
+        )
+        assertTrue(
+          out.first == out.second,
+          out.first.getBytes(StandardCharsets.UTF_8).toSeq ==
+            out.second.getBytes(StandardCharsets.UTF_8).toSeq,
+          deepExpectedNames.forall(out.first.contains),
+          deepExpectedRefs.forall(out.first.contains),
+          deepForbiddenInline.forall(s => !out.first.contains(s)),
+          // the frozen fixture's single dataflow edge (n3 consumes n1's output,
+          // crossing the delegation subtree boundary) reaches the view 1:1
+          n3.inputs == Vector("n1")
+        )
+      }
     },
     test("VIEW-A-03: duplicate node id → typed ViewError.Inconsistent") {
       val g = SessionGraph(
