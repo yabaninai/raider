@@ -245,8 +245,10 @@ object AgentLoopPhaseEmissionSpec extends ZIOSpecDefault:
       live {
         for
           dir <- ZIO.attempt(Files.createTempDirectory("rai-153-plan"))
-          tl = new Timeline
-          backend = new TimelineBackend(tl, Vector(planEvent(validPlanJson)))
+          tl <- ZIO.succeed(new Timeline)
+          backend <- ZIO.succeed(
+            new TimelineBackend(tl, Vector(planEvent(validPlanJson)))
+          )
           adm <- Admission.make(limits())
           hub <- EventHub.make()
           root = AgentLoop.newRoot()
@@ -292,10 +294,12 @@ object AgentLoopPhaseEmissionSpec extends ZIOSpecDefault:
     ) {
       for
         dir <- ZIO.attempt(Files.createTempDirectory("rai-153-plan-reject"))
-        tl = new Timeline
-        backend = new TimelineBackend(
-          tl,
-          Vector(planEvent(invalidPlan), planEvent(invalidPlan))
+        tl <- ZIO.succeed(new Timeline)
+        backend <- ZIO.succeed(
+          new TimelineBackend(
+            tl,
+            Vector(planEvent(invalidPlan), planEvent(invalidPlan))
+          )
         )
         adm <- Admission.make(limits())
         hub <- EventHub.make()
@@ -328,8 +332,10 @@ object AgentLoopPhaseEmissionSpec extends ZIOSpecDefault:
       "PHE-01: ordinary runText emits NO phase records — no stage semantics are invented for the execution mode"
     ) {
       for
-        tl = new Timeline
-        backend = new TimelineBackend(tl, twoRoundScript(ToolCallId("call-1")))
+        tl <- ZIO.succeed(new Timeline)
+        backend <- ZIO.succeed(
+          new TimelineBackend(tl, twoRoundScript(ToolCallId("call-1")))
+        )
         adm <- Admission.make(limits())
         hub <- EventHub.make()
         root = AgentLoop.newRoot()
@@ -352,8 +358,10 @@ object AgentLoopPhaseEmissionSpec extends ZIOSpecDefault:
       live {
         for
           dir <- ZIO.attempt(Files.createTempDirectory("rai-153-frozen"))
-          tl = new Timeline
-          backend = new TimelineBackend(tl, Vector(planEvent(validPlanJson)))
+          tl <- ZIO.succeed(new Timeline)
+          backend <- ZIO.succeed(
+            new TimelineBackend(tl, Vector(planEvent(validPlanJson)))
+          )
           adm <- Admission.make(limits())
           hub <- EventHub.make()
           root = AgentLoop.newRoot()
@@ -388,9 +396,9 @@ object AgentLoopPhaseEmissionSpec extends ZIOSpecDefault:
       live {
         for
           dir <- ZIO.attempt(Files.createTempDirectory("rai-153-cancel"))
-          tl = new Timeline
+          tl <- ZIO.succeed(new Timeline)
           gate <- Promise.make[Nothing, Unit]
-          backend = hangingBackend(tl, gate)
+          backend <- ZIO.succeed(hangingBackend(tl, gate))
           adm <- Admission.make(limits())
           hub <- EventHub.make()
           root = AgentLoop.newRoot()
