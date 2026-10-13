@@ -31,23 +31,40 @@ import java.util.concurrent.TimeUnit
   * rebuilt from code (same discipline as the W9 SessionGraphViewSpec).
   *
   * Pipeline per golden graph: lineage-data.json + session-graph.json →
-  * SessionGraph → view (SessionGraphView mapping) → LineageRenderer → .scala
-  * file under `modules/cli/target/lineage-compile/` → subprocess `java -cp
-  * <pinned dotc jars> dotty.tools.dotc.Main -classpath <test classpath> -d
+  * SessionGraph → view (GraphToView mapping, RAI-141 shape) → LineageRenderer →
+  * .scala file under `modules/cli/target/lineage-compile/` → subprocess `java
+  * -cp <pinned dotc jars> dotty.tools.dotc.Main -classpath <test classpath> -d
   * <fresh out dir> <source>`, bounded at 120s per file.
   *
-  * Acceptance: LIN2-01-A both golden projections compile (exit 0); LIN2-01-B
-  * the repeat render is byte-identical and the repeat artifact re-compiles
-  * (exit 0); LIN2-01-C an artificially truncated projection (last line dropped)
-  * honestly does NOT compile (exit != 0 — a compile timeout or an IO failure is
-  * never counted as non-compilation evidence).
+  * Acceptance: LIN2-01-A both golden projections compile (exit 0) as EXECUTABLE
+  * Programs (real `LineageStep` composition — RAI-141/REN-01) with NO
+  * comment-only def bodies; LIN2-01-B the repeat render is byte-identical and
+  * the repeat artifact re-compiles (exit 0); LIN2-01-C an artificially
+  * truncated projection (object header torn) honestly does NOT compile (exit !=
+  * 0 — a compile timeout or an IO failure is never counted as non-compilation
+  * evidence).
+  *
+  * Classpath (RAI-141): the generated projection is no longer self-contained —
+  * it references `raider.core.Program`, `raider.dsl.lineage.proj.runtime.*` and
+  * (transitively) zio. The prescribed `-classpath` (pinned scala-library 3.9.0
+  * first, then the test JVM's own `java.class.path`) carries all of them: cli
+  * tests run FORKED (build.sbt `Test / fork := true`), so `java.class.path` is
+  * the real module test classpath including the raider module classes and the
+  * zio_3 jar; the pinned scala-library stays first and always wins class
+  * resolution.
   *
   * Snapshot discrepancy (honest): the main-scope cli adapter
   * `raider.cli.lineage.SessionGraphView` (W9 lane L22) is NOT integrated into
-  * this W10 snapshot, and this lane's allowed paths are test-scope only, so the
+  * this snapshot, and this lane's allowed paths are test-scope only, so the
   * adapter mapping lives in [[GraphToView]] below — the L22 conversion verbatim
   * in behavior, kept in one marked private object to be swapped for a direct
-  * `SessionGraphView.toView` call once the adapter lands.
+  * `SessionGraphView.toView` call once the adapter lands. RAI-141 note: the
+  * test-local mapping additionally populates `NodeView.inputs` (dataflow edges)
+  * and `NodeView.outcome` (recorded outcome class) from the golden documents —
+  * the product adapter population is the follow-up integration card; this gate
+  * exercises the populated contract. The tiny-graph golden carries a
+  * recorded-Failed tool node (n3, edit_file), so the gate compiles a projection
+  * containing a real `LineageStep.failed` short-circuit step.
   */
 object LineageCompileGateSpec extends ZIOSpecDefault:
 
@@ -357,7 +374,21 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
                   acc.flatMap(vs => build(child, Some(n.id.value)).map(vs :+ _))
                 }
                 .map(children =>
-                  NodeView(n.id.value, k, parentId, children, dataRefOf(n))
+                  NodeView(
+                    n.id.value,
+                    k,
+                    parentId,
+                    children,
+                    dataRefOf(n),
+                    // RAI-141: graph dataflow edges (ADR-031 §2.6) — threaded
+                    // into the generated steps as bound values (in-scope) or
+                    // id literals (cross-scope).
+                    inputs = n.inputs.map(_.value),
+                    // RAI-141: recorded outcome class (ADR-031 §2.4) — a
+                    // non-success class makes the renderer emit
+                    // LineageStep.failed with the bounded reason phrase.
+                    outcome = outcomeClassOf(n)
+                  )
                 )
             }
           graph.roots
@@ -387,6 +418,22 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
         case m: SessionNode.ModelCall => Some(m.dataRef.value)
         case t: SessionNode.ToolCall  => t.dataRef.map(_.value)
         case _                        => None
+
+    /** ToolOutcome → the recorded outcome class of the frozen lineage-data v1
+      * vocabulary (the same strings the renderer accepts on
+      * [[raider.dsl.lineage.proj.NodeView.outcome]]). Nodes without an outcome
+      * (model calls, delegations, phases) map to None.
+      */
+    private def outcomeClassOf(n: SessionNode): Option[String] =
+      n match
+        case t: SessionNode.ToolCall =>
+          t.outcome.map {
+            case ToolOutcome.Succeeded => "Succeeded"
+            case ToolOutcome.Failed(_) => "Failed"
+            case ToolOutcome.Cancelled => "Cancelled"
+            case ToolOutcome.Timeout   => "Timeout"
+          }
+        case _ => None
 
   // ----- pinned-dotc compile gate ---------------------------------------------
 
@@ -540,6 +587,47 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
       case Left(err) =>
         throw new IllegalStateException(what + " failed: " + err)
 
+  /** REN-01 (RAI-141): comment-only def bodies are a renderer bug after this
+    * card. Every `def`/`val` body that opens with `=` must be followed by at
+    * least one NON-comment statement (the object body likewise), and the
+    * renderer shape never emits a standalone `()` closer line. Violations are
+    * hard gate failures, not soft assertions.
+    */
+  private def assertExecutable(src: String, what: String): Unit =
+    val lines = src.linesIterator.toVector
+    val problems = scala.collection.mutable.ArrayBuffer.empty[String]
+    lines.zipWithIndex.foreach { (line, i) =>
+      val t = line.trim
+      val indent = line.takeWhile(_ == ' ').length
+      if t == "()" then
+        problems += what + ": standalone `()` closer line at " + (i + 1)
+      val opensBody =
+        (t.startsWith("def ") || t.startsWith("val ")) && t.endsWith("=")
+      val opensObject = t.startsWith("object ") && t.endsWith(":")
+      if opensBody || opensObject then
+        lines.drop(i + 1).find(_.trim.nonEmpty) match
+          case None =>
+            problems += what + ": body opened at line " + (i + 1) +
+              " has no statement"
+          case Some(nl) =>
+            val nIndent = nl.takeWhile(_ == ' ').length
+            val commentOnly =
+              nl.trim.startsWith("//") ||
+                (nIndent <= indent && !opensObject) ||
+                (opensObject && nIndent == 0)
+            if commentOnly then
+              problems += what + ": body opened at line " + (i + 1) +
+                " is comment-only or empty: next line: " + nl
+      ()
+    }
+    if problems.nonEmpty then
+      throw new IllegalStateException(problems.mkString("; "))
+    if !(src.contains("Program.fromFunction") && src.contains("LineageStep."))
+    then
+      throw new IllegalStateException(
+        what + ": render carries no real Program/Step composition"
+      )
+
   private def requireExit0(res: Either[String, Compiled], what: String): Unit =
     res match
       case Right(Compiled(0, _)) => ()
@@ -553,10 +641,14 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
 
   private val tinyExpectedNames = Vector(
     "object lineage_run_tiny_001:",
-    "def phase_investigate(): Unit =",
-    "// model(\"mock-coder\", round = 1)",
-    "// tool(\"read_file\", recovery = \"ReadOnly\")",
-    "// tool(\"edit_file\", recovery = \"Mutating\")"
+    "val phase_investigate: Program[Unit, Vector[StepReport]] =",
+    "val program: Program[Unit, Vector[StepReport]] =",
+    "LineageStep.phase(\"n0\", \"investigate\", None, Vector.empty, nesting = 1)",
+    "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
+    "LineageStep.tool(\"n2\", \"read_file\", \"ReadOnly\", Some(\"d2\"), Vector.empty, nesting = 1)",
+    "LineageStep.failed(\"n3\", NodeKind.ToolCall(\"edit_file\", \"Mutating\"), Some(\"d3\"),",
+    "reason = \"recorded outcome: Failed\"",
+    "import raider.dsl.lineage.proj.runtime.{LineageStep, StepReport}"
   )
 
   private val tinyExpectedRefs =
@@ -575,10 +667,15 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
 
   private val deepExpectedNames = Vector(
     "object lineage_run_deep_001:",
-    "def phase_plan(): Unit =",
-    "def delegation_worker(): Unit =",
-    "// model(\"mock-coder\", round = 1)",
-    "// tool(\"grep_search\", recovery = \"Idempotent\")"
+    "val phase_plan: Program[Unit, Vector[StepReport]] =",
+    "val delegation_worker: Program[Unit, Vector[StepReport]] =",
+    "val program: Program[Unit, Vector[StepReport]] =",
+    "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
+    // RAI-141: n3's dataflow input n1 lives in the phase scope while n3 lives
+    // in the delegation scope — a cross-scope dependency renders as the id
+    // literal (in-scope dependencies render as bound values instead).
+    "LineageStep.model(\"n3\", \"mock-coder\", 1, Some(\"d3\"), Vector(\"n1\"), nesting = 2)",
+    "LineageStep.tool(\"n4\", \"grep_search\", \"Idempotent\", Some(\"d4\"), Vector.empty, nesting = 2)"
   )
 
   private val deepExpectedRefs =
@@ -607,6 +704,7 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
       )
       requireExit0(dotc("tiny-graph", path, "out-tiny-graph"), "tiny compile")
       val src = golden.first
+      assertExecutable(src, "tiny render")
       assertTrue(
         Files.exists(path),
         src.contains("object lineage_run_tiny_001:"),
@@ -625,6 +723,7 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
       )
       requireExit0(dotc("deep-tree", path, "out-deep-tree"), "deep compile")
       val src = golden.first
+      assertExecutable(src, "deep render")
       assertTrue(
         Files.exists(path),
         src.contains("object lineage_run_deep_001:"),
