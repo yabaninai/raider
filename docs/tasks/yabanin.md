@@ -1,45 +1,44 @@
-<!-- Translated from Russian original. Key terms preserved as-is. -->
+<!-- Translated from the Russian original. Key terms preserved as-is. -->
 
-# Companion cards в репозитории Yabanin
+# Companion cards in the Yabanin repository
 
-Required profiles применяются по [activation stage](../quality-gates.md); component cases и final milestone obligations различаются. Изолированные lanes допускаются по [parallel runbook](../parallel-development.md).
+Required profiles follow the [activation stage](../quality-gates.md); component cases and final milestone obligations are distinct. Isolated lanes are permitted under the [parallel runbook](../parallel-development.md).
 
+Status: all cards are todo; acceptance IDs and commands are requirements, not results. Metadata: [backlog.json](backlog.json); shared DoD: [index](README.md). Clause numbers in Context are navigation aids; the complete applicable invariant is mandatory.
 
-Статус: все карточки todo; acceptance IDs и commands — требования, не результаты. Metadata: [backlog.json](backlog.json); общий DoD: [индекс](README.md). Номера clauses в Context — навигация; полный applicable invariant обязателен.
-
-## YB-RAI-01: yb harness connect raider
+## YB-RAI-01: Connect Raider to the yb harness
 
 Status: todo. Milestone: Yabanin. Dependencies: RAI-037, RAI-038.
 
-**Сценарий и контракт.** Managed Raider config adapter/registry/connect/disconnect/doctor. Preserve permissions/user settings/backups, references на keys, drift и version schema. Wrapper-first CI already works без этого PR.
+**Scenario and contract.** Managed Raider config adapter/registry/connect/disconnect/doctor. Preserve permissions, user settings, and backups; use references to keys; handle drift and version schema. Wrapper-first CI already works without this PR.
 
-**Context.** yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория
+**Context.** yabanin-integration.md; target Yabanin AGENTS.md and applicable Go skills; its repository's quality runner
 
-**Allowed paths.** `pkg/harness/adapters/**`, `pkg/trcli/harness*`, `docs/harness.md`. Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `pkg/harness/adapters/**`, `pkg/trcli/harness*`, `docs/harness.md`. Tests belong within the same modules/contract areas. Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: YB-01: connect twice идемпотентно; disconnect restores config, doctor verifies deployed capabilities.
+- Normal: YB-01: connect twice is idempotent; disconnect restores config; doctor verifies deployed capabilities.
 - Error/adversarial: YB-02: config drift/schema conflict/helper returns parent in required mode fail without overwrite.
 - Cancellation/concurrency: YB-03: atomic config transaction interrupted mid-write retains recoverable backup and no key literals.
 
-**Required gates.** В Yabanin: его AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full и relevant integration. Cross-product manifest включает оба fingerprints; gates Raider не заменяют gates Yabanin.
+**Required gates.** In Yabanin: its AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full, and relevant integration. The cross-product manifest includes both fingerprints; Raider gates do not replace Yabanin gates.
 
-**Non-goals.** Менять Raider runtime, platform scheduler, silent auth fallback.
+**Non-goals.** Change Raider runtime, platform scheduler, or silent auth fallback.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation. Experimental/optional adapter выключается explicit capability flag.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Feature rollback does not replay side effects; persistent incomplete/uncertain artifacts remain for reconciliation. An experimental/optional adapter is disabled by an explicit capability flag.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their joint contract gate.
 
-## YB-RAI-02: Real Raider executor вместо FakeExecutor
+## YB-RAI-02: Real Raider executor instead of FakeExecutor
 
 Status: todo. Milestone: Yabanin. Dependencies: RAI-022, RAI-024, RAI-039, YB-RAI-01.
 
-**Сценарий и контракт.** Прежде design протокола mapping Existing Job/Task IDs/events/run/result/cancel/uncertainty; then owned raider-run process/bundle executor. One lifecycle owner, actual source CLI FakeExecutor gap acknowledged.
+**Scenario and contract.** First design the protocol mapping Existing Job/Task IDs/events/run/result/cancel/uncertainty; then implement an owned raider-run process/bundle executor. One lifecycle owner; acknowledge the actual source CLI FakeExecutor gap.
 
-**Context.** yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория
+**Context.** yabanin-integration.md; target Yabanin AGENTS.md and applicable Go skills; its repository's quality runner
 
-**Allowed paths.** `pkg/delegation/controller/**`, `pkg/trcli/delegate*`, `docs/delegation*`. Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `pkg/delegation/controller/**`, `pkg/trcli/delegate*`, `docs/delegation*`. Tests belong within the same modules/contract areas. Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
@@ -47,23 +46,23 @@ Status: todo. Milestone: Yabanin. Dependencies: RAI-022, RAI-024, RAI-039, YB-RA
 - Error/adversarial: YB-05: missing binary/bundle mismatch/protocol crash cannot simulated success.
 - Cancellation/concurrency: YB-06: controller cancel/retry/process exit race; no competing root owners or automatic mutation replay.
 
-**Required gates.** В Yabanin: его AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full и relevant integration. Cross-product manifest включает оба fingerprints; gates Raider не заменяют gates Yabanin.
+**Required gates.** In Yabanin: its AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full, and relevant integration. The cross-product manifest includes both fingerprints; Raider gates do not replace Yabanin gates.
 
-**Non-goals.** Rewrite Go controller/MCP orchestrator, assume existing CLI already live executor.
+**Non-goals.** Rewrite the Go controller/MCP orchestrator or assume the existing CLI is already a live executor.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation. Experimental/optional adapter выключается explicit capability flag.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Feature rollback does not replay side effects; persistent incomplete/uncertain artifacts remain for reconciliation. An experimental/optional adapter is disabled by an explicit capability flag.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their joint contract gate.
 
 ## YB-RAI-03: CI/root analytics drilldown
 
 Status: todo. Milestone: Yabanin. Dependencies: RAI-040, RAI-042, YB-RAI-01.
 
-**Сценарий и контракт.** Existing explorer/CI pipeline totals correlate root/job/workflow/attempt provenance and Raider artifacts with permitted filters. High cardinal IDs not automatic rollup dimensions; missing telemetry visibly pending.
+**Scenario and contract.** Existing explorer/CI pipeline totals correlate root/job/workflow/attempt provenance and Raider artifacts with permitted filters. High cardinal IDs not automatic rollup dimensions; missing telemetry visibly pending.
 
-**Context.** yabanin-integration.md; целевой Yabanin AGENTS.md и applicable Go skills; quality runner его репозитория
+**Context.** yabanin-integration.md; target Yabanin AGENTS.md and applicable Go skills; its repository's quality runner
 
-**Allowed paths.** `services/admind/**`, `docs/analytics*`. Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `services/admind/**`, `docs/analytics*`. Tests belong within the same modules/contract areas. Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
@@ -71,10 +70,10 @@ Status: todo. Milestone: Yabanin. Dependencies: RAI-040, RAI-042, YB-RAI-01.
 - Error/adversarial: YB-08: no permissions/missing usage/broken lineage/unknown price retain incomplete states.
 - Cancellation/concurrency: YB-09: logger lag/late reconciliation/no double-count retry and subtree totals.
 
-**Required gates.** В Yabanin: его AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full и relevant integration. Cross-product manifest включает оба fingerprints; gates Raider не заменяют gates Yabanin.
+**Required gates.** In Yabanin: its AGENTS.md/Go skills; make quality-changed, make quality-changed QUALITY_EXECUTE=1, make quality-full, and relevant integration. The cross-product manifest includes both fingerprints; Raider gates do not replace Yabanin gates.
 
-**Non-goals.** New DB schema/migration without own design card, trust client labels as auth, inflated aggregates.
+**Non-goals.** New DB schema/migration without its own design card, trusting client labels as auth, or inflated aggregates.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation. Experimental/optional adapter выключается explicit capability flag.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Feature rollback does not replay side effects; persistent incomplete/uncertain artifacts remain for reconciliation. An experimental/optional adapter is disabled by an explicit capability flag.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their joint contract gate.

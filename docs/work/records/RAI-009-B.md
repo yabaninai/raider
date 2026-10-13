@@ -1,37 +1,35 @@
-<!-- Work record. Original in Russian; key results in English below. -->
+# RAI-009-B: Work Record (Stress Interrupt-Takers + Late-Settlement/Idempotence)
 
-# RAI-009-B: work record (stress interrupt-takers + late-settlement/idempotence)
-
-Status: done. Date: 2026-10-03. Baseline: предыдущий last-passing gate
+Status: done. Date: 2026-10-03. Baseline: previous last-passing gate
 artifacts/quality/20261003-215609 (RAI-006-B).
 
 ## Resulting behavior
 
-RAI-009.b (review fixes из RAI-009): закрывающие фикстуры над ЗАМОРОЖЕННЫМ
-кодом RAI-009 (production main НЕ менялся — только тесты):
+RAI-009.b (review fixes from RAI-009): closing fixtures on top of the FROZEN
+RAI-009 code (production main was NOT changed — tests only):
 
-- стресс interrupt-takers: 50 конкурентных waiters паркуются в fair-очереди
-  одного слота (llm=1) и прерываются разом — детерминированные барьеры
-  (`queued == 51` → interrupt → `queued == 1`): ни один waiter не потратил
-  денег, слот holder'а не потерян, после interrupt holder'а — ровно исходный
-  пул слотов (нет фантомных permit'ов), Uncertain удержан (500µ$);
-- смешанные исходы под конкурентностью (6 settle + 6 interrupt-in-dispatch,
-  llm=8, attempts=64): observed ровно 6×40, uncertain ровно 6×100 (charge
-  kept), reservedActive=0, violations=0;
+- stress interrupt-takers: 50 concurrent waiters park in the fair queue for one
+  slot (llm=1) and are interrupted together — deterministic barriers
+  (`queued == 51` → interrupt → `queued == 1`): no waiter spent money, the
+  holder's slot was not lost, after interrupting the holder the slot pool
+  returned exactly to its original size (no phantom permits), Uncertain charge
+  retained (500µ$);
+- mixed outcomes under concurrency (6 settle + 6 interrupt-in-dispatch, llm=8,
+  attempts=64): observed exactly 6×40, uncertain exactly 6×100 (charge kept),
+  reservedActive=0, violations=0;
 - late-settlement: settle-after-settle / release-after-settle /
   markUncertain-after-settle / settle-after-release / settle-after-uncertain —
-  каждый поздний вариант = late-наблюдение, НИКОГДА не переписывает исход
-  (observed не удваивается, reserved не уходит в минус, uncertain не
-  начисляется второй раз); settle неизвестной резервации = typed RA-INP;
-  unpriced-резервация settle-ится один раз, последующие терминальные
-  операции = late;
-- idempotence: cancelRoot/clearCancellation идемпотентны, после снятия
-  отмены dispatch работает, accounting точный.
+  each late operation is a late observation and NEVER rewrites the outcome
+  (observed is not doubled, reserved does not go negative, uncertain is not
+  charged twice); settling an unknown reservation gives typed RA-INP; an
+  unpriced reservation settles once, and subsequent terminal operations are late;
+- idempotence: cancelRoot/clearCancellation are idempotent, dispatch works
+  after cancellation is cleared, and accounting is exact.
 
-По пути зафиксирован учебный факт (попал в тестовый комментарий):
-maxAttempts считает КАЖДЫЙ dispatch root'а (model+tool), поэтому стресс-тест
-с 12 dispatch'ами требует attempts>=12 — иначе лишние получают RA-LBUDGET до
-парковки (это поведение Admission, не дефект).
+An implementation fact was recorded along the way (in a test comment):
+maxAttempts counts EVERY root dispatch (model+tool), so a stress test with 12
+dispatches requires attempts>=12 — otherwise extra attempts get RA-LBUDGET
+before parking (this is Admission behavior, not a defect).
 
 ## Changed paths
 
@@ -43,11 +41,11 @@ maxAttempts считает КАЖДЫЙ dispatch root'а (model+tool), поэт�
 
 | Criterion | Actual | Evidence |
 | --- | --- | --- |
-| Стресс 50 interrupt-takers (детерминированный) | pass | LateSettlementStressSpec |
-| Смешанные settle/Uncertain исходы точны | pass | LateSettlementStressSpec |
-| Late-settlement/idempotence фикстуры (5 шт) | pass | LateSettlementStressSpec |
-| Стабильность ×3 | 7/7, exit 0 ×3 | /tmp/e-run-{1,2,3}.log |
-| Полный sbt test | 134 теста, 0 failed, exit 0 | /tmp/full-test-E.log |
+| Stress 50 interrupt-takers (deterministic) | pass | LateSettlementStressSpec |
+| Mixed settle/Uncertain outcomes are exact | pass | LateSettlementStressSpec |
+| Late-settlement/idempotence fixtures (5) | pass | LateSettlementStressSpec |
+| Stability ×3 | 7/7, exit 0 ×3 | /tmp/e-run-{1,2,3}.log |
+| Full sbt test | 134 tests, 0 failed, exit 0 | /tmp/full-test-E.log |
 | Quality gates | 6/6 passed | artifacts/quality/20261003-220233/manifest.json |
 
 ## Commands
@@ -60,12 +58,12 @@ maxAttempts считает КАЖДЫЙ dispatch root'а (model+tool), поэт�
 
 ## Limitations / obligations
 
-- Fair-admission МЕЖДУ РАЗНЫМИ roots (RAI-009 obligation) остаётся на
-  реальный fanout (RAI-010/017 integration) — здесь стресс внутри одного root.
-- performance-профиль — прежний milestone obligation (нет в registry без
-  отдельной карточки).
+- Fair admission BETWEEN DIFFERENT roots (RAI-009 obligation) remains for real
+  fanout (RAI-010/017 integration) — this stress test is within one root.
+- The performance profile remains the existing milestone obligation (not in
+  the registry without a separate card).
 
 ## Review and next task
 
-Независимый review не проводился (координаторская сессия). Критический путь
-A–E закрыт; далее финальный полный прогон и (stretch) Phase F.
+Independent review was not conducted (coordinator session). Critical path A–E
+is closed; next is the final full run and (stretch) Phase F.

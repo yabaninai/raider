@@ -1,227 +1,234 @@
-# W22-REVIEW — ревью хвоста W20–W21 (lane W22-R1, 2026-10-12)
+# W22-REVIEW — review of the W20–W21 tail (lane W22-R1, 2026-10-12)
 
-Reviewer: lane-worker W22-R1. Режим: READ-ONLY review, WORKTREE
-(`raider-wt-1`, ветка `lane/w22-r1`, base `94e9f5b`). Код ревьюимых объектов не
-изменялся; после всех проверок `git status --short` пуст (рабочее дерево
-чисто, `artifacts/` и `RECORD.md` gitignored). Артефакты lane: этот файл
-(`reviews/W22-review.md`) и `RECORD.md` в корне worktree.
+Reviewer: lane-worker W22-R1. Mode: READ-ONLY review, WORKTREE
+(`raider-wt-1`, branch `lane/w22-r1`, base `94e9f5b`). The reviewed code was
+not changed; after all checks, `git status --short` was empty (clean working
+tree; `artifacts/` and `RECORD.md` are gitignored). Lane artifacts: this file
+(`reviews/W22-review.md`) and `RECORD.md` at the worktree root.
 
-Вердикт: **CHANGES-REQUIRED** — одна находка **F-W22R1-1** (объект 1,
-оставленный отладочный `println` в продуктовой диагностике). Объект 1 в части
-RunDiffReport — ACCEPT; объекты 2 и 3 — ACCEPT.
+Verdict: **CHANGES-REQUIRED** — one finding **F-W22R1-1** (object 1, a
+leftover debug `println` in product diagnostics). Object 1, as it concerns
+RunDiffReport — ACCEPT; objects 2 and 3 — ACCEPT.
 
 ---
 
-## Объект 1 — WorkspaceIsolation + RunDiffReport + спеки (L52, LIN-06C)
+## Object 1 — WorkspaceIsolation + RunDiffReport + specs (L52, LIN-06C)
 
 `modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`
 `modules/cli/src/main/scala/raider/cli/lineage/RunDiffReport.scala`
 `modules/cli/src/test/scala/raider/cli/lineage/WorkspaceIsolationSpec.scala`
 `modules/cli/src/test/scala/raider/cli/lineage/RunDiffReportSpec.scala`
 
-Проверено и зелёное:
+Verified and green:
 
-- **Механика изоляции честная**: staging во временном каталоге + `ATOMIC_MOVE`
-  (rename(2) того же FS) — наблюдатель `parent` не видит полускопированное
-  дерево; no-fsync оговорен в scaladoc как ordering-visibility, не durability
-  (WorkspaceIsolation.scala:36-38). Symlink/special-записи ОТКЛОНЯЮТСЯ
-  (`CopyFailed`/`IllegalStateException`), а не копируются молча (41, 160-171);
-  снапшот ограничен по числу файлов и ПАДАЕТ typed, а не обрезается —
-  усечённый снапшот сфальсифицировал бы чистый `verifyUntouched` (47-51,
-  126-130). Это правильная honesty-дисциплина.
-- **`verifyUntouched` семантика полная**: modified/deleted/added ловятся
-  (байт-сравнение `Arrays.equals` + повторный обход), первый offender — в
-  детерминированном порядке сортированных относительных путей (197-223);
-  добавленные пустые каталоги игнорируются согласно контракту «гарантия по
-  БАЙТАМ файлов» (56-57). IO-ошибки поверх трёх typed-кейсов НЕ маскируются
-  как «untouched» (59-60). Tampered несёт workspace-ОТНОСИТЕЛЬНЫЙ путь.
-- **Спека LIN6-C — настоящая, не tautology**: реальные temp-dir фикстуры на
-  каждый прогон с рекурсивной уборкой; мутации инжектируются ТОЛЬКО в копию
-  (rewrite+delete+add), оригинал верифицируется байт-в-байт (Spec 79-96);
-  Tampered-ассерты точны до пути (`sub/b.txt`, `a.txt`, `new.txt`);
-  уникальность target на каждый `isolate` — pinned (copy2 != copy);
-  zio-test-специфика (ленивый `assertTrue` после финализаторов) честно
-  задокументирована и обойдена hoisting-ом (Spec 26-29).
-- **RunDiffReport — ACCEPT без оговорок**: `render` — чистая функция
-  аргументов, байт-стабильность pinned повторным рендером (Spec 81-97, 8 строк
-  дословно); путь дивергенции рендерится в НОРМАЛИЗОВАННЫХ id (`root ->
-  job-1:n4`) — согласовано с `compareNormalized`; `fromGraphs` на совпадающих
-  графах — `Left` («Match — не отчёт») с общим normalized-хешем; счётчики
-  expected/actual точны (2/1 в missing-node кейсе). Ничего кроме
-  `GraphDiff`/`Meta` не читает — детерминизм по построению.
+- **The isolation mechanism is honest**: staging in a temporary directory +
+  `ATOMIC_MOVE` (rename(2) on the same FS) means the `parent` observer cannot
+  see a partially copied tree; the no-fsync caveat is documented in scaladoc
+  as ordering visibility, not durability (WorkspaceIsolation.scala:36-38).
+  Symlinks/special entries are REJECTED (`CopyFailed`/`IllegalStateException`)
+  rather than silently copied (41, 160-171); the snapshot is bounded by file
+  count and FAILS with a typed error instead of being truncated — a truncated
+  snapshot would falsify a clean `verifyUntouched` result (47-51, 126-130).
+  This is the right honesty discipline.
+- **`verifyUntouched` has complete semantics**: modifications/deletions/additions
+  are detected (`Arrays.equals` byte comparison + a second traversal), and the
+  first offender is in deterministic order of sorted relative paths (197-223);
+  added empty directories are ignored, in accordance with the contract
+  “guarantee over file BYTES” (56-57). IO errors beyond the three typed cases
+  are NOT masked as “untouched” (59-60). `Tampered` carries a
+  workspace-RELATIVE path.
+- **The LIN6-C spec is real, not a tautology**: real temp-dir fixtures on every
+  run with recursive cleanup; mutations are injected ONLY into the copy
+  (rewrite+delete+add), and the original is verified byte-for-byte (Spec
+  79-96); `Tampered` assertions are exact down to the path (`sub/b.txt`,
+  `a.txt`, `new.txt`); a unique target per `isolate` call is pinned
+  (copy2 != copy); the zio-test detail (lazy `assertTrue` after finalizers) is
+  honestly documented and worked around with hoisting (Spec 26-29).
+- **RunDiffReport — ACCEPT without caveats**: `render` is a pure function of
+  its arguments, and byte stability is pinned by rendering again (Spec 81-97,
+  exactly 8 lines); the divergence path is rendered using NORMALIZED ids
+  (`root -> job-1:n4`) — consistent with `compareNormalized`; `fromGraphs` on
+  matching graphs returns `Left` (“Match is not a report”) with a shared
+  normalized hash; expected/actual counters are exact (2/1 in the missing-node
+  case). It reads nothing except `GraphDiff`/`Meta` — deterministic by
+  construction.
 
-### F-W22R1-1: отладочный `println` оставлен в `verifyUntouched` — stdout-мусор и утечка абсолютных путей в диагностику
+### F-W22R1-1: debug `println` left in `verifyUntouched` — stdout noise and absolute-path leakage into diagnostics
 
-- **Где:** WorkspaceIsolation.scala:145-148.
-- **Механизм.** `verifyUntouched` при КАЖДОМ вызове безусловно печатает в
+- **Where:** WorkspaceIsolation.scala:145-148.
+- **Mechanism.** On EVERY call, `verifyUntouched` unconditionally prints to
   stdout `DEBUG-verify original=<absolute path> isDirectory=… exists=… cwd=…`.
-  Это забытый debug трассировки lane L52:
-  1. модуль promises диагностику без абсолютных путей окружения
-     («workspace-RELATIVE path … no absolute environment paths leak into
-     diagnostics», WorkspaceIsolation.scala:19-21) — scaladoc противоречит
-     коду по соседству;
-  2. `println` в библиотечной механике, вызываемой live re-run харнесом,
-     загрязняет продуктовый stdout/CLI-вывод и любой capture-канал отчёта;
-  3. `scalafmt`/`scalafix` такой вывод не ловят (проверено: текущие гейты
-     зелёные с этим `println`) — то есть без ревью находка ушла бы в main.
-- **Reproducer (наблюдение, без правки кода).** Любой вызов печатает строку;
-  в спеке это видно на LIN6-C-01/02 (4 вызова = 4 DEBUG-строки в тестовом
-  выводе прогона `raiderCli/test`; в зафиксированном выводе прогона настоящей
-  ревью-сессии строки `DEBUG-verify original=/var/folders/...` присутствуют).
-  Verdict-канал при этом НЕ повреждён (Right/Left корректны) — находка
-  диагностической гигиены, не корректности.
-- **Требуемое изменение (минимальное, отдельной карточкой фикса или в составе
-  следующей карточки владельца объекта):** удалить строки 145-148 целиком
-  (объявление `println(...)`); поведение `verifyUntouched` не меняется — все 4
-  теста LIN6-C остаются зелёными. По желанию — pin-тест «no stdout noise»
-  (захват `System.out` на одном вызове), чтобы регрессия не вернулась.
+  This is a forgotten debug trace from lane L52:
+  1. the module promises diagnostics without absolute environment paths
+     (“workspace-RELATIVE path … no absolute environment paths leak into
+     diagnostics”, WorkspaceIsolation.scala:19-21) — the scaladoc directly
+     contradicts the adjacent code;
+  2. `println` in library machinery called by the live re-run harness pollutes
+     product stdout/CLI output and any report capture channel;
+  3. `scalafmt`/`scalafix` do not catch this output (verified: current gates
+     are green with this `println`) — without review, the finding would have
+     reached main.
+- **Reproducer (observed, no code change).** Any call prints a line; this is
+  visible in the spec on LIN6-C-01/02 (4 calls = 4 DEBUG lines in the test
+  output from the `raiderCli/test` run; the captured output from the actual
+  review session run includes `DEBUG-verify original=/var/folders/...` lines).
+  The Verdict channel is NOT corrupted (Right/Left are correct) — this is a
+  diagnostics hygiene finding, not a correctness issue.
+- **Required change (minimal, in a separate fix card or as part of the next
+  card owned by the component owner):** delete lines 145-148 entirely (the
+  `println(...)` declaration); `verifyUntouched` behavior remains unchanged —
+  all 4 LIN6-C tests remain green. Optionally, pin a “no stdout noise” test
+  (capture `System.out` on one call) to prevent regression.
 
-Итог по объекту: WorkspaceIsolation — CHANGES-REQUIRED (F-W22R1-1, фикс в одну
-строку, механика и спека Sound); RunDiffReport — ACCEPT.
+Object verdict: WorkspaceIsolation — CHANGES-REQUIRED (F-W22R1-1, one-line
+fix; mechanism and spec are sound); RunDiffReport — ACCEPT.
 
 ---
 
-## Объект 2 — PhaseReplay + spec (L53, LIN-07-full) — ACCEPT
+## Object 2 — PhaseReplay + spec (L53, LIN-07-full) — ACCEPT
 
 `modules/cli/src/main/scala/raider/cli/lineage/PhaseReplay.scala`
 `modules/cli/src/test/scala/raider/cli/lineage/PhaseReplaySpec.scala`
 
-- **Порядок фаз детерминирован и честен**: BFS roots→children, каждый уровень
-  сортирован `(seq, id)`, visited-guard по id строки — терминация на
-  malformed-графах гарантирована (PhaseReplay.scala:73-88); pinned тестом
-  LIN7-F-01 (обе фазы в порядке seq 1, 4) и defensive-тестом: фаза внутри
-  parent-цикла недостижима из корней, `phases` не виснет (Spec 479-502).
-- **`NoPhases` typed и ДО lookup** — ровно как требует карточка: пустой список
-  фаз даёт `Left(NoPhases)` даже для СУЩЕСТВУЮЩЕГО не-phase id
-  (PhaseReplay.scala:102, тест LIN7-F-02 на `m1`).
-- **`NodeNotFound` называет ЗАПРАШИВАЕМЫЙ id** в обоих случаях (нет узла /
-  узел не phase) — синтезированных вердиктов не бывает (121, тест typed
-  errors).
-- **Независимые вердикты — по-настоящему**: каждый phase replay заново
-  синтезирует срез через `SubtreeReplay.subtree` и верифицирует через
-  `SubtreeReplay.verify` (никакого переиспользования чужих вердиктов); тест
-  LIN7-F-01 доказывает: p1 `PartiallyResolved` (точный `Unresolved("m1",
-  "d-missing")` + tool-обязательство), p2 при этом полностью `Resolved`, и
-  `replayPhase(p2 alone) == replayAll-строка` (Spec 395-408). LIN-7
-  «частичный» гарантия подтверждена.
-- **Child-строки — single source of truth**: rows выводятся из ТОГО ЖЕ
-  subtree-вердикта (`failures`/`tools` map), один row на DIRECT child в
-  порядке `(seq, id)`; grandchild-отказы остаются в whole-slice outcome, child
-  судится по своему dataRef (154-182) — согласовано со scaladoc и pinned
-  точными векторами (`Obligation("dg1", None)` для delegation, `Resolved`
-  для модели).
-- **Golden-интеграция настоящая**: замороженный `contracts/lineage/golden/
-  deep-tree` парсится с диска продакшн-кодеками (никакой пересборки в коде,
-  Spec 79-97); slice единственной фазы === всё дерево, `graphHash ==
-  GraphHash(graph)`, sha256-hex форма проверена (Spec 436-465).
-- **Детерминизм**: повторные прогоны дают идентичные вердикты (LIN7-F-03);
-  ни часов, ни рандома, ни IO в основном пути.
-- **`replayAll` честно частичный**: фаза с malformed-циклом не имеет строки,
-  reason доступен typed через `replayPhase` — задокументировано в scaladoc
-  (126-127) и pinned defensive-тестом. Наблюдение (не блокер):
-  `replayPhase` внутри `replayAll` каждый раз заново обходит `phases(graph)`
-  ради NoPhases-гейта — O(phases×graph); для fixture-sized графов с
-  `SnapshotMaxFiles`-подобными границами это приемлемо, при масштабировании
-  — кандидат на локальный memo (за владельцем объекта, не в этой карточке).
+- **Phase order is deterministic and honest**: BFS roots→children, each level
+  sorted by `(seq, id)`, visited guard by row id — termination on malformed
+  graphs is guaranteed (PhaseReplay.scala:73-88); pinned by LIN7-F-01 (both
+  phases in seq order 1, 4) and a defensive test: a phase inside a parent cycle
+  is unreachable from roots, and `phases` does not hang (Spec 479-502).
+- **`NoPhases` is typed and checked BEFORE lookup** — exactly as the card
+  requires: an empty phase list yields `Left(NoPhases)` even for an EXISTING
+  non-phase id (PhaseReplay.scala:102, LIN7-F-02 test on `m1`).
+- **`NodeNotFound` names the REQUESTED id** in both cases (no node / node is
+  not a phase) — no synthetic verdicts are produced (121, typed-errors test).
+- **Independent verdicts are truly independent**: every phase replay
+  synthesizes its slice anew through `SubtreeReplay.subtree` and verifies it
+  through `SubtreeReplay.verify` (no reuse of other verdicts); LIN7-F-01 proves
+  it: p1 is `PartiallyResolved` (exact `Unresolved("m1", "d-missing")` +
+  tool obligation), while p2 is fully `Resolved`, and
+  `replayPhase(p2 alone) == replayAll-row` (Spec 395-408). The LIN-7
+  “partial” guarantee is confirmed.
+- **Child rows have a single source of truth**: rows are derived from THAT SAME
+  subtree verdict (`failures`/`tools` map), one row per DIRECT child in
+  `(seq, id)` order; grandchild failures remain in the whole-slice outcome,
+  while a child is judged by its own dataRef (154-182) — consistent with
+  scaladoc and pinned by exact vectors (`Obligation("dg1", None)` for
+  delegation, `Resolved` for model).
+- **Golden integration is real**: frozen `contracts/lineage/golden/deep-tree`
+  is parsed from disk by production codecs (no reconstruction in code, Spec
+  79-97); a slice for the only phase === the whole tree,
+  `graphHash == GraphHash(graph)`, and sha256-hex form are checked (Spec
+  436-465).
+- **Determinism**: repeated runs produce identical verdicts (LIN7-F-03); no
+  clocks, randomness, or IO on the main path.
+- **`replayAll` is honestly partial**: a phase in a malformed cycle has no row;
+  the reason is available as a typed result through `replayPhase` — documented
+  in scaladoc (126-127) and pinned by the defensive test. Observation (not a
+  blocker): `replayPhase` inside `replayAll` traverses `phases(graph)` again
+  each time for the NoPhases gate — O(phases×graph); acceptable for
+  fixture-sized graphs with bounds similar to `SnapshotMaxFiles`, and a
+  candidate for local memoization if scaling (owned by the component owner,
+  not this card).
 
-Спека не tautology: точные вердикт-векторы, точные хеши, отрицательный
-контроль (`isSha256Hex`), настоящая заморозка с диска.
+The spec is not a tautology: exact verdict vectors, exact hashes, a negative
+control (`isSha256Hex`), and a real freeze parsed from disk.
 
 ---
 
-## Объект 3 — GraphComparator: rename-инвариантная canonical job map (L54, F-L51-1) — ACCEPT
+## Object 3 — GraphComparator: rename-invariant canonical job map (L54, F-L51-1) — ACCEPT
 
 `modules/runtime/src/main/scala/raider/runtime/lineage/replay/GraphComparator.scala`
 `modules/runtime/src/test/scala/raider/runtime/lineage/replay/GraphComparatorSpec.scala`
 
-### Reproducer W20 — воспроизведён, теперь ЗЕЛЁНЫЙ
+### Reproducer W20 — reproduced, now GREEN
 
-Reproducer F-L51-1 из W20-review выполнен в составе committed-спеки:
-`FL51-01` строит те же G1/G2 (root `a` + Delegation→`b`; против root `y` +
-Delegation→`x`, равные seq) и ассертит
-`compareNormalized(g1, g2) == Right`, `normalize(g1) == normalize(g2)`,
-нумерацию ровно `Vector(job-1:n1, job-2:n1, job-2:n2)` и `childJobId =
-job-2` (Spec 500-584). Прогон:
+Reproducer F-L51-1 from W20-review was run as part of the committed spec:
+`FL51-01` constructs the same G1/G2 (root `a` + Delegation→`b`; versus root
+`y` + Delegation→`x`, equal seq) and asserts
+`compareNormalized(g1, g2) == Right`, `normalize(g1) == normalize(g2)`, exactly
+the numbering `Vector(job-1:n1, job-2:n1, job-2:n2)`, and `childJobId =
+job-2` (Spec 500-584). Run:
 `sbt --batch "raiderRuntime/testOnly raider.runtime.lineage.replay.GraphComparatorSpec"`
-→ **19 passed / 0 failed** (было: W20 reproducer падал с KindMismatch —
-ложная дивергенция на структурно одинаковых графах).
+→ **19 passed / 0 failed** (previously: the W20 reproducer failed with
+KindMismatch — a false divergence on structurally identical graphs).
 
-### scaladoc == код (сверено построчно)
+### scaladoc == code (checked line by line)
 
-- «root job → job-1; каждый другой job — номером ПЕРВОЙ Delegation, ведущей
-  к нему; breadth walk по дереву делегаций; узлы каждого job в per-job `seq`
-  порядке» — код: корни = job без входящих `Delegation.childJobId`
-  (211-245), очередь BFS, per-job `.sortBy(_.seq)` БЕЗ id-тай-брейка —
-  уникальность seq внутри job гарантирует SeqGap-инвариант редуктора
-  (216-217, 248-260). Сырые id в этой нумерации не участвуют.
-- «Raw ids — hence job NAMES — never take part in any ordering» — честно ДЛЯ
-  REDUCER-SHAPED графа: единственное место, где `(seq, id)`-сортировка ещё
-  остаётся (`known`, 228-230) — порядок FIRST-SEEN корней, а в reducer-форме
-  корень ровно один (порядок не наблюдаем). Дегенеративный фолбэк
-  (несколько независимых корней) scaladoc явно carve-out-ит: «deterministic,
-  but only the delegation-tree shape carries the rename-invariance promise»
-  (163-167, 197-200) — обещание и код совпадают, обещание НЕ шире кода.
-- «An EMPTY child subtree (silent child job) still gets a label from its
-  delegation» — register+enqueue на Delegation-узле независимо от наличия
-  узлов (254-258); pinned FL51-01b (`ghost`/`mm` получают label).
-- «Emission order … preserved (parents still precede children, so the
-  normalized graph re-validates)» — `normalize` переписывает id 1:1 без
-  пересортировки вектора (272); pinned точным вектором id в FL51-01c.
-- Hash-дисциплина не тронута: `Left` несёт GraphHash ОБЕИХ нормализованных
-  форм, `Right` — тот же хеш; structure-equal ⇒ hash-equal инвариант LIN5-B-03
-  не ослаблен (старые сюиты зелёные, полный raiderRuntime 330/0).
+- “root job → job-1; every other job is numbered by the FIRST Delegation
+  leading to it; breadth walk over the delegation tree; nodes within each job
+  in per-job `seq` order” — code: roots = jobs with no incoming
+  `Delegation.childJobId` (211-245), BFS queue, per-job `.sortBy(_.seq)` with
+  NO id tie-breaker — the reducer's SeqGap invariant guarantees unique seq
+  within each job (216-217, 248-260). Raw ids do not participate in this
+  numbering.
+- “Raw ids — hence job NAMES — never take part in any ordering” — true FOR
+  REDUCER-SHAPED graphs: the only remaining `(seq, id)` sort (`known`, 228-230)
+  orders the FIRST-SEEN roots, and there is exactly one root in reducer form
+  (so that order is unobservable). The scaladoc explicitly carves out the
+  degenerate fallback (multiple independent roots): “deterministic, but only
+  the delegation-tree shape carries the rename-invariance promise” (163-167,
+  197-200) — the promise matches the code; it does NOT exceed the code.
+- “An EMPTY child subtree (silent child job) still gets a label from its
+  delegation” — register+enqueue at the Delegation node regardless of whether
+  it has nodes (254-258); pinned by FL51-01b (`ghost`/`mm` receive labels).
+- “Emission order … preserved (parents still precede children, so the
+  normalized graph re-validates)” — `normalize` rewrites ids 1:1 without
+  re-sorting the vector (272); pinned by the exact id vector in FL51-01c.
+- Hash discipline is unchanged: `Left` carries the GraphHash of BOTH
+  normalized forms; `Right` carries the same hash; the structure-equal ⇒
+  hash-equal invariant LIN5-B-03 has not been weakened (old suites green, full
+  raiderRuntime 330/0).
 
-### Усиление против замечаний W20
+### Strengthening against W20 comments
 
-Замечание W20 «corpus-проперти не сэмплит adversarial-переименования»
-закрыто: в LIN-06B-1 сюиту добавлена property «adversarially renamed jobs
-(alphabet order REVERSED) match normalized for every seed» — переименование
-`root→aaa-*, child-1→ccc-*, child-2→bbb-*` (обратный алфавит) по всем 20
-seeds с sanity-ассертом, что raw compare ДЕЙСТВИТЕЛЬНО видит identity drift
-(Spec 448-495). Плюс FL51-01b (своп алфавитного порядка двух детей при
-сохранении порядка делегирования) и FL51-01c (трёхуровневое дерево, четыре
-job сталкиваются на seq 1, полное обращение алфавита p→e, q→d, r→c, s→b,
-t→a) — нумерация доказанно чистая функция формы дерева.
+The W20 comment “corpus property does not sample adversarial renames” is
+addressed: the LIN-06B-1 suite adds the property “adversarially renamed jobs
+(alphabet order REVERSED) match normalized for every seed” — renaming
+`root→aaa-*`, `child-1→ccc-*`, `child-2→bbb-*` (reverse alphabet) across all 20
+seeds, with a sanity assertion that raw compare ACTUALLY detects identity drift
+(Spec 448-495). In addition, FL51-01b (swap the alphabetical order of two
+children while preserving delegation order) and FL51-01c (three-level tree,
+four jobs collide at seq 1, complete reversal of the p→e, q→d, r→c, s→b,
+t→a alphabet) prove that numbering is purely a function of tree shape.
 
-Наблюдение (не блокер): делегационный ЦИКЛ (A→B→A — дегенеративная форма,
-вне редукторного shape) оставляет карту пустой → id не переписываются;
-поведение детерминировано и покрыто общей оговоркой preconditions
-(«reducer's … shape», 169-173). Фиксации spec-ом не требуется для карточки.
+Observation (not a blocker): a delegation CYCLE (A→B→A — a degenerate form,
+outside reducer shape) leaves the map empty, so ids are not rewritten; the
+behavior is deterministic and covered by the general preconditions caveat
+(“reducer's … shape”, 169-173). No spec addition is required for the card.
 
 ---
 
-## Сводка по критериям
+## Criteria summary
 
-| Критерий | Вердикт | Комментарий |
+| Criterion | Verdict | Comment |
 | --- | --- | --- |
-| (a) wire-freeze | OK | Ни один объект не расширяет события (13 payload-кейсов) или lineage-data.json v1: только чтение; тестовые документы строятся со `schemaVersion = 1`, новых полей нет. |
-| (b) typed-честность | F-W22R1-1 | Все ошибки typed, без маскировки (snapshot падает, а не обрезается; IO не маскируется как «untouched»; NoPhases/Cycle/NodeNotFound честные). Единственная нечестность — debug `println` против собственного scaladoc-обещания диагностики. |
-| (c) детерминизм | OK | Все обходы сортированы; нумерация job — чистая функция формы дерева; repeat-render/repeat-replay pinned; ни часов, ни рандома. |
-| (d) не tautology | OK | Точные ассерты (пути, 8-строчный отчёт дословно, точные хеши/векторы), настоящие golden-фикстуры с диска, adversarial rename property; DEBUG-println шумит вывод, но ассерты от него не зависят. |
-| (e) секреты | OK | Секретов нет; network/платных вызовов нет; temp-фикстуры с уборкой. Пограничное: F-W22R1-1 печатает локальные абсолютные пути в stdout — не секрет, но утечка окружения в диагностику (сложено в находку). |
-| (f) ADR-027 | OK | Live re-run — против изолированной копии workspace (§2), diff-отчёт расхождений детерминирован, replay из записи без re-ask, инструменты — отложенные обязательства. |
+| (a) wire-freeze | OK | No object extends events (13 payload cases) or lineage-data.json v1: read-only; test documents use `schemaVersion = 1`, with no new fields. |
+| (b) typed honesty | F-W22R1-1 | All errors are typed, with no masking (snapshot fails rather than truncating; IO is not masked as “untouched”; NoPhases/Cycle/NodeNotFound are honest). The only dishonesty is the debug `println` contradicting its own scaladoc promise for diagnostics. |
+| (c) determinism | OK | All traversals are sorted; job numbering is purely a function of tree shape; repeat-render/repeat-replay are pinned; no clocks or randomness. |
+| (d) not a tautology | OK | Exact assertions (paths, the exact 8-line report, exact hashes/vectors), real golden fixtures from disk, adversarial rename property; the DEBUG `println` adds output noise, but assertions do not depend on it. |
+| (e) secrets | OK | No secrets; no network/paid calls; temp fixtures are cleaned up. Boundary note: F-W22R1-1 prints local absolute paths to stdout — not a secret, but environment leakage in diagnostics (captured in the finding). |
+| (f) ADR-027 | OK | Live re-run targets an isolated workspace copy (§2), diff reports divergences deterministically, replay from a record without re-asking, tools remain deferred obligations. |
 
-## Проверки (точные команды и результаты, cwd = worktree)
+## Checks (exact commands and results, cwd = worktree)
 
-- `git status --short && git branch --show-current` → чисто, `lane/w22-r1`.
+- `git status --short && git branch --show-current` → clean, `lane/w22-r1`.
 - `sbt --batch "raiderRuntime/test" "raiderCli/test"` → exit 0;
   **raiderRuntime: 330 passed / 0 failed; raiderCli: 212 passed / 0 failed**.
 - `sbt --batch "raiderRuntime/testOnly raider.runtime.lineage.replay.GraphComparatorSpec"`
-  → exit 0; **19 passed / 0 failed**, включая FL51-01 (reproducer W20 —
-  зелёный), FL51-01b, FL51-01c.
+  → exit 0; **19 passed / 0 failed**, including FL51-01 (W20 reproducer —
+  green), FL51-01b, FL51-01c.
 - `sbt --batch scalafmtAll "raiderCli/scalafixAll --check" "raiderRuntime/scalafixAll --check"`
-  → exit 0; `git status --short` после — пусто (дерево не тронуто).
-- `make quality-changed` → exit 0; «no changes vs HEAD (clean tree executes
-  minimum fast)», profiles=[fast].
+  → exit 0; `git status --short` afterward — empty (tree unchanged).
+- `make quality-changed` → exit 0; “no changes vs HEAD (clean tree executes
+  minimum fast)”, profiles=[fast].
 - `make quality-changed QUALITY_EXECUTE=1` → exit 0; status=passed, 10/10
   checks; evidence manifest:
   `artifacts/quality/20261012-024302-85359-0001/manifest.json`.
 
-## Итог
+## Conclusion
 
-- ACCEPT: объект 2 (PhaseReplay, L53), объект 3 (GraphComparator fix, L54 —
-  reproducer W20 зелёный, scaladoc==код), RunDiffReport в составе объекта 1.
-- CHANGES-REQUIRED: объект 1 (WorkspaceIsolation) — F-W22R1-1
-  (WorkspaceIsolation.scala:145-148): удалить отладочный `println`; фикс в
-  одну строку, механика и все тесты остаются зелёными. Fix — отдельной
-  карточкой фикса/следующей карточкой владельца объекта, не этой review.
+- ACCEPT: object 2 (PhaseReplay, L53), object 3 (GraphComparator fix, L54 —
+  W20 reproducer is green, scaladoc == code), and RunDiffReport within object 1.
+- CHANGES-REQUIRED: object 1 (WorkspaceIsolation) — F-W22R1-1
+  (WorkspaceIsolation.scala:145-148): remove the debug `println`; one-line
+  fix, mechanism and all tests remain green. Fix belongs in a separate fix
+  card / the next card owned by the component owner, not this review.

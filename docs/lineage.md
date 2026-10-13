@@ -1,336 +1,338 @@
-<!-- LIN-08A: пользовательский документ + операционный spec session lineage.
-     Контракт: ADR-027 (docs/adr/ADR-027-session-lineage.md) и карточки
-     P-LIN (docs/tasks/lineage.md). Новых продуктовых решений не вносит.
-     Команды/пути сверены с modules/cli (CliArgs.scala, HeadlessRunner.scala,
-     EventExport.scala, ReplayCli.scala), events — raider.runtime.events
+<!-- LIN-08A: user documentation + operational spec for session lineage.
+     Contract: ADR-027 (docs/adr/ADR-027-session-lineage.md) and the
+     P-LIN cards (docs/tasks/lineage.md). Introduces no new product decisions.
+     Commands/paths checked against modules/cli (CliArgs.scala, HeadlessRunner.scala,
+     EventExport.scala, ReplayCli.scala); events are from raider.runtime.events
      (ADR-024 §5). -->
 
-# Session lineage: дерево вызовов как валидная Scala-программа
+# Session lineage: the call tree as a valid Scala program
 
-Пользовательский документ и операционный spec слоя session lineage (ADR-027,
-фаза P-LIN). Каждая сессия — chat, headless-ран, ночная кампания — получает
-**SessionGraph**: дерево вызовов, материализуемое как **валидная Scala-программа**
-(`lineage.scala`) плюс data-ресурс (`lineage-data.json`). Запуск этой программы
-**воспроизводит цепочку** вызовов сессии.
+User documentation and operational spec for the session lineage layer (ADR-027,
+phase P-LIN). Every session—a chat, a headless run, or a nightly campaign—gets a
+**SessionGraph**: a call tree materialized as a **valid Scala program**
+(`lineage.scala`) plus a data resource (`lineage-data.json`). Running this program
+**reproduces the session's chain** of calls.
 
-Статус реализации — см. [§9](#9-статус-реализации-честно). Этот документ
-описывает зафиксированные решения ADR-027, а не готовый продукт.
+For implementation status, see [§9](#9-implementation-status-reported-accurately).
+This document describes the decisions recorded in ADR-027, rather than a finished product.
 
-## 1. Три артефакта и источник истины
+## 1. Three artifacts and the source of truth
 
-| Артефакт | Что это | Роль |
+| Artifact | What it is | Role |
 | --- | --- | --- |
-| `events.jsonl` | Лог событий сессии (экспорт headless-раннера, schemaVersion 1) | **Единственный источник истины** |
-| SessionGraph | Event-sourced граф сессии: редуктор `events.jsonl → граф` | Модель (в памяти, восстанавливается заново из событий) |
-| `lineage.scala` + `lineage-data.json` | Проекция графа в валидную Scala-программу + data-ресурс | **Детерминированная проекция** (аналог `explain()` у Spark) |
+| `events.jsonl` | Session event log (headless runner export, schemaVersion 1) | **The sole source of truth** |
+| SessionGraph | Event-sourced session graph: the `events.jsonl → graph` reducer | Model (in memory, rebuilt from events) |
+| `lineage.scala` + `lineage-data.json` | Graph projection into a valid Scala program + a data resource | **Deterministic projection** (similar to Spark's `explain()`) |
 
-Ключевые свойства:
+Key properties:
 
-- **События — источник истины; программа — проекция.** Ручные правки
-  `lineage.scala` детектируются компаратором графов (повторная проекция из
-  событий перестанет совпадать).
-- **Данных в коде нет.** Все данные узлов — промпты LLM-раундов, аргументы
-  тулколлов — хранятся в `lineage-data.json`. `lineage.scala` — только
-  композиция Program/Task (RAI-017, заморожен: он цель проекции, не модель).
-- **Программа валидна по построению и проверяется компиляцией** — периодически
-  в ходе сессии и в CI (гейт LIN). Невалидная проекция — честный статус
-  (виден в TUI до починки), а не молчаливый пропуск.
+- **Events are the source of truth; the program is a projection.** The graph
+  comparator detects manual edits to `lineage.scala` (projecting the events again
+  will no longer produce a match).
+- **No data is embedded in the code.** All node data—LLM round prompts and tool
+  call arguments—is stored in `lineage-data.json`. `lineage.scala` contains only
+  Program/Task composition (RAI-017, frozen: it is the projection target, not the model).
+- **The program is valid by construction and checked by compilation** periodically
+  during the session and in CI (the LIN gate). An invalid projection has an explicit
+  status (visible in the TUI until fixed), rather than being silently skipped.
 
-## 2. Слои (ADR-027 §3)
+## 2. Layers (ADR-027 §3)
 
-| Слой | Ответственность | Карточка |
+| Layer | Responsibility | Card |
 | --- | --- | --- |
-| 1. SessionGraph (модель) | Редуктор `events.jsonl → граф`. Узлы: `ModelCall \| ToolCall(kind, RecoveryClass) \| Delegation(subtree) \| Phase(name)`; рёбра — dataflow (`inputs: Vector[NodeId]`) + управление. Новые типы тулколлов регистрируются подтипами ToolCall-node без смены контракта | LIN-01 |
-| 2. Проекция | `граф → валидная Scala`: узлы — композиции Program/Task, делегации — вложенные блоки, фазы — `def`-ы; данные — в `lineage-data.json` | LIN-02 |
-| 3. Лайв-поддержка | Инкрементальное достраивание графа и проекции в ходе сессии; периодическая компиляция-валидация; артефакт всегда доступен из TUI-вкладки Lineage | LIN-03 |
-| 4. Воспроизведение | replay-recorded / гибрид / live re-run; компаратор графов — приёмка | LIN-05–07 |
+| 1. SessionGraph (model) | The `events.jsonl → graph` reducer. Nodes: `ModelCall \| ToolCall(kind, RecoveryClass) \| Delegation(subtree) \| Phase(name)`; edges represent dataflow (`inputs: Vector[NodeId]`) + control flow. New tool call types are registered as ToolCall-node subtypes without changing the contract | LIN-01 |
+| 2. Projection | `graph → valid Scala`: nodes are Program/Task compositions, delegations are nested blocks, phases are `def`s; data goes into `lineage-data.json` | LIN-02 |
+| 3. Live maintenance | Incrementally builds the graph and projection during the session; periodic compilation and validation; the artifact is always accessible from the TUI's Lineage tab | LIN-03 |
+| 4. Reproduction | replay-recorded / hybrid / live re-run; the graph comparator determines acceptance | LIN-05–07 |
 
-Компакция длинных сессий: узлы сворачиваются в именованные фазы (`Phase(name)`)
-— они же служат границами компакции и единицами частичного replay.
+Compaction of long sessions: nodes are folded into named phases (`Phase(name)`),
+which also serve as compaction boundaries and units of partial replay.
 
-## 3. Где лежат артефакты
+## 3. Artifact locations
 
-Каталог рана задаётся флагом `--out`. Фактическое поведение headless-раннера
-(`raider run ... --out <dir>`, сверено с `modules/cli/run/HeadlessRunner.scala`):
+The run directory is set by the `--out` flag. Actual headless runner behavior
+(`raider run ... --out <dir>`, checked against `modules/cli/run/HeadlessRunner.scala`):
 
 ```text
-<out>/work-<uuid>/          # каталог рана; параллельные раны не делят каталог
-├── run.json                # итог рана (status, accounting, ci)
-├── events.jsonl            # события сессии — источник истины (schemaVersion 1)
+<out>/work-<uuid>/          # run directory; parallel runs do not share a directory
+├── run.json                # run result (status, accounting, ci)
+├── events.jsonl            # session events—the source of truth (schemaVersion 1)
 ├── summary.md              # human-readable summary
-└── transcript.json         # trace рана
+└── transcript.json         # run trace
 ```
 
-Lineage-артефакты лежат **рядом с рансом**, в том же каталоге рана:
+Lineage artifacts sit **alongside the run artifacts**, in the same run directory:
 
 ```text
-<out>/work-<uuid>/lineage.scala        # проекция графа (валидная Scala)
-<out>/work-<uuid>/lineage-data.json    # data-ресурс (промпты, данные узлов)
+<out>/work-<uuid>/lineage.scala        # graph projection (valid Scala)
+<out>/work-<uuid>/lineage-data.json    # data resource (prompts, node data)
 ```
 
-В терминах ADR-027 это записывается как `artifacts/<run>/lineage.scala` +
-`artifacts/<run>/lineage-data.json` — типовой вызов:
+ADR-027 expresses this as `artifacts/<run>/lineage.scala` +
+`artifacts/<run>/lineage-data.json`. A typical invocation:
 
 ```sh
-raider run --agent coder --input "..." --out artifacts/<run>   # + --mock/--provider и др., см. §6
+raider run --agent coder --input "..." --out artifacts/<run>   # + --mock/--provider, etc.; see §6
 ```
 
-- `lineage.scala` и `lineage-data.json` **входят в evidence-fingerprint** рана
-  наряду с `events.jsonl` (ADR-027 §2, строка «Хранение»).
-- `events.jsonl` — канонический экспорт per-job `EventEnvelope` (реальные
-  события `raider.runtime.events`, отсортированные по per-job seq; дубликаты
-  отбрасываются, маркер coalescing сохраняется честно).
+- `lineage.scala` and `lineage-data.json` **are included in the run's evidence
+  fingerprint**, alongside `events.jsonl` (ADR-027 §2, the “Storage” row).
+- `events.jsonl` is the canonical export of per-job `EventEnvelope`s (actual
+  `raider.runtime.events` events, sorted by per-job seq; duplicates are discarded
+  and the coalescing marker is retained accurately).
 
-## 4. Режимы воспроизведения
+## 4. Reproduction modes
 
-| Режим | Статус | Что происходит | Критерий успеха |
+| Mode | Status | What happens | Success criterion |
 | --- | --- | --- | --- |
-| **replay-recorded** | Режим **по умолчанию**: бесплатно, детерминировано | Программа исполняется на записанных данных; ничего не вызывает | Идентичный граф вызовов (нормализованный graph-hash) |
-| **гибрид** | Основной режим (аналог Spark-lineage) | LLM-узлы берутся из записи; **детерминированные тулколлы пересчитываются заново** | Идентичная форма дерева (узлы/рёбра/типы) |
-| **live re-run** | Opt-in | Реальные вызовы; бюджет обязателен | **«Живой» граф** + diff-отчёт расхождений |
+| **replay-recorded** | **Default** mode: free, deterministic | The program runs on recorded data; it makes no calls | Identical call graph (normalized graph-hash) |
+| **hybrid** | Primary mode (similar to Spark lineage) | LLM nodes come from the recording; **deterministic tool calls are recomputed** | Identical tree structure (nodes/edges/types) |
+| **live re-run** | Opt-in | Real calls; a budget is mandatory | **A live graph** + a report of differences |
 
-Семантика успеха — по решению владельца (ADR-027 §2): успех воспроизведения =
-**тот же граф вызовов** (форма дерева: узлы/рёбра/типы). Тексты LLM в live-режиме
-могут отличаться — сравнивается форма, не тексты.
+Success semantics follow the owner's decision (ADR-027 §2): successful reproduction
+means **the same call graph** (tree structure: nodes/edges/types). LLM text may differ
+in live mode; structure is compared, not text.
 
-- **Live re-run (opt-in) — только с изоляцией и бюджетом:** mutating-узлы
-  исполняются **в изолированной копии workspace** (RecoveryClass = политика);
-  отказ до исполнения, если mutating-узел не изолирован; остановка по исчерпании
-  бюджета (LIN6-02).
-- **Успех live re-run = «живой» граф:** расхождение с записью фиксируется в
-  diff-отчёте «живой vs записанный», это результат, а не провал.
-- **Для replay-верификации — наоборот:** расхождение графа = **провал** проверки
-  с первым расходящимся узлом (LIN5-02). Live re-run не используется как
-  «успешная replay-верификация».
-- **Компаратор графов — приёмка** replay-режимов (LIN-05). Ручные правки
-  проекции детектируются им же.
+- **Live re-run (opt-in) requires isolation and a budget:** mutating nodes execute
+  **in an isolated workspace copy** (RecoveryClass determines policy); execution
+  is refused before it starts if a mutating node is not isolated; execution stops
+  when the budget is exhausted (LIN6-02).
+- **Successful live re-run produces a live graph:** divergence from the recording
+  is captured in a “live vs recorded” diff report; this is a result, not a failure.
+- **Replay verification uses the opposite rule:** graph divergence means the check
+  **fails**, reporting the first divergent node (LIN5-02). Live re-run is not used
+  as “successful replay verification.”
+- **The graph comparator determines acceptance** for replay modes (LIN-05). It also
+  detects manual edits to the projection.
 
-### 4.1 Частичный replay
+### 4.1 Partial replay
 
-Обязателен: replay **именованной фазы** или **поддерева** (LIN-07):
+Replay of a **named phase** or **subtree** is required (LIN-07):
 
-- только по поддереву фазы и её явному контракту входов;
-- внешние зависимости — ошибка контракта, не пустая подстановка;
-- непересекающиеся фазы replay-ятся изолированно друг от друга;
-- конкурентные replay фаз изолированы.
+- replay is limited to the phase subtree and its explicit input contract;
+- external dependencies cause a contract error, rather than an empty substitution;
+- disjoint phases replay in isolation from each other;
+- concurrent phase replays are isolated.
 
-## 5. Области и каталог деревьев
+## 5. Scope and the tree catalog
 
-Lineage строится для всех областей сессий (ADR-027 §2, «Область»):
+Lineage is built for all session scopes (ADR-027 §2, “Scope”):
 
-1. **Chat-сессии** — дерево вызовов интерактивной сессии.
-2. **Headless-раны** — один ран = одно дерево (сегодня: `raider run --out ...`
-   пишет `events.jsonl` рана; lineage-артефакты появляются с P-LIN).
-3. **Ночные кампании** — **каталог деревьев**: множество ранов кампании с
-   graph-hash и статусом воспроизводимости каждого (LIN8-01).
+1. **Chat sessions**: the call tree of an interactive session.
+2. **Headless runs**: one run = one tree (currently, `raider run --out ...` writes
+   the run's `events.jsonl`; lineage artifacts arrive with P-LIN).
+3. **Nightly campaigns**: a **tree catalog** containing the campaign's runs, with
+   a graph-hash and reproducibility status for each (LIN8-01).
 
-Требования к каталогу:
+Catalog requirements:
 
-- формат записи каталога для chat и headless **одинаковый** (chat==headless);
-- каждая запись несёт **graph-hash** и **статус воспроизводимости** (успешно
-  replay-нут / расхождение / не проверялся);
-- при параллельных ранах каталог пополняется **атомарным append** (LIN8-03).
+- catalog entries have the **same** format for chat and headless (chat==headless);
+- every entry carries a **graph-hash** and **reproducibility status** (successfully
+  replayed / divergent / not checked);
+- parallel runs add entries through **atomic append** (LIN8-03).
 
-### 5.1 Multi-job граф (честно)
+### 5.1 Multi-job graph (reported accurately)
 
-`events.jsonl` одного рана — события **одного job**. События делегированных
-детей собираются в общий граф **редуктором по rootId/jobId из journal-слоя**.
-Единый multi-job export — владелец `cli/run/**`, волна-2, после freeze
-read-API (ADR-027 §6.4). До этого каталог оперирует per-job/per-ран деревьями,
-собранными редуктором.
+A run's `events.jsonl` contains events from **one job**. Events from delegated
+children are assembled into a combined graph **by the reducer, using rootId/jobId
+from the journal layer**. A unified multi-job export belongs to the `cli/run/**`
+owner in wave-2, after the read API freeze (ADR-027 §6.4). Until then, the catalog
+operates on per-job/per-run trees assembled by the reducer.
 
-## 6. Пиннинг окружения
+## 6. Environment pinning
 
-Воспроизводимость привязана к окружению. Pinned-окружение фиксируется в
-`toolchain.json` (LIN-08): toolchain (Scala/JDK), версия Raider, модель.
+Reproducibility is tied to the environment. The pinned environment is recorded
+in `toolchain.json` (LIN-08): toolchain (Scala/JDK), Raider version, and model.
 
-- При запуске воспроизведения **сверка pinned-версий происходит ДО исполнения**.
-- Расхождение → **предупреждение до исполнения** + попытка воспроизведения
-  («предупредить и попытаться», ADR-027 §2).
-- Если воспроизведение выполнено в другом окружении, diff-отчёт несёт явную
-  пометку **«воспроизведено в другом окружении»** (LIN8-02). Скрыть расхождение
-  пиннинга нельзя.
-- Проекция линчуется компилятором **с пиннингом** (LIN2-01): повторная
-  проекция того же графа — байт-идентична.
+- When reproduction starts, **pinned versions are checked BEFORE execution**.
+- A mismatch causes a **warning before execution** followed by an attempt to
+  reproduce (“warn and attempt,” ADR-027 §2).
+- If reproduction runs in a different environment, the diff report explicitly
+  marks it as **“reproduced in a different environment”** (LIN8-02). Pinning
+  mismatches must not be hidden.
+- The compiler checks the projection **with pinning** (LIN2-01): projecting the
+  same graph again produces byte-identical output.
 
-## 7. TUI: вкладка Lineage
+## 7. TUI: the Lineage tab
 
-Одна вкладка Lineage (LIN-04) в минимальном tab-host (ограниченно вытянут из
-P2 вперёд — решение владельца, ADR-027 §3.3):
+A single Lineage tab (LIN-04) in a minimal tab host (a limited part of P2 brought
+forward by the owner's decision, ADR-027 §3.3):
 
-- показывает: **дерево сессии**, исходник `lineage.scala`, **статус
-  компиляции-валидации**;
-- вкладка одна; черновики P2 и полноэкранные режимы — не в этой волне;
-- статус невалидности **виден до починки** — честный статус, не молчаливый;
-- доступ в живой сессии **без блокировки ввода**; переключение вкладок без
-  рассинхрона (LIN4-01/03);
-- артефакт поддерживается **лайв-инкрементально** в ходе сессии (ADR-027 §2,
-  «Генерация»), консистентен последнему завершённому узлу при crash (LIN3-03);
-- сбой компиляции не рушит сессию — статус виден (LIN3-02).
+- displays the **session tree**, `lineage.scala` source, and **compilation and
+  validation status**;
+- there is one tab; P2 drafts and full-screen modes are outside this wave;
+- invalid status **remains visible until fixed**, rather than being hidden;
+- accessible during a live session **without blocking input**; tab switching does
+  not desynchronize state (LIN4-01/03);
+- the artifact is maintained **incrementally during the live session** (ADR-027
+  §2, “Generation”) and is consistent with the last completed node after a crash
+  (LIN3-03);
+- a compilation failure does not crash the session; its status remains visible
+  (LIN3-02).
 
-## 8. Честные ограничения
+## 8. Explicit limitations
 
-| Ограничение | Суть |
+| Limitation | Meaning |
 | --- | --- |
-| **ClassLoader — НЕ sandbox** | Lineage-программа — это доверенный пользовательский код с полномочиями процесса (как REPL). Tool policy не является sandbox для произвольной Scala. Не запускать lineage неизвестного происхождения с ожиданием изоляции |
-| **Restore не replay mutation** | Восстановление сессии/crash-archive восстанавливает граф и состояние, но **не повторяет** эффекты mutating-узлов автоматически (runtime-invariant 18) |
-| **Live re-run не merge в рабочее дерево** | Изменения live-прогона остаются в изолированной копии workspace. Автоматического auto-merge/push нет (runtime-contracts §15) |
-| **Не exactly-once** | Повтор эффектов произвольной Scala-лямбды при неоднозначном результате не заявляется; повторные мутационные вызовы не выполняются автоматически |
-| **`argsSummary ≤512 redacted` — не полные данные** | Wire-события несут ограниченную сводку; полные данные узлов — только в `lineage-data.json`; dataflow — отдельные рёбра `inputs: Vector[NodeId]` в модели графа |
-| **Phase-узлы без wire-события** | У событий нет phase-кейса (13 frozen payload cases, ADR-024); wire-расширение `PhaseMarked(name)` — отдельная schema-card волны-2 с independent review. Пока узлы Phase строит модель графа |
-| **RecoveryClass не на wire** | Тулколлы не несут recovery-класс; до schema-card — статическая таксономия tool-name → RecoveryClass в lineage-слое (ReadOnly по умолчанию, Mutating для write/exec-классов), расширяется конфигом без смены frozen-событий |
-| **Recording store — обязательное условие** | Durable-хранилище для `lineage-data.json` — slot-0 волны-2, обязательное до LIN-05 replay; иначе rework (ADR-027 §6.5) |
-| **Не обещаем** | No exactly-once, no web/cloud, no distributed replay, no auto-merge — вне scope (runtime-contracts §15, ADR-027) |
+| **ClassLoader is NOT a sandbox** | A lineage program is trusted user code with process privileges (like the REPL). Tool policy is not a sandbox for arbitrary Scala. Do not run lineage of unknown origin expecting isolation |
+| **Restore does not replay mutations** | Restoring a session/crash archive restores the graph and state, but **does not automatically repeat** the effects of mutating nodes (runtime-invariant 18) |
+| **Live re-run does not merge into the working tree** | Live run changes remain in the isolated workspace copy. There is no automatic merge/push (runtime-contracts §15) |
+| **No exactly-once guarantee** | No claim is made that effects of arbitrary Scala lambdas can be repeated after an ambiguous result; mutating calls are not retried automatically |
+| **`argsSummary ≤512 redacted` is not the full data** | Wire events carry a limited summary; full node data exists only in `lineage-data.json`; dataflow is represented by separate `inputs: Vector[NodeId]` edges in the graph model |
+| **Phase nodes have no wire event** | Events have no phase case (13 frozen payload cases, ADR-024); the `PhaseMarked(name)` wire extension requires a separate wave-2 schema card with independent review. For now, the graph model builds Phase nodes |
+| **RecoveryClass is not on the wire** | Tool calls do not carry a recovery class; until the schema card, the lineage layer uses a static tool-name → RecoveryClass taxonomy (ReadOnly by default, Mutating for write/exec classes), extendable through configuration without changing frozen events |
+| **A recording store is a prerequisite** | Durable storage for `lineage-data.json` is wave-2 slot-0 and mandatory before LIN-05 replay; otherwise, rework is required (ADR-027 §6.5) |
+| **No commitments to these features** | No exactly-once, no web/cloud, no distributed replay, no auto-merge—outside scope (runtime-contracts §15, ADR-027) |
 
-## 9. Статус реализации (честно)
+## 9. Implementation status (reported accurately)
 
-Состояние на snapshot 2026-10-12: волны W7–W21 P-LIN интегрированы и
-закоммичены («P-LIN session lineage waves W7-W21»), evidence —
-`docs/work/records/W7-INTEGRATION.md` и
-`docs/work/records/W8-W9-INTEGRATION.md` (с addenda W10–W21). Каждый пункт
-ниже проверяется указанным файлом.
+As of the 2026-10-12 snapshot, P-LIN waves W7–W21 are integrated and committed
+(“P-LIN session lineage waves W7-W21”). Evidence is in
+`docs/work/records/W7-INTEGRATION.md` and
+`docs/work/records/W8-W9-INTEGRATION.md` (with W10–W21 addenda). Each item below
+can be checked against the indicated file.
 
-### 9.1 Реализовано (по слоям ADR-027 §3, с file-ссылками)
+### 9.1 Implemented (by ADR-027 §3 layer, with file references)
 
-**Слой 1 — SessionGraph, модель и редуктор (LIN-01):**
+**Layer 1—SessionGraph, model and reducer (LIN-01):**
 
-- `SessionGraph`: sealed `SessionNode` — `ModelCall | ToolCall(RecoveryClass) |
-  Delegation | Phase`, validated/childrenOf/roots, dataflow-рёбра
-  `inputs: Vector[NodeId]` —
+- `SessionGraph`: sealed `SessionNode`—`ModelCall | ToolCall(RecoveryClass) |
+  Delegation | Phase`, validated/childrenOf/roots, dataflow edges
+  `inputs: Vector[NodeId]`—
   `modules/runtime/src/main/scala/raider/runtime/lineage/model/SessionGraph.scala`
-- `GraphHash` — SHA-256 канонической формы (инъективное экранирование) —
+- `GraphHash`: SHA-256 of the canonical form (injective escaping)—
   `modules/runtime/src/main/scala/raider/runtime/lineage/model/GraphHash.scala`
-- чтение `events.jsonl` (`ParsedEvents`/`TruncatedTail`/`LineageError`) —
+- `events.jsonl` reader (`ParsedEvents`/`TruncatedTail`/`LineageError`)—
   `modules/runtime/src/main/scala/raider/runtime/lineage/io/LineageEventReader.scala`
-- `LineageReducer`: 13 frozen payload-кейсов → граф, 9 typed ошибок,
-  `reducePartial` (crash-префикс) —
+- `LineageReducer`: 13 frozen payload cases → graph, 9 typed errors,
+  `reducePartial` (crash prefix)—
   `modules/runtime/src/main/scala/raider/runtime/lineage/reduce/LineageReducer.scala`
-- детерминированный test-корпус кампаний (seed/corruptedTail/seqGap) —
+- Deterministic campaign test corpus (seed/corruptedTail/seqGap)—
   `modules/runtime/src/test/scala/raider/runtime/lineage/corpus/LineageCorpus.scala`
 
-**Слой 2 — проекция и данные (LIN-02):**
+**Layer 2—projection and data (LIN-02):**
 
-- контракт данных: `contracts/lineage/lineage-data.schema.json`
-  (schemaVersion 1), golden `contracts/lineage/golden/{tiny-graph,deep-tree}/`,
+- Data contract: `contracts/lineage/lineage-data.schema.json`
+  (schemaVersion 1), golden fixtures `contracts/lineage/golden/{tiny-graph,deep-tree}/`,
   `contracts/lineage/README.md` (LIN-02A)
-- типизированная модель + zio-json кодеки, канон = frozen schema —
+- Typed model + zio-json codecs; the canonical form is the frozen schema—
   `modules/dsl/src/main/scala/raider/dsl/lineage/data/LineageData.scala`
-- atomic tmp+move store, single-writer (`Missing`/`Corrupt`/`Io`) —
+- Atomic tmp+move store, single writer (`Missing`/`Corrupt`/`Io`)—
   `modules/dsl/src/main/scala/raider/dsl/lineage/store/LineageDataStore.scala`
-- рендерер граф → `lineage.scala` —
+- Graph → `lineage.scala` renderer—
   `modules/dsl/src/main/scala/raider/dsl/lineage/proj/LineageProjection.scala`
-- **LIN2-01 достигнут**: golden-проекции компилируются pinned dotc 3.9.0,
-  повторная проекция байт-идентична —
+- **LIN2-01 achieved**: golden projections compile with pinned dotc 3.9.0;
+  repeat projection is byte-identical—
   `modules/cli/src/test/scala/raider/cli/lineage/LineageCompileGateSpec.scala`
-- cli-адаптер граф → проекционный view —
+- CLI adapter from graph to projection view—
   `modules/cli/src/main/scala/raider/cli/lineage/SessionGraphView.scala`
 
-**Слой 3 — лайв-поддержка (LIN-03/04):**
+**Layer 3—live maintenance (LIN-03/04):**
 
-- инкрементальный `LiveGraphBuilder` (пошаговый твин батч-редуктора, инвариант
-  fold==batch) —
+- Incremental `LiveGraphBuilder` (stepwise equivalent of the batch reducer,
+  fold==batch invariant)—
   `modules/runtime/src/main/scala/raider/runtime/lineage/live/LiveGraphBuilder.scala`
-- headless-раннер: стриминг `events.jsonl` в ходе рана (`EventsJsonlWriter`) и
-  lineage-строка с graph-hash в `summary.md` при settle —
+- Headless runner: streams `events.jsonl` during the run (`EventsJsonlWriter`)
+  and adds a lineage line with graph-hash to `summary.md` when the run settles—
   `modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala`
-- TUI: `:aux`-seam (`AuxTab`/`TabShell`) — `modules/ui/src/main/scala/raider/ui/`;
-  вкладка Lineage как чистый provider без IO (LIN-04B) —
+- TUI: the `:aux` seam (`AuxTab`/`TabShell`)—`modules/ui/src/main/scala/raider/ui/`;
+  the Lineage tab as a pure provider without IO (LIN-04B)—
   `modules/ui/src/main/scala/raider/ui/LineageTab.scala`
 
-**Слой 4 — воспроизведение (LIN-05/06/07) и каталог (LIN-08):**
+**Layer 4—reproduction (LIN-05/06/07) and catalog (LIN-08):**
 
-- `GraphComparator` (normalized, first-divergence) + `ReplayVerifier.verify` /
-  `verifyPartial` —
+- `GraphComparator` (normalized, first divergence) + `ReplayVerifier.verify` /
+  `verifyPartial`—
   `modules/runtime/src/main/scala/raider/runtime/lineage/replay/{GraphComparator,ReplayVerifier}.scala`
-- `RecordedSource` — DataRef-доступ к записанным модельным ответам —
+- `RecordedSource`: DataRef access to recorded model responses—
   `modules/dsl/src/main/scala/raider/dsl/lineage/replay/RecordedSource.scala`
-- `ReplayInterpreter` (replay-recorded: LLM-узлы из записи, integrity-verdict) —
+- `ReplayInterpreter` (replay-recorded: LLM nodes from the recording, integrity verdict)—
   `modules/cli/src/main/scala/raider/cli/lineage/ReplayInterpreter.scala`
-- `ToolReplay`: детерминированный пересчёт `fs_read` против workspace, typed
-  `Unsupported`/`ArgsUnreadable`/`ReadFailed` —
+- `ToolReplay`: deterministic recomputation of `fs_read` against the workspace,
+  typed `Unsupported`/`ArgsUnreadable`/`ReadFailed`—
   `modules/cli/src/main/scala/raider/cli/lineage/ToolReplay.scala`
-- `ReplayModelBackend`: записанные ответы как `ModelBackend` (ordinal-стратегия,
-  typed `Overrun`/`Exhausted`) —
+- `ReplayModelBackend`: recorded responses as a `ModelBackend` (ordinal strategy,
+  typed `Overrun`/`Exhausted`)—
   `modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala`
-- `ReplayHarness` — **LIN5-01 исполнен end-to-end**: replay-ран через реальный
-  loop (бюджет через `Admission`, изолированный fixture-workspace),
-  normalized `Match`/`Mismatch` с первым расхождением —
+- `ReplayHarness`: **LIN5-01 completed end to end**: replay run through the actual
+  loop (budget through `Admission`, isolated fixture workspace), normalized
+  `Match`/`Mismatch` with the first divergence—
   `modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala`
-- частичный replay (LIN-07): по поддереву —
+- Partial replay (LIN-07): by subtree—
   `modules/cli/src/main/scala/raider/cli/lineage/SubtreeReplay.scala`,
-  по именованным фазам —
+  by named phase—
   `modules/cli/src/main/scala/raider/cli/lineage/PhaseReplay.scala`
-- LIN-06 механика: изолированная копия workspace + `verifyUntouched` —
+- LIN-06 mechanics: isolated workspace copy + `verifyUntouched`—
   `modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`;
-  diff-отчёт «replayed vs записанный» —
+  “replayed vs recorded” diff report—
   `modules/cli/src/main/scala/raider/cli/lineage/RunDiffReport.scala`
-- каталог деревьев (scan runsRoot → verifyPartial-статусы, chat==headless) —
+- Tree catalog (scan runsRoot → verifyPartial statuses, chat==headless)—
   `modules/cli/src/main/scala/raider/cli/lineage/LineageCatalog.scala`
-- standalone replay-вход (LIN-10): CLI-команда над `ReplayHarness` — вердикт
-  Match/Mismatch + graph-hash + первый расходящийся узел, typed-ошибки
-  (`StoreError`/`IsolationError`/`RaiderError`/`ReduceError`), exit-коды по
-  ci-runtime §8, изоляция workspace (`verifyUntouched`) —
+- Standalone replay entry point (LIN-10): CLI command over `ReplayHarness`—
+  Match/Mismatch verdict + graph-hash + first divergent node, typed errors
+  (`StoreError`/`IsolationError`/`RaiderError`/`ReduceError`), exit codes per
+  ci-runtime §8, workspace isolation (`verifyUntouched`)—
   `modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala` (§10)
 
-Каждый слой покрыт behavioral-спеками рядом с кодом
+Every layer is covered by behavioral specs alongside the code
 (`modules/*/src/test/scala/**/lineage/**`).
 
-### 9.2 Чего ещё нет
+### 9.2 Still missing
 
-| Чего нет | Факт (evidence проверяем на baseline `4b46dc7`) |
+| Missing item | Fact (evidence checked against baseline `4b46dc7`) |
 | --- | --- |
-| LIN-06 live re-run с живой моделью и бюджетом | Механика готова (изоляция `WorkspaceIsolation` — `modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`, бюджет `Admission.make` в `ReplayHarness` — `modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala:298`, diff-отчёт `RunDiffReport.scala`), но живого провайдера за replay-раннером нет: `ReplayModelBackend` играет только записи (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`). Открытая карточка — LIN-06 (`docs/tasks/lineage.md`, «LIN-06: Live re-run») |
-| Live-wire verification | Owner-обязательство (endpoint/бюджет владельца); не проводилась. Проверяемый факт: live-провайдера за replay-раннером в коде нет — единственный backend играет записи (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`) |
-| Multi-job export | `events.jsonl` — события одного job (`modules/cli/src/main/scala/raider/cli/run/EventExport.scala:21` — per-job stream); делегированные дети в единый export не собираются (owner `cli/run/**`, wave-2, ADR-027 §6.4); редуктор и каталог оперируют per-job/per-ран деревьями |
-| Phase/recovery schema-card | Wire-события frozen (13 cases — `modules/runtime/src/main/scala/raider/runtime/events/events.scala:26`, ADR-024 §5): Phase-узлы строит модель/редуктор, RecoveryClass — статическая таксономия tool-name→класс; wire-расширение — schema-card с independent review, не начата |
-| ~~TabShell-wiring в product REPL~~ — закрыто (RAI-108) | Продуктовый вход `--tabs` поднимает TabShell: явный флаг и диспетчер `runTabs` в `main` (`modules/repl/src/main/scala/raider/repl/Main.scala:230-242`), `TabShellHost.wiring`/`TabShellHost.run` (`Main.scala:280-288`, `modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); legacy-цикл без флага не изменён; PTY-acceptance P2E-01..03 — `docs/work/records/RAI-108.md` |
-| ~~Запись артефактов в каталог рана~~ — закрыто (LIN-09) | Settled-ран пишет `lineage.scala` + `lineage-data.json` в свой каталог рана рядом с `events.jsonl`/`summary.md` (`modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala:665-677`; писатель `RunLineageArtifacts` — `modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala:52-55`); сбой записи — typed `unavailable`-строка в summary.md, exit-код не меняется. `docs/work/records/LIN-09.md` |
-| Прочее, честно | Persistence каталога закрыта (LIN-12): `CatalogStore` — atomic tmp+move, append-очередь под per-path lock, upsert по run-dir, typed Corrupt с именем записи (`modules/cli/src/main/scala/raider/cli/lineage/CatalogStore.scala`; `docs/work/records/LIN-12.md`). LIN2-03 покрыт property-спекой: 4 reader-волокна vs writer, 0 частичных чтений, ×3 flake=0 (`modules/dsl/src/test/scala/raider/dsl/lineage/store/LineageSnapshotRaceSpec.scala`; `docs/work/records/LIN-14.md`). LIN-06 scripted acceptance закрыт (LIN-15: LIN6-01/02/03(sc), typed-фиксы IsolatedRerun/ReplayHarness; `docs/work/records/LIN-15.md`; open follow-up: canonical-path guard до live-rerun CLI). Replay-команда вписана в продукт: `raider replay` → `ReplayCommand` → `ReplayCli.exec` (`modules/cli/src/main/scala/raider/cli/run/ReplayCommand.scala:37`; `docs/work/records/RAI-109.md`, §10); standalone-вход `ReplayCliMain` остаётся переходным прямым запуском той же цепочки |
+| LIN-06 live re-run with a live model and budget | The mechanics are ready (`WorkspaceIsolation` isolation—`modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`, `Admission.make` budget in `ReplayHarness`—`modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala:298`, `RunDiffReport.scala` diff report), but there is no live provider behind the replay runner: `ReplayModelBackend` plays recordings only (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`). The open card is LIN-06 (`docs/tasks/lineage.md`, “LIN-06: Live re-run”) |
+| Live-wire verification | An owner obligation (owner's endpoint/budget); it has not been performed. Verifiable fact: the code has no live provider behind the replay runner—the only backend plays recordings (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`) |
+| Multi-job export | `events.jsonl` contains one job's events (`modules/cli/src/main/scala/raider/cli/run/EventExport.scala:21`—per-job stream); delegated children are not assembled into a unified export (owner `cli/run/**`, wave-2, ADR-027 §6.4); the reducer and catalog operate on per-job/per-run trees |
+| Phase/recovery schema card | Wire events are frozen (13 cases—`modules/runtime/src/main/scala/raider/runtime/events/events.scala:26`, ADR-024 §5): the model/reducer builds Phase nodes; RecoveryClass uses a static tool-name→class taxonomy; the wire extension requires a schema card with independent review, which has not started |
+| ~~TabShell wiring in the product REPL~~—closed (RAI-108) | The product entry point's `--tabs` flag starts TabShell: explicit flag and `runTabs` dispatcher in `main` (`modules/repl/src/main/scala/raider/repl/Main.scala:230-242`), `TabShellHost.wiring`/`TabShellHost.run` (`Main.scala:280-288`, `modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); the legacy loop without the flag is unchanged; PTY acceptance P2E-01..03—`docs/work/records/RAI-108.md` |
+| ~~Writing artifacts to the run directory~~—closed (LIN-09) | A settled run writes `lineage.scala` + `lineage-data.json` to its run directory alongside `events.jsonl`/`summary.md` (`modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala:665-677`; writer `RunLineageArtifacts`—`modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala:52-55`); a write failure produces a typed `unavailable` line in summary.md without changing the exit code. `docs/work/records/LIN-09.md` |
+| Other items, reported accurately | Catalog persistence is closed (LIN-12): `CatalogStore` uses atomic tmp+move, an append queue under a per-path lock, upsert by run-dir, and typed Corrupt with the entry name (`modules/cli/src/main/scala/raider/cli/lineage/CatalogStore.scala`; `docs/work/records/LIN-12.md`). LIN2-03 is covered by a property spec: 4 reader fibers vs a writer, 0 partial reads, ×3 flake=0 (`modules/dsl/src/test/scala/raider/dsl/lineage/store/LineageSnapshotRaceSpec.scala`; `docs/work/records/LIN-14.md`). LIN-06 scripted acceptance is closed (LIN-15: LIN6-01/02/03(sc), typed fixes to IsolatedRerun/ReplayHarness; `docs/work/records/LIN-15.md`; open follow-up: canonical-path guard before the live-rerun CLI). The replay command is integrated into the product: `raider replay` → `ReplayCommand` → `ReplayCli.exec` (`modules/cli/src/main/scala/raider/cli/run/ReplayCommand.scala:37`; `docs/work/records/RAI-109.md`, §10); the standalone `ReplayCliMain` entry point remains a transitional direct invocation of the same chain |
 
-Карточки P-LIN — `docs/tasks/lineage.md`; контракт — ADR-027. Compile-сторона
-гейта LIN реализована (`LineageCompileGateSpec`); полные milestone-обязательства
-фазы P-LIN (live-wire, multi-job export, phase/recovery schema-card) остаются
-открытыми — TabShell-wiring закрыт RAI-108, запись артефактов рана закрыта
-LIN-09 (см. таблицу выше). Этот раздел фиксирует фактическое состояние, а не
-завершение фазы.
+P-LIN cards are in `docs/tasks/lineage.md`; the contract is ADR-027. The LIN gate's
+compilation component is implemented (`LineageCompileGateSpec`); the full P-LIN
+phase milestone obligations (live-wire, multi-job export, phase/recovery schema
+card) remain open. TabShell wiring is closed by RAI-108, and run artifact writing
+is closed by LIN-09 (see the table above). This section records the actual state,
+rather than declaring the phase complete.
 
-## 10. Фактические команды и пути (сверено с modules/cli)
+## 10. Actual commands and paths (checked against modules/cli)
 
-| Команда/путь | Факт (источник в коде) |
+| Command/path | Fact (source in code) |
 | --- | --- |
-| `raider run (--bundle <jar> --workflow <name> \| --agent scout\|worker\|coder) (--input <text> \| --input-json <file>) --out <dir> [--mock] [--provider mock\|openai\|anthropic] [--base-url URL] [--model NAME] [--workspace DIR] [--context FILE]` | `CliArgs.parse` (`modules/cli/run/CliArgs.scala`): `--out` обязателен; `--agent` взаимно исключает `--bundle/--workflow`; `--api-key` — типированная ошибка (секреты не в argv) |
-| `<out>/work-<uuid>/` — каталог рана; `run.json`, `events.jsonl`, `summary.md`, `transcript.json` | `HeadlessRunner.writeArtifacts` / конкатенация `--out` + `work-<uuid>` (`modules/cli/run/HeadlessRunner.scala`) |
-| `events.jsonl` — per-job `EventEnvelope`, schemaVersion 1, дубликаты отброшены | `EventExport.jsonl` (`modules/cli/run/EventExport.scala`) |
-| `<out>/work-<uuid>/lineage.scala`, `<out>/work-<uuid>/lineage-data.json` — рядом с `events.jsonl`, в evidence-fingerprint | LIN-09: settled-ран пишет оба артефакта в свой каталог рана (`RunLineageArtifacts.write`, `modules/cli/run/HeadlessRunner.scala:665-677`, атомарно per-run dir); сбой — typed `unavailable`-строка в summary.md, exit-код не меняется (`docs/work/records/LIN-09.md`); решение ADR-027 §2 |
-| `raider replay <run-dir> --workspace <dir> [--data <file>]` — продукт-подкоманда replay-recorded (LIN-10 + RAI-109): полный паритет флагов и exit-кодов со standalone-входом, делегирование в `ReplayCli.exec` (один источник argv-контракта) | Диспетчер `CliArgs.Target.Replay` → `ReplayCommand.outcome` → `ReplayCli.exec` (`modules/cli/run/ReplayCommand.scala`, `modules/cli/lineage/ReplayCli.scala`): stdout — `verdict: match` + нормализованный graph-hash, либо `verdict: mismatch` + `RunDiffReport` (первый расходящийся узел, оба hash); stderr — `typed-error: …`; exit-коды по ci-runtime §8 (`raider.core.result.ExitCodes`): 0 = Match, 10 = Mismatch, 21 = битый/отсутствующий data.json (typed `StoreError.Missing`/`Corrupt`), 20/22/23/24/26 — остальные typed-исходы (`RaiderError`/`ReduceError`/изоляция); параллельные replay — уникальные staging-каталоги, оригинал не пишется (LIN10-03); run.json для replay НЕ создаётся (result = None) |
-| `java -cp <cli-classpath> raider.cli.lineage.ReplayCliMain …` — переходный standalone-вход LIN-10 (та же цепочка; сохранён для прямого запуска без продукт-CLI) | `ReplayCliMain` (sanctioned ZIOAppDefault runner; `modules/cli/lineage/ReplayCli.scala`) |
+| `raider run (--bundle <jar> --workflow <name> \| --agent scout\|worker\|coder) (--input <text> \| --input-json <file>) --out <dir> [--mock] [--provider mock\|openai\|anthropic] [--base-url URL] [--model NAME] [--workspace DIR] [--context FILE]` | `CliArgs.parse` (`modules/cli/run/CliArgs.scala`): `--out` is required; `--agent` is mutually exclusive with `--bundle/--workflow`; `--api-key` produces a typed error (secrets must not be passed in argv) |
+| `<out>/work-<uuid>/`—run directory; `run.json`, `events.jsonl`, `summary.md`, `transcript.json` | `HeadlessRunner.writeArtifacts` / concatenation of `--out` + `work-<uuid>` (`modules/cli/run/HeadlessRunner.scala`) |
+| `events.jsonl`—per-job `EventEnvelope`, schemaVersion 1, duplicates discarded | `EventExport.jsonl` (`modules/cli/run/EventExport.scala`) |
+| `<out>/work-<uuid>/lineage.scala`, `<out>/work-<uuid>/lineage-data.json`—alongside `events.jsonl`, included in the evidence fingerprint | LIN-09: a settled run writes both artifacts to its run directory (`RunLineageArtifacts.write`, `modules/cli/run/HeadlessRunner.scala:665-677`, atomically per-run dir); failure produces a typed `unavailable` line in summary.md without changing the exit code (`docs/work/records/LIN-09.md`); decision ADR-027 §2 |
+| `raider replay <run-dir> --workspace <dir> [--data <file>]`—the product's replay-recorded subcommand (LIN-10 + RAI-109): full flag and exit-code parity with the standalone entry point, delegation to `ReplayCli.exec` (a single source for the argv contract) | `CliArgs.Target.Replay` dispatcher → `ReplayCommand.outcome` → `ReplayCli.exec` (`modules/cli/run/ReplayCommand.scala`, `modules/cli/lineage/ReplayCli.scala`): stdout is `verdict: match` + normalized graph-hash, or `verdict: mismatch` + `RunDiffReport` (first divergent node, both hashes); stderr is `typed-error: …`; exit codes follow ci-runtime §8 (`raider.core.result.ExitCodes`): 0 = Match, 10 = Mismatch, 21 = corrupt/missing data.json (typed `StoreError.Missing`/`Corrupt`), 20/22/23/24/26 = other typed outcomes (`RaiderError`/`ReduceError`/isolation); parallel replays use unique staging directories and do not write to the original (LIN10-03); run.json is NOT created for replay (result = None) |
+| `java -cp <cli-classpath> raider.cli.lineage.ReplayCliMain …`—transitional standalone LIN-10 entry point (the same chain; retained for direct invocation without the product CLI) | `ReplayCliMain` (sanctioned ZIOAppDefault runner; `modules/cli/lineage/ReplayCli.scala`) |
 
-Примеры:
+Examples:
 
 ```sh
-# headless-ран; lineage.scala + lineage-data.json пишутся раном в <out>/work-<uuid>/ (LIN-09):
-raider run --agent coder --input "Исправь regression и запусти проверки" \
+# Headless run; the run writes lineage.scala + lineage-data.json to <out>/work-<uuid>/ (LIN-09):
+raider run --agent coder --input "Fix the regression and run the checks" \
   --out artifacts/<run> --mock
 
-# replay-recorded — продукт-подкоманда (LIN-10 + RAI-109; recorded-only, без модельных вызовов):
-raider replay artifacts/<run> --workspace <workspace-рана>
+# replay-recorded—the product subcommand (LIN-10 + RAI-109; recorded-only, no model calls):
+raider replay artifacts/<run> --workspace <run-workspace>
 #   verdict: match   + graph-hash, exit 0
-#   verdict: mismatch + первый расходящийся узел, exit 10
-#   typed-error (битый/отсутствующий lineage-data.json), exit 21
+#   verdict: mismatch + first divergent node, exit 10
+#   typed-error (corrupt/missing lineage-data.json), exit 21
 
-# переходный standalone-вход LIN-10 (та же цепочка, без продукт-CLI):
+# Transitional standalone LIN-10 entry point (the same chain, without the product CLI):
 java -cp <cli-classpath> raider.cli.lineage.ReplayCliMain artifacts/<run> \
-  --workspace <workspace-рана>
+  --workspace <run-workspace>
 ```
 
-Live/гибрид-флаги replay в продукт-команду `raider` не входят: replay —
-recorded-only (LIN-10/RAI-109); live-режимы — LIN-06 и отдельные карточки
-(смена публичного контракта — отдельный ADR при необходимости).
+Live/hybrid replay flags are not part of the product's `raider` command: replay is
+recorded-only (LIN-10/RAI-109); live modes belong to LIN-06 and separate cards
+(a public contract change requires a separate ADR if needed).
 
-## 11. Связанные документы
+## 11. Related documents
 
-- [ADR-027: Session lineage](adr/ADR-027-session-lineage.md) — контракт и решения владельца.
-- [P-LIN карточки](tasks/lineage.md) — LIN-01…LIN-08, acceptance и allowed paths.
-- [Runtime contracts §14/§15](runtime-contracts.md) — ошибки; отложенные сложности.
-- [Quality gates](quality-gates.md) — гейт LIN, stage-aware activation.
-- [TUI design](tui-design.md) — режимы A/B, tab-host.
+- [ADR-027: Session lineage](adr/ADR-027-session-lineage.md)—contract and owner decisions.
+- [P-LIN cards](tasks/lineage.md)—LIN-01…LIN-08, acceptance and allowed paths.
+- [Runtime contracts §14/§15](runtime-contracts.md)—errors; deferred complexities.
+- [Quality gates](quality-gates.md)—the LIN gate, stage-aware activation.
+- [TUI design](tui-design.md)—modes A/B, tab host.

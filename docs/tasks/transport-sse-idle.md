@@ -1,4 +1,4 @@
-# TRANSPORT-SSE-IDLE: idle deadline завершает блокирующее чтение
+# TRANSPORT-SSE-IDLE: idle deadline terminates blocking reads
 
 Status: done (reviewed runtime correction; final main receipt required).
 Date: 2026-10-13. Baseline product: `7702fd0` / `073d617`.
@@ -6,25 +6,25 @@ Separate runtime correction discovered by USER-DOCS-CURRENT verification.
 
 ## Reproduction / result
 
-На JDK21 existing OpenAIChatStreamSpec case "idle timeout between chunks →
-typed DeadlineExceeded" возвращает None после outer 10s timeout, вместо existing
-RA-DEADLINE при callTimeoutMs=500. Воспроизведено в full suite и standalone suite
-на неизменённом runtime. Evidence coordinator worktree: artifacts/quality/
+On JDK21 the existing OpenAIChatStreamSpec case "idle timeout between chunks →
+typed DeadlineExceeded" returns None after the outer 10s timeout instead of the existing
+RA-DEADLINE with callTimeoutMs=500. Reproduced in the full suite and standalone suite
+on the unchanged runtime. Evidence in the coordinator worktree: artifacts/quality/
 20261013-012310-88826-0001/manifest.json (sbt-test fail),
 artifacts/user-examples/sse-isolated.log (exit 1).
 
-Текущий readChunk использует attemptBlockingIO и race ждёт interruption loser;
-scoped body.close выполняется после выхода, что не освобождает чтение вовремя.
-Исправить освобождение read при interruption через existing ZIO blocking
-cancellation primitive с закрытием принадлежащего stream body. API/error codes,
-500ms policy и 10s verifier bound не меняются. Никакого ослабления fixture.
+Current readChunk uses attemptBlockingIO and race waits for interruption of the losing branch;
+scoped body.close runs after leaving the scope, so it does not release the read in time.
+Fix read release on interruption using the existing ZIO blocking
+cancellation primitive, closing the owned stream body. API/error codes,
+The 500ms policy and 10s verifier bound do not change. Do not weaken the fixture.
 
 ## Owner / allowed paths
 
 Visible Luna worker in independent worktree owns ONLY
 `modules/provider-chat/src/main/scala/raider/provider/chat/stream/OpenAIChatStreamingBackend.scala`.
 Coordinator owns this task, work record `docs/work/records/TRANSPORT-SSE-IDLE.md`
-и board. Existing tests/fixtures/registry are read-only. No public signature change.
+and the board. Existing tests/fixtures/registry are read-only. No public signature change.
 
 ## Acceptance
 

@@ -16,7 +16,7 @@ practical map of the implemented public surface.
 | `raiderProviderChat` | `raider.provider.chat` | OpenAI-compatible Chat transport (non-streaming + SSE) |
 | `raiderProviderAnthropic` | `raider.provider.anthropic` | Anthropic Messages transport (non-streaming + SSE) |
 | `raiderDsl` | `raider.dsl` | Composition interpreter (all/batch, fail-fast) |
-| `raiderTestkit` | `raider.testkit` | Scripted backends/fixtures (test scope only) |
+| `raiderTestkit` | `raider.testkit` | Scripted backends/fixtures (used by REPL mock wiring; excluded from the headless CLI dependency graph) |
 | `raiderReplEngine` | `raider.repl.engine` | In-process scala3-repl driver |
 | `raiderRepl` | `raider.repl` | REPL facade, console, live wiring |
 | `raiderCli` | `raider.cli` | Headless runner + interactive chat (no compiler/JLine) |
@@ -145,7 +145,7 @@ AgentLoop(
 
 ### Mailbox (bounded send queue)
 
-`raider.runtime.mailbox.Mailbox.make(jobId, capacity)` — bounded per-child очередь с message-ID дедупликацией и ack; `send` → `Ack`; применение — только на границе turn (`drainOnTurnBoundary`/`endTurn`); overflow — typed `MailboxError.Full`; terminal — `TerminalJob` (предложение начать новый turn). Wiring в делегирование — отдельная карточка.
+`raider.runtime.mailbox.Mailbox.make(jobId, capacity)` — bounded per-child queue with message-ID deduplication and ack; `send` → `Ack`; application occurs only at a turn boundary (`drainOnTurnBoundary`/`endTurn`); overflow → typed `MailboxError.Full`; terminal → `TerminalJob` (suggestion to start a new turn). Wiring into delegation is a separate card.
 
 ## Runtime → UI event seam (`raider.runtime.events`)
 
@@ -252,7 +252,10 @@ All outputs are single-line JSON matched back by `tool_call_id`. Policy denials
 - `raider.provider.chat.stream.OpenAIChatStreamingBackend` — SSE streaming wire
   (`"stream":true`), idle timeout = `callTimeoutMs`, bounded frame size.
 - `raider.provider.anthropic.AnthropicMessagesBackend` — Anthropic Messages
-  transport, native `tool_use`/`tool_result`, cumulative usage.
+  transport, native `tool_use`/`tool_result` response handling, cumulative
+  usage. Current request encoding does not send tool definitions; RAI-127 tracks
+  that open wire-contract gap, so this transport does not yet provide tool-call
+  parity with OpenAI-compatible Chat.
 - Transport mapping: 401/403 → `ProviderAuth`, 429 → `ProviderRateLimit`,
   5xx → `ProviderUnavailable`, other → `StreamProtocol`.
 
@@ -299,14 +302,18 @@ Chat commands: `:help :quit :clear :context :tools :trace :save <name>
 
 ## REPL (`raider.repl`)
 
+- `:type <expression>` inspects the native Scala type without executing the expression or advancing result bindings (RAI-124). Diagnostic wording and PTY oracle follow-ups are tracked in RAI-130.
+
 - `ReplSession.make(backend, limits, tools, model = "scripted",
   echoStream = false)` — one live session (backend + jobs + admission).
 - Facade (extension methods on `AgentRef`, requires `using ReplSession`):
   `scout.ask("p")`, `scout("p").run()/.start()`, `all(a, b).ask("p")`,
   `batch(inputs, par)(f).run()`, `openSession(agent)` (multi-turn), `handle.await()/.cancel()`.
-- `MainBridge` carries backend/tools/model across the in-process REPL
-  classloader split via ThreadLocals (`setupLive` constructs the streaming
-  backend when `RAIDER_PROVIDER=openai`; `RAIDER_MODEL` names the model).
+- The live prelude constructs the provider backend, coding tools, and session
+  inside the Scala interpreter world. This avoids sharing facade statics across
+  the scala3-repl classloader split (`modules/repl/src/main/scala/raider/repl/Main.scala`;
+  the obsolete `MainBridge` was removed). OpenAI and Anthropic live branches
+  are wired when credentials resolve; see the provider limitation above.
 - The REPL system prompt is prepended to every facade model call; with
   `echoStream = true` deltas print to stdout and tool calls/results to stderr
   in real time.

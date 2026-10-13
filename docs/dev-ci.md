@@ -1,63 +1,63 @@
 # Developer CI (RAI-045.a) — raider-fast workflow
 
-Status: реализован минимальный ранний срез RAI-045.a. Родительская карточка
-[RAI-045](tasks/m2-p2.md) остаётся открытой; этот документ описывает только
-срез `.a` и не заменяет её acceptance (DEV-CI-01..03).
+Status: the minimal early slice RAI-045.a is implemented. Parent card
+[RAI-045](tasks/m2-p2.md) remains open; this document describes only slice `.a`
+and does not replace its acceptance criteria (DEV-CI-01..03).
 
-## Что входит (workflow `.github/workflows/raider-fast.yml`)
+## Included (`.github/workflows/raider-fast.yml` workflow)
 
-Один job `fast` на `ubuntu-latest`, триггеры `push` и `pull_request`,
-таймаут джобы **30 минут** (`timeout-minutes: 30`).
+One `fast` job on `ubuntu-latest`, triggered by `push` and `pull_request`, with
+a **30-minute** job timeout (`timeout-minutes: 30`).
 
-Шаги (все — фактические Makefile-таргеты):
+Steps (all are actual Makefile targets):
 
 1. `actions/checkout@v4`, `actions/setup-java@v4` — **JDK 21, distribution
-   `temurin`** (пин повторяет существующий `.github/workflows/ci.yml`),
+   `temurin`** (the pin matches the existing `.github/workflows/ci.yml`), and
    `coursier/cache-action@v6`.
-2. `make bootstrap` — тянет pinned toolchain jars (Scala 3.9.0, ZIO 2.1.26,
-   zio-json 0.10.0, JLine 4.0.14, coursier interface) из Maven Central в
-   `artifacts/toolchain` (`scripts/bootstrap.sh`, идемпотентен). Сетевой
-   доступ здесь — осознанное исключение, допустимое для CI: скачиваются
-   только пиновые артефакты с фиксированными координатами, без снапшотов.
+2. `make bootstrap` — downloads pinned toolchain jars (Scala 3.9.0, ZIO 2.1.26,
+   zio-json 0.10.0, JLine 4.0.14, coursier interface) from Maven Central into
+   `artifacts/toolchain` (`scripts/bootstrap.sh`; idempotent). Network access
+   is a deliberate, permitted exception here: only pinned artifacts with fixed
+   coordinates are downloaded, with no snapshots.
 3. `make compile` — `sbt --batch compile`.
-4. `make quality-changed` — классификация изменённых файлов quality-раннером
-   (git-mode), без исполнения.
-5. `make quality-changed QUALITY_EXECUTE=1` — исполнение активных гейтов;
-   упавший/пропущенный гейт или ошибка сканера валит шаг (continue-on-error
-   не используется).
+4. `make quality-changed` — quality runner classifies changed files (git mode),
+   without executing checks.
+5. `make quality-changed QUALITY_EXECUTE=1` — executes active gates; a failed
+   or skipped gate or scanner error fails the step (`continue-on-error` is not
+   used).
 
-Гоняются только **offline-гейты**. Платные/live provider-вызовы в workflow
-отсутствуют по построению: ни один шаг не запускает `raider-chat`,
-`raider-run`, spike-и или что-либо, требующее API-ключей.
+Only **offline gates** run. Paid/live provider calls are excluded by design: no
+step runs `raider-chat`, `raider-run`, spikes, or anything requiring API keys.
 
-## Что НЕ входит (scope родителя RAI-045)
+## Excluded (scope of parent RAI-045)
 
-- полный ночной набор (`make quality-full`), soak, release lanes;
-- GitLab CI (`.gitlab-ci.yml`) и `integrations/development-ci/**`;
-- upload артефактов/логов при падении, fingerprint-верификация между jobs,
-  nightly full Linux+macOS матрица, compiler/package smoke;
-- PR risk gates / merge-base логика;
-- fork secret isolation и защищённая policy для форков;
-- acceptance DEV-CI-01 (манифесты/логи чистой сборки), DEV-CI-02
-  (fail-closed на scanners/prerequisites/stale cache), DEV-CI-03
-  (stale/concurrency/fork policy) — это приёмка родителя, а не среза `.a`.
+- Full nightly suite (`make quality-full`), soak, release lanes.
+- GitLab CI (`.gitlab-ci.yml`) and `integrations/development-ci/**`.
+- Uploading artifacts/logs on failure, fingerprint verification between jobs,
+  full nightly Linux+macOS matrix, compiler/package smoke.
+- PR risk gates / merge-base logic.
+- Fork secret isolation and protected policy for forks.
+- Acceptance DEV-CI-01 (clean build manifests/logs), DEV-CI-02 (fail-closed on
+  scanners/prerequisites/stale cache), DEV-CI-03 (stale/concurrency/fork
+  policy): these belong to the parent, not slice `.a`.
 
-Наличие YAML-файла **не** заявляет исполненный CI (non-goal родителя:
-«claiming executed CI от YAML only»): первая фактическая прогонка
-фиксируется отдельно с evidence.
+The presence of a YAML file does **not** claim that CI was executed (parent
+non-goal: “claiming executed CI from YAML only”): the first actual run must be
+recorded separately with evidence.
 
-## Ограничения
+## Limitations
 
-- **PTY-гейты не здесь.** `repl_pty_smoke.py`, `renderer_pty_probe.py`,
-  `tabs_pty_probe.py` и cli/repl smoke требуют интерактивного терминала;
-  на hosted `ubuntu-latest` они не выполняются — для них нужен self-hosted
-  runner (отдельная работа в scope родителя).
-- `sbt` ожидается предустановленным на GitHub-hosted ubuntu runner — то же
-  допущение, что и в существующем `ci.yml` (workflow сам sbt не ставит).
-- Файл `.github/workflows/*.yml` не сматчен в `path_profiles` реестра
-  quality-раннера (`scripts/quality-policy/registry.json`) и классифицируется
-  как `__unmapped__` до расширения реестра отдельной карточкой; на исполнение
-  гейтов самого workflow это не влияет.
-- Кэш `coursier/cache-action@v6` ускоряет дефолтный coursier-кэш sbt;
-  `COURSIER_CACHE=/tmp/cc-master` из Makefile на ephemeral CI-диске не
-  персистентен и не претендует на кэширование этим action'ом.
+- **PTY gates are not included.** `repl_pty_smoke.py`, `renderer_pty_probe.py`,
+  `tabs_pty_probe.py`, and CLI/REPL smoke require an interactive terminal; they
+  do not run on hosted `ubuntu-latest` and need a self-hosted runner (separate
+  work in the parent scope).
+- `sbt` is expected to be preinstalled on the GitHub-hosted Ubuntu runner, the
+  same assumption as in the existing `ci.yml` (the workflow does not install
+  sbt).
+- `.github/workflows/*.yml` is not matched in the quality runner's
+  `path_profiles` registry (`scripts/quality-policy/registry.json`) and is
+  classified as `__unmapped__` until a separate card extends the registry;
+  this does not affect execution of the workflow's own gates.
+- `coursier/cache-action@v6` speeds up sbt's default Coursier cache;
+  `COURSIER_CACHE=/tmp/cc-master` from the Makefile is not persistent on the
+  ephemeral CI disk and is not cached by that action.

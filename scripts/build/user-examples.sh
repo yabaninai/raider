@@ -17,8 +17,8 @@ esac
 export JAVACMD="$RAIDER_JAVA"
 export COURSIER_CACHE="${COURSIER_CACHE:-/tmp/cc-master}"
 OUT=artifacts/user-examples
-rm -rf "$OUT/bundle-classes" "$OUT/stand-classes"
-mkdir -p "$OUT/bundle-classes" "$OUT/stand-classes"
+rm -rf "$OUT/bundle-classes" "$OUT/stand-classes" "$OUT/audit-stand-classes"
+mkdir -p "$OUT/bundle-classes" "$OUT/stand-classes" "$OUT/audit-stand-classes"
 sbt --batch --error compile 'export root/runtime:fullClasspath' > "$OUT/build.log" 2>&1
 tail -n 1 "$OUT/build.log" > "$OUT/classpath.txt"
 RAIDER_CP=$(cat "$OUT/classpath.txt")
@@ -29,6 +29,9 @@ RAIDER_CP=$(cat "$OUT/classpath.txt")
 "$RAIDER_JAVA" -cp "$RAIDER_CP" dotty.tools.dotc.Main \
   -classpath "$RAIDER_CP" -Werror -d "$OUT/stand-classes" \
   examples/user-guide/stand/CodingStand.scala
+"$RAIDER_JAVA" -cp "$RAIDER_CP" dotty.tools.dotc.Main \
+  -classpath "$RAIDER_CP" -Werror -d "$OUT/audit-stand-classes" \
+  examples/user-guide/stand/AuditStand.scala
 jar --create --file "$OUT/task-summary.jar" \
   -C "$OUT/bundle-classes" . -C examples/user-guide/bundle META-INF
 printf '%s\n' 'Examples built: artifacts/user-examples/classpath.txt and task-summary.jar'

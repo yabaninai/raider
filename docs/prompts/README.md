@@ -3,11 +3,11 @@
 Current owner-directed development prompt:
 
 - [opencode-12k-parallel.txt](opencode-12k-parallel.txt)
-- [opencode-1k-continuation.txt](opencode-1k-continuation.txt) — продолжение ~1000 ч от
-  integrated tree: механика волн/lanes/review, ready queue, баланс-провайдер
-  проверяется перед спавном; автономный запуск 2026-10-10. — 12 000 инженерных часов,
-  parallel lanes, tabs/statuses/plugins, Yabanin строго последней фазой.
-  [План](../roadmap-12k.md) и [запуск](../handoff-opencode.md).
+- [opencode-1k-continuation.txt](opencode-1k-continuation.txt) — continuation for ~1,000 hours from
+  the integrated tree: wave/lane/review mechanics, ready queue, provider balance
+  checked before spawn; autonomous run dated 2026-10-10. — 12,000 engineering hours,
+  parallel lanes, tabs/statuses/plugins, Yabanin strictly in the final phase.
+  [Plan](../roadmap-12k.md) and [launch instructions](../handoff-opencode.md).
 
 Self-hosting prompts:
 

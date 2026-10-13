@@ -23,7 +23,7 @@ docs/roadmap-12k.md these contracts are P11-scope work.
 - Two explicit traps from the integration doc bind this whole report:
   `docs/api/openapi.yaml` describes a **stale, narrower** surface than the
   current router, so **no client may be generated from the OpenAPI without
-  contract checks** (`docs/yabanin-integration.md` §1, "Важное расхождение");
+  contract checks** (`docs/yabanin-integration.md` §1, "Important discrepancy");
   and `yb delegate` in the studied code runs a **FakeExecutor by design** and
   is not a live Scala-agent backend (§1, last paragraph).
 - Read-only discipline: Yabanin is not modified by this workstream; any
@@ -39,7 +39,7 @@ where Raider's verified observation is recorded.
 | # | Surface | Yabanin source(s) | Verified behavior relevant to state | Raider evidence |
 | --- | --- | --- | --- | --- |
 | 1 | OpenAI-compatible gateway (routing/cache/failover) | `README.md`, `docs/architecture.md`, `pkg/cli/gateway.go` | Inference endpoint only; no storage/KV endpoint is described on this surface | integration doc §1 row 1 |
-| 2 | Chat Completions / Responses / Models routes | `pkg/cli/gateway.go`, `pkg/cli/models_endpoint.go`, `pkg/cli/responses_endpoint.go` | Current router is broader than the stale OpenAPI | §1 rows 2 + the "расхождение" warning |
+| 2 | Chat Completions / Responses / Models routes | `pkg/cli/gateway.go`, `pkg/cli/models_endpoint.go`, `pkg/cli/responses_endpoint.go` | Current router is broader than the stale OpenAPI | §1 rows 2 + the "discrepancy" warning |
 | 3 | **Session keys** mint/revoke/finish/usage | `pkg/cli/sessionkeys_api.go` | Routes `POST /v1/yabanin/session-keys`, `DELETE …/{id}`, `POST …/{id}/finish`, `GET …/{id}/usage`, `GET /v1/yabanin/usage`; mint requires a parent `yb_` key with `can_mint_sessions`; TTL/rate limits exist; numeric limits must be checked against a versioned contract, never hardcoded | §7 |
 | 4 | **Attribution labels** | `docs/labels.md`, `pkg/labels/header.go`, `pkg/cli/labels_mw.go` | Headers `X-Session-Id`, `X-Yabanin-Task`, `X-Yabanin-Labels`; labels attribute spend, they never grant permission; limits observed: ≤20 labels per source, 32 effective default, value ≤128 chars, `yabanin.` prefix reserved; values percent-encoded per Go `url.PathEscape`, comma-separated pairs, keys sorted | §6 |
 | 5 | **Decision metadata** | `pkg/cli/decision.go`, `pkg/cli/chat.go` | `X-Yabanin-Decision` records the gateway **routing** decision (requested/actual model evidence); it is explicitly NOT a statement about task correctness | §8 |
@@ -91,8 +91,8 @@ proven usage routes (`GET /v1/yabanin/session-keys/{id}/usage`,
 - Proven inputs: session-key routes, usage fields, reconciliation semantics.
 - Honest scope: again **not KV**; the store persists *correlation*, and the
   durable agent state remains local.
-- Risks: numeric limits/TTLs are deployment-dependent ("численные limits
-  проверяются против versioned contract"); usage poll must be bounded, never
+- Risks: numeric limits/TTLs are deployment-dependent ("numeric limits
+  must be checked against the versioned contract"); usage poll must be bounded, never
   timer-promoted to complete.
 - Verdict: feasible on proven routes; useful for Phase-7 accounting sync
   regardless of which candidate wins.

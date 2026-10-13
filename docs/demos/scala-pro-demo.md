@@ -1,22 +1,28 @@
-# Демо «Райдер для скалиста» — типы до токенов, фибры вместо тредов
+# Historical demo: “Raider for Scala developers” — types before tokens, fibers instead of threads
 
-Целевая аудитория: Scala-разработчик, который пока не понял, зачем ему агент.
-Главный номер — **не «агент ответил текстом», а то, что агентский API — это
-типизированная Scala-библиотека в живом REPL с in-process dotc 3.9**: ошибки
-ловятся компилятором ДО вызова модели, fan-out — обычные коллекции поверх
-ZIO-фибр, и весь код агента живёт в том же JVM. Всё ниже прогнано через
-`raider.repl.Main` — ответы интерпретатора настоящие.
+**Archive, captured 2026-10-09.** The live-model commands, transcript, timing,
+and model-specific observations below record that run; they are not a current
+launch recipe or a claim that those calls were repeated against today's
+source. For current setup and runnable examples, use the [current launch
+guide](../user-guide.md) and [verified REPL/bundle gallery](../user-guide-repl.md).
 
-## Акт 0 — мощь Scala за 90 секунд (REPL)
+Target audience: a Scala developer who has not yet seen why they need an agent.
+The main event is **not “the agent answered in text,” but that the agent API is a
+typed Scala library inside a live REPL with in-process dotc 3.9**: the compiler
+catches errors BEFORE a model call, fan-out uses ordinary collections over ZIO
+fibers, and all agent code runs in the same JVM. Everything below was run
+through `raider.repl.Main` — the interpreter responses are real.
 
-Запуск (живой Qwen):
+## Act 0 — Scala's power in 90 seconds (REPL)
+
+Launch (live Qwen):
 
 ```sh
 RAIDER_PROVIDER=openai RAIDER_API_KEY=dummy RAIDER_BASE_URL=http://127.0.0.1:8081/v1 RAIDER_MODEL=unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf sbt "raiderRepl/run"
 ```
 
-**1. Компилятор стоит между вами и счётом за токены.** Опечатка в аргументе —
-и модель НЕ вызывается вообще:
+**1. The compiler stands between you and the token bill.** A typo in an
+argument means the model is NOT called at all:
 
 ```scala
 scout(123)
@@ -31,119 +37,141 @@ scout(123)
 1 error found
 ```
 
-В Python-агентах такая ошибка — это HTTP 500 в 3 часа ночи. Здесь её не
-существует: она не скомпилировалась.
+In Python agents, this kind of error becomes an HTTP 500 at 3 a.m. Here it
+doesn't exist: it failed to compile.
 
-**2. Fan-out — это просто List поверх ZIO-фибр.** Три субагента стартуют
-одновременно, await — map, ответы — `List[String]`, то есть обычные значения:
+**2. Fan-out is just a List over ZIO fibers.** Three subagents start
+simultaneously, await is map, and the answers are `List[String]`, ordinary
+values:
 
 ```scala
 val t0 = System.nanoTime()
 val jobs = List(
-  scout("1: назови один плюс ZIO-фибр").start(),
-  scout("2: назови один плюс иммутабельности").start(),
-  scout("3: назови один плюс sealed-типов").start()
+  scout("1: name one advantage of ZIO fibers").start(),
+  scout("2: name one advantage of immutability").start(),
+  scout("3: name one advantage of sealed types").start()
 )
 val answers = jobs.map(_.await())
 val wall = (System.nanoTime() - t0) / 1000000000
-("скорость", "безопасность", "нативность").map(p => scout(s"Олег из Позитив Технолоджис хвалит Rust словом '$p', не понимая плюсов и минусов: разбери с иронией, где лозунг, а где правда, и чем отвечает Scala По итогу у тебя должен получиться исекай аниме сюжет про Олега в мире хайпожорства").start()).map(_.!!).zipWithIndex.map((a, i) => s"[${i + 1}] ${a.take(60)}").mkString("\n")
+```
+
+The following live-model call was captured verbatim in the REPL echo, including
+its original Russian prompt, so that the displayed expression remains an exact
+record of what was run. The prompt asks for an ironic analysis of Oleg from
+Positive Technologies praising Rust with the words “speed,” “safety,” and
+“native,” and for an isekai anime plot about Oleg in a world of hype:
+
+```scala
+("speed", "safety", "native feel").map(p => scout(s"Oleg from Positive Technologies praises Rust as '$p' without understanding the pros and cons. Explain ironically which parts are slogans and which are true, and how Scala responds. Turn it into an isekai anime story about Oleg in a world of hype-chasing.").start()).map(_.!!).zipWithIndex.map((a, i) => s"[${i + 1}] ${a.take(60)}").mkString("\n")
 ```
 
 ```text
 val jobs: List[raider.runtime.jobs.JobHandle[String]] = List(...)
 val answers: List[String] = List(...)
 val wall: Double = 0.251670125
-List("скорость", "безопасность", "нативность").map(p => scout(s"Олег из Позитив Технолоджис хвалит Rust словом '$p', не понимая плюсов и минусов: разбери с иронией, где лозунг, а где правда, и чем отвечает Scala По итогу у тебя должен получиться исекай аниме сюжет про Олега в мире хайпожорства").start()).map(_.!!).zipWithIndex.map((a, i) => s"[${i + 1}] ${a.take(60)}").mkString("\n")
+List("speed", "safety", "native feel").map(p => scout(s"Oleg from Positive Technologies praises Rust as '$p' without understanding the pros and cons. Explain ironically which parts are slogans and which are true, and how Scala responds. Turn it into an isekai anime story about Oleg in a world of hype-chasing.").start()).map(_.!!).zipWithIndex.map((a, i) => s"[${i + 1}] ${a.take(60)}").mkString("\n")
 
 ```
 
-Никакого `Promise.all`, никакого stringly-typed API: `.start()` возвращает
-`JobHandle[String]`, и дальше это обычный Scala-код — `grouped`, `take`,
-`mkString`, ваша фантазия. На живой модели поставьте 5–8 задач — wall-clock
-покажет честный параллелизм (admission ограничит только LLM-слоты, а не вас).
+No `Promise.all`, no stringly typed API: `.start()` returns
+`JobHandle[String]`, and from there it is ordinary Scala code — `grouped`,
+`take`, `mkString`, whatever you like. With a live model, try 5–8 tasks —
+wall-clock time will show real parallelism (admission limits only LLM slots,
+not you).
 
-**3. In-process компилятор.** REPL компилирует введённое тем же dotc 3.9,
-которым собран сам Raider — включая enum/given/opaque/match type
-(проверенные примеры: `docs/demos/repl-oleg-parallel-demo.md` §4). Реплика для
-скептика: «агент, который написан на Scala и компилируется компилятором,
-который ты сейчас используешь как чат».
+**3. In-process compiler.** The REPL compiles input with the same dotc 3.9 used
+to build Raider — including enum/given/opaque/match type (verified examples:
+`docs/demos/repl-oleg-parallel-demo.md` §4). A line for the skeptic: “an agent
+written in Scala and compiled by the compiler you are using right now as a
+chat.”
 
-## Акт 1 — self-hosting: агент работает на своём же коде
+## Act 1 — self-hosting: the agent works on its own code
 
-Агент-кодер читает собственный `AgentLoop.scala` и объясняет admission:
+The coding agent reads its own `AgentLoop.scala` and explains admission. The
+following live-run command retains its original Russian `--input` verbatim;
+the prompt asks it to read `AgentLoop.scala` and explain in two sentences how
+admission limits concurrent LLM calls:
 
 ```sh
-RAIDER_API_KEY=dummy java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run --agent coder --provider openai --base-url http://127.0.0.1:8081/v1 --model unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf --input "Прочитай modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala и в двух предложениях объясни, как admission ограничивает параллелизм LLM-вызовов" --out artifacts/scala-pro-demo
+RAIDER_API_KEY=dummy java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run --agent coder --provider openai --base-url http://127.0.0.1:8081/v1 --model unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf --input "Read modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala and explain in two sentences how admission limits parallel LLM calls" --out artifacts/scala-pro-demo
 ```
 
-`RAIDER_API_KEY=dummy` — llama.cpp ключ не проверяет; CLI требует
-credential-preflight по дизайну (секрет никогда не в argv).
+`RAIDER_API_KEY=dummy` — llama.cpp does not check the key; the CLI requires
+credential-preflight by design (a secret is never placed in argv).
 
-Настоящий ответ агента (живой прогон 2026-10-09):
+The agent's actual answer (live run 2026-10-09):
 
 ```text
-Admission реализует пул permits как bounded ZIO Queue[Unit] (modelSlots),
-размер которого задаёт максимум одновременных LLM-вызовов…
+Admission implements a permit pool as a bounded ZIO Queue[Unit] (modelSlots),
+whose size sets the maximum number of concurrent LLM calls… [translated from the recorded live response]
 ```
 
-След агента — типизированный и машиночитаемый (покажите скептику):
+The agent's trace is typed and machine-readable (show the skeptic):
 
 ```sh
 cat artifacts/scala-pro-demo/work-*/run.json | python3 -m json.tool | head -20
 ```
 
-`run.json` (валидация схемы до записи, атомарная запись temp+rename),
-`events.jsonl` (таймлайн job-состояний), `summary.md` (человекочитаемо),
-`transcript.json` (trace модель-цикла). Exit-коды типизированы: 0/10/20/21/22/23/24/25/26/27/130/143 — CI различает «отказ проверки» и «сбой рантайма» без парсинга строк.
+`run.json` (schema validation before writing, atomic temp+rename write),
+`events.jsonl` (job-state timeline), `summary.md` (human-readable),
+`transcript.json` (model-loop trace). Exit codes are typed:
+0/10/20/21/22/23/24/25/26/27/130/143 — CI distinguishes “check refusal” from
+“runtime failure” without parsing strings.
 
-## Акт 2 — агент гоняет sbt на самом себе (мутирующий круг)
+## Act 2 — the agent runs sbt on itself (mutating loop)
+
+The following command keeps its original Russian prompt as a record of the
+demonstrated invocation. It asks the agent to run `proc_run: sbt --batch
+core/test`, then report in one paragraph how many tests passed/failed and what
+the output says about failures.
 
 ```sh
-RAIDER_API_KEY=dummy java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run --agent coder --provider openai --base-url http://127.0.0.1:8081/v1 --model unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf --input "Выполни proc_run: sbt --batch core/test, затем одним абзацем: сколько тестов прошло, сколько упало, и что из упавшего видно в выводе" --out artifacts/sbt-selftest
+RAIDER_API_KEY=dummy java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run --agent coder --provider openai --base-url http://127.0.0.1:8081/v1 --model unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf --input "Run proc_run: sbt --batch core/test, then summarize in one paragraph how many tests passed, how many failed, and what the output shows for the failures" --out artifacts/sbt-selftest
 ```
 
-proc_run парсит вывод sbt — агент видит структурированный результат компиляции
-и тестов, а не стену текста.
+`proc_run` parses sbt output — the agent sees a structured compilation and test
+result, not a wall of text.
 
-## Акт 3 — REPL: параллельная разведка тремя субагентами
+## Act 3 — REPL: parallel reconnaissance by three subagents
 
 ```sh
 RAIDER_PROVIDER=openai RAIDER_API_KEY=dummy RAIDER_BASE_URL=http://127.0.0.1:8081/v1 RAIDER_MODEL=unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf sbt "raiderRepl/run"
 ```
 
-Внутри (построчно):
+Inside (one line at a time):
 
 ```scala
-val a = scout.start("Прочитай modules/core/src/main/scala/raider/core и перечисли все enum/sealed-иерархии с назначением в одну строку каждая")
-val b = coder.start("Прочитай modules/tools/src/main/scala/raider/tools и объясни, как fs_edit гарантирует атомарность патча")
-val c = worker.start("Прочитай modules/provider-chat и нарисуй в тексте путь SSE-чанка от сокета до ChatChunkParser")
+val a = scout.start("Read modules/core/src/main/scala/raider/core and list every enum/sealed hierarchy with its purpose, one line each")
+val b = coder.start("Read modules/tools/src/main/scala/raider/tools and explain how fs_edit guarantees patch atomicity")
+val c = worker.start("Read modules/provider-chat and describe in text the path of an SSE chunk from socket to ChatChunkParser")
 
 a.await(); b.await(); c.await()
 :jobs
 ```
 
-Сам REPL — настоящий in-process компилятор Scala 3.9: то, что вы печатаете,
-компилируется тем же dotc, что и сам Raider. Дополнительные сложные штуки —
-`docs/demos/repl-oleg-parallel-demo.md` §4 (opaque/given/union/match type —
-все прогнаны через этот REPL).
+The REPL itself is a real in-process Scala 3.9 compiler: what you type is
+compiled by the same dotc as Raider itself. More advanced features are shown
+in `docs/demos/repl-oleg-parallel-demo.md` §4 (opaque/given/union/match type —
+all were run through this REPL).
 
-## Почему скалисту это интересно (честная версия)
+## Why a Scala developer might care (the honest version)
 
-| Что видит скалист | Что под этим |
+| What the Scala developer sees | What is underneath |
 | --- | --- |
-| `scout(123)` не компилируется | типизированный DSL, ошибки до spend (E007) |
-| `List(...).map(_.start())` — fan-out | ZIO-фибры, JobHandle[String], admission |
-| REPL = in-process dotc 3.9 | repl-engine, тот же компилятор, что собирает Raider |
-| Агент работает на своём коде | self-hosting: fs_read/proc_run на модулях Raider |
-| Типизированные exit-коды, JSONL-события | `result.scala`, schema-валидация артефактов |
-| Прямой OpenAI/Anthropic wire | без gateway; локальный Qwen, ноль облака |
+| `scout(123)` does not compile | typed DSL, errors before spend (E007) |
+| `List(...).map(_.start())` — fan-out | ZIO fibers, JobHandle[String], admission |
+| REPL = in-process dotc 3.9 | repl-engine, the same compiler that builds Raider |
+| Agent works on its own code | self-hosting: fs_read/proc_run on Raider modules |
+| Typed exit codes, JSONL events | `result.scala`, artifact schema validation |
+| Direct provider wire in the recorded run | OpenAI-compatible local Qwen; this does not establish Anthropic tool-call parity (RAI-127 remains open) |
 
-## Замечания честности
+## Honesty notes
 
-- Акт 0 прогнан через REPL (mock-прелюдия) — тайминги и типы настоящие; на живой модели числа будут живыми.
-- Акты 1 проверен на живом Qwen: `Succeeded/exit 0`, 11 раундов, артефакты `artifacts/scala-pro-demo/work-9c36a7b6/`.
-- Jar собран 2026-10-08; если меняли CLI — сначала `make raider-jar`.
-- Качество ответов зависит от локальной модели; типы/параллельность/бюджет/артефакты — свойства рантайма и от модели не зависят.
-- Акт 2 запускает настоящий `sbt test` — первый прогон включает холодный старт sbt.
-- Не пишите `for (x <- agentString)` — for по String итерирует Char (компилятор честно это покажет).
-worker("Сложи в один вердикт для Олега: " + List("скорость", "безопасность", "нативность").map(p => scout(s"Правда или лозунг в тезисе Олега 'Rust = $p'? Одна фраза").start()).map(_.!!).mkString(" | ")).start().!!
+- Act 0 was run through the REPL (mock prelude) — timings and types are real; numbers will be live on a live model.
+- Act 1 was checked on live Qwen: `Succeeded/exit 0`, 11 rounds, artifacts `artifacts/scala-pro-demo/work-9c36a7b6/`.
+- Jar built 2026-10-08; if the CLI changed, run `make raider-jar` first.
+- Answer quality depends on the local model; types/parallelism/budget/artifacts are runtime properties and do not depend on the model.
+- Act 2 launches a real `sbt test` — the first run includes sbt cold start.
+- Do not write `for (x <- agentString)` — for over String iterates Char (the compiler will show this honestly).
+
+worker("Put this in one verdict for Oleg: " + List("speed", "safety", "native").map(p => scout(s"Truth or slogan in Oleg's claim 'Rust = $p'? One sentence").start()).map(_.!!).mkString(" | ")).start().!!

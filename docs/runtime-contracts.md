@@ -1,20 +1,20 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# Runtime и контракты
+# Runtime and Contracts
 
-## 1. Технологические решения
+## 1. Technology Decisions
 
-- Scala 3; baseline candidate — 3.9.0, JDK 21 LTS. RAI-001 проверяет опубликованные artifacts и совместимость. Итоговые exact версии фиксируются в build/ADR; никакого `latest`, snapshots или плавающих patch versions в CI.
-- ZIO 2 для effects/fibers/scopes/STM, ZIO Test для проверок. Не создавать свой scheduler и не поддерживать одновременно Cats Effect.
-- sbt multi-project как канонический build. Scala CLI — optional developer/reference launcher, не второй несовместимый build graph.
-- REPL engine — pinned официальный Scala REPL через узкий adapter; JLine для ввода/terminal coordination. Compiler-specific imports только в `repl-engine`.
-- HTTP implementation выбрать один в RAI-001: предпочтительно JDK HttpClient + изолированный ZIO adapter, если streaming/cancellation проходят spike; иначе documented effect-native client. Wire parser и client transport — разные классы.
-- JSON/schema: выбрать одну согласованную пару codec/schema libraries, проверить derivation/REPL в spike. Не писать общий schema derivation framework.
-- Persistence MVP: versioned append-only JSONL journal + atomic snapshots/artifacts; один writer. SQLite рассматривается по измерениям и необходимости запросов, не обязательна для первой версии.
+- Scala 3; baseline candidate — 3.9.0, JDK 21 LTS. RAI-001 verifies published artifacts and compatibility. Final exact versions are pinned in the build/ADR; no `latest`, snapshots, or floating patch versions in CI.
+- ZIO 2 for effects/fibers/scopes/STM, ZIO Test for checks. Do not create a custom scheduler or support Cats Effect alongside it.
+- sbt multi-project is the canonical build. Scala CLI is an optional developer/reference launcher, not a second incompatible build graph.
+- The REPL engine is the pinned official Scala REPL behind a narrow adapter; JLine handles input/terminal coordination. Compiler-specific imports belong only in `repl-engine`.
+- Choose one HTTP implementation in RAI-001: preferably JDK HttpClient + an isolated ZIO adapter if streaming/cancellation pass the spike; otherwise use a documented effect-native client. The wire parser and client transport are separate concerns.
+- JSON/schema: choose one compatible pair of codec/schema libraries and verify derivation/REPL in a spike. Do not write a general schema derivation framework.
+- MVP persistence: a versioned append-only JSONL journal + atomic snapshots/artifacts; one writer. Consider SQLite based on measurements and query needs; it is not required for the first version.
 
-Совместимость pinned Scala/ZIO/REPL/JLine проверяется реальным prototype; выбранные библиотеки сами по себе не доказывают рабочие signals/classloaders.
+Compatibility among pinned Scala/ZIO/REPL/JLine versions must be verified with a real prototype; the chosen libraries alone do not prove that signals/classloaders work.
 
-## 2. Границы модулей
+## 2. Module Boundaries
 
 ```text
 raider-core            contracts, IDs, errors, schemas, Agent/Task descriptions
@@ -31,15 +31,15 @@ raider-repl            interactive facade, commands/rendering, compile launcher
 raider-testkit         scripted backend, fake tools, virtual time, contract suite
 ```
 
-Дополнительные modules только по соответствующим карточкам: `compat-pi`, `compat-opencode`, `backend-pi`, `backend-opencode`, `eval-export`.
+Additional modules only under their corresponding cards: `compat-pi`, `compat-opencode`, `backend-pi`, `backend-opencode`, `eval-export`.
 
-Зависимости однонаправленные: core не знает о terminal, HTTP client, Yabanin, compiler или concrete tool implementation. Runtime зависит от core и абстрактных services. DSL не вызывает global runtime. CLI собирает layers. Testkit не попадает в production classpath.
+Dependencies are one-way: core knows nothing about the terminal, HTTP client, Yabanin, compiler, or concrete tool implementations. Runtime depends on core and abstract services. DSL does not invoke the global runtime. CLI assembles layers. Testkit is not included in the production classpath.
 
-Core/provider adapters независимы от Yabanin: [protocol contract](provider-protocols.md). Native ModelBackend нормализует оба wires; Yabanin layer добавляет optional gateway metadata/auth/accounting. Headless distribution исключает repl/repl-engine и их transitive compiler/JLine; dev distribution добавляет их. `raider-ci` не зависит от конкретного hosted CI SDK.
+Core/provider adapters are independent of Yabanin: [protocol contract](provider-protocols.md). Native ModelBackend normalizes both wires; the Yabanin layer adds optional gateway metadata/auth/accounting. The headless distribution excludes repl/repl-engine and their transitive compiler/JLine dependencies; the dev distribution adds them. `raider-ci` does not depend on a specific hosted CI SDK.
 
-## 3. Типы и публичные signatures
+## 3. Types and Public Signatures
 
-Sketch, который должен стать compilable contract в RAI-002:
+Sketch that should become a compilable contract in RAI-002:
 
 ```scala
 trait Program[I, O]:
@@ -70,21 +70,21 @@ trait ModelBackend:
   def stream(input: ModelRequest): ZStream[Scope, ModelError, ModelEvent]
 ```
 
-Это два уровня, а не переименования одного интерфейса. `ModelBackend` выполняет один inference attempt через OpenAI/Anthropic wire. `AgentBackend` выполняет агентный запуск: native implementation содержит loop, который вызывает ModelBackend и Raider tools; pi/OpenCode implementation наблюдает внешний engine, владеющий своим loop/tools. Native loop не исполняет второй раз tool observations внешнего backend. `ModelEvent` содержит complete model/tool-request data; `AgentEvent` содержит lifecycle/output/tool-observation/usage evidence. Runtime root/scopes/budgets контролирует обе реализации с учётом capabilities.
+These are two levels, not two names for the same interface. `ModelBackend` performs one inference attempt over the OpenAI/Anthropic wire. `AgentBackend` performs an agent run: the native implementation contains a loop that calls ModelBackend and Raider tools; pi/OpenCode implementations observe an external engine that owns its own loop/tools. The native loop does not execute tool observations from an external backend a second time. `ModelEvent` contains complete model/tool-request data; `AgentEvent` contains lifecycle/output/tool-observation/usage evidence. Runtime root/scopes/budgets control both implementations subject to their capabilities.
 
-RAI-002 закрепляет concrete event/error/request schemas, final completion и cancellation contract; `ZStream/Scope` imports explicit. `Job[A]` opaque/immutable handle с типизированным result reference; heterogeneous registry только на admin boundary с codecs. Публичные outputs не возвращают `Any`/unchecked casts. Endpoint compatibility не означает external engine compatibility; это разные suites и release capabilities.
+RAI-002 pins down concrete event/error/request schemas, final completion, and cancellation contract; `ZStream/Scope` imports are explicit. `Job[A]` is an opaque/immutable handle with a typed result reference; a heterogeneous registry exists only at the admin boundary with codecs. Public outputs do not return `Any`/unchecked casts. Endpoint compatibility does not imply external engine compatibility; these have separate suites and release capabilities.
 
-Agent и Workflow реализуют общий `Program[I,O]` с `apply(input):Task[O]`, `andThen` и `mapOutput`. Public `ask/start` — extension methods из `raider.repl`, не члены core interface. Core Program не зависит от terminal/global ReplSession. `all(Program,Program)` строит Program с tuple output; `all(Task,Task)` строит Task. Один effect interpreter исполняет оба случая.
+Agent and Workflow implement the common `Program[I,O]` with `apply(input):Task[O]`, `andThen`, and `mapOutput`. Public `ask/start` are extension methods from `raider.repl`, not members of the core interface. Core Program does not depend on the terminal/global ReplSession. `all(Program,Program)` builds a Program with tuple output; `all(Task,Task)` builds a Task. One effect interpreter executes both cases.
 
-`Job.await` и Task `.run()` используют единую facade boundary. Не дублировать разные implementations для functional и method syntax. Facade обнаруживает попытку использования из workflow fiber и возвращает понятную ошибку; library workflows используют apply/fork/join. Type signatures запуска обязаны иметь `using ReplSession` или эквивалентную явную capability, установленную prelude.
+`Job.await` and Task `.run()` use one facade boundary. Do not duplicate implementations for functional and method syntax. The facade detects an attempt to use them from a workflow fiber and returns a clear error; library workflows use apply/fork/join. Launch type signatures must require `using ReplSession` or an equivalent explicit capability installed by the prelude.
 
-Task — тонкая обёртка над выбранным ZIO effect с metadata/step hooks. Не обещать inspectable serialized AST для arbitrary Scala callbacks. Structured workflow plan IR вводить лишь в карточках durable recovery.
+Task is a thin wrapper around the selected ZIO effect with metadata/step hooks. Do not promise an inspectable serialized AST for arbitrary Scala callbacks. Introduce a structured workflow plan IR only in durable recovery cards.
 
-Отдельные IDs: SessionId, RootId, JobId, StepId, AttemptId, ToolCallId, MessageId, ArtifactId. RootId и parentJobId сохраняются во всех descendants/events; attempts одного model request различимы. Opaque types допустимы, если codecs/REPL printer остаются простыми.
+Separate IDs: SessionId, RootId, JobId, StepId, AttemptId, ToolCallId, MessageId, ArtifactId. RootId and parentJobId are retained on all descendants/events; attempts for one model request are distinguishable. Opaque types are acceptable if codecs/REPL printer remain simple.
 
-## 4. Job state machine
+## 4. Job State Machine
 
-Состояния выполнения:
+Execution states:
 
 ```text
 Queued → Running ↔ Waiting
@@ -94,138 +94,138 @@ Running/Waiting → Succeeded | Failed
 Cancelling → Cancelled | Interrupted | Uncertain
 ```
 
-`Succeeded`, `Failed`, `Cancelled`, `Interrupted`, `Uncertain` terminal. Deadline/budget/protocol/safety причины записываются отдельно в StopReason, а не смешиваются в произвольные status strings.
+`Succeeded`, `Failed`, `Cancelled`, `Interrupted`, `Uncertain` are terminal. Deadline/budget/protocol/safety reasons are recorded separately in StopReason, not mixed into arbitrary status strings.
 
-- Succeeded: output validation завершена, обязательные child results получены, owned resources finalized.
-- Failed: known unsuccessful outcome с structured error.
-- Cancelled: acknowledged cancellation, cleanup completed.
-- Interrupted: процесс завершён/восстановлен после crash, активное выполнение не существует.
-- Uncertain: backend/tool мог выполнить действие, подтверждение результата/остановки отсутствует.
+- Succeeded: output validation is complete, required child results have been received, and owned resources have been finalized.
+- Failed: a known unsuccessful outcome with a structured error.
+- Cancelled: cancellation acknowledged and cleanup completed.
+- Interrupted: the process was terminated/recovered after a crash; no active execution remains.
+- Uncertain: the backend/tool may have performed the action, but confirmation of the result/stop is missing.
 
-Отмена конкурирует с финальным success через единую atomic transition; один terminal winner, один root result completion. Late events сохраняются как late observations и не изменяют terminal outcome назад. Cancelling блокирует запуск новых model/tool/child действий.
+Cancellation races with final success through one atomic transition; there is one terminal winner and one root result completion. Late events are retained as late observations and do not roll the terminal outcome back. Cancelling blocks new model/tool/child actions from starting.
 
-`await` идемпотентен и допускает несколько waiters. Await terminal job не вызывает provider. Root completion не должно предшествовать обязательным finalizers; при grace timeout статус отражает незавершённую/неподтверждённую очистку.
+`await` is idempotent and permits multiple waiters. Awaiting a terminal job does not call the provider. Root completion must not precede required finalizers; on grace timeout, the status reflects cleanup that is incomplete/unconfirmed.
 
-## 5. Владение и cancellation
+## 5. Ownership and Cancellation
 
-CI invocation или REPL session owns root jobs. Headless runner владеет тем же root scope и finalization, а не имитирует terminal session. REPL session owns root jobs. Root job owns root scope. `fork` принадлежит ближайшему workflow scope. Child не переживает владельца без explicit reassignment в будущем daemon API.
+A CI invocation or REPL session owns root jobs. The headless runner owns the same root scope and finalization; it does not imitate a terminal session. A REPL session owns root jobs. A root job owns the root scope. `fork` belongs to the nearest workflow scope. A child does not outlive its owner without explicit reassignment in a future daemon API.
 
-Регистрация child и finalizer должна быть cancellation-safe: нет промежутка, где fiber уже запущена, а registry/cleanup ещё не знает о ней. Использовать узкую uninterruptible registration section и вернуть interruptibility во внешние действия.
+Child and finalizer registration must be cancellation-safe: there must be no interval in which a fiber has started but the registry/cleanup does not know about it. Use a narrow uninterruptible registration section and restore interruptibility for external actions.
 
-Не путать supervision failures с join failures: unawaited child error записывается, policy определяет propagation; `all` всегда fail-fast по умолчанию. `batchCollect` явным образом преобразует domain failures в Outcome и не глотает внешнее interruption.
+Do not confuse supervision failures with join failures: an unawaited child error is recorded, and policy determines propagation; `all` is fail-fast by default. `batchCollect` explicitly converts domain failures to Outcome and does not swallow external interruption.
 
-HTTP cancellation: прекратить чтение, закрыть response body, cancel underlying request и завершить accounting с known/unknown usage. TCP close не доказывает, что upstream перестал начислять деньги.
+HTTP cancellation: stop reading, close the response body, cancel the underlying request, and finish accounting with known/unknown usage. A TCP close does not prove the upstream stopped charging.
 
-Process cancellation: сначала graceful interrupt/terminate owned process group, затем bounded kill escalation. Работа с PID reuse и grandchildren требует platform contract. Не убивать чужие процессы и не считать запрошенную отмену подтверждённой.
+Process cancellation: first gracefully interrupt/terminate the owned process group, then perform bounded kill escalation. PID reuse and grandchildren require a platform contract. Do not kill other people's processes or treat requested cancellation as confirmed.
 
-Реализованная механика отмены (2026-10-10, детали и ссылки file:line — [cancel.md](cancel.md)): guard переходов `JobStatus.canTransition` (`modules/runtime/src/main/scala/raider/runtime/jobs/JobStatus.scala:29-42`); `JobManager.cancel`/`cancelAny` — атомарный переход в `Cancelling`, событийный хук до interrupt'а, гонка отмены с завершением решается одной STM-транзакцией в пользу cancel (`modules/runtime/src/main/scala/raider/runtime/jobs/JobManager.scala:166-248,291-311`); `RaiderScope.close(grace)` — отмена незашитых детей в ограниченном grace с честным `ScopeCloseReport` (не терминальный в grace ребёнок отчётится `Uncertain`) и финализаторы LIFO (`modules/runtime/src/main/scala/raider/runtime/scopes/RaiderScope.scala:77-150`); out-of-band отмена детей делегирования вне model-admission и owner-side дедлайны с исходом `Settled|Uncertain|AlreadyTerminal` (`modules/runtime/src/main/scala/raider/runtime/delegate/DelegationToolset.scala:366-478`). Отмена на уровне HTTP-тела ответа и process-group в этом срезе не реализована — отменяемое здесь есть fiber-interrupt и его перечисленные следствия.
+Implemented cancellation mechanics (2026-10-10; details and file:line references — [cancel.md](cancel.md)): transition guard `JobStatus.canTransition` (`modules/runtime/src/main/scala/raider/runtime/jobs/JobStatus.scala:29-42`); `JobManager.cancel`/`cancelAny` — atomic transition to `Cancelling`, event hook before interrupt, cancellation/completion race resolved in favor of cancel by one STM transaction (`modules/runtime/src/main/scala/raider/runtime/jobs/JobManager.scala:166-248,291-311`); `RaiderScope.close(grace)` — cancels unjoined children within a bounded grace period with an honest `ScopeCloseReport` (a child that is not terminal within grace is reported as `Uncertain`) and LIFO finalizers (`modules/runtime/src/main/scala/raider/runtime/scopes/RaiderScope.scala:77-150`); out-of-band cancellation of delegated children outside model-admission and owner-side deadlines with outcomes `Settled|Uncertain|AlreadyTerminal` (`modules/runtime/src/main/scala/raider/runtime/delegate/DelegationToolset.scala:366-478`). Cancellation at the HTTP response-body and process-group levels is not implemented in this slice — the cancellation available here is fiber-interrupt and its listed consequences.
 
-## 6. Concurrency и лимиты
+## 6. Concurrency and Limits
 
-Есть разные counters:
+There are separate counters for:
 
-- active jobs и queued jobs;
-- одновременно выполняющиеся model HTTP calls;
-- одновременно выполняющиеся tools/processes;
-- root descendants, глубина дерева, inbox capacity;
+- active jobs and queued jobs;
+- concurrent model HTTP calls;
+- concurrent tools/processes;
+- root descendants, tree depth, inbox capacity;
 - retries/repair attempts, steps, wall time, tokens, money reservations.
 
-Model/tool permit удерживается только на соответствующей операции. Родитель, ожидающий child, не держит permit для исполнения ребёнка. Минимальный acceptance: maxConcurrentLlm=1, parent делегирует ребёнку и ждёт — deadlock отсутствует.
+A model/tool permit is held only during the corresponding operation. A parent waiting for a child does not hold the permit needed to run the child. Minimum acceptance: with maxConcurrentLlm=1, a parent delegates to a child and waits — there is no deadlock.
 
-Acquisition order: eligibility/deadline → concurrency permit → recheck cancellation → atomic budget reservation → dispatch. Cancellation в любой точке освобождает reservation/permit по фактическому dispatch status. Нельзя удерживать денежную reservation весь срок ожидания очереди без обоснованной политики.
+Acquisition order: eligibility/deadline → concurrency permit → recheck cancellation → atomic budget reservation → dispatch. Cancellation at any point releases reservation/permit according to actual dispatch status. Do not hold a monetary reservation for the entire queue wait without a justified policy.
 
-Bounded queues: explicit backpressure, fair admission между roots; один recursive agent не вытесняет всех. Large fanout проверяется до запуска. Deadlines отменяют queued jobs, не ждут получения semaphore.
+Bounded queues: explicit backpressure, fair admission across roots; one recursive agent must not starve everyone. Check large fanout before launch. Deadlines cancel queued jobs; they do not wait to acquire a semaphore.
 
-Parallel mutating tools по умолчанию сериализуются в workspace. Параллельные coding agents получают отдельные worktrees; merge/diff review — explicit step. Общий context agent не даёт права конкурентно переписывать один файл.
+Mutating tools are serialized in the workspace by default. Parallel coding agents receive separate worktrees; merge/diff review is an explicit step. A shared context agent does not authorize concurrent rewrites of one file.
 
-## 7. Root budget ledger
+## 7. Root Budget Ledger
 
-Ledger учитывает весь root и descendants; резервации atomic. Деньги — целые micro-USD или exact decimal, не Double для суммирования. Unit tests проверяют rounding, overflow и отсутствие negative counters.
+The ledger accounts for the entire root and its descendants; reservations are atomic. Money uses integer micro-USD or exact decimal, not Double for aggregation. Unit tests check rounding, overflow, and the absence of negative counters.
 
-Данные стоимости различимы:
+Cost data is distinguished as follows:
 
-- estimated/reserved — до/во время вызова;
-- observed — подтверждённые данные gateway/provider;
-- uncertain — попытка могла быть оплачена, сумма неизвестна;
-- unpriced — usage известен, цена отсутствует.
+- estimated/reserved — before/during the call;
+- observed — data confirmed by the gateway/provider;
+- uncertain — the attempt may have been charged, but the amount is unknown;
+- unpriced — usage is known, but the price is missing.
 
-Unknown не равен zero. Retry и structured-output repair — новые оплачиваемые attempts, расходуют общий cap. Резервация включает conservative input estimate и explicit max output tokens при доступной цене. При hard monetary cap и неизвестной/неограниченной цене запуск отклоняется или требует иной явно выбранной политики; «жёсткий USD cap» не выводится из post-hoc usage.
+Unknown is not zero. Retries and structured-output repairs are new billable attempts and consume the shared cap. When a price is available, the reservation includes a conservative input estimate and explicit max output tokens. With a hard monetary cap and unknown/unbounded pricing, reject the launch or require another explicitly selected policy; a “hard USD cap” cannot be inferred from post-hoc usage.
 
-Доступность gateway billing может отставать. Local ledger обеспечивает дисциплину launch, gateway enforce — свою границу. Глобальный cross-process hard budget нельзя обещать на одном process-local STM ledger. P2 потребует shared authority/admission, а не polling analytics.
+Gateway billing availability may lag. The local ledger enforces launch discipline; the gateway enforces its own boundary. A global cross-process hard budget cannot be promised with one process-local STM ledger. P2 requires shared authority/admission, not polling analytics.
 
-## 8. Native agent loop
+## 8. Native Agent Loop
 
-1. Freeze AgentVersion, context snapshot, tool registry, resolved model role и limits.
-2. Собрать structured messages, включая relevant instructions/skills/artifact references.
-3. Зарезервировать attempt, вызвать backend, нормализовать streaming events.
-4. Если есть tool calls: собрать полные arguments, validate schema, policy и дедлайн.
-5. Выполнить разрешённые tools, сопоставить результат с tool_call_id, записать события.
-6. На безопасной границе применить steering messages; проверить completion/budget/loop limits.
-7. Если есть final answer: decode/validate output; bounded repair при configured policy.
-8. Завершить outcome, cleanup, journal и cost reconciliation.
+1. Freeze AgentVersion, context snapshot, tool registry, resolved model role, and limits.
+2. Assemble structured messages, including relevant instructions/skills/artifact references.
+3. Reserve an attempt, call the backend, and normalize streaming events.
+4. If there are tool calls: collect complete arguments and validate schema, policy, and deadline.
+5. Execute permitted tools, match results to tool_call_id, and record events.
+6. Apply steering messages at a safe boundary; check completion/budget/loop limits.
+7. If there is a final answer: decode/validate output; bounded repair under configured policy.
+8. Complete the outcome, cleanup, journal, and cost reconciliation.
 
-Partial streaming tool arguments никогда не выполняются. Несколько calls одного шага не автоматически параллельны: нужна tool capability `readOnly/concurrentSafe`; mutation порядок явный. Отсутствующий tool, invalid args и denial дают structured feedback модели с bounded attempts, не silent ignore.
+Partial streaming tool arguments are never executed. Multiple calls in one step are not parallel by default: they require the tool capability `readOnly/concurrentSafe`; mutation order is explicit. Missing tools, invalid args, and denials produce structured feedback to the model with bounded attempts, not silent ignore.
 
-## 9. Backend protocol
+## 9. Backend Protocol
 
-Normalized events: Started, TextDelta, ToolCallDelta/ToolCallReady, UsageObserved, MetadataObserved, Finished, Failed. Provider reasoning — optional metadata с provider-specific retention policy; не считать reasoning основным ответом и не требовать раскрытия скрытого рассуждения.
+Normalized events: Started, TextDelta, ToolCallDelta/ToolCallReady, UsageObserved, MetadataObserved, Finished, Failed. Provider reasoning is optional metadata with a provider-specific retention policy; do not treat reasoning as the primary answer or require disclosure of hidden reasoning.
 
-BackendCapabilities указывает streaming, tools, structured output, steering, cancellation acknowledgement, accounting precision и context/session support. Capabilities имеют состояния supported/unsupported/unknown; неизвестное не становится true.
+BackendCapabilities specifies streaming, tools, structured output, steering, cancellation acknowledgement, accounting precision, and context/session support. Capabilities have supported/unsupported/unknown states; unknown does not become true.
 
-External backend may own tool execution. В таком режиме Raider tool policy не считается enforcement внутри внешнего процесса; проверяется mapping/configuration backend или tool proxy. Unsupported guarantees видны в doctor/launch report.
+An external backend may own tool execution. In that mode, Raider tool policy is not considered enforcement inside the external process; verify the backend's mapping/configuration or a tool proxy. Unsupported guarantees are visible in the doctor/launch report.
 
-External retries и gateway failover могут добавить attempts, не видимые client напрямую. Accounting отражает coverage; adapter не выдумывает точную upstream attempt count.
+External retries and gateway failover may add attempts that are not directly visible to the client. Accounting reflects coverage; the adapter does not invent an exact upstream attempt count.
 
-## 10. Tools и полномочия
+## 10. Tools and Permissions
 
-Tool[I,O] содержит name/version, input schema/codec, output codec, description, effect handler, timeout, capabilities и recovery class:
+Tool[I,O] contains name/version, input schema/codec, output codec, description, effect handler, timeout, capabilities, and recovery class:
 
 - pure/read-only;
-- idempotent с явным idempotency key;
+- idempotent with an explicit idempotency key;
 - mutating non-idempotent.
 
-Tool invocation включает principal/capabilities, workspace, root/job IDs, cancellation и sanitized context. Tool не получает raw parent credentials без необходимости.
+Tool invocation includes principal/capabilities, workspace, root/job IDs, cancellation, and sanitized context. A tool does not receive raw parent credentials without need.
 
-Minimum tools: scoped fs.read, fs.search, fs.edit с expected content hash, exec.run(argv, cwd, timeout). Shell syntax — отдельный explicit capability `exec.shell`, не способ вызвать любую команду в базовом tool. Validate paths, symlinks, traversals, output bytes, subprocess env allowlist и process lifetime.
+Minimum tools: scoped fs.read, fs.search, fs.edit with expected content hash, exec.run(argv, cwd, timeout). Shell syntax is a separate explicit capability `exec.shell`, not a way to invoke any command through the base tool. Validate paths, symlinks, traversals, output bytes, subprocess env allowlist, and process lifetime.
 
-Path prefix string не является workspace containment. Для чтения resolve real path; мутации учитывают symlink/TOCTOU и ownership. Portable policy ограничивает доверенные tools; сильная изоляция потребует OS/container sandbox. Ни compiler, ни загруженный Scala-plugin этим не ограничены.
+A path prefix string is not workspace containment. Resolve real paths for reads; mutations account for symlinks/TOCTOU and ownership. Portable policy limits trusted tools; strong isolation requires an OS/container sandbox. Neither the compiler nor a loaded Scala plugin is constrained by this.
 
-## 11. Делегирование самой моделью
+## 11. Model-Initiated Delegation
 
-Model-callable tools: delegate, await_agent, send_agent, cancel_agent, list_agents. Они используют тот же JobManager/root ledger, что workflow `fork`.
+Model-callable tools: delegate, await_agent, send_agent, cancel_agent, list_agents. They use the same JobManager/root ledger as workflow `fork`.
 
-delegate принимает registered AgentId/Version и encoded input; runtime проверяет schema, allowed child profile, depth/count, context policy и capabilities intersection. Возвращает child handle ID и state, не весь transcript.
+delegate accepts a registered AgentId/Version and encoded input; runtime validates the schema, allowed child profile, depth/count, context policy, and capability intersection. It returns a child handle ID and state, not the full transcript.
 
-Ownership остаётся за job/scope инициатора. Await child suspends parent loop и не держит model slot. У ребёнка нет автоматического права повторно делегировать; это отдельная policy. Context.TaskOnly — default, Context.Summary/Artifacts — explicit, full transcript — opt-in с size/redaction controls.
+Ownership remains with the initiating job/scope. Awaiting a child suspends the parent loop and does not hold a model slot. The child has no automatic right to delegate again; that is a separate policy. Context.TaskOnly is the default, Context.Summary/Artifacts are explicit, and the full transcript is opt-in with size/redaction controls.
 
-Промпт с именем агента не создаёт executable callback. При отсутствующем registry name — structured error. Детали cross-agent messages защищены scope/owner access checks.
+A prompt naming an agent does not create an executable callback. If the registry name is missing, return a structured error. Cross-agent messages are protected by scope/owner access checks.
 
-## 12. Расширения
+## 12. Extensions
 
-Extension package содержит manifest: ID, semantic version, API version range, dependencies, provided agents/tools/providers/middleware, permissions, resources и lifecycle.
+An extension package contains a manifest: ID, semantic version, API version range, dependencies, provided agents/tools/providers/middleware, permissions, resources, and lifecycle.
 
-Лёгкий уровень: Markdown agents/skills/prompts и config. Runtime слой: compiled Scala module через small SPI + effectful scoped acquisition. Внешний уровень: process/HTTP backend. TypeScript расширения автоматически в JVM не загружаются.
+Lightweight tier: Markdown agents/skills/prompts and config. Runtime tier: compiled Scala module through a small SPI + effectful scoped acquisition. External tier: process/HTTP backend. TypeScript extensions do not load automatically on the JVM.
 
-Registry snapshots immutable и versioned. Reload definitions применим к новым jobs; running jobs продолжают с pinned snapshot. Reload compiled plugins/classloaders во время работы отложен; первая версия допускает restart для binary changes.
+Registry snapshots are immutable and versioned. Reloading definitions applies to new jobs; running jobs continue with their pinned snapshot. Reloading compiled plugins/classloaders during operation is deferred; the first version allows restart for binary changes.
 
-Events notification-only; middleware transformer/decision interfaces отдельные. Defined stable ordering priority + extension ID; error policy documented. Timeout middleware не должен заблокировать cancellation. Mandatory ceilings применяются после user middleware и не могут им обходиться.
+Events are notification-only; middleware transformer/decision interfaces are separate. Define stable ordering by priority + extension ID; document error policy. Middleware timeouts must not block cancellation. Mandatory ceilings apply after user middleware and cannot be bypassed by it.
 
-## 13. Journal, artifacts и recovery
+## 13. Journal, Artifacts, and Recovery
 
 Event envelope: schema_version, event_id, session_id, root_id, job_id, parent_job_id, step_id, attempt_id, monotonic per-root sequence, timestamp, event_type, sanitized payload.
 
-Sequence assignment/persistence единым writer. Critical state transitions/events flush до сообщения о завершении. Token delta events могут coalesce; aggregate outcome/usage/tool decisions не теряются. Journal I/O failure → explicit degraded/failed execution; не выдавать подтверждённую сохранность.
+Sequence assignment/persistence uses one writer. Flush critical state transitions/events before reporting completion. Token delta events may be coalesced; aggregate outcome/usage/tool decisions are not lost. Journal I/O failure → explicit degraded/failed execution; do not claim confirmed durability.
 
-Raw prompts/transcripts хранить отдельно по policy, не в telemetry по умолчанию. Artifacts имеют ID, SHA-256, media type, size, provenance и workspace-relative location; пределы размера и redaction. Journal не должен сохранять live Java object refs или arbitrary closures.
+Store raw prompts/transcripts separately under policy, not in telemetry by default. Artifacts have ID, SHA-256, media type, size, provenance, and workspace-relative location; enforce size limits and redaction. The journal must not store live Java object refs or arbitrary closures.
 
-После journal/archive RAI-027: при restart показать архив, пометить незавершённые jobs Interrupted/Uncertain. Не выполнить автоматически последний tool. P1 replay fixtures — без внешних side effects. P2 resume — только serialized plans/registered named steps с documented recovery policy. Automatic restoration arbitrary `val`, classes и JVM stack не обещается.
+After journal/archive RAI-027: on restart, show the archive and mark unfinished jobs Interrupted/Uncertain. Do not automatically re-run the last tool. P1 replay fixtures have no external side effects. P2 resume is only for serialized plans/registered named steps with a documented recovery policy. Automatic restoration of arbitrary `val`s, classes, and JVM stacks is not promised.
 
 ## 14. Errors
 
 Structured error families: Configuration, Compilation, InputValidation, OutputValidation, ProviderAuth, ProviderRateLimit, ProviderBudget, ProviderUnavailable, StreamProtocol, ToolDenied, ToolFailed, ToolOutcomeUncertain, DeadlineExceeded, LocalBudgetExceeded, ChildFailed, Cancelled, JournalFailure, CapabilityUnsupported.
 
-Ошибка включает stable code, public explanation, retryability, safe details, root/job/attempt IDs. Secret/provider body с credentials не попадает в public details. Domain failure, defect и interruption различимы; programmer defect не маскируется как успешный текстовый ответ.
+An error includes a stable code, public explanation, retryability, safe details, and root/job/attempt IDs. Secrets/provider bodies with credentials do not appear in public details. Domain failure, defect, and interruption are distinguishable; a programmer defect is not masked as a successful text response.
 
-## 15. Отложенные сложности
+## 15. Deferred Complexity
 
-Не делать в MVP: distributed scheduling, daemon attach, arbitrary durable Scala replay, self-modifying plugins, auto-merge/push, custom DSL parser, macro/direct-style transformation, общий cross-effect API, самостоятельное повторение gateway routing, marketplace/signing infrastructure. Их отсутствие не мешает полноценному local REPL и native agent loop.
+Do not build in MVP: distributed scheduling, daemon attach, arbitrary durable Scala replay, self-modifying plugins, auto-merge/push, custom DSL parser, macro/direct-style transformation, general cross-effect API, independent repetition of gateway routing, marketplace/signing infrastructure. Their absence does not prevent a full local REPL and native agent loop.

@@ -1,184 +1,190 @@
-<!-- Translated from Russian original. Key terms preserved as-is. -->
+<!-- Translated from the Russian original. Key terms preserved as-is. -->
 
-# Карточки реализации Raider
+# Raider implementation cards
 
-Актуальное уточнение 2026-10-03: [working target](../working-product.md), [parallel runbook](../parallel-development.md), [stage-aware gates](../quality-gates.md). Старые IDs сохранены; milestone приёмка и полезный coding-agent результат различаются.
+Current clarification, 2026-10-03: [working target](../working-product.md), [parallel runbook](../parallel-development.md), [stage-aware gates](../quality-gates.md). Original IDs are preserved; milestone acceptance and a useful coding-agent result are distinct.
 
+Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and the [execution board](../work/board.md). The original 53 Raider cards have been extended by later revisions; todo/ready/accepted are determined from the current cards and their evidence.
 
-Актуальные IDs, статусы и зависимости — в [backlog.json](backlog.json) и
-[execution board](../work/board.md). Исходные 53 Raider cards расширены последующими
-ревизиями; todo/ready/accepted определяются по текущим карточкам и их evidence.
-
-| Scope | Документ |
+| Scope | Document |
 | --- | --- |
 | M0 001–026 | [Foundation/runtime/protocols/REPL/CI](m0.md) |
-| M1 027–040 | [Extensibility и optional integrations](m1.md) |
+| M1 027–040 | [Extensibility and optional integrations](m1.md) |
 | M2 041–047 / P2 048–053 | [Release/P2](m2-p2.md) |
-| YB-RAI-01–03 | [Изменения в Yabanin](yabanin.md) |
-| Машинные metadata/dependencies | [backlog.json](backlog.json) |
+| YB-RAI-01–03 | [Changes in Yabanin](yabanin.md) |
+| Machine metadata/dependencies | [backlog.json](backlog.json) |
 
-## Как назначать работу
+## Assigning work
 
-1. Выбрать карточку с accepted prerequisites. Старт: RAI-001 → RAI-003 → RAI-002 → RAI-004; потом config/testkit/runtime.
-2. Прочитать AGENTS.md, [основной план](../PLAN.md), applicable contracts и точную карточку.
-3. Уточнить allowed directories до конкретных files/symbols. Размер coding packet: один observable behavior, обычно 1–3 production files.
-4. Большую milestone card разбить перед исполнением на `.a/.b/.c`: accepted signatures, свои tests/paths/dependencies/records. Все acceptance родителя сохраняются; новая архитектура не прячется внутри child task.
-5. Сначала behavioral fixture, затем implementation; [review workflow](../model-workflow.md) и [quality gates](../quality-gates.md) обязательны.
-6. Создать [work record](../templates/work-record.md) после реальной работы и до final fingerprint gate. Ссылки actual evidence в ignored artifacts; todo не помечать accepted из summary модели.
+1. Choose a card with accepted prerequisites. Start with RAI-001 → RAI-003 → RAI-002 → RAI-004; then config/testkit/runtime.
+2. Read AGENTS.md, the [main plan](../PLAN.md), applicable contracts, and the exact card.
+3. Narrow allowed directories to concrete files/symbols. A coding packet should cover one observable behavior, usually 1–3 production files.
+4. Split a large milestone card into `.a/.b/.c` before execution: accepted signatures, their own tests/paths/dependencies/records. Preserve all parent acceptance; do not hide new architecture inside a child task.
+5. Start with a behavioral fixture; then implement. The [review workflow](../model-workflow.md) and [quality gates](../quality-gates.md) are mandatory.
+6. Create a [work record](../templates/work-record.md) after actual work and before the final fingerprint gate. Link actual evidence in ignored artifacts; do not mark todo as accepted based on a model summary.
 
-## Общий DoD
+## Shared Definition of Done
 
-Accepted dependencies; normal/error/cancel fixtures; required profiles исполнены, актуальны и проходят; независимое свежее review; актуальные docs/API fixtures; no new unresolved blocker; корректные limitations. Все profiles всегда включают runner self при применимости. Missing tool/stand/scanner/hosted runner evidence — unavailable/pending, никогда pass.
+Accepted dependencies; normal/error/cancel fixtures; required profiles executed, current, and passing; fresh independent review; current docs/API fixtures; no new unresolved blocker; accurate limitations. All profiles always include runner self where applicable. Missing tool/stand/scanner/hosted-runner evidence is unavailable/pending, never passed.
 
-Для M0 RAI-026 — joint acceptance. Для M2 RAI-047 — release candidate, без implied publishing. Optional Yabanin/bridges не блокируют standalone release, но рекламируемая capability требует своего полного evidence. P2 не включается автоматически в v1.
+RAI-026 is joint acceptance for M0. RAI-047 is the M2 release candidate, with no implied publishing. Optional Yabanin/bridges do not block a standalone release, but any advertised capability needs its own complete evidence. P2 is not automatically included in v1.
 
-## Индекс зависимостей
+## Dependency index
 
-Markdown содержит full contract, JSON канонический для ID/title/dependency/profile metadata; docs gate проверяет их согласованность. Текущий progress хранить отдельным board/work records, не терять исходные acceptance. Дочерние cards добавлять в backlog metadata при назначении, фиксируя parent linkage.
+Markdown contains the full contract; JSON is canonical for ID/title/dependency/profile metadata, and the docs gate checks their consistency. Keep current progress in a separate board/work records; do not lose original acceptance criteria. Add child cards to backlog metadata when assigned, recording parent linkage.
 
-- **RAI-001** [Feasibility headless и настоящего Scala REPL](m0.md); dependencies: нет; profiles: bootstrap.
-- **RAI-002** [Frozen публичные API и versioned схемы](m0.md); dependencies: RAI-001, RAI-003; profiles: static, contracts, docs.
-- **RAI-003** [Pinned build и разделение distributions](m0.md); dependencies: RAI-001; profiles: bootstrap, static, contracts.
-- **RAI-004** [Quality runner, classifier и evidence](m0.md); dependencies: RAI-002, RAI-003; profiles: self, static, contracts, security.
-- **RAI-005** [Profiles, policies и независимый provider config](m0.md); dependencies: RAI-002, RAI-004; profiles: static, unit, contracts, security.
-- **RAI-006** [Deterministic testkit без LLM](m0.md); dependencies: RAI-002, RAI-004; profiles: static, unit, contracts.
-- **RAI-007** [Job registry и atomic lifecycle](m0.md); dependencies: RAI-002, RAI-006; profiles: static, unit, contracts, runtime.
-- **RAI-008** [Structured scopes и отмена subtree](m0.md); dependencies: RAI-007; profiles: static, unit, contracts, runtime.
-- **RAI-009** [Root budget и admission без deadlocks](m0.md); dependencies: RAI-005, RAI-008; profiles: static, unit, contracts, runtime, performance.
+- **RAI-001** [Feasibility of headless mode and a real Scala REPL](m0.md); dependencies: none; profiles: bootstrap.
+- **RAI-002** [Frozen public APIs and versioned schemas](m0.md); dependencies: RAI-001, RAI-003; profiles: static, contracts, docs.
+- **RAI-003** [Pinned build and distribution separation](m0.md); dependencies: RAI-001; profiles: bootstrap, static, contracts.
+- **RAI-004** [Quality runner, classifier, and evidence](m0.md); dependencies: RAI-002, RAI-003; profiles: self, static, contracts, security.
+- **RAI-005** [Profiles, policies, and independent provider config](m0.md); dependencies: RAI-002, RAI-004; profiles: static, unit, contracts, security.
+- **RAI-006** [Deterministic testkit without LLM](m0.md); dependencies: RAI-002, RAI-004; profiles: static, unit, contracts.
+- **RAI-007** [Job registry and atomic lifecycle](m0.md); dependencies: RAI-002, RAI-006; profiles: static, unit, contracts, runtime.
+- **RAI-008** [Structured scopes and subtree cancellation](m0.md); dependencies: RAI-007; profiles: static, unit, contracts, runtime.
+- **RAI-009** [Root budget and admission without deadlocks](m0.md); dependencies: RAI-005, RAI-008; profiles: static, unit, contracts, runtime, performance.
 - **RAI-010** [Native agent loop](m0.md); dependencies: RAI-005, RAI-006, RAI-009; profiles: static, unit, contracts, runtime, eval.
 - **RAI-011** [OpenAI-compatible HTTP Chat](m0.md); dependencies: RAI-005, RAI-006, RAI-010; profiles: static, unit, contracts, transport, security.
 - **RAI-012** [OpenAI SSE streaming state machine](m0.md); dependencies: RAI-011; profiles: static, unit, contracts, transport, runtime.
-- **RAI-013** [Anthropic-compatible Messages и streaming](m0.md); dependencies: RAI-010, RAI-012; profiles: static, unit, contracts, transport, runtime, security.
-- **RAI-014** [Чтение и поиск с workspace containment](m0.md); dependencies: RAI-005, RAI-008; profiles: static, unit, tools, security.
-- **RAI-015** [Безопасная мутация и patch artifacts](m0.md); dependencies: RAI-014; profiles: static, unit, tools, runtime, security.
-- **RAI-016** [Owned process tools и isolated execution](m0.md); dependencies: RAI-005, RAI-008, RAI-014; profiles: static, unit, tools, runtime, security, ci.
-- **RAI-017** [Единая typed composition](m0.md); dependencies: RAI-002, RAI-008, RAI-009; profiles: static, unit, contracts, runtime, docs.
+- **RAI-013** [Anthropic-compatible Messages and streaming](m0.md); dependencies: RAI-010, RAI-012; profiles: static, unit, contracts, transport, runtime, security.
+- **RAI-014** [Read/search with workspace containment](m0.md); dependencies: RAI-005, RAI-008; profiles: static, unit, tools, security.
+- **RAI-015** [Safe mutation and patch artifacts](m0.md); dependencies: RAI-014; profiles: static, unit, tools, runtime, security.
+- **RAI-016** [Owned process tools and isolated execution](m0.md); dependencies: RAI-005, RAI-008, RAI-014; profiles: static, unit, tools, runtime, security, ci.
+- **RAI-017** [Unified typed composition](m0.md); dependencies: RAI-002, RAI-008, RAI-009; profiles: static, unit, contracts, runtime, docs.
 - **RAI-018** [Ergonomic REPL launch facade](m0.md); dependencies: RAI-010, RAI-017; profiles: static, unit, contracts, runtime, repl, docs.
 - **RAI-019** [Pinned compiler/JLine REPL adapter](m0.md); dependencies: RAI-001, RAI-018; profiles: static, unit, contracts, repl, security, performance.
-- **RAI-020** [Prelude, registry commands и definition load](m0.md); dependencies: RAI-005, RAI-019; profiles: static, unit, contracts, repl, docs, security.
-- **RAI-021** [Steering mailbox и checked model delegation](m0.md); dependencies: RAI-010, RAI-018, RAI-020; profiles: static, unit, contracts, runtime, eval.
-- **RAI-022** [Compiled bundles и headless Runner](m0.md); dependencies: RAI-002, RAI-005, RAI-010, RAI-017; profiles: static, unit, contracts, ci, runtime, docs, security.
-- **RAI-023** [CI context и trust preflight](m0.md); dependencies: RAI-005, RAI-022; profiles: static, unit, contracts, ci, security.
-- **RAI-024** [Trusted checks, artifacts и exit contracts](m0.md); dependencies: RAI-002, RAI-016, RAI-022, RAI-023; profiles: static, unit, contracts, ci, tools, security, eval.
+- **RAI-020** [Prelude, registry commands, and definition loading](m0.md); dependencies: RAI-005, RAI-019; profiles: static, unit, contracts, repl, docs, security.
+- **RAI-021** [Steering mailbox and checked model delegation](m0.md); dependencies: RAI-010, RAI-018, RAI-020; profiles: static, unit, contracts, runtime, eval.
+- **RAI-022** [Compiled bundles and headless Runner](m0.md); dependencies: RAI-002, RAI-005, RAI-010, RAI-017; profiles: static, unit, contracts, ci, runtime, docs, security.
+- **RAI-023** [CI context and trust preflight](m0.md); dependencies: RAI-005, RAI-022; profiles: static, unit, contracts, ci, security.
+- **RAI-024** [Trusted checks, artifacts, and exit contracts](m0.md); dependencies: RAI-002, RAI-016, RAI-022, RAI-023; profiles: static, unit, contracts, ci, tools, security, eval.
 - **RAI-025** [GitHub/GitLab/generic wrappers](m0.md); dependencies: RAI-023, RAI-024; profiles: static, unit, contracts, ci, docs, security.
-- **RAI-026** [Совместная MVP-приёмка](m0.md); dependencies: RAI-012, RAI-013, RAI-014, RAI-015, RAI-016, RAI-017, RAI-018, RAI-019, RAI-020, RAI-021, RAI-022, RAI-023, RAI-024, RAI-025; profiles: full, ci, repl, transport, eval.
-- **RAI-027** [Journal и архивирование без replay](m1.md); dependencies: RAI-026; profiles: static, unit, contracts, runtime, ci, security.
-- **RAI-028** [Typed agents, tools и bounded output repair](m1.md); dependencies: RAI-002, RAI-010, RAI-027; profiles: static, unit, contracts, runtime, eval, docs.
-- **RAI-029** [Definition loaders и context policy](m1.md); dependencies: RAI-020, RAI-027; profiles: static, unit, contracts, docs, security.
-- **RAI-030** [Context limits и compaction](m1.md); dependencies: RAI-027, RAI-028, RAI-029; profiles: static, unit, contracts, runtime, eval, security.
+- **RAI-026** [Joint MVP acceptance](m0.md); dependencies: RAI-012, RAI-013, RAI-014, RAI-015, RAI-016, RAI-017, RAI-018, RAI-019, RAI-020, RAI-021, RAI-022, RAI-023, RAI-024, RAI-025; profiles: full, ci, repl, transport, eval.
+- **RAI-027** [Journal and archiving without replay](m1.md); dependencies: RAI-026; profiles: static, unit, contracts, runtime, ci, security.
+- **RAI-028** [Typed agents, tools, and bounded output repair](m1.md); dependencies: RAI-002, RAI-010, RAI-027; profiles: static, unit, contracts, runtime, eval, docs.
+- **RAI-029** [Definition loaders and context policy](m1.md); dependencies: RAI-020, RAI-027; profiles: static, unit, contracts, docs, security.
+- **RAI-030** [Context limits and compaction](m1.md); dependencies: RAI-027, RAI-028, RAI-029; profiles: static, unit, contracts, runtime, eval, security.
 - **RAI-031** [Versioned JVM plugin SPI](m1.md); dependencies: RAI-028, RAI-029; profiles: static, unit, contracts, runtime, security, compatibility.
-- **RAI-032** [Pi profile importer с provenance](m1.md); dependencies: RAI-029, RAI-031; profiles: static, unit, contracts, docs, compatibility, security, eval.
+- **RAI-032** [Pi profile importer with provenance](m1.md); dependencies: RAI-029, RAI-031; profiles: static, unit, contracts, docs, compatibility, security, eval.
 - **RAI-033** [OpenCode profile importer](m1.md); dependencies: RAI-029, RAI-031; profiles: static, unit, contracts, docs, compatibility, security, eval.
 - **RAI-034** [Pi RPC external backend](m1.md); dependencies: RAI-027, RAI-031, RAI-032; profiles: static, unit, contracts, runtime, tools, transport, compatibility, security.
 - **RAI-035** [OpenCode HTTP external backend](m1.md); dependencies: RAI-027, RAI-031, RAI-033; profiles: static, unit, contracts, runtime, transport, compatibility, security.
-- **RAI-036** [Conversation sessions с serialized turns](m1.md); dependencies: RAI-027, RAI-030; profiles: static, unit, contracts, runtime, repl, security.
-- **RAI-037** [Optional Yabanin profile, labels и wrapper env](m1.md); dependencies: RAI-011, RAI-012, RAI-023, RAI-027; profiles: static, unit, contracts, transport, ci, security.
-- **RAI-038** [Yabanin root session keys и finish](m1.md); dependencies: RAI-037, RAI-009; profiles: static, unit, contracts, transport, runtime, ci, security.
+- **RAI-036** [Conversation sessions with serialized turns](m1.md); dependencies: RAI-027, RAI-030; profiles: static, unit, contracts, runtime, repl, security.
+- **RAI-037** [Optional Yabanin profile, labels, and wrapper env](m1.md); dependencies: RAI-011, RAI-012, RAI-023, RAI-027; profiles: static, unit, contracts, transport, ci, security.
+- **RAI-038** [Yabanin root session keys and finish](m1.md); dependencies: RAI-037, RAI-009; profiles: static, unit, contracts, transport, runtime, ci, security.
 - **RAI-039** [Pinned Yabanin stand acceptance](m1.md); dependencies: RAI-037, RAI-038; profiles: integration, ci, transport, security.
 - **RAI-040** [Agent-eval contract export](m1.md); dependencies: RAI-027, RAI-028, RAI-024; profiles: static, unit, contracts, eval, security.
-- **RAI-041** [Protected task eval и adversarial corpus](m2-p2.md); dependencies: RAI-024, RAI-028, RAI-040; profiles: eval, ci, contracts, security.
-- **RAI-042** [Accounting reconciliation без ложных денег](m2-p2.md); dependencies: RAI-038, RAI-039, RAI-040; profiles: static, unit, contracts, runtime, transport, integration, ci.
-- **RAI-043** [Soak и calibrated performance](m2-p2.md); dependencies: RAI-026, RAI-027, RAI-030; profiles: performance, runtime, ci, repl.
-- **RAI-044** [JVM/OCI distribution и supply-chain inventory](m2-p2.md); dependencies: RAI-022, RAI-026, RAI-031; profiles: release, ci, security, docs.
-- **RAI-045** [CI разработки самого Raider](m2-p2.md); dependencies: RAI-004, RAI-026, RAI-044; profiles: self, full, security, ci.
-- **RAI-046** [Executable examples и документация](m2-p2.md); dependencies: RAI-026, RAI-028, RAI-032, RAI-033, RAI-044; profiles: docs, contracts, ci, repl, compatibility.
+- **RAI-041** [Protected task eval and adversarial corpus](m2-p2.md); dependencies: RAI-024, RAI-028, RAI-040; profiles: eval, ci, contracts, security.
+- **RAI-042** [Accounting reconciliation without fake money](m2-p2.md); dependencies: RAI-038, RAI-039, RAI-040; profiles: static, unit, contracts, runtime, transport, integration, ci.
+- **RAI-043** [Soak and calibrated performance](m2-p2.md); dependencies: RAI-026, RAI-027, RAI-030; profiles: performance, runtime, ci, repl.
+- **RAI-044** [JVM/OCI distribution and supply-chain inventory](m2-p2.md); dependencies: RAI-022, RAI-026, RAI-031; profiles: release, ci, security, docs.
+- **RAI-045** [Raider's own development CI](m2-p2.md); dependencies: RAI-004, RAI-026, RAI-044; profiles: self, full, security, ci.
+- **RAI-046** [Executable examples and documentation](m2-p2.md); dependencies: RAI-026, RAI-028, RAI-032, RAI-033, RAI-044; profiles: docs, contracts, ci, repl, compatibility.
 - **RAI-047** [Release candidate acceptance](m2-p2.md); dependencies: RAI-041, RAI-043, RAI-044, RAI-045, RAI-046; profiles: release, full, ci, security.
-- **RAI-048** [Daemon attach и explicit job ownership](m2-p2.md); dependencies: RAI-047; profiles: static, unit, contracts, runtime, security, ci.
-- **RAI-049** [Recovery только registered serializable plans](m2-p2.md); dependencies: RAI-027, RAI-047; profiles: static, unit, contracts, runtime, eval, security.
-- **RAI-050** [Shared budget authority между CI jobs](m2-p2.md); dependencies: RAI-009, RAI-042, RAI-047; profiles: static, unit, contracts, runtime, integration, security.
-- **RAI-051** [Capped live сравнение моделей](m2-p2.md); dependencies: RAI-040, RAI-041, RAI-047; profiles: eval, integration, security.
+- **RAI-048** [Daemon attach and explicit job ownership](m2-p2.md); dependencies: RAI-047; profiles: static, unit, contracts, runtime, security, ci.
+- **RAI-049** [Recovery of registered serializable plans only](m2-p2.md); dependencies: RAI-027, RAI-047; profiles: static, unit, contracts, runtime, eval, security.
+- **RAI-050** [Shared budget authority across CI jobs](m2-p2.md); dependencies: RAI-009, RAI-042, RAI-047; profiles: static, unit, contracts, runtime, integration, security.
+- **RAI-051** [Capped live model comparison](m2-p2.md); dependencies: RAI-040, RAI-041, RAI-047; profiles: eval, integration, security.
 - **RAI-052** [raceSuccess/quorum coordination](m2-p2.md); dependencies: RAI-017, RAI-043, RAI-047; profiles: static, unit, contracts, runtime, eval, performance.
 - **RAI-053** [MCP tool adapter](m2-p2.md); dependencies: RAI-031, RAI-047; profiles: static, unit, contracts, transport, tools, security, compatibility.
-- **YB-RAI-01** [yb harness connect raider](yabanin.md); dependencies: RAI-037, RAI-038; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
-- **YB-RAI-02** [Real Raider executor вместо FakeExecutor](yabanin.md); dependencies: RAI-022, RAI-024, RAI-039, YB-RAI-01; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
+- **YB-RAI-01** [Connect Raider to the yb harness](yabanin.md); dependencies: RAI-037, RAI-038; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
+- **YB-RAI-02** [Real Raider executor instead of FakeExecutor](yabanin.md); dependencies: RAI-022, RAI-024, RAI-039, YB-RAI-01; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
 - **YB-RAI-03** [CI/root analytics drilldown](yabanin.md); dependencies: RAI-040, RAI-042, YB-RAI-01; profiles: yabanin-quality-changed, yabanin-quality-full, integration.
-- **RAI-054** [Quality runner: manifest/execute classification defect](m0.md); dependencies: нет; profiles: self, static, docs.
-- **RAI-055** [Event envelopes и snapshot/subscribe hub (P1.A slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, runtime.
-- **RAI-056** [Inline renderer PTY spike и UX baseline (P0.C)](m0.md); dependencies: нет; profiles: self, static, repl, docs.
-- **RAI-057** [SessionRegistry: identity/focus и per-tab state (P2.A slice)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts.
-- **RAI-058** [AgentLoop: эмиссия событий в EventHub (P1.B-1)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
-- **RAI-059** [JobManager/budget/delegation эмиссия и onTransition hook (P1.B-2)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
-- **RAI-060** [Status line/timeline и headless event export (P1.C)](m1.md); dependencies: RAI-058, RAI-059; profiles: static, unit, contracts, ci, runtime.
-- **RAI-061** [Inline tab shell на JLine (P2.B)](m2-p2.md); dependencies: RAI-057; profiles: static, unit, contracts.
-- **RAI-062** [PTY-интеграция tabs/runtime и headless regression (P2.C)](m2-p2.md); dependencies: RAI-060, RAI-061; profiles: self, static, repl, ci, docs.
-- **RAI-063** [OOB subtree cancel, deadlines и stuck-child fix (P3.B)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
-- **RAI-064** [Credentials только через env/helper (setup без argv-секретов)](m0.md); dependencies: нет; profiles: static, unit, contracts, security.
-- **RAI-065** [Bounded mailbox для send (P3.A slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, runtime.
-- **RAI-066** [Plugin SPI ADR-025 и узкий skeleton (P4.A)](m2-p2.md); dependencies: нет; profiles: static, unit, contracts, docs.
-- **RAI-067** [Multi-file patch и partial-failure контракт (RAI-015 remainder)](m2-p2.md); dependencies: нет; profiles: static, unit, contracts, tools.
-- **RAI-068** [REPL completion (RAI-020 slice)](m1.md); dependencies: нет; profiles: static, unit, contracts, repl.
-- **RAI-069** [Security profile в gate registry (gate-policy карточка)](m0.md); dependencies: нет; profiles: self, static, security.
-- **RAI-070** [UX baseline harness (P0.C остаток / P9 prep)](m0.md); dependencies: нет; profiles: self, static, docs.
-- **RAI-071** [--provider anthropic в CLI (W05 parity)](m1.md); dependencies: RAI-060; profiles: static, unit, contracts, transport.
-- **RAI-072** [Docs refresh: события/вкладки/cancel API](m2-p2.md); dependencies: нет; profiles: docs.
-- **RAI-073** [Delegated-race fix: эмиссия до гонки с Terminal](m1.md); dependencies: RAI-059; profiles: static, unit, contracts, runtime.
-- **RAI-074** [Mailbox wiring в DelegationToolset](m1.md); dependencies: RAI-065, RAI-073; profiles: static, unit, contracts, runtime.
-- **RAI-075** [Plugin loader и CLI команды](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
+- **RAI-054** [Quality runner: manifest/execute classification defect](m0.md); dependencies: none; profiles: self, static, docs.
+- **RAI-055** [Event envelopes and snapshot/subscribe hub (P1.A slice)](m1.md); dependencies: none; profiles: static, unit, contracts, runtime.
+- **RAI-056** [Inline renderer PTY spike and UX baseline (P0.C)](m0.md); dependencies: none; profiles: self, static, repl, docs.
+- **RAI-057** [SessionRegistry: identity/focus and per-tab state (P2.A slice)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts.
+- **RAI-058** [AgentLoop: emit events to EventHub (P1.B-1)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-059** [JobManager/budget/delegation emission and onTransition hook (P1.B-2)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-060** [Status line/timeline and headless event export (P1.C)](m1.md); dependencies: RAI-058, RAI-059; profiles: static, unit, contracts, ci, runtime.
+- **RAI-061** [Inline tab shell on JLine (P2.B)](m2-p2.md); dependencies: RAI-057; profiles: static, unit, contracts.
+- **RAI-062** [PTY integration for tabs/runtime and headless regression (P2.C)](m2-p2.md); dependencies: RAI-060, RAI-061; profiles: self, static, repl, ci, docs.
+- **RAI-063** [OOB subtree cancel, deadlines, and stuck-child fix (P3.B)](m1.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
+- **RAI-064** [Credentials through env/helper only (setup without argv secrets)](m0.md); dependencies: none; profiles: static, unit, contracts, security.
+- **RAI-065** [Bounded mailbox for send (P3.A slice)](m1.md); dependencies: none; profiles: static, unit, contracts, runtime.
+- **RAI-066** [Plugin SPI ADR-025 and narrow skeleton (P4.A)](m2-p2.md); dependencies: none; profiles: static, unit, contracts, docs.
+- **RAI-067** [Multi-file patch and partial-failure contract (RAI-015 remainder)](m2-p2.md); dependencies: none; profiles: static, unit, contracts, tools.
+- **RAI-068** [REPL completion (RAI-020 slice)](m1.md); dependencies: none; profiles: static, unit, contracts, repl.
+- **RAI-069** [Security profile in gate registry (gate-policy card)](m0.md); dependencies: none; profiles: self, static, security.
+- **RAI-070** [UX baseline harness (P0.C remainder / P9 prep)](m0.md); dependencies: none; profiles: self, static, docs.
+- **RAI-071** [--provider anthropic in CLI (W05 parity)](m1.md); dependencies: RAI-060; profiles: static, unit, contracts, transport.
+- **RAI-072** [Docs refresh: events/tabs/cancel API](m2-p2.md); dependencies: none; profiles: docs.
+- **RAI-073** [Delegated-race fix: emit before race with Terminal](m1.md); dependencies: RAI-059; profiles: static, unit, contracts, runtime.
+- **RAI-074** [Mailbox wiring in DelegationToolset](m1.md); dependencies: RAI-065, RAI-073; profiles: static, unit, contracts, runtime.
+- **RAI-075** [Plugin loader and CLI commands](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
 - **RAI-076** [StateStore SPI (P5.A slice)](m1.md); dependencies: RAI-060; profiles: static, unit, contracts, runtime.
-- **RAI-077** [Session schema v2 + миграции](m1.md); dependencies: RAI-060; profiles: static, unit, contracts.
+- **RAI-077** [Session schema v2 and migrations](m1.md); dependencies: RAI-060; profiles: static, unit, contracts.
 - **RAI-078** [CI context parsing (RAI-023/025 slice)](m2-p2.md); dependencies: RAI-060; profiles: static, unit, contracts.
-- **RAI-079** [Anthropic HTTP-стенд tool-round тест](m1.md); dependencies: RAI-071; profiles: static, unit, contracts, transport.
+- **RAI-079** [Anthropic HTTP stand tool-round test](m1.md); dependencies: RAI-071; profiles: static, unit, contracts, transport.
 - **RAI-080** [Onboarding guide (UX01 prep)](m0.md); dependencies: RAI-071; profiles: docs.
 - **RAI-081** [Eval task fixtures (authoring, protected)](m2-p2.md); dependencies: RAI-060; profiles: docs.
 - **RAI-082** [Accounting view (P6.B slice)](m2-p2.md); dependencies: RAI-060; profiles: static, unit, contracts.
-- **RAI-083** [PluginCli wiring в Main (P4.B завершение)](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.
-- **RAI-084** [Hooks исполнение bounded (P4.A finish)](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
+- **RAI-083** [PluginCli wiring in Main (P4.B completion)](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.
+- **RAI-084** [Bounded hook execution (P4.A finish)](m2-p2.md); dependencies: RAI-066; profiles: static, unit, contracts.
 - **RAI-085** [state_get/put opt-in tools (P5.B)](m1.md); dependencies: RAI-076; profiles: static, unit, contracts, tools.
 - **RAI-086** [HeadlessRunner wiring: CiContext + AccountingView](m2-p2.md); dependencies: RAI-078, RAI-082; profiles: static, unit, contracts, ci.
 - **RAI-087** [Journal/checkpoint slice (P6.A)](m2-p2.md); dependencies: RAI-055; profiles: static, unit, contracts, runtime.
-- **RAI-088** [TabShell `:plugins`/`:state` экраны](m1.md); dependencies: RAI-075, RAI-076; profiles: static, unit, contracts.
-- **RAI-089** [UX03/04 baseline на root](m0.md); dependencies: RAI-070; profiles: self, static, docs.
+- **RAI-088** [TabShell :plugins/:state screens](m1.md); dependencies: RAI-075, RAI-076; profiles: static, unit, contracts.
+- **RAI-089** [UX03/04 baseline at root](m0.md); dependencies: RAI-070; profiles: self, static, docs.
 - **RAI-090** [REPL live env-key](m1.md); dependencies: RAI-064; profiles: static, unit, repl.
 - **RAI-091** [forbidden-apis location allowlist (gate-policy)](m0.md); dependencies: RAI-069; profiles: self, static.
-- **RAI-092** [Stabilization: delegation test flakes под load](m1.md); dependencies: RAI-073; profiles: static, unit, runtime.
+- **RAI-092** [Stabilization: delegation test flakes under load](m1.md); dependencies: RAI-073; profiles: static, unit, runtime.
 - **RAI-093** [Journal→AgentLoop wiring (P6.A finish)](m1.md); dependencies: RAI-087, RAI-058; profiles: static, unit, contracts, runtime.
 - **RAI-094** [StateTools → CodingToolset + TabShell provider](m1.md); dependencies: RAI-085, RAI-088; profiles: static, unit, contracts, tools.
-- **RAI-095** [Plugin hooks вызов в loop (lifecycle)](m2-p2.md); dependencies: RAI-084; profiles: static, unit, contracts, runtime.
-- **RAI-096** [P4.C SDK: docs + 3 fixture-плагина](m2-p2.md); dependencies: RAI-075; profiles: docs, static.
-- **RAI-097** [Единый status-render для CLI и вкладок](m1.md); dependencies: RAI-060, RAI-061; profiles: static, unit, contracts.
-- **RAI-098** [REPL live anthropic](m1.md); dependencies: RAI-090; profiles: static, unit, repl.
+- **RAI-095** [Plugin hook invocation in loop (lifecycle)](m2-p2.md); dependencies: RAI-084; profiles: static, unit, contracts, runtime.
+- **RAI-096** [P4.C SDK: docs + 3 fixture plugins](m2-p2.md); dependencies: RAI-075; profiles: docs, static.
+- **RAI-097** [Unified status render for CLI and tabs](m1.md); dependencies: RAI-060, RAI-061; profiles: static, unit, contracts.
+- **RAI-098** [REPL live Anthropic](m1.md); dependencies: RAI-090; profiles: static, unit, repl.
 - **RAI-099** [M1 acceptance card (milestone evidence)](m1.md); dependencies: RAI-062, RAI-060; profiles: docs.
 - **RAI-100** [GitHub/GitLab wrappers wiring](m2-p2.md); dependencies: RAI-078; profiles: static, unit, contracts, ci.
 - **RAI-101** [Plugin update/rollback lifecycle](m2-p2.md); dependencies: RAI-075; profiles: static, unit, contracts.
-- **LIN-01** [SessionGraph-модель и редуктор events → граф](lineage.md); dependencies: RAI-004; profiles: static, unit, contracts.
-- **LIN-02** [Проекция граф → валидная Scala-программа](lineage.md); dependencies: LIN-01, RAI-017; profiles: static, unit, contracts, docs.
-- **LIN-03** [Лайв-инкрементальная поддержка графа и проекции](lineage.md); dependencies: LIN-01, LIN-02; profiles: static, unit, runtime.
-- **LIN-04** [Вкладка Lineage в TUI](lineage.md); dependencies: LIN-03; profiles: static, unit, repl, docs.
-- **LIN-05** [Replay-recorded интерпретатор и компаратор графов](lineage.md); dependencies: LIN-02, LIN-03; profiles: static, unit, contracts, eval.
-- **LIN-06** [Live re-run, изоляция мутаций, diff-отчёт](lineage.md); dependencies: LIN-05; profiles: static, unit, runtime, security.
-- **LIN-07** [Частичный replay фаз/поддеревьев](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts.
-- **LIN-08** [Области, пиннинг, каталог](lineage.md); dependencies: LIN-03, LIN-05; profiles: static, unit, docs.
-- **RAI-102** [TabShell в продуктовом REPL (chat wiring base)](m2-p2.md); dependencies: RAI-061, RAI-062; profiles: static, unit, contracts, repl.
-- **RAI-103** [Per-tab drafts в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
-- **RAI-104** [Scrollback bounds в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
-- **RAI-105** [Unread badges в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
-- **RAI-106** [Palette/help в продуктовом REPL (P2-остаток)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl, docs.
-- **LIN-09** [Запись lineage-артефактов рядом с продовым раном](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
-- **LIN-10** [CLI-командная поверхность replay](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts, docs.
-- **LIN-11** [LineageRenderer: компилируемые проекции графов без named-def корней](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
-- **RAI-107** [Plan mode: read-only plan-фаза и approval-переход (ADR-028)](m2-p2.md); dependencies: RAI-010; profiles: static, unit, contracts, runtime, eval.
-- **RAI-108** [Продуктовый вход: TabShellHost в Main.ttyLoop (--tabs)](m2-p2.md); dependencies: RAI-102, RAI-062; profiles: static, unit, contracts, repl.
-- **RAI-109** [replay в продукт-команду raider (CLI wiring LIN-10)](lineage.md); dependencies: LIN-09, LIN-10; profiles: static, unit, contracts, ci, docs.
-- **RAI-110** [Plan mode: TUI-экран плана и approval (ADR-028 §3, owner: TUI-экран)](m2-p2.md); dependencies: RAI-107; profiles: static, unit, contracts, repl, runtime.
-- **RAI-111** [Палитра: chat-команды REPL-цикла (RAI-068 follow-up)](m2-p2.md); dependencies: RAI-106, RAI-068; profiles: static, unit, repl.
-- **LIN-12** [Каталог деревьев: persistence (LIN-08 remainder)](lineage.md); dependencies: LIN-08, LIN-09, LIN-10; profiles: static, unit, contracts, ci.
-- **RAI-112** [M1 evidence refresh на интегрированном кандидате (RAI-099 refresh)](m2-p2.md); dependencies: RAI-099; profiles: docs.
-- **LIN-13** [docs/lineage.md §9.2 sync — честность статусов реализации](lineage.md); dependencies: LIN-09, RAI-108, RAI-109; profiles: docs.
-- **LIN-14** [LIN2-03 remainder: конкурентное чтение проекции — snapshot-покрытие](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
-- **LIN-15** [LIN-06 scripted acceptance — LIN6-01/02/03 (бюджет/изоляция/отмена)](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.
-- **RAI-113** [Scrollback render consumer в tabs-режиме (P2S consumer step)](m2-p2.md); dependencies: RAI-104, RAI-108; profiles: static, unit, repl.
-- **RAI-114** [Plan-mode eval fixtures: scripted scenario corpus (prereq eval-профиля)](m1.md); dependencies: RAI-107; profiles: static, unit, contracts.
-- **RAI-115** [Embedding SDK audit: public boundary и packet для ADR (P0.A / P4.C)](m1.md); dependencies: нет; profiles: docs.
-- **RAI-116** [ADR: Scala workflow SDK для local/generic CI и host launch boundary](m1.md); dependencies: RAI-115; profiles: docs.
-- **RAI-117** [ADR: SDLC stages, configurable checkpoints и generic integration/release contract](m1.md); dependencies: RAI-116; profiles: docs.
-- **RAI-119** [PTY-детерминизм под нагрузкой: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec](m2-p2.md); dependencies: RAI-110, RAI-105, RAI-113; profiles: static, unit, repl, runtime.
-- **RAI-120** [IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)](lineage.md); dependencies: LIN-15; profiles: static, unit, contracts, runtime.
-- **RAI-121** [:scrollback precedence — согласование с frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
-- **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (кандидат по reviewer-риску RAI-119)](m2-p2.md); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
-- **RAI-122** [tabs_pty_probe: синхронизация с ADR-024 honest-unknowns status-text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
-- **RAI-124** [REPL :type — тип выражения без исполнения (RAI-019/020 slice)](m2-p2.md); dependencies: RAI-068; profiles: static, unit, repl.
-- **RAI-126** [PTY-probes COURSIER_CACHE: env.setdefault вместо захардкоженного переопределения](m1.md); dependencies: RAI-122; profiles: static, docs.
-- **RAI-127** [Anthropic tool definitions on wire (structured message contract)](m1.md); dependencies: RAI-013; profiles: static, unit, contracts, transport.
-- **RAI-128** [Cross-root fairness: named-тест ≥2 корней под contention (Admission)](m1.md); dependencies: RAI-009; profiles: static, unit, runtime.
-- **RAI-129** [§13 recovery remainder: recovery/resume из JobJournal в продуктовых командах (scoping slice)](m1.md); dependencies: RAI-027; profiles: static, unit, contracts, ci.
-- **RAI-130** [:type PTY-оракулы — дезатурация echo-saturation + честный префикс ошибок](m2-p2.md); dependencies: RAI-124; profiles: static, unit, repl.
+- **LIN-01** [SessionGraph model and events → graph reducer](lineage.md); dependencies: RAI-004; profiles: static, unit, contracts.
+- **LIN-02** [Project the graph into a valid Scala program](lineage.md); dependencies: LIN-01, RAI-017; profiles: static, unit, contracts, docs.
+- **LIN-03** [Live incremental graph and projection support](lineage.md); dependencies: LIN-01, LIN-02; profiles: static, unit, runtime.
+- **LIN-04** [Lineage tab in the TUI](lineage.md); dependencies: LIN-03; profiles: static, unit, repl, docs.
+- **LIN-05** [Replay-recorded interpreter and graph comparator](lineage.md); dependencies: LIN-02, LIN-03; profiles: static, unit, contracts, eval.
+- **LIN-06** [Live rerun, mutation isolation, and diff report](lineage.md); dependencies: LIN-05; profiles: static, unit, runtime, security.
+- **LIN-07** [Partial replay of phases/subtrees](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts.
+- **LIN-08** [Scopes (chat/headless/campaigns), pinning, catalog](lineage.md); dependencies: LIN-03, LIN-05; profiles: static, unit, docs.
+- **RAI-102** [TabShell in the product REPL (chat wiring base)](m2-p2.md); dependencies: RAI-061, RAI-062; profiles: static, unit, contracts, repl.
+- **RAI-103** [Per-tab drafts in the product REPL (P2 remainder)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-104** [Scrollback bounds in the product REPL (P2 remainder)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-105** [Unread badges in the product REPL (P2 remainder)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl.
+- **RAI-106** [Palette/help in the product REPL (P2 remainder)](m2-p2.md); dependencies: RAI-102; profiles: static, unit, repl, docs.
+- **LIN-09** [Write lineage artifacts beside the production run](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
+- **LIN-10** [CLI command surface for replay](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts, docs.
+- **LIN-11** [LineageRenderer: compilable graph projections without named-def roots](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
+- **RAI-107** [Plan mode: read-only plan phase and approval transition (ADR-028)](m2-p2.md); dependencies: RAI-010; profiles: static, unit, contracts, runtime, eval.
+- **RAI-108** [Product entry point: TabShellHost in Main.ttyLoop (--tabs)](m2-p2.md); dependencies: RAI-102, RAI-062; profiles: static, unit, contracts, repl.
+- **RAI-109** [Add replay to the raider product command (CLI wiring for LIN-10)](lineage.md); dependencies: LIN-09, LIN-10; profiles: static, unit, contracts, ci, docs.
+- **RAI-110** [Plan mode: TUI plan screen and approval (ADR-028 §3, owner: TUI screen)](m2-p2.md); dependencies: RAI-107; profiles: static, unit, contracts, repl, runtime.
+- **RAI-111** [Palette: REPL cycle chat commands (RAI-068 follow-up)](m2-p2.md); dependencies: RAI-106, RAI-068; profiles: static, unit, repl.
+- **LIN-12** [Tree catalog persistence (LIN-08 remainder)](lineage.md); dependencies: LIN-08, LIN-09, LIN-10; profiles: static, unit, contracts, ci.
+- **RAI-112** [M1 evidence refresh on the integrated candidate (RAI-099 refresh)](m2-p2.md); dependencies: RAI-099; profiles: docs.
+- **LIN-13** [Sync docs/lineage.md §9.2 — truthful implementation status](lineage.md); dependencies: LIN-09, RAI-108, RAI-109; profiles: docs.
+- **LIN-14** [LIN2-03 remainder: concurrent projection reads — snapshot coverage](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts.
+- **LIN-15** [LIN-06 scripted acceptance — LIN6-01/02/03 (budget/isolation/cancellation)](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.
+- **RAI-113** [Scrollback render consumer in tabs mode (P2S consumer step)](m2-p2.md); dependencies: RAI-104, RAI-108; profiles: static, unit, repl.
+- **RAI-114** [Plan-mode eval fixtures: scripted scenario corpus (eval profile prerequisite)](m1.md); dependencies: RAI-107; profiles: static, unit, contracts.
+- **RAI-115** [Embedding SDK audit: public boundary and packet for ADR (P0.A / P4.C)](m1.md); dependencies: none; profiles: docs.
+- **RAI-116** [ADR: Scala workflow SDK for local/generic CI and host launch boundary](m1.md); dependencies: RAI-115; profiles: docs.
+- **RAI-117** [ADR: SDLC stages, configurable checkpoints, and generic integration/release contract](m1.md); dependencies: RAI-116; profiles: docs.
+- **RAI-119** [PTY determinism under load: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec](m2-p2.md); dependencies: RAI-110, RAI-105, RAI-113; profiles: static, unit, repl, runtime.
+- **RAI-120** [IsolatedRerun canonical-path guard (requireIsolatedTarget alias bypass)](lineage.md); dependencies: LIN-15; profiles: static, unit, contracts, runtime.
+- **RAI-121** [:scrollback precedence — align with frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
+- **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (candidate based on RAI-119 reviewer risk)](m2-p2.md); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
+- **RAI-122** [tabs_pty_probe: sync with ADR-024 honest-unknowns status text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
+- **RAI-124** [REPL :type — expression type without evaluation (RAI-019/020 slice)](m2-p2.md); dependencies: RAI-068; profiles: static, unit, repl.
+- **RAI-126** [PTY probes COURSIER_CACHE: env.setdefault instead of hardcoded override](m1.md); dependencies: RAI-122; profiles: static, docs.
+
+See [backlog.json](backlog.json) for cards added in later revisions, including LIN and P2 work.
+
+## Existing obligations added on 2026-10-13
+
+These cards were already present in the local backlog when documentation work began; their metadata is preserved and their Markdown mirrors are now synchronized.
+
+| Card | Milestone | Dependencies | Profiles |
+| --- | --- | --- | --- |
+| **RAI-127** [Anthropic tool definitions on wire (structured message contract)](m1.md)) | M1 | RAI-013 | static, unit, contracts, transport |
+| **RAI-128** [Cross-root fairness: named test with ≥2 roots under contention (Admission)](m1.md)) | M1 | RAI-009 | static, unit, runtime |
+| **RAI-129** [§13 recovery remainder: JobJournal recovery/resume in product commands (scoping slice)](m1.md)) | M1 | RAI-027 | static, unit, contracts, ci |
+| **RAI-130** [:type PTY oracles — remove echo saturation and use an honest error prefix](m2-p2.md) | P2 | RAI-124 | static, unit, repl |

@@ -1,723 +1,753 @@
-# Raider: 12 000 часов до удобного ежедневного инструмента
+# Raider: 12,000 hours to a useful daily tool
 
-Редакция владельца от 2026-10-05. Каноническая очередность дальнейшей разработки;
-заменяет последовательность и бюджет [roadmap v2](roadmap-10k.md).
-Результат: один локальный Raider с вкладками сабагентов, понятными промежуточными
-статусами и устанавливаемыми плагинами. **Yabanin gateway — исключительно P11, последняя
-фаза после приёмки самостоятельного продукта.**
+Owner's revision dated 2026-10-05. Canonical order for further development;
+replaces the sequence and budget in [roadmap v2](roadmap-10k.md).
+Result: one local Raider with subagent tabs, clear intermediate statuses, and
+installable plugins. **The Yabanin gateway is exclusively P11, the final phase
+after acceptance of the standalone product.**
 
-Это оценка оставшегося инженерного труда, а не уже выполненные часы, время работы
-LLM или обещание непрерывной 12 000-часовой сессии. Реализация идёт небольшими
-проверяемыми карточками. [Working acceptance](working-product.md),
-[parallel runbook](parallel-development.md), [контракты](runtime-contracts.md)
-и [gates](quality-gates.md) сохраняют силу с уточнением очередности ниже.
-Запуск: [полный prompt OpenCode](prompts/opencode-12k-parallel.txt).
+This is an estimate of remaining engineering effort, not hours already completed,
+LLM runtime, or a promise of one uninterrupted 12,000-hour session. Implementation
+proceeds in small, verifiable cards. The [working acceptance](working-product.md),
+[parallel runbook](parallel-development.md), [contracts](runtime-contracts.md),
+and [gates](quality-gates.md) remain in force, with the sequencing refinements below.
+Launch: [full OpenCode prompt](prompts/opencode-12k-parallel.txt).
 
-> **Ревизия 2026-10-10 (владелец, ADR-027):** добавлена фаза **P-LIN — Session
-> lineage (дерево вызовов как валидная Scala-программа)**, **впереди всего
-> плана**, +1 100 h (итого 13 100 h). Минимальный tab-host для вкладки Lineage
-> вытягивается из P2 в P-LIN ограниченно (только одна вкладка, без черновиков).
-> Остальные фазы не меняются по содержанию; накопительные суммы сдвинуты.
-> Решения зафиксированы в [ADR-027](adr/ADR-027-session-lineage.md).
+> **Revision 2026-10-10 (owner, ADR-027):** phase **P-LIN — Session lineage
+> (the call tree as a valid Scala program)** has been added **ahead of the entire
+> plan**, +1,100 h (13,100 h total). The minimal tab host for the Lineage tab is
+> pulled forward from P2 on a limited basis (one tab only, no drafts). The other
+> phases are unchanged in content; cumulative totals have shifted. Decisions are
+> recorded in [ADR-027](adr/ADR-027-session-lineage.md).
 
-> **Ревизия исполнения 2026-10-12 (владелец):** доработки исполняются как
-> **видимые spawn-субагенты** в интерактивной сессии владельца (`/raider-wave`,
-> `.opencode/agents/raider-worker|raider-reviewer`; механика —
-> [parallel-development.md §1b](parallel-development.md)). Фоновые bash-циклы
-> `opencode run`/nohup-night-loop для исполнения карточек запрещены по
-> умолчанию; ночной headless — только отдельным явным решением владельца.
-> Одновременно с остатком P-LIN открыты параллельные lanes: **P2-остатки TUI**
-> (per-tab drafts, scrollback bounds, unread badges, palette/help — P2.B/C
-> остатки поверх принятых RAI-057/061/062), **P1-остатки** (RAI-059/060) и
-> **P3** (RAI-063, send/steering) — зависимости §5 закрыты evidence
-> (P0-WAVE0: ADR-024+renderer spike; W1: events). Это не меняет бюджет фаз:
-> карточки регистрируются и принимаются по общим gates, часы списываются в
-> свои фазы.
+> **Execution revision 2026-10-12 (owner):** improvements are carried out as
+> **visible spawned subagents** in the owner's interactive session (`/raider-wave`,
+> `.opencode/agents/raider-worker|raider-reviewer`; mechanics in
+> [parallel-development.md §1b](parallel-development.md)). Background bash loops
+> `opencode run`/nohup-night-loop for executing cards are prohibited by default;
+> headless overnight execution requires a separate explicit owner decision.
+> Parallel lanes are open alongside the remaining P-LIN work: **P2 TUI remnants**
+> (per-tab drafts, scrollback bounds, unread badges, palette/help — P2.B/C remnants
+> on top of accepted RAI-057/061/062), **P1 remnants** (RAI-059/060), and **P3**
+> (RAI-063, send/steering) — dependencies in §5 have been closed by evidence
+> (P0-WAVE0: ADR-024 + renderer spike; W1: events). This does not change phase
+> budgets: cards are registered and accepted under the shared gates, and hours are
+> charged to their respective phases.
 
-## 1. Что действительно есть
+## 1. What actually exists
 
-### Ревизия 2026-10-12: встраиваемый SDK внутри текущих фаз
+### Revision 2026-10-12: embeddable SDK within the current phases
 
-По запросу владельца расширяем полезность существующего runtime: Raider остаётся
-standalone coding agent с настоящим REPL и CI; дополнительный пользовательский
-путь — встраивание агентных workflow в Scala 3 + ZIO приложение. Рабочее
-позиционирование: управляемые агентские workflow с явными лимитами, отменой
-дочерних задач и наблюдаемым результатом, исполняемые одним runtime в приложении,
-REPL и CI. Это проверяемая продуктовая гипотеза, не заявление готовности SDK.
-Владелец подтвердил: Raider + SDK, первый сценарий — CI, текущую волну не
-останавливать. Проект полностью open source; сохраняется существующая MIT/license
-policy. Платная редакция, закрытые SDK-возможности и монетизация в план не входят.
-Продуктовая обратная связь измеряет самостоятельное применение, повторные запуски,
-issues/вклады сообщества и стоимость сопровождения для maintainers.
+At the owner's request, we are expanding the usefulness of the existing runtime:
+Raider remains a standalone coding agent with a real REPL and CI; an additional
+user path is embedding agent workflows in a Scala 3 + ZIO application. The working
+positioning is managed agent workflows with explicit limits, child-task
+cancellation, and observable results, executed by one runtime in an application,
+REPL, and CI. This is a testable product hypothesis, not a claim that the SDK is
+ready. The owner confirmed: Raider + SDK, first scenario is CI, and the current
+wave must not stop. The product is fully open source; the existing MIT/license
+policy remains. A paid edition, closed SDK capabilities, and monetization are out
+of scope. Product feedback measures independent use, repeat runs, community
+issues/contributions, and maintenance cost for maintainers.
 
-Исходники сверены на `4b46dc7`: `core` содержит ленивые `Task` и `Program`,
-`dsl` — typed composition, `runtime` — loop/jobs/scopes/admission/budgets;
-удобные launch-операции находятся в `repl/facade`. SDK для авторов плагинов
-(RAI-096) уже имеет собственный scope; он не доказывает удобство встраивания
-runtime в стороннее приложение. `build.sbt` разделяет эти модули, но наличие
-модулей не является проверкой внешнего consumer или опубликованного артефакта.
+Sources were checked at `4b46dc7`: `core` contains lazy `Task` and `Program`,
+`dsl` contains typed composition, `runtime` contains the loop/jobs/scopes/admission/
+budgets; convenient launch operations are in `repl/facade`. The plugin-author SDK
+(RAI-096) already has its own scope; it does not prove that the runtime is easy to
+embed in a third-party application. `build.sbt` separates these modules, but the
+presence of modules is not a check of an external consumer or a published artifact.
 
-Текущая волна LIN-13/14/15 и RAI-113/114, обязательства P-LIN, TUI и W01–W18
-сохраняются. Новую верхнеуровневую фазу не вводим. В P0.A/B уточняем границы SDK;
-в P4.C принимаем минимальный внешний consumer; в P7 проверяем прикладную пользу;
-в P10 принимаем поставку. Контракты меняются только отдельной ADR-карточкой с
-независимым review и обновлением потребителей. Детальные руководства и обновление
-всей пользовательской документации остаются P9/P10; короткая команда запуска
-consumer-примера нужна вместе с самим примером для воспроизводимой приёмки.
+The current LIN-13/14/15 and RAI-113/114 wave, P-LIN obligations, TUI, and W01–W18
+remain in force. No new top-level phase is being introduced. P0.A/B refine the SDK
+boundaries; P4.C accepts a minimal external consumer; P7 checks practical value;
+P10 accepts the deliverable. Contracts change only through a separate ADR card
+with independent review and consumer updates. Detailed guides and a full update
+of user documentation remain P9/P10 work; a short command for running the
+consumer example is needed with the example itself for reproducible acceptance.
 
-Первичный SDK-пользователь — автор Scala workflow для AI-native SDLC; первый
-прикладной сценарий — разработка TokenRouter локально и в generic CI (уточнение
-ниже). Host Scala/ZIO приложение остаётся дополнительной поверхностью SDK. Поиск
-пилотных пользователей начинается в P0.A и продолжается в P7.C/P9.C. При отсутствии
-ответа спрос остаётся `pending`; это не блокирует независимую инженерную работу
-и не превращается в положительную пользовательскую оценку.
+The primary SDK user is a Scala workflow author for AI-native SDLC; the first
+application scenario is TokenRouter development locally and in generic CI
+(refined below). A host Scala/ZIO application remains an additional SDK surface.
+Recruitment of pilot users starts in P0.A and continues in P7.C/P9.C. If there is
+no response, demand stays `pending`; this does not block independent engineering
+work and must not be turned into a positive user assessment.
 
-Бюджет 13 100 h пока сохраняется как плановый envelope, не как новая оценка
-остатка: переиспользуются существующие P0/P4/P7/P10 пакеты, принятые slices не
-оплачиваются повторно. RAI-115 должен оценить добавочный труд и доступный остаток;
-до назначения implementation coordinator фиксирует used/reserved/remaining и
-конкретное перераспределение внутри пакетов. Если остатка недостаточно — явная
-ревизия scope/estimate по §7, без отмены старой приёмки и без обещания «SDK бесплатно».
+The 13,100 h budget remains a planning envelope for now, not a new estimate of
+remaining work: existing P0/P4/P7/P10 packages are reused, and accepted slices
+are not charged again. RAI-115 must estimate added effort and available remainder;
+before assigning implementation, the coordinator records used/reserved/remaining
+and a concrete reallocation within the packages. If the remainder is insufficient,
+revise scope/estimate explicitly under §7, without cancelling earlier acceptance
+or promising that the “SDK is free.”
 
-### Уточнение владельца после исследования SDK, 2026-10-12
+### Owner refinement after SDK research, 2026-10-12
 
-Главное отличие SDK — удобство описания AI-native SDLC обычной Scala. Первый
-успех пользователя: написать workflow, выполнить локально и запустить тот же
-workflow на **локальном CI runner**. Система CI ещё не выбрана; GitHub Actions
-не является первым адаптером. Forge для PR/merge тоже не выбран: сначала общий
-контракт и локальный Scala HTTP stand, затем выбранный adapter отдельной карточкой.
+The SDK's main differentiator is the ease of describing AI-native SDLC in ordinary
+Scala. The user's first success is to write a workflow, run it locally, and run
+the same workflow on a **local CI runner**. A CI system has not yet been selected;
+GitHub Actions is not the first adapter. A forge for PR/merge has also not been
+selected: first the general contract and a local Scala HTTP stand, then a selected
+adapter in a separate card.
 
-Первый проект — `../tokenrouter` (Yabanin), **разработка его кода**, не подключение
-его gateway. Владелец подтвердил это различие: P11 остаётся последним; read-only
-consumer discovery и SDLC requirements разрешены сейчас, изменения TokenRouter
-получают отдельные его карточки. Текущий checkout TokenRouter dirty; baseline и
-hashes прочитанных inputs записаны в [исследовании](research/sdk-roadmap-research-2026-10-12.md).
+The first project is `../tokenrouter` (Yabanin), **development of its code**, not
+connection to its gateway. The owner confirmed this distinction: P11 remains last;
+read-only consumer discovery and SDLC requirements are permitted now, while
+TokenRouter changes receive separate cards of its own. The current TokenRouter
+checkout is dirty; its baseline and hashes of the inputs read are recorded in the
+[research](research/sdk-roadmap-research-2026-10-12.md).
 
-Цель — полный цикл: задача/план → реализация → checks/repair → review → commit/PR
-→ merge → version/changelog/**локальный tag**/release artifacts. Commit/merge
-автоматические по заданной policy; human checkpoints настраивает автор Scala
-workflow. Push release tag, публикация пакетов/контейнеров и deploy в первый
-сценарий не входят. Это расширяет старые non-goals CI/runtime контрактов:
-изменение оформляется отдельным ADR (RAI-117), до него запреты реализации сохраняются.
+The goal is a complete cycle: task/plan → implementation → checks/repair → review
+→ commit/PR → merge → version/changelog/**local tag**/release artifacts. Commit/merge
+are automatic under the configured policy; the author of the Scala workflow
+configures human checkpoints. Pushing a release tag, publishing packages/containers,
+and deployment are out of the first scenario. This extends the old non-goals of
+the CI/runtime contracts: the change must be recorded in a separate ADR (RAI-117);
+implementation prohibitions remain until then.
 
-Experimental workflow preview разрешён до M4 с собственным ограниченным
-acceptance (§6b). Текущий pinned Scala 3 + ZIO toolchain; изменения preview API
-разрешены с миграцией. Поддержка всех Scala 3/JDK, stable API и public publish не
-обещаются. Crash resume не требуется: interrupted/unknown и явная новая invocation.
-Подробные записи preview используются только с доверенными локальными данными;
-политика более широкого экспорта/retention отложена и не объявляется реализованной.
+Experimental workflow preview is permitted before M4 under its own limited
+acceptance (§6b). The current pinned Scala 3 + ZIO toolchain is used; preview API
+changes are permitted with migration. Support for all Scala 3/JDK versions, a
+stable API, and public publishing are not promised. Crash resume is not required:
+interrupted/unknown and an explicit new invocation. Detailed preview records are
+used only with trusted local data; broader export/retention policy is deferred and
+is not claimed as implemented.
 
-Основание очередности: [исследование рынка/SDLC](research/sdk-roadmap-research-2026-10-12.md)
-и RAI-115 source audit. Generic ZIO facade/DSL уже есть у альтернатив, поэтому
-обещание удобства проверяется на собственном SDLC workflow, а не числом combinators.
+Sequencing is based on the [market/SDLC research](research/sdk-roadmap-research-2026-10-12.md)
+and the RAI-115 source audit. Alternatives already have generic ZIO facades/DSLs,
+so the ease-of-use promise is tested with our own SDLC workflow, not by counting
+combinators.
 
-### Исторический baseline 2026-10-05
+### Historical baseline 2026-10-05
 
-Осмотр исходников на commit `7ee6c0c`, 2026-10-05; это inventory, не новый runtime
-acceptance. Board содержит более свежие session records, чем некоторые верхние
-строки статуса. При каждом запуске сверять исходники, а не повторять старые оценки.
+Source inspection at commit `7ee6c0c`, 2026-10-05; this is inventory, not new
+runtime acceptance. The board has newer session records than some of the status
+lines near the top. Check the sources at each run instead of repeating old
+estimates.
 
-| Область | Найдено в исходниках | Следующее улучшение |
+| Area | Found in source | Next improvement |
 | --- | --- | --- |
-| Native runtime | `modules/runtime/.../loop/AgentLoop.scala`, jobs/scopes/admission/budget | Проверить открытые cancel/ownership cases, связать с наблюдаемыми состояниями |
-| Провайдеры | `modules/provider-chat`, `modules/provider-anthropic` | Сохранить оба direct wires и одинаковую приёмку |
-| Coding workflow | `modules/tools`, CLI headless/chat, patch/process/search | Проверить полный цикл read → edit → failing test → fix → passing test |
-| Scala REPL | `modules/repl-engine`, `modules/repl`; настоящий compiler и facade | Сохранить bindings/многострочный ввод, добавить completion при TUI |
-| Сабагенты | JobManager, DelegationToolset, `start/await/cancel` | `send` пока отказывает; `watch` только initial/final snapshot; нужны живые вкладки |
-| Статусы | TraceEvent, JobSnapshot, StreamingDisplay | Единая подписка, актуальное состояние, причины ожидания, bounded tool progress |
-| История | `modules/cli/.../chat/Session.scala`: SessionStore и compaction | Миграции, восстановление workspace/tabs, честный статус после crash |
-| Плагины | ToolRegistry, BundleLoader как отдельные основы | Нет реализованного пользовательского plugin lifecycle/loader |
-| UI | JLine и [ADR-016](adr/ADR-016-tui-renderer.md), [дизайн](tui-design.md) | `modules/ui` ещё нет; текущий вывод линейный |
+| Native runtime | `modules/runtime/.../loop/AgentLoop.scala`, jobs/scopes/admission/budget | Check open cancel/ownership cases and connect them to observable states |
+| Providers | `modules/provider-chat`, `modules/provider-anthropic` | Preserve both direct wires and equivalent acceptance |
+| Coding workflow | `modules/tools`, CLI headless/chat, patch/process/search | Check the full read → edit → failing test → fix → passing test cycle |
+| Scala REPL | `modules/repl-engine`, `modules/repl`; real compiler and facade | Preserve bindings/multiline input; add completion with the TUI |
+| Subagents | JobManager, DelegationToolset, `start/await/cancel` | `send` still refuses; `watch` only has initial/final snapshots; live tabs are needed |
+| Statuses | TraceEvent, JobSnapshot, StreamingDisplay | Unified subscription, current state, reasons for waiting, bounded tool progress |
+| History | `modules/cli/.../chat/Session.scala`: SessionStore and compaction | Migrations, workspace/tabs recovery, truthful status after crash |
+| Plugins | ToolRegistry, BundleLoader as separate foundations | No implemented user-facing plugin lifecycle/loader |
+| UI | JLine and [ADR-016](adr/ADR-016-tui-renderer.md), [design](tui-design.md) | `modules/ui` does not yet exist; current output is linear |
 
-В начале работы есть пользовательский untracked
-`docs/research/yabanin-state-discovery.md`: сохранить, не считать принятым контрактом
-или разрешением начинать интеграцию раньше P11.
+At the start of work, there is a user-owned untracked file
+`docs/research/yabanin-state-discovery.md`: preserve it; do not treat it as an
+accepted contract or authorization to begin integration before P11.
 
-## 2. Сценарий, ради которого делается продукт
+## 2. The scenario the product is being built for
 
-Пользователь запускает `raider`, выбирает direct provider при первом входе и пишет
-«исправь тесты в этом проекте». Главный агент создаёт scout/coder/reviewer;
-каждый появляется во вкладке с именем, текущим действием и непрочитанными событиями.
-Пользователь переключается между ними, читает ход работы, дописывает ограничение,
-открывает diff и результат проверок, отменяет выбранного агента либо всю группу.
-Для обычной задачи не требуется писать Scala; полноценный Scala REPL доступен
-как режим для сложного workflow и использует тот же runtime.
+The user launches `raider`, selects a direct provider on first entry, and types
+“fix the tests in this project.” The main agent creates a scout/coder/reviewer;
+each appears in a tab with a name, current action, and unread events. The user
+switches among them, reads their progress, adds a constraint, opens the diff and
+check results, and cancels a selected agent or the whole group. An ordinary task
+does not require writing Scala; a full Scala REPL is available for complex
+workflows and uses the same runtime.
 
 ```text
-[Главный] [Scout: поиск] [Coder: тесты 12с ●] [Reviewer: ждёт слот] [+]
-Проект scalaagent · 3 работающих · бюджет: известная сумма / неизвестно
-Coder → proc_run: sbt test · вывод обновлён 0.4с назад
-Изменения: 3 файла · проверки: выполняются · результат: ещё не готов
-> Дополнение выбранному агенту…
-Следующая вкладка · Новый агент · Команды · Плагины · Помощь
+[Main] [Scout: search] [Coder: tests 12s ●] [Reviewer: waiting for slot] [+]
+Project scalaagent · 3 running · budget: known amount / unknown
+Coder → proc_run: sbt test · output updated 0.4s ago
+Changes: 3 files · checks: running · result: not ready yet
+> Add a note to the selected agent…
+Next tab · New agent · Commands · Plugins · Help
 ```
 
-Это макет и будущий UX, не существующая команда с доказанной приёмкой.
+This is a mockup and future UX, not an existing command with proven acceptance.
 
-### Измеримые требования удобства
+### Measurable usability requirements
 
-| ID | Требование | Как принимать |
+| ID | Requirement | Acceptance method |
 | --- | --- | --- |
-| UX01 | Setup direct provider, без Yabanin и без написания workflow | 4 из 5 новых пользователей завершают offline training task за ≤10 минут; live credentials вводятся отдельно |
-| UX02 | Переключение вкладки ≤2 нажатий, p95 ≤100 ms | 5 агентов, 1 000 переключений; не теряются черновик, history, Unicode и положение прокрутки |
-| UX03 | Каждый агент имеет понятный текущий статус | Event→visible p95 ≤250 ms на закреплённой машине; состояние «ожидание» содержит причину |
-| UX04 | Быстрый старт локального UI | Готовый prompt p95 ≤2 s warm, ≤5 s cold после установки; сетевой TTFT измеряется отдельно |
-| UX05 | Плагин доступен без пересборки Raider | Установка доверенного fixture plugin и запуск его tool ≤3 действий после выбора источника; допускается явный restart |
-| UX06 | Понятная отмена | Один жест cancel выбранного агента; cancel root отдельный; owned subtree/processes завершаются ≤5 s в controlled fixture ×20 |
-| UX07 | Нет команд, которые надо помнить | Palette, hint bar, поиск действий, fallback keybindings, текстовые статусы без зависимости от цвета |
-| UX08 | Видны промежуточный результат и причина проблемы | Diff/checks, retry delay, permission request, token usage; стоимость unknown отображается как unknown, не 0 |
+| UX01 | Set up a direct provider, without Yabanin or writing a workflow | 4 of 5 new users complete the offline training task in ≤10 minutes; live credentials are entered separately |
+| UX02 | Switch tabs in ≤2 keystrokes, p95 ≤100 ms | 5 agents, 1,000 switches; draft, history, Unicode, and scroll position are preserved |
+| UX03 | Each agent has a clear current status | Event-to-visible p95 ≤250 ms on a pinned machine; “waiting” includes a reason |
+| UX04 | Fast local UI startup | Ready prompt p95 ≤2 s warm, ≤5 s cold after installation; network TTFT is measured separately |
+| UX05 | Plugin available without rebuilding Raider | Install a trusted fixture plugin and run its tool in ≤3 actions after selecting the source; an explicit restart is allowed |
+| UX06 | Clear cancellation | One gesture cancels a selected agent; root cancellation is separate; owned subtree/processes terminate within ≤5 s in controlled fixture ×20 |
+| UX07 | No commands users have to memorize | Palette, hint bar, action search, fallback keybindings, text statuses independent of color |
+| UX08 | Intermediate result and cause of issue are visible | Diff/checks, retry delay, permission request, token usage; unknown cost is shown as unknown, not 0 |
 
-Пороговые значения — требования к будущим проверкам. P0 фиксирует hardware/JDK/
-terminal/load/число samples и способ замера; пороги нельзя ослабить после неудачи.
-Human usability без участников остаётся pending. Progress показывает наблюдаемые
-шаги, вывод tools и краткие summaries; не выдумывает проценты завершения или мысли модели.
+Thresholds are requirements for future checks. P0 pins the hardware/JDK/terminal/
+load/sample count and measurement method; thresholds may not be relaxed after a
+failure. Human usability without participants remains pending. Progress shows
+observable steps, tool output, and short summaries; it does not invent completion
+percentages or model thoughts.
 
-## 3. Бюджет и результаты фаз
+## 3. Budget and phase outcomes
 
-Часы включают разработку, integration/review, проверки, документацию и резерв.
-Каждая строка уже включает свою долю общих расходов; повторного начисления за
-coordinator или тесты нет. Сумма **13 100 h** (после ревизии 2026-10-10: +1 100 h на P-LIN), в том числе 1 200 h резерва (10%).
+Hours include implementation, integration/review, checks, documentation, and
+contingency. Each row already includes its share of overhead; coordinator or test
+hours are not charged again. Total: **13,100 h** (after the 2026-10-10 revision:
++1,100 h for P-LIN), including 1,200 h contingency (10%).
 
-| Фаза | Проверяемый результат | Часы | Накопительно |
+| Phase | Verifiable outcome | Hours | Cumulative |
 | --- | --- | ---: | ---: |
-| P-LIN | Session lineage: дерево вызовов = валидная Scala-программа, replay | 1 100 | 1 100 |
-| P0 | Actual baseline, остаточные дефекты, согласованные seams и acceptance | 400 | 1 500 |
-| P1 | Живые правдивые статусы и bounded tool progress | 900 | 2 400 |
-| P2 | Вкладки, черновики, scrollback, первый простой TUI | 1 400 | 3 800 |
-| P3 | Удобная координация сабагентов, steering/cancel/review | 1 000 | 4 800 |
-| P4 | Plugin lifecycle, embedding SDK и установка без пересборки | 1 400 | 6 200 |
-| P5 | Опциональный локальный agent state и shared blackboard | 900 | 7 100 |
-| P6 | История, восстановление, compaction и контроль бюджета | 1 100 | 8 200 |
-| P7 | Полный standalone coding workflow, REPL и CI | 1 000 | 9 200 |
-| P8 | Несколько проектов, нагрузки и длительная работа | 900 | 10 100 |
-| P9 | Fullscreen при необходимости, доступность, onboarding и UX polish | 900 | 11 000 |
-| P10 | Приёмка, packaging и стабильный standalone release candidate | 1 000 | 12 000 |
-| P11 | Yabanin: discovery → optional adapter → итоговая приёмка | 1 100 | 13 100 |
+| P-LIN | Session lineage: call tree = valid Scala program, replay | 1,100 | 1,100 |
+| P0 | Actual baseline, remaining defects, agreed seams and acceptance | 400 | 1,500 |
+| P1 | Live, truthful statuses and bounded tool progress | 900 | 2,400 |
+| P2 | Tabs, drafts, scrollback, first simple TUI | 1,400 | 3,800 |
+| P3 | Convenient subagent coordination, steering/cancel/review | 1,000 | 4,800 |
+| P4 | Plugin lifecycle, embedding SDK, and install without rebuilding | 1,400 | 6,200 |
+| P5 | Optional local agent state and shared blackboard | 900 | 7,100 |
+| P6 | History, recovery, compaction, and budget control | 1,100 | 8,200 |
+| P7 | Complete standalone coding workflow, REPL, and CI | 1,000 | 9,200 |
+| P8 | Multiple projects, load, and long-running work | 900 | 10,100 |
+| P9 | Fullscreen if needed, accessibility, onboarding, and UX polish | 900 | 11,000 |
+| P10 | Acceptance, packaging, and stable standalone release candidate | 1,000 | 12,000 |
+| P11 | Yabanin: discovery → optional adapter → final acceptance | 1,100 | 13,100 |
 
-Ориентировочная структура всех часов: implementation 7 200; проверки/review/
-интеграция 3 000; docs/onboarding 600; резерв 1 200. Это две проекции одного бюджета,
-не дополнительные часы. Резерв расходуется внутри фазы на выявленные риски,
-остаток не превращается в новые функции. После фаз пересчитываются estimate-to-complete
-и остаток; экономию не надо искусственно «дорабатывать» до 12 000.
+Indicative breakdown of all hours: implementation 7,200; checks/review/integration
+3,000; docs/onboarding 600; contingency 1,200. These are two views of the same
+budget, not additional hours. Contingency is spent within a phase on identified
+risks; any remainder does not become new features. After each phase, recalculate
+the estimate-to-complete and remaining hours; do not invent work to “use up” the
+12,000.
 
-Первые полезные поставки: M1 после P2 (вкладки+статусы), M2 после P4 (плагины + минимальный embedding SDK),
-M3 после P7 (полный standalone workflow), M4 после P10 (standalone candidate),
-M5 после P11 (optional gateway suite). Это накопленная трудоёмкость, не календарь:
-независимые пакеты фаз могут перекрываться. При 4 участниках по 30 продуктивных h/нед
-арифметический минимум — 100 недель; зависимости, review и доступность людей дают
-ориентир 26–36 месяцев. Это предположение для планирования, не гарантия ускорения LLM.
+First useful releases: M1 after P2 (tabs + statuses), M2 after P4 (plugins +
+minimal embedding SDK), M3 after P7 (full standalone workflow), M4 after P10
+(standalone candidate), M5 after P11 (optional gateway suite). This is cumulative
+effort, not a calendar: independent phase packages may overlap. With 4 people at
+30 productive h/week, the arithmetic minimum is 100 weeks; dependencies, review,
+and availability suggest 26–36 months. This is a planning assumption, not a
+promise that LLMs will accelerate delivery.
 
-## 4. Пакеты работ и критерии выхода
+## 4. Work packages and exit criteria
 
-Пакеты `P*.A/B/C` ниже — бюджетные work packages, не огромные coding assignments.
-Перед исполнением coordinator режет пакет на карточки 8–24 h с одним observable
-result, exact allowed files, normal/error/cancel cases и dependency IDs. Budget
-child cards суммируется в родительский пакет; существующая работа повторно не оплачивается.
-Новые карточки получают свободные IDs и metadata в `docs/tasks/backlog.json` с
-обновлением соответствующих markdown/index по действующему validator.
+The `P*.A/B/C` packages below are budget work packages, not huge coding assignments.
+Before execution, the coordinator splits a package into 8–24 h cards, each with one
+observable result, exact allowed files, normal/error/cancel cases, and dependency
+IDs. Budgeted child cards add up to the parent package; existing work is not
+charged again. New cards get free IDs and metadata in `docs/tasks/backlog.json`,
+with the corresponding markdown/index updated according to the active validator.
 
-### P-LIN — Session lineage: дерево вызовов как валидная Scala-программа, 1 100 h
+### P-LIN — Session lineage: the call tree as a valid Scala program, 1,100 h
 
-Впереди всего плана по решению владельца 2026-10-10 (ADR-027; все решения — там).
-Карточки: [docs/tasks/lineage.md](tasks/lineage.md); метаданные — в backlog.json
-(milestone `LIN`). Текущая карточная кампания продолжается фоном — она закрывает
-зависимости RAI-020/022.
+Ahead of the entire plan by owner decision of 2026-10-10 (ADR-027; all decisions
+are there). Cards: [docs/tasks/lineage.md](tasks/lineage.md); metadata is in
+backlog.json (milestone `LIN`). The current card campaign continues in the
+background — it closes RAI-020/022 dependencies.
 
-- P-LIN.01 **140 h**: SessionGraph-модель (event-sourced): узлы ModelCall /
-  ToolCall(kind, RecoveryClass) / Delegation / Phase; редуктор events → граф;
-  фаззи-тесты на реальных events.jsonl. Расширяемость под будущие тулколлы.
-- P-LIN.02 **160 h**: проекция граф → валидная Scala (композиции Program/Task,
-  RAI-017 как цель компиляции); данные — lineage-data.json, не код.
-- P-LIN.03 **120 h**: лайв-инкрементальная поддержка: граф и проекция растут в
-  ходе сессии; периодическая инкрементальная компиляция-валидация.
-- P-LIN.04 **180 h**: вкладка Lineage в TUI (минимальный tab-host, вытянут из
-  P2 ограниченно: одна вкладка, без черновиков): дерево + исходник + статус
-  валидности; доступ во время сессии.
-- P-LIN.05 **120 h**: replay-recorded интерпретатор (default) + компаратор
-  «воспроизведённый граф == записанный» (успех = тот же граф вызовов).
-- P-LIN.06 **140 h**: live re-run (opt-in): изолированная копия workspace для
-  Mutating (RecoveryClass-политика), бюджет, diff-отчёт «живой vs записанный».
-- P-LIN.07 **80 h**: частичный replay именованных фаз/поддеревьев.
-- P-LIN.08 **60 h**: области: chat + headless + ночные кампании (каталог
-  деревьев); сверка pinned-окружения, предупреждения, отчёты расхождений.
-- Резерв **80 h**.
+- P-LIN.01 **140 h**: event-sourced SessionGraph model: ModelCall / ToolCall(kind,
+  RecoveryClass) / Delegation / Phase nodes; events → graph reducer; fuzz tests
+  on real events.jsonl. Extensible for future tool calls.
+- P-LIN.02 **160 h**: graph → valid Scala projection (Program/Task compositions,
+  RAI-017 as compilation target); data is lineage-data.json, not code.
+- P-LIN.03 **120 h**: live incremental support: graph and projection grow during
+  the session; periodic incremental compile-validation.
+- P-LIN.04 **180 h**: Lineage tab in TUI (minimal tab host, pulled forward from
+  P2 in a limited form: one tab, no drafts): tree + source + validity status;
+  available during the session.
+- P-LIN.05 **120 h**: replay-recorded interpreter (default) + comparator
+  “replayed graph == recorded graph” (success = same call graph).
+- P-LIN.06 **140 h**: live re-run (opt-in): isolated workspace copy for Mutating
+  (RecoveryClass policy), budget, “live vs recorded” diff report.
+- P-LIN.07 **80 h**: partial replay of named phases/subtrees.
+- P-LIN.08 **60 h**: surfaces: chat + headless + overnight campaigns (tree
+  catalog); verify pinned environment, warnings, divergence reports.
+- Contingency **80 h**.
 
-Exit: для каждой сессии — lineage.scala, компилирующаяся и воспроизводимая в
-replay-режиме с идентичным графом; вкладка TUI показывает живое дерево;
-live re-run в изоляции даёт diff-отчёт; CI-гейт валидирует компиляцию проекции.
-Гибрид (LLM из записи + пересчёт детерминированных тулколлов) — основной режим.
+Exit: for each session, lineage.scala compiles and replays with an identical graph;
+the TUI tab displays the live tree; an isolated live re-run produces a diff report;
+a CI gate validates projection compilation. Hybrid mode (LLM from the recording
++ recomputation of deterministic tool calls) is the primary mode.
 
-### P0 — достоверная отправная точка, 400 h
+### P0 — trustworthy starting point, 400 h
 
-- P0.A **120 h**: source/board/gate reconciliation; matrix W01–W18 «реализовано /
-  доказано / осталось»; проверить текущие send/watch/cancel issues. Добавить
-  SDK inventory: public/importable API vs REPL internals, dependency/classpath,
-  три поверхности запуска и gaps внешнего consumer (RAI-115). Собрать до пяти
-  разговоров о повторяющейся задаче, текущем решении и цене ручного контроля;
-  участников/дат пока нет, отсутствие интервью фиксируется явно.
-- P0.B **160 h**: согласовать runtime→UI event seam, snapshot+subscribe,
-  ownership/UI focus, progress contract; ADR с независимым review, сохранять ADR-016.
-  Для embedding API отдельная ADR-карточка после RAI-115: lifecycle в host ZIO
-  scope, configuration/tools/policy/budget ownership, typed failures/cancellation,
-  versioning и совместимость существующих REPL/CLI consumers. Сначала доказать,
-  чего не хватает текущему API; дополнительный module/layer заранее не предписан.
-  RAI-116 сначала фиксирует workflow-authoring/local/CI boundary, включая только
-  необходимый host launch. Это отдельный ADR от уже принятого UI event seam;
-  P1/P2 не ждут SDK, а SDK не ждёт plugin UI. RAI-117 фиксирует SDLC effects и
-  checkpoint/forge/release contract; решения не выдаются за реализацию.
-- P0.C **120 h**: JLine inline renderer spike в PTY, установка baseline,
-  воспроизводимые UX замеры и первые child cards; описать отдельные verifier cards.
+- P0.A **120 h**: reconcile source/board/gates; W01–W18 matrix “implemented /
+  proven / remaining”; check current send/watch/cancel issues. Add SDK inventory:
+  public/importable API vs REPL internals, dependencies/classpath, three launch
+  surfaces, and external-consumer gaps (RAI-115). Hold up to five conversations
+  about a recurring task, current solution, and cost of manual oversight; there
+  are no participants/dates yet, and lack of interviews is recorded explicitly.
+- P0.B **160 h**: agree on runtime→UI event seam, snapshot+subscribe, ownership/UI
+  focus, progress contract; ADR with independent review, preserve ADR-016. For the
+  embedding API, a separate ADR card after RAI-115: lifecycle in host ZIO scope,
+  configuration/tools/policy/budget ownership, typed failures/cancellation,
+  versioning, and compatibility with existing REPL/CLI consumers. First prove
+  what the current API lacks; no additional module/layer is prescribed in advance.
+  RAI-116 first fixes the workflow-authoring/local/CI boundary, including only the
+  necessary host launch. This is a separate ADR from the already accepted UI event
+  seam; P1/P2 do not wait for SDK, and SDK does not wait for plugin UI. RAI-117
+  records SDLC effects and checkpoint/forge/release contract; decisions are not
+  represented as implementation.
+- P0.C **120 h**: JLine inline renderer spike in PTY, establish baseline,
+  reproducible UX measurements, and first child cards; describe separate verifier
+  cards.
 
-Exit: один воспроизводимый baseline, настоящие exits/logs, frozen interfaces,
-изоляция lanes, первые 3 independent packets. Дефекты protected registry лечатся
-отдельной карточкой с независимым review; roadmap не меняет gate policy.
+Exit: one reproducible baseline, actual exits/logs, frozen interfaces, lane
+isolation, first 3 independent packets. Defects in the protected registry are
+handled by a separate card with independent review; the roadmap does not change
+gate policy.
 
-Обязательные audit cases: текущие Ctrl+C bindings и foreground/observer/edit
-семантика; glyph width для Cyrillic/CJK/emoji/combining characters (одного `Char`
-на cell недостаточно); provider/model inheritance у delegated child; setup без
-неявного localhost probe и без credentials в argv (только env/helper references).
+Required audit cases: current Ctrl+C bindings and foreground/observer/edit
+semantics; glyph width for Cyrillic/CJK/emoji/combining characters (one `Char`
+per cell is not enough); provider/model inheritance for delegated children;
+setup without implicit localhost probing and without credentials in argv (env/helper
+references only).
 
-### P1 — статусы, 900 h
+### P1 — statuses, 900 h
 
-- P1.A **320 h**: envelopes с root/session/job/event IDs и per-job sequence;
-  reducer/snapshot плюс subscribe без окна потери; совместимость schema.
-- P1.B **330 h**: события admission/model/tool/retry/compaction/budget;
-  streamed bounded process tail, redact и escape terminal control characters.
-- P1.C **250 h**: status line/timeline и headless event export; burst/slow consumer/
-  ordering/cancel tests, reconnect и terminal-state consistency.
+- P1.A **320 h**: envelopes with root/session/job/event IDs and per-job sequence;
+  reducer/snapshot plus subscribe without a loss window; schema compatibility.
+- P1.B **330 h**: admission/model/tool/retry/compaction/budget events; streamed,
+  bounded process tail; redact and escape terminal control characters.
+- P1.C **250 h**: status line/timeline and headless event export; burst/slow-consumer/
+  ordering/cancel tests, reconnect, and terminal-state consistency.
 
-Exit: UI различает queued, model, tool, waiting approval/child/slot, retry,
-cancel requested и terminal status; UX03/08. Ledger является источником состояния;
-accounting не вычисляется из потерь UI stream. Diagnostics можно coalesce/drop с
-счётчиком потерь, terminal/approval/accounting требуют отдельного надёжного пути.
-Slow viewer не блокирует cancellation. Нет неограниченной очереди ради «не терять».
+Exit: UI distinguishes queued, model, tool, waiting for approval/child/slot, retry,
+cancel requested, and terminal status; UX03/08. The ledger is the source of state;
+accounting is not calculated from lost UI stream events. Diagnostics may be
+coalesced/dropped with a loss counter; terminal/approval/accounting need a separate
+reliable path. A slow viewer does not block cancellation. No unbounded queue just
+to “avoid losing” events.
 
-### P2 — вкладки, 1 400 h
+### P2 — tabs, 1,400 h
 
-- P2.A **450 h**: SessionRegistry поверх существующих jobs, identity/focus,
-  per-tab draft/history/scrollback, bounded buffers и unread badges.
-- P2.B **500 h**: inline shell JLine, palette/help, new/switch/rename/close,
-  отдельная навигация parent/child; input router на immutable session ID.
-- P2.C **450 h**: подключение events/runtime и настоящее PTY испытание:
-  Unicode/paste/multiline/resize/focus во время streaming; headless regression.
+- P2.A **450 h**: SessionRegistry over existing jobs, identity/focus,
+  per-tab draft/history/scrollback, bounded buffers, and unread badges.
+- P2.B **500 h**: inline JLine shell, palette/help, new/switch/rename/close,
+  separate parent/child navigation; input router keyed by immutable session ID.
+- P2.C **450 h**: connect events/runtime and run real PTY testing:
+  Unicode/paste/multiline/resize/focus during streaming; headless regression.
 
-Exit M1: пользователь запускает задачу, видит 5 независимо работающих агентов,
-переключается и возвращается к неизменённому черновику. Закрыть вкладку ≠ отменить
-работу: running tab предлагает hide или cancel; закрытие root обрабатывает детей.
-UI focus не меняет owner/budget/policy. Plain chat/REPL/run остаются доступными.
+Exit M1: user launches a task, sees 5 independently working agents, switches
+between them, and returns to the unchanged draft. Closing a tab ≠ cancelling work:
+a running tab offers hide or cancel; closing root handles children. UI focus does
+not change owner/budget/policy. Plain chat/REPL/run remain available.
 
-### P3 — управление сабагентами, 1 000 h
+### P3 — subagent control, 1,000 h
 
-- P3.A **350 h**: bounded mailbox для `send`, message ID/ack и применение на
-  границе turn; редактирование задания не подменяет уже выполняющийся tool call.
+- P3.A **350 h**: bounded mailbox for `send`, message ID/ack, and apply at turn
+  boundary; editing the task does not replace a tool call already in progress.
 - P3.B **350 h**: out-of-band subtree cancel, deadlines, maxLLM=1 regression,
-  fair admission, live watch; observer interrupt и owner cancellation различимы.
-- P3.C **300 h**: delegate templates, lineage, передача результата и review diff;
-  отдельные write workspaces для product agents, явный integration owner.
+  fair admission, live watch; distinguish observer interrupt from owner cancellation.
+- P3.C **300 h**: delegate templates, lineage, result handoff, and review diff;
+  separate write workspaces for product agents, explicit integration owner.
 
-Exit: scout→coder→reviewer workflow; clarification reaches нужного ребёнка ровно
-по message ID, не соседнюю вкладку; mailbox overflow — typed refusal; parent/child
-cancel UX06 и budget tests. Не вводить второй scheduler. Если работа уже terminal,
-send явно отклонён или предложен новый turn; никаких обещаний replay мутаций.
+Exit: scout→coder→reviewer workflow; clarification reaches the intended child
+exactly by message ID, not a neighboring tab; mailbox overflow is a typed refusal;
+parent/child cancel UX06 and budget tests. Do not introduce a second scheduler. If
+work is already terminal, `send` is explicitly rejected or a new turn is offered;
+no promises of mutation replay.
 
-### P4 — удобные плагины и встраиваемый SDK, 1 400 h
+### P4 — convenient plugins and embeddable SDK, 1,400 h
 
 - P4.A **450 h**: narrow versioned Scala SPI (tools/profiles/hooks), manifest,
   compatibility/duplicate-name preflight, controlled classloader/resource lifecycle.
-- P4.B **500 h**: UI plugin manager и CLI install/list/check/enable/disable/update/
-  remove/rollback, pinned versions/checksums, user vs workspace config precedence.
-- P4.C **450 h**: SDK/template, документация, три local fixture plugins,
-  совместимость API версий, crash/cleanup/failed-install/rollback acceptance.
-  Первый SDK slice — Scala workflow authoring и путь local→compiled bundle→generic
-  headless CI (WF-01/02, §6b), до полноценного host consumer. Переиспользовать
-  Program/Task/andThen/all/batch; новые SDLC helpers получают предметный contract,
-  не требуют parser/macros или отдельного graph runtime.
-  Отдельный slice — минимальный SDK для host Scala/ZIO приложения по reviewed
-  RAI-116 ADR (отдельный SDK contract внутри P0.B, без зависимости от UI seam):
-  существующие core/runtime/dsl/providers, явные tools/policy/limits,
-  без обязательных REPL/compiler/JLine/CLI и production testkit. Consumer собирается
-  вне root aggregate по артефактам из изолированного локального репозитория,
-  без source links или classpath из checkout. Публикация в публичный registry
-  для этой проверки не нужна. Короткий пример + команда запуска идут с кодом;
-  расширенные руководства остаются P10.C.
+- P4.B **500 h**: UI plugin manager and CLI install/list/check/enable/disable/update/
+  remove/rollback, pinned versions/checksums, user-vs-workspace config precedence.
+- P4.C **450 h**: SDK/template, docs, three local fixture plugins, API-version
+  compatibility, crash/cleanup/failed-install/rollback acceptance. The first SDK
+  slice is Scala workflow authoring and the local→compiled bundle→generic headless
+  CI path (WF-01/02, §6b), before a full host consumer. Reuse Program/Task/andThen/
+  all/batch; new SDLC helpers need a domain contract, not a parser/macros or separate
+  graph runtime. A separate slice is the minimal SDK for a host Scala/ZIO app under
+  reviewed RAI-116 ADR (separate SDK contract inside P0.B, independent of the UI
+  seam): existing core/runtime/dsl/providers, explicit tools/policy/limits, without
+  mandatory REPL/compiler/JLine/CLI or production testkit. The consumer builds
+  outside the root aggregate from artifacts in an isolated local repository,
+  without source links or classpath from the checkout. Publishing to a public
+  registry is not needed for this check. A short example + run command ship with
+  the code; detailed guides remain P10.C.
 
-Exit M2: из UI выбрать локальный JAR → увидеть source/version/capabilities →
-подтвердить доверие → использовать tool; Raider не пересобирается, UX05.
-Дополнительно SDK-01/02 (§6a): один внешний Scala/ZIO consumer выполняет typed
-workflow и корректно завершает owned ресурсы. Принятые plugin slices остаются
-принятыми; незакрытый SDK slice отмечается отдельно и не выдаётся за готовый M2.
-Для удалённых источников bounded download/checksum, никакого shell install script.
-Workspace не активирует code автоматически; plugin config не даёт расширить
-policy/root budget. Hooks не разрешают то, что запрещено core policy. Обновление
-активного plugin применяется к новым sessions после drain/restart, без обещания
-безопасного hot unload JVM code. Версия/конфигурация plugin закреплены за run.
+Exit M2: select a local JAR in the UI → see source/version/capabilities → confirm
+trust → use the tool; Raider is not rebuilt, UX05. Additionally SDK-01/02 (§6a):
+one external Scala/ZIO consumer runs a typed workflow and correctly closes owned
+resources. Accepted plugin slices remain accepted; an unfinished SDK slice is
+tracked separately and is not presented as completed M2. For remote sources,
+bound downloads/checksums, no shell install script. A workspace does not activate
+code automatically; plugin config cannot expand policy/root budget. Hooks cannot
+allow what core policy forbids. Updating an active plugin applies to new sessions
+after drain/restart, without promising safe hot-unload of JVM code. Plugin
+version/configuration is pinned to the run.
 
-Classloader — граница совместимости, **не security sandbox**: Scala plugin имеет
-полномочия процесса; System.exit/native crash не гарантированно перехватываются.
-Дефекты, которые можно поймать, превращаются в typed failure; зависание требует
-bounded cancellation и честного сообщения. Для недоверенного кода отдельный
-process isolation проект за пределами этого бюджета. Публичный
-marketplace, биллинг и SDK на других языках не нужны для удобного v1.
+A classloader is a compatibility boundary, **not a security sandbox**: a Scala
+plugin has process privileges; `System.exit`/native crashes cannot be guaranteed
+to be caught. Catchable defects become typed failures; a hang requires bounded
+cancellation and a truthful message. Process isolation for untrusted code is a
+separate project outside this budget. A public marketplace, billing, and SDKs in
+other languages are not needed for a convenient v1.
 
-### P5 — локальное состояние, 900 h
+### P5 — local state, 900 h
 
 - P5.A **300 h**: default-off state SPI, Memory/File backends, Agent/Root scopes,
-  explicit Global, quotas, revision/CAS для конкурентных записей, atomic replace.
-- P5.B **300 h**: state_get/put opt-in tools, provenance/inspect/reset/export,
-  shared blackboard для parent/children; ограничения ключей и значений.
-- P5.C **300 h**: lost-update/corruption/scope isolation tests, migration и SDK
-  state backend seam; два агента координируются локально.
+  explicit Global, quotas, revision/CAS for concurrent writes, atomic replace.
+- P5.B **300 h**: opt-in state_get/put tools, provenance/inspect/reset/export,
+  shared blackboard for parent/children; key and value limits.
+- P5.C **300 h**: lost-update/corruption/scope-isolation tests, migration, and SDK
+  state backend seam; two agents coordinate locally.
 
-Exit: disabled не создаёт store/tools/background work; enabled переживает restart
-в объявленной durability модели. Persisted state — недоверенные данные, не
-инструкции/credentials. Размеры/число ключей ограничены. Remote/Yabanin отсутствует.
-Atomic rename не объявляется защитой от потери питания без отдельного fsync contract.
+Exit: disabled creates no store/tools/background work; enabled survives restart
+under the declared durability model. Persisted state is untrusted data, not
+instructions/credentials. Sizes/number of keys are bounded. No remote/Yabanin.
+Atomic rename is not claimed to protect against power loss without a separate
+fsync contract.
 
-### P6 — восстановление и контроль, 1 100 h
+### P6 — recovery and control, 1,100 h
 
 - P6.A **400 h**: versioned session/journal/checkpoint, tabs/history/plugin pins,
-  crash recovery и миграции; раздельно restore history и resume execution.
-- P6.B **350 h**: bounded context/compaction, root/tab budgets и unknown usage,
-  reservations/refunds, согласование snapshot со state revisions.
+  crash recovery and migrations; restore history separately from resuming execution.
+- P6.B **350 h**: bounded context/compaction, root/tab budgets and unknown usage,
+  reservations/refunds, snapshot reconciliation with state revisions.
 - P6.C **350 h**: SIGTERM/kill -9/corrupt tail/disk-full cases; owned child cleanup,
-  stale leases/statuses и observable partial failure.
+  stale leases/statuses, and observable partial failure.
 
-Exit: после crash вкладка показывает interrupted/unknown, а не «выполняется» без
-живого процесса. Чтение истории не перезапускает мутации; новая попытка требует
-проверки postconditions/решения пользователя. Нет exactly-once/durable resume
-произвольной Scala lambda. UI и CI показывают одинаковый root accounting.
+Exit: after a crash, a tab shows interrupted/unknown, not “running” without a live
+process. Reading history does not restart mutations; a new attempt requires
+postcondition checks/user decision. No exactly-once/durable resume of arbitrary
+Scala lambda. UI and CI show the same root accounting.
 
-### P7 — standalone workflow целиком, 1 000 h
+### P7 — complete standalone workflow, 1,000 h
 
-- P7.A **350 h**: остаток tools/policy/project context; реальные read/edit/process
-  и negative cases, protected files, deletion/partial patch errors.
-- P7.B **350 h**: REPL compiler/completion и headless adapters над одним runtime;
-  non-TTY/SIGTERM/exits/artifacts/JUnit/trust-boundary acceptance.
-  Один файл определения `Program` используется host ZIO приложением, REPL и
-  compiled CI bundle; adapters отвечают за запуск/ввод/вывод, семантика общая.
-- P7.C **300 h**: corpus bugfix/refactor/new file/review, оба direct wires через
-  Scala HTTP stand, installed package golden scenarios, UX01 rehearsal.
-  SDK-03/04: внешний consumer с non-coding typed workflow (например, извлечение
-  сведений и сводка) и CI-сценарий read → edit → failing check → fix → passing
-  check с diff/exit/artifacts. Scripted успех доказывает механизм; качество модели
-  и пользовательская польза получают отдельное evidence. Предложить трём внешним
-  пользователям свои задачи; измерять время до первого результата, нашу помощь,
-  полезность diff и повторное использование, не только успешный запуск.
-  Основной прикладной workflow — TokenRouter SDLC (§6c): local/generic CI,
-  configurable checkpoints, проверенные stage outputs, затем automatic
-  commit/PR/merge и local release artifacts. Это новая контрактная область
-  RAI-117; до implementation отдельно оценить её добавочный объём и verifier work.
-  Generic bugfix corpus W02/W16 сохраняется; CI adapters не создают второй scheduler.
+- P7.A **350 h**: remaining tools/policy/project context; real read/edit/process
+  and negative cases, protected files, deletion/partial patch errors.
+- P7.B **350 h**: REPL compiler/completion and headless adapters over one runtime;
+  non-TTY/SIGTERM/exits/artifacts/JUnit/trust-boundary acceptance. One `Program`
+  definition file is used by the host ZIO app, REPL, and compiled CI bundle;
+  adapters handle launch/input/output, while semantics are shared.
+- P7.C **300 h**: bugfix/refactor/new-file/review corpus, both direct wires via
+  Scala HTTP stand, installed-package golden scenarios, UX01 rehearsal. SDK-03/04:
+  external consumer with a non-coding typed workflow (e.g. extracting information
+  and summarizing it), and CI scenario read → edit → failing check → fix → passing
+  check with diff/exit/artifacts. Scripted success proves the mechanism; model
+  quality and user value need separate evidence. Offer three external users their
+  own tasks; measure time to first result, our assistance, diff usefulness, and
+  repeat use, not just successful startup. The main application workflow is
+  TokenRouter SDLC (§6c): local/generic CI, configurable checkpoints, verified
+  stage outputs, then automatic commit/PR/merge and local release artifacts. This
+  is a new contract area under RAI-117; estimate its added scope and verifier work
+  separately before implementation. Generic bugfix corpus W02/W16 remains; CI
+  adapters do not create a second scheduler.
 
-Exit M3: mapped W01–W16 + WF-01/02 + SDLC-01–04 на одном candidate с actual
-case evidence, без dependency на gateway. SDLC-03/04 здесь подтверждают generic
-contract на local stand/disposable Git; real forge PR/merge остаётся pending.
-SDLC-05 добавляется к M4. Existing accepted slices переиспользовать и закрывать
-только gaps.
-Live verification и OpenCode comparison имеют отдельные бюджет/статус, не выводятся
-из offline tests. Незавершённые W не прятать за количеством green unit tests.
+Exit M3: map W01–W16 + WF-01/02 + SDLC-01–04 to one candidate with actual case
+evidence and no gateway dependency. SDLC-03/04 here verify the generic contract
+on a local stand/disposable Git; real forge PR/merge remains pending. SDLC-05 is
+added to M4. Reuse accepted slices and close gaps only. Live verification and
+OpenCode comparison have separate budget/status and are not inferred from offline
+tests. Do not hide unfinished W obligations behind a count of green unit tests.
 
-### P8 — масштабы ежедневной работы, 900 h
+### P8 — scale for daily work, 900 h
 
 - P8.A **300 h**: multi-workspace tabs/worktrees, resource limits/fairness,
-  предупреждение конфликтов и последовательная интеграция.
-- P8.B **300 h**: benchmark event burst, bounded history/memory, reconnect;
-  10k events/s stress на закреплённой машине, без выдачи stress за обычный load.
-- P8.C **300 h**: 8-hour offline soak, slow terminal/process/plugin, сбор leak/
-  latency metrics, фиксы в существующих компонентах.
+  conflict warnings, and sequential integration.
+- P8.B **300 h**: benchmark event bursts, bounded history/memory, reconnect;
+  10k events/s stress on a pinned machine, not represented as ordinary load.
+- P8.C **300 h**: 8-hour offline soak, slow terminal/process/plugin, collect leak/
+  latency metrics, fix existing components.
 
-Exit: caps реально соблюдаются; нет orphan children, утечек observers и потерянных
-terminal statuses. Thresholds/baseline определены до прогона. Удалённый executor
-и распределённый scheduler в эту фазу не входят.
+Exit: caps are actually enforced; no orphan children, observer leaks, or lost
+terminal statuses. Thresholds/baseline are set before the run. Remote executor
+and distributed scheduler are not part of this phase.
 
-### P9 — простота использования, 900 h
+### P9 — ease of use, 900 h
 
-- P9.A **300 h**: полноэкранный renderer поверх того же controller, если M1
-  feedback подтверждает пользу; иначе улучшить inline по тем же UX cases.
+- P9.A **300 h**: fullscreen renderer over the same controller if M1 feedback
+  confirms value; otherwise improve inline against the same UX cases.
 - P9.B **300 h**: accessible status labels, keyboard remap/fallback, plain mode,
-  Russian/English help, поиск по истории/действиям, plugin onboarding.
-- P9.C **300 h**: usability sessions, terminal matrix и приоритетные UX fixes;
-  первое использование, ошибка провайдера, failed plugin и восстановление.
-  Включить результаты SDK/CI пилотов из P7.C: при повторном использовании хотя бы
-  двумя из трёх участников на новой задаче рассмотреть расширение SDK; без этого
-  сначала разобрать причины и сузить/поправить сценарий. Это критерий продуктового
-  решения, не доказательство рынка и не новый engineering gate; нет участников —
-  `pending`, решения о расширении не принимаются автоматически.
+  Russian/English help, search history/actions, plugin onboarding.
+- P9.C **300 h**: usability sessions, terminal matrix, and prioritized UX fixes;
+  first use, provider error, failed plugin, recovery. Include SDK/CI pilot results
+  from P7.C: if at least two of three participants reuse it on a new task, consider
+  expanding the SDK; otherwise first investigate causes and narrow/fix the scenario.
+  This is a product decision criterion, not market proof or a new engineering gate;
+  with no participants, status is `pending`, and expansion is not decided automatically.
 
-Exit: UX01–08 подтверждены применимыми PTY/human evidence; выбор renderer не
-откладывает M1. Комбинации клавиш проверять на macOS/Linux, tmux и заявленных
-terminal emulators; неподдержанный terminal использует понятный plain fallback.
+Exit: UX01–08 confirmed by applicable PTY/human evidence; renderer choice does not
+delay M1. Test key combinations on macOS/Linux, tmux, and declared terminal
+emulators; unsupported terminals use a clear plain fallback.
 
-### P10 — standalone release candidate, 1 000 h
+### P10 — standalone release candidate, 1,000 h
 
 - P10.A **350 h**: clean install/upgrade/uninstall, reproducible packaging,
-  SBOM/notices и существующая license policy, portable examples.
-  Для SDK — координаты/version артефактов, dependency inventory, поддерживаемые
-  Scala/JDK/ZIO на основе pinned toolchain и чистая consumer-сборка (SDK-05);
-  cross-build на дополнительные версии не подразумевается. Public publish —
-  отдельное release-действие.
-- P10.B **350 h**: независимая приёмка всех standalone claims на immutable
-  candidate, security/compatibility regressions и найденные defects.
-  Включить SDK-01–05 на тех же product inputs, без подмены свежего evidence
-  зелёной старой lane.
+  SBOM/notices and existing license policy, portable examples. For SDK: artifact
+  coordinates/version, dependency inventory, supported Scala/JDK/ZIO based on
+  pinned toolchain, and clean consumer build (SDK-05); no cross-build to additional
+  versions is implied. Public publishing is a separate release action.
+- P10.B **350 h**: independent acceptance of all standalone claims on an immutable
+  candidate, security/compatibility regressions, and discovered defects. Include
+  SDK-01–05 on the same product inputs; do not substitute old green lane evidence
+  for fresh evidence.
 - P10.C **300 h**: docs/troubleshooting/migration, onboarding evidence, release
-  rehearsal и optional capped direct live/comparison при наличии разрешения.
+  rehearsal, and optional capped direct live/comparison if authorized.
 
-Exit M4: `standalone_engineering_ready` только при полноте W01–W16 + UX/plugin/
-state advertised cases + SDK-01–05 + WF-01/02 + SDLC-01–05;
-archived source/toolchain/policy/artifact hashes. SDLC engineering acceptance
-идёт на disposable repos/local stand; реальные forge claims получают отдельное
-evidence выбранного adapter, без которого остаются pending.
-Это не старый общий `engineering_ready` для W01–W17. W17 и полная W18 остаются
-pending до P11. Публикация не подразумевается созданием release candidate.
+Exit M4: `standalone_engineering_ready` only when W01–W16 + UX/plugin/state
+advertised cases + SDK-01–05 + WF-01/02 + SDLC-01–05 are complete; archive
+source/toolchain/policy/artifact hashes. SDLC engineering acceptance runs on
+disposable repos/local stand; real forge claims get separate evidence for the
+selected adapter, without which they remain pending. This is not the old general
+`engineering_ready` for W01–W17. W17 and full W18 remain pending until P11.
+Creating a release candidate does not imply publishing it.
 
-### P11 — Yabanin, последняя фаза, 1 100 h
+### P11 — Yabanin, final phase, 1,100 h
 
-**Hard dependency: M4 accepted.** До этого не начинать Yabanin gateway client
-modules, discovery его gateway/session/accounting integration, ADR-023 implementation,
-labels/session keys, remote state или accounting sync. Read-only discovery TokenRouter
-как проекта для SDLC разрешён сейчас; отдельно авторизованные target cards исполняются
-по его правилам и не реализуют gateway integration Raider. Существующие исторические
-материалы сохраняются; direct custom base URL и generic plugin/state seams не интеграция.
+**Hard dependency: M4 accepted.** Before that, do not start Yabanin gateway client
+modules, discovery of its gateway/session/accounting integration, ADR-023
+implementation, labels/session keys, remote state, or accounting sync. Read-only
+TokenRouter discovery as an SDLC project is allowed now; separately authorized
+target cards are executed under its rules and do not implement Raider gateway
+integration. Existing historical materials are preserved; direct custom base URL
+and generic plugin/state seams are not integration.
 
-- P11.A **250 h**: refresh read-only discovery actual deployment/contracts,
-  ADR интеграции, offline schemas/stand и capabilities; не доверять старому OpenAPI.
-- P11.B **500 h**: optional transport profile, attribution, key lifecycle с одним
-  owner, bounded accounting reconciliation и eval export по доказанным схемам.
+- P11.A **250 h**: refresh read-only discovery of actual deployment/contracts,
+  integration ADR, offline schemas/stand, and capabilities; do not trust old OpenAPI.
+- P11.B **500 h**: optional transport profile, attribution, key lifecycle with
+  one owner, bounded accounting reconciliation, and eval export against proven schemas.
 - P11.C **350 h**: offline deny/timeout/drift fixtures, full integrated candidate,
-  capped live только при endpoint/режиме/бюджете, docs и отключение adapter.
+  capped live only with endpoint/mode/budget, docs, and adapter disablement.
 
-Exit M5: W17 и W18 на конечном candidate; обе direct конфигурации сохраняют
-готовность без Yabanin. Auth/policy denial никогда не приводит к скрытому direct
-fallback. Usage имеет pending/partial/complete; timeout не становится complete.
-Если native remote state API отсутствует, не выдумывать KV endpoint: File остаётся
-основным store, attribution/export описывается именно так. Реальный remote store
-получает контракт/карточку только при доказанной поддержке и остатке бюджета.
-Внешний unavailable deployment оставляет live gateway pending, offline acceptance
-отдельна. Изменения Yabanin — отдельные YB-карточки и отдельное разрешённое исполнение,
-их часы не маскируются в 12 000 Raider hours; нет прямого доступа к его DB/Redis.
+Exit M5: W17 and W18 on the final candidate; both direct configurations remain
+ready without Yabanin. Auth/policy denial never triggers hidden direct fallback.
+Usage has pending/partial/complete states; timeout does not become complete. If
+there is no native remote state API, do not invent a KV endpoint: File remains the
+primary store, and attribution/export are described accordingly. A real remote
+store gets a contract/card only if support and budget remainder are demonstrated.
+An externally unavailable deployment leaves live gateway pending; offline
+acceptance is separate. Yabanin changes are separate YB cards and separately
+authorized work; their hours are not hidden in the 12,000 Raider hours; no direct
+access to its DB/Redis.
 
-## 5. Параллельный граф исполнения
+## 5. Parallel execution graph
 
-Порядок milestone не запрещает подготовку независимых компонентов. Зависимость
-означает accepted contract/component с evidence, а не просто начатую фазу.
+Milestone order does not prohibit preparation of independent components. A
+dependency means an accepted contract/component with evidence, not merely a phase
+that has started.
 
-| Пакет | Можно начинать реализацию после | Что можно вести параллельно |
+| Package | Implementation may start after | What can proceed in parallel |
 | --- | --- | --- |
-| P0.A/B/C | Inspection; B/C используют факты A, review до freeze | Inventory, pure renderer spike, acceptance design |
-| P1.A | P0.B | P2.A/B на frozen interfaces и scripted source |
-| P1.B | P1.A | UI components; после интеграции нужен P1.C |
-| P1.C | P1.A + P1.B; UI часть после P0.C | Independent ordering/backpressure fixtures |
-| P2.A/B | P0.B + P0.C | P1 event implementation; scripted source до P2.C |
-| P2.C | P1.C + P2.A/B | P4.A отдельным owner plugin SPI |
-| P3.A/B | P0.B + P1.A | P2 frontend; P3.C ждёт P2.C и A/B |
-| P4.A/B/C | P0 baseline; B после A; SDK/tests C после A, final acceptance C после B | P1/P2/P3 при отдельных files; M2 ждёт M1 и plugin UI integration |
-| P4.C embedding slice | RAI-115 audit → accepted RAI-116 SDK ADR внутри P0.B → frozen SDK boundary; UI event ADR не dependency | Consumer acceptance design параллельно текущей волне; общий build/API имеют одного owner; M2 ждёт plugin и embedding acceptance |
-| Workflow preview (P4.C/P7.B) | RAI-115 → RAI-116 ADR → WF-01/02 | Текущие P-LIN/P1/P2/P3; preview не ждёт M1/plugin UI/M2, host SDK-01/02 или M4 |
-| SDLC kit (P7/P10) | RAI-117 contract + отдельная estimate; реализация после RAI-116 boundary | Pure stage fixtures/local stand параллельно runtime implementation; внешние mutations только после effect contract acceptance |
-| P5 | P1.C + P4.A; P5.C plugin seam после P4.C | P3/P4 отдельные modules; core store не зависит от remote backend |
-| P6 | P2.C + P3 + P5 | P7 tools/REPL/CI gaps, затем общий recovery acceptance |
-| P7 | P0 gap matrix для независимых fixes | Итог M3 после M2 + P3 + P5 + P6 |
-| P8 | P3 + P6 | P7 corpus и P9 UX research |
-| P9 | M2 для UX work, P8 для финальной load matrix | P10 packaging preparation |
-| P10 | M3 + P8 + P9 для финальной приёмки | Docs и packaging заранее, full candidate последовательно |
-| P11 | Только M4 | A сначала; B по frozen ADR; C после B; никакой ранней integration lane |
+| P0.A/B/C | Inspection; B/C use facts from A, review before freeze | Inventory, pure renderer spike, acceptance design |
+| P1.A | P0.B | P2.A/B on frozen interfaces and scripted source |
+| P1.B | P1.A | UI components; P1.C is needed after integration |
+| P1.C | P1.A + P1.B; UI part after P0.C | Independent ordering/backpressure fixtures |
+| P2.A/B | P0.B + P0.C | P1 event implementation; scripted source before P2.C |
+| P2.C | P1.C + P2.A/B | P4.A with a separate plugin SPI owner |
+| P3.A/B | P0.B + P1.A | P2 frontend; P3.C waits for P2.C and A/B |
+| P4.A/B/C | P0 baseline; B after A; SDK/tests C after A, final C acceptance after B | P1/P2/P3 in separate files; M2 waits for M1 and plugin UI integration |
+| P4.C embedding slice | RAI-115 audit → accepted RAI-116 SDK ADR inside P0.B → frozen SDK boundary; UI event ADR is not a dependency | Consumer acceptance design parallel with current wave; shared build/API have one owner; M2 waits for plugin and embedding acceptance |
+| Workflow preview (P4.C/P7.B) | RAI-115 → RAI-116 ADR → WF-01/02 | Current P-LIN/P1/P2/P3; preview does not wait for M1/plugin UI/M2, host SDK-01/02, or M4 |
+| SDLC kit (P7/P10) | RAI-117 contract + separate estimate; implementation after RAI-116 boundary | Pure stage fixtures/local stand parallel with runtime implementation; external mutations only after effect-contract acceptance |
+| P5 | P1.C + P4.A; P5.C plugin seam after P4.C | P3/P4 in separate modules; core store does not depend on remote backend |
+| P6 | P2.C + P3 + P5 | P7 tools/REPL/CI gaps, then shared recovery acceptance |
+| P7 | P0 gap matrix for independent fixes | Final M3 after M2 + P3 + P5 + P6 |
+| P8 | P3 + P6 | P7 corpus and P9 UX research |
+| P9 | M2 for UX work, P8 for final load matrix | P10 packaging preparation |
+| P10 | M3 + P8 + P9 for final acceptance | Docs and packaging in advance, full candidate sequentially |
+| P11 | M4 only | A first; B against frozen ADR; C after B; no early integration lane |
 
-Типичные waves:
+Typical waves:
 
 | Wave | Lane A | Lane B | Lane C / review |
 | --- | --- | --- | --- |
-| W0 | Actual inventory / defects | Renderer spike без runtime edits | Acceptance/ADR review |
-| W1 | Events/reducer | Tab UI на scripted events | Plugin SPI design/review |
+| W0 | Actual inventory / defects | Renderer spike without runtime edits | Acceptance/ADR review |
+| W1 | Events/reducer | Tab UI on scripted events | Plugin SPI design/review |
 | W2 | Runtime emission/progress | Session registry + UI binding | Plugin loader |
 | W3 | Steering/cancellation | Plugin manager/SDK | Integration review/PTY |
 | W4 | Local state / recovery | Tools/REPL/CI gaps | Corpus/independent review |
 | W5 | Multi-workspace/soak | UX/onboarding | Packaging/compatibility review |
 | W6 | Candidate defects | Release acceptance | Docs/usability verification |
-| W7, после M4 | Yabanin adapter | Offline fixtures по frozen contract | Independent review; live при разрешении |
+| W7, after M4 | Yabanin adapter | Offline fixtures against frozen contract | Independent review; live if authorized |
 
-Максимум coordinator + 8–10 активных spawn-воркеров (решение владельца
-2026-10-12, supersede лимит «до трёх»; reviewer занимает слот; механика —
-parallel-development.md §1a/§1b). Не держать все writer-слоты постоянно ценой
-отсутствия review. Root checkout, shared contracts/build/gate registry/board
-принадлежат coordinator либо одному явно назначенному owner. Разработка
-защищённых verifiers — отдельная карточка и fresh review; implementation
-worker не может переписать ожидаемый результат своего теста.
+Maximum: coordinator + 8–10 active spawned workers (owner decision of 2026-10-12,
+superseding the “up to three” limit; reviewer occupies a slot; mechanics in
+parallel-development.md §1a/§1b). Do not keep all writer slots occupied at the
+cost of having no review. The root checkout, shared contracts/build/gate
+registry/board belong to the coordinator or one explicitly assigned owner.
+Development of protected verifiers is a separate card with fresh review; an
+implementation worker cannot rewrite its test's expected result.
 
-Каждый writer получает отдельный worktree или копию immutable snapshot с absolute
-cwd, allowed files и base hash; никакого общего `target/`, изменяемых hardlinks,
-случайного перехода обратно в root. Если tool не умеет child cwd, использовать
-подтверждённый isolation механизм; не выдумывать параметры OpenCode. При отсутствии
-изоляции writers идут последовательно, read-only review остаётся параллельным.
+Each writer gets a separate worktree or copy of an immutable snapshot with
+absolute cwd, allowed files, and base hash; no shared `target/`, mutable hardlinks,
+or accidental return to root. If a tool cannot set child cwd, use a verified
+isolation mechanism; do not invent OpenCode parameters. Without isolation, writers
+work sequentially while read-only review can remain parallel.
 
-Integration: base/path/hash check → fresh diff review → последовательное применение
-→ compile/contracts + affected gates → runnable demo wave. Patch, конфликтующий с
-новым root, перебазируется и повторно проверяется. Green lane не заменяет green
-integrated candidate. Не добавлять CI/runtime scheduler ради orchestration разработки.
+Integration: base/path/hash check → fresh diff review → sequential application
+→ compile/contracts + affected gates → runnable demo for the wave. A patch that
+conflicts with the new root is rebased and checked again. A green lane does not
+replace a green integrated candidate. Do not add a CI/runtime scheduler for
+development orchestration.
 
-## 6. Порядок приёмки и совместимость со старым backlog
+## 6. Acceptance order and compatibility with the old backlog
 
-| Новый scope | Старые obligations, которые надо переиспользовать |
+| New scope | Existing obligations to reuse |
 | --- | --- |
 | P0/P1 | RAI-002/004/006/009/010; schema/runtime/budget evidence |
-| P2/P3 | RAI-007/008/017–021; W08–W11; send/watch остаются обязательствами |
-| P4/P5 | RAI-028/029/031 и новые scoped state cards; W13 |
-| P0/P4.C embedding | RAI-115 audit; RAI-002/007–010/017/028; RAI-096 остаётся plugin SDK, новые implementation cards после ADR |
+| P2/P3 | RAI-007/008/017–021; W08–W11; send/watch remain obligations |
+| P4/P5 | RAI-028/029/031 and new scoped state cards; W13 |
+| P0/P4.C embedding | RAI-115 audit; RAI-002/007–010/017/028; RAI-096 remains plugin SDK, new implementation cards after ADR |
 | P6 | RAI-027/030/036; W08/W14 |
 | P7/P10 | RAI-014–016/022–026/041–047; W01–W16 |
-| P11 | RAI-037–039; W17/W18; YB companion work отдельно |
+| P11 | RAI-037–039; W17/W18; YB companion work separately |
 
-Это scope mapping, не автоматическое закрытие старых карточек. Coordinator сверяет
-точные acceptance и не переносит «accepted slice» на весь parent. Старый F4 gateway
-workstream и MASTER-10K-STATE discovery уступают этому порядку. W17 отложен, не удалён;
-полный `engineering_ready` допустим только после W01–W17 и joint W18. Отдельно вести
-`live_verified.direct-chat`, `direct-anthropic`, `gateway`, `opencode_comparison`.
+This maps scope; it does not automatically close old cards. The coordinator
+checks exact acceptance and does not extend an “accepted slice” to the whole
+parent. The old F4 gateway workstream and MASTER-10K-STATE discovery yield to this
+order. W17 is deferred, not removed; full `engineering_ready` is allowed only
+after W01–W17 and joint W18. Track `live_verified.direct-chat`,
+`direct-anthropic`, `gateway`, and `opencode_comparison` separately.
 
-После каждой карточки: сначала `make quality-changed`, затем
-`make quality-changed QUALITY_EXECUTE=1`, с настоящим baseline manifest для snapshot
-lanes. Дополнительно actual applicable profiles; наличие имени в spec не означает
-существующий runner. Сейчас registry находится в `scripts/quality-policy/registry.json`;
-новые ui/plugin/performance/security/release cases должны получить отдельные
-reviewed verifier cards, нельзя придумать `make acceptance-working` как уже готовый gate.
-Документный validator не доказывает runtime, а текущий fast не вся W-приёмка.
+After each card: first `make quality-changed`, then
+`make quality-changed QUALITY_EXECUTE=1`, with a real baseline manifest for
+snapshot lanes. Also run actually applicable profiles; a name in the spec does
+not mean a runner exists. The current registry is in
+`scripts/quality-policy/registry.json`; new UI/plugin/performance/security/release
+cases need separate reviewed verifier cards. Do not invent `make acceptance-working`
+as an existing gate. A documentation validator does not prove runtime, and
+current fast is not the full W acceptance.
 
-Проверки по риску: runtime — cancellation/ownership/budget; TUI/REPL — настоящий
+Risk-based checks: runtime — cancellation/ownership/budget; TUI/REPL — real
 compiler/PTY; CI — nonTTY/signals/exits/artifacts/trust; plugins — compatibility,
-failure/cleanup/install integrity; recovery — crash/no mutation replay; providers —
-реальный локальный Scala HTTP stand. Mock/replay по умолчанию. Paid product calls
-только при явном режиме и cap. Gate failure/missing tool/timeout — не passed.
+failure/cleanup/install integrity; recovery — crash/no mutation replay; providers
+— real local Scala HTTP stand. Mock/replay by default. Paid product calls only
+with an explicit mode and cap. Gate failure/missing tool/timeout is not passed.
 
-Work record создаётся после выполнения. Evidence привязано к source/policy/toolchain
-snapshot и actual commands/exits/log hashes. Текущий runner нельзя считать полностью
-соответствующим spec только по зелёному self-check; P0 проверяет и этот gap. Изменение
-inputs после тестов требует affected rerun, operational exclusions только по reviewed
-точному allowlist. Ни board, ни количество spawned workers не доказательство готовности.
+Create a work record after execution. Evidence is tied to source/policy/toolchain
+snapshot and actual commands/exits/log hashes. Do not consider the current runner
+fully spec-compliant solely because its self-check is green; P0 checks this gap
+too. Input changes after tests require affected reruns; operational exclusions
+only through an exact reviewed allowlist. Neither the board nor the number of
+spawned workers proves readiness.
 
-## 6a. Приёмка встраиваемого SDK и проверка пользы
+## 6a. Embeddable SDK acceptance and value validation
 
-Это новые case obligations внутри существующих фаз, не названия готовых gates.
-Coordinator после RAI-115 регистрирует ADR и child cards по 8–24 h с exact paths,
-implementation/integration dependencies и независимым review. Protected verifiers
-и изменение registry — отдельные карточки; существующие проверки не ослабляются.
+These are new case obligations within existing phases, not names of ready-made
+gates. After RAI-115, the coordinator registers an ADR and 8–24 h child cards with
+exact paths, implementation/integration dependencies, and independent review.
+Protected verifiers and registry changes are separate cards; existing checks are
+not weakened.
 
-| Case | Фаза | Наблюдаемый результат |
+| Case | Phase | Observable result |
 | --- | --- | --- |
-| SDK-01 | P4.C | Чистый внешний Scala/ZIO consumer получает versioned JARs, компилирует typed Program и запускает native loop; runtime classpath не содержит repl/compiler/JLine/CLI/testkit; scripted testkit допускается только в test scope |
-| SDK-02 | P4.C | Host scope владеет root/children/resources; normal/failure/cancel и maxLLM=1 проверены; два экземпляра host не делят скрытый global state; construction ленивый; budget/policy denial типизированы; provider/tool config явный |
-| SDK-03 | P7.B/C | Одно определение workflow работает из host приложения, настоящего REPL и compiled CLI bundle: одинаковые нормализованные результат/ошибка, policy/budget и отмена; оба direct wires проходят локальные Scala HTTP stands; non-coding typed workflow без обязательного coding prompt/tools. Bundle v1 сейчас String→String: typed internals не доказывают typed wire; codec/schema change только через ADR |
-| SDK-04 | P7.C | На внешнем fixture repo CI выполняет read/edit/failing-check/fix/passing-check и выдаёт diff, checks и exit/artifacts; non-TTY/SIGTERM/trust проверены; scripted и live evidence разделены, live только при explicit mode/cap |
-| SDK-05 | P10.A/B | Из immutable candidate получены артефакты и dependency inventory; clean consumer install/compile/run, поддерживаемые версии и compatibility policy проверены независимым reviewer; публичная публикация не подразумевается |
+| SDK-01 | P4.C | A clean external Scala/ZIO consumer obtains versioned JARs, compiles a typed Program, and runs the native loop; runtime classpath contains no repl/compiler/JLine/CLI/testkit; scripted testkit is allowed only in test scope |
+| SDK-02 | P4.C | Host scope owns root/children/resources; normal/failure/cancel and maxLLM=1 are checked; two host instances share no hidden global state; construction is lazy; budget/policy denial is typed; provider/tool config is explicit |
+| SDK-03 | P7.B/C | One workflow definition works from host app, real REPL, and compiled CLI bundle: same normalized result/error, policy/budget, and cancellation; both direct wires pass local Scala HTTP stands; non-coding typed workflow without required coding prompt/tools. Bundle v1 is String→String: typed internals do not prove a typed wire; codec/schema change only through ADR |
+| SDK-04 | P7.C | On an external fixture repo, CI performs read/edit/failing-check/fix/passing-check and emits diff, checks, and exit/artifacts; non-TTY/SIGTERM/trust checked; scripted and live evidence separated, live only with explicit mode/cap |
+| SDK-05 | P10.A/B | Artifacts and dependency inventory are obtained from immutable candidate; clean consumer install/compile/run, supported versions, and compatibility policy checked by independent reviewer; public publishing is not implied |
 
-Типы проверяют композицию, но не истинность ответа LLM: structured outputs требуют
-runtime validation и bounded repair по RAI-028. API не должен принуждать host к
-blocking REPL facade или второму scheduler. Новая распределённая budget authority,
-durable workflow engine, RAG/vector-store catalog и SDK других языков сюда не входят.
+Types check composition, not the truth of an LLM response: structured outputs need
+runtime validation and bounded repair under RAI-028. The API must not force the
+host into a blocking REPL facade or a second scheduler. New distributed budget
+authority, durable workflow engine, RAG/vector-store catalog, and SDKs in other
+languages are out of scope.
 
-P-LIN остаётся механизмом записи, объяснения и replay поддерживаемых операций.
-Компилируемость Scala-проекции, равенство графа и исполнение workflow — разные
-claims с отдельным evidence. Превращение произвольной сессии в редактируемую
-программу и durable resume arbitrary Scala callbacks не объявляются свойствами
-SDK; незавершённые acceptance P-LIN сохраняются, а не заменяются этим уточнением.
+P-LIN remains a mechanism to record, explain, and replay supported operations.
+Scala-projection compilation, graph equality, and workflow execution are separate
+claims with separate evidence. Converting an arbitrary session into an editable
+program and durable resume of arbitrary Scala callbacks are not SDK properties;
+unfinished P-LIN acceptance remains in place and is not replaced by this refinement.
 
-RAI-115 — source audit (P0.A); после независимого review следующая карточка
-**RAI-116** фиксирует workflow authoring/launch contract, затем **RAI-117** — SDLC
-effects/acceptance packet. Ready/accepted сверять с board. Реализация начинается
-с local/CI workflow path, host consumer — дополнительная отдельная приёмка.
-SDK/CI пилоты могут идти после готовности нужного slice до полной M3; их отчёты
-не закрывают W/UX acceptance. Участники, спрос и даты пока не подтверждены.
-Для OSS-поставки P10.C фиксирует поддержку публичного API, правила deprecation,
-канал issues и воспроизводимый consumer-reproducer; новые зависимости и release
-артефакты проходят существующую license policy. Звёзды репозитория не заменяют
-данные об использовании и не являются условием engineering acceptance.
+RAI-115 is a source audit (P0.A); after independent review, the next card **RAI-116**
+sets the workflow authoring/launch contract, then **RAI-117** sets SDLC
+effects/acceptance packet. Check ready/accepted against the board. Implementation
+starts with the local/CI workflow path; the host consumer is additional, separate
+acceptance. SDK/CI pilots may start after the required slice is ready, before full
+M3; their reports do not close W/UX acceptance. Participants, demand, and dates
+are not yet confirmed. For OSS delivery, P10.C records public API support,
+deprecation rules, issue channel, and a reproducible consumer reproducer; new
+dependencies and release artifacts follow the existing license policy. Repository
+stars do not replace use data and are not an engineering acceptance condition.
 
-## 6b. Ранний workflow preview и зависимости
+## 6b. Early workflow preview and dependencies
 
-`workflow_preview_eligible` — отдельный component результат, не M2/M3/M4 и не
-stable SDK. Условия: reviewed RAI-116 boundary, изолированная установка нужных
-артефактов, WF-01/02 на одном immutable candidate, declared versions/limitations,
-одна команда примера. Shared source не копируется в consumers, одинаковый workflow
-не подменяется двумя похожими implementations. Public publish отдельно.
+`workflow_preview_eligible` is a separate component result, not M2/M3/M4 and not
+a stable SDK. Requirements: reviewed RAI-116 boundary, isolated installation of
+required artifacts, WF-01/02 on one immutable candidate, declared versions/
+limitations, one example command. Shared source is not copied into consumers;
+one workflow is not replaced by two similar implementations. Public publishing
+is separate.
 
-| Case | Обязательный observable result |
+| Case | Required observable result |
 | --- | --- |
-| WF-01 | Авторский Scala source компилируется pinned compiler, запускается локально через dev/REPL path и как compiled bundle в non-TTY generic local CI; input/result/error/artifacts сопоставимы; String boundary v1 явно указана; lazy definition не вызывает модель/tools |
-| WF-02 | Один root/ledger и per-call admission во всех adapters; maxLLM=1 с child не deadlock; внешняя отмена завершает owned ресурсы; invalid input/policy/provider failure/cap дают typed outcome; два run не делят случайное global state |
+| WF-01 | Author's Scala source compiles with pinned compiler, runs locally through dev/REPL path and as a compiled bundle in non-TTY generic local CI; input/result/error/artifacts are comparable; String boundary v1 is explicit; lazy definition does not call model/tools |
+| WF-02 | One root/ledger and per-call admission across all adapters; maxLLM=1 with child does not deadlock; external cancellation closes owned resources; invalid input/policy/provider failure/cap produce typed outcome; two runs do not share accidental global state |
 
-Первая демонстрация использует deterministic backend/local stands. Затем тот же
-сценарий допускает явно настроенный direct provider с mode/cap. Offline proof не
-доказывает качество модели. Чистый host consumer SDK-01/02 сохраняется для P4/M2,
-полная parity SDK-03 для P7; они не блокируют отзыв о готовом workflow preview.
+The first demonstration uses a deterministic backend/local stands. Then the same
+scenario can use an explicitly configured direct provider with mode/cap. Offline
+proof does not prove model quality. The clean host consumer SDK-01/02 remains for
+P4/M2, full SDK-03 parity for P7; these do not block feedback on a ready workflow
+preview.
 
-Первый SDLC example должен позволять заменить этап, добавить tool/check, выбрать
-checkpoint и ограничить repair/review loop обычной Scala. Не вводить новые
-абстракции только ради красивого примера. Публичный смысл stages/inputs/outputs,
-retry и approval фиксируется RAI-116/117 до реализации helpers.
+The first SDLC example should allow replacing a stage, adding a tool/check,
+choosing a checkpoint, and limiting the repair/review loop in ordinary Scala. Do
+not introduce abstractions just to make the example look elegant. Public meaning
+of stages/inputs/outputs, retry, and approval is fixed by RAI-116/117 before helper
+implementation.
 
-## 6c. TokenRouter AI-native SDLC: конечная цель и поставка slices
+## 6c. TokenRouter AI-native SDLC: end goal and delivery slices
 
-Target inventory: `../tokenrouter`, HEAD `91e6ce0`, dirty working inputs отдельно
-хэшированы в research. Никакая worktree mutation или приёмка TokenRouter этим
-планом не выполнена. Его команды, policy и fingerprints перечитываются на каждом
-назначении; любые target edits — отдельные карточки его репозитория.
+Target inventory: `../tokenrouter`, HEAD `91e6ce0`, dirty working inputs hashed
+separately in research. This plan has not performed any worktree mutation or
+acceptance of TokenRouter. Its commands, policy, and fingerprints are reread for
+every assignment; any target edits are separate cards in that repository.
 
-| Slice / case | Фаза | Результат и негативная приёмка |
+| Slice / case | Phase | Result and negative acceptance |
 | --- | --- | --- |
-| SDLC-01: task→plan→implement→check→review | P7.A/C | Stage inputs/outputs и review verdict структурированы; checks запускаются trusted runner на pinned candidate; repair/rework bounded; отказ/ошибка/исчерпание попыток не дают success; изменённые checks не могут сами авторизовать результат |
-| SDLC-02: configurable human checkpoint | P7.B | Workflow выбирает auto/approval/deny в рамках owner policy. В headless NeedsApproval завершает invocation с artifact/exit; новый запуск проверяет policy/task/repo/base/candidate и истечение решения. Stale/отклонённое решение не расширяет права; durable fiber resume не заявляется |
-| SDLC-03: commit/PR contract + local stand | P7.B/C | Commit привязан к точному tree/checks/review и создаётся в isolated branch. PR lifecycle проверяется Scala stand без выбранного forge; timeout/duplicate/conflict дают truthful outcome и read-only reconciliation перед повтором. Real PR pending до выбранного adapter и его acceptance |
-| SDLC-04: automatic integration | P7.B/C | Один integration owner, expected source/target revisions, обязательные repo checks/review соблюдены; stale refs/conflict/ambiguous merge не считаются успехом. После смены candidate повторить affected checks; stand/disposable Git доказывают протокол, не реальную branch protection |
-| SDLC-05: local release preparation | P7.C/P10.B | Version/changelog из принятого revision; local-only tag; build в отдельный candidate-specific каталог; checksum/build metadata и revision связаны. Существующий tag/version, failed build/cancel — явный outcome; нет push тега, публикации пакетов/образов или deploy |
+| SDLC-01: task→plan→implement→check→review | P7.A/C | Stage inputs/outputs and review verdict are structured; checks run via trusted runner on pinned candidate; repair/rework bounded; refusal/error/attempts exhausted do not succeed; changed checks cannot authorize their own result |
+| SDLC-02: configurable human checkpoint | P7.B | Workflow chooses auto/approval/deny within owner policy. In headless mode NeedsApproval ends invocation with artifact/exit; a new run rechecks policy/task/repo/base/candidate and decision expiry. Stale/rejected decision does not expand rights; no claim of durable fiber resume |
+| SDLC-03: commit/PR contract + local stand | P7.B/C | Commit is tied to exact tree/checks/review and created on isolated branch. PR lifecycle checked by Scala stand without selected forge; timeout/duplicate/conflict yield truthful outcome and read-only reconciliation before retry. Real PR pending selection and acceptance of adapter |
+| SDLC-04: automatic integration | P7.B/C | One integration owner, expected source/target revisions, required repo checks/review observed; stale refs/conflict/ambiguous merge are not success. After candidate changes, rerun affected checks; stand/disposable Git prove protocol, not real branch protection |
+| SDLC-05: local release preparation | P7.C/P10.B | Version/changelog from accepted revision; local-only tag; build into a separate candidate-specific directory; checksum/build metadata linked to revision. Existing tag/version, failed build/cancel have explicit outcome; no tag push, package/image publish, or deploy |
 
-Полный цикл — подтверждённая конечная цель. Slices принимаются последовательно:
-workflow preview → SDLC-01/02 → SDLC-03/04 на local stand → SDLC-05; реальный
-forge adapter выбирается позднее. Локальный stand не заменяет реальный PR/merge,
-а неполный preview не называется готовым полным SDLC.
+The full cycle is the confirmed end goal. Slices are accepted in sequence:
+workflow preview → SDLC-01/02 → SDLC-03/04 on local stand → SDLC-05; the real
+forge adapter is selected later. A local stand does not replace real PR/merge, and
+an incomplete preview is not called a ready full SDLC.
 
-TokenRouter уже имеет `make release-artifacts`; он формирует binaries/checksums/
-SBOM или build manifests, но не changelog/tag. Push `v*` в его текущем release
-workflow публикует images и deploys staging; владелец выбрал **локальный tag без
-push**. CI engine и forge пока не выбраны, существующий GitHub origin не означает
-выбор GitHub Actions или первого forge adapter. Generic local invocation,
-versioned artifacts и локальный Scala stand достаточны для начальных fixtures.
+TokenRouter already has `make release-artifacts`; it produces binaries/checksums/
+SBOM or build manifests, but not changelog/tag. Pushing `v*` in its current release
+workflow publishes images and deploys staging; the owner chose a **local tag with
+no push**. CI engine and forge are not yet selected; its existing GitHub origin
+does not mean GitHub Actions or the first forge adapter has been selected. Generic
+local invocation, versioned artifacts, and local Scala stand suffice for initial
+fixtures.
 
-Изменения старых non-goals `ci-runtime.md` §6 и `runtime-contracts.md` §11,
-approval schema и SCM/release capabilities требуют RAI-117 ADR и независимого
-review. До acceptance RAI-117 coordinator регистрирует точное соответствие
-SDLC case → фаза/M3/M4 → implementation card ID и отдельный verifier card ID
-(или уже принятый verifier с evidence), owners, allowed paths, dependencies,
-estimate и источник часов. Worker RAI-117 готовит packet в своих allowed paths;
-реестром карточек владеет coordinator. Implementation не начинается до review
-контракта, оценки объёма и регистрации verifier packets. Gate policy/protected
-fixtures меняются только в выделенной verifier card с независимым review.
-Human checkpoints сужают trusted capabilities; их Scala declaration не выдаёт
-дополнительных прав. Trust policy не sandbox для Scala и repo build commands.
+Changes to old non-goals in `ci-runtime.md` §6 and `runtime-contracts.md` §11,
+approval schema, and SCM/release capabilities require RAI-117 ADR and independent
+review. Before RAI-117 is accepted, the coordinator registers exact mapping of
+SDLC case → phase/M3/M4 → implementation card ID and separate verifier card ID
+(or an already accepted verifier with evidence), owners, allowed paths,
+dependencies, estimate, and hour source. The RAI-117 worker prepares the packet
+within its allowed paths; the coordinator owns the card registry. Implementation
+does not start before contract review, scope estimate, and verifier packet
+registration. Gate policy/protected fixtures change only in a dedicated verifier
+card with independent review. Human checkpoints narrow trusted capabilities;
+their Scala declaration does not grant extra rights. Trust policy is not a
+sandbox for Scala or repository build commands.
 
-Объём SDLC kit/SCM/release добавлен к раннему SDK предположению и пока не оценён
-полностью. До implementation фиксировать отдельную estimate и источник часов
-в P7/P10; approved slices переиспользовать, старые obligations не вычёркивать.
-13100 h — исторический envelope, не подтверждение, что новый scope в нём помещается.
+The SDLC kit/SCM/release scope has been added to the early SDK assumption and is
+not fully estimated yet. Before implementation, record a separate estimate and
+hour source in P7/P10; reuse approved slices, do not remove old obligations.
+13,100 h is a historical envelope, not confirmation that the new scope fits it.
 
-## 7. Контроль масштаба
+## 7. Scope control
 
-Не входят в этот бюджет: web/cloud console, hosted marketplace, remote distributed
-execution, новый DSL parser/macros, second runtime, другие продуктовые языки,
-переделка Yabanin. Эти части прежнего roadmap уступают удобству локального продукта.
-Все product modules/tests/HTTP stands — Scala 3 + ZIO; использовать существующую
-license policy, не добавлять dependencies без конкретной карточки и review.
+Not included in this budget: web/cloud console, hosted marketplace, remote
+distributed execution, a new DSL parser/macros, second runtime, other product
+languages, or reworking Yabanin. These parts of the previous roadmap yield to the
+usability of the local product. All product modules/tests/HTTP stands use Scala 3
++ ZIO; follow the existing license policy; add no dependencies without a specific
+card and review.
 
-Главные риски и действия: event loss → snapshot/sequence tests; JLine конфликт ввода
-→ ранний PTY spike; plugin ABI/dependencies → narrow SPI/compatibility matrix;
-state corruption → versioned fixtures/CAS; parallel merge churn → freeze и ownership;
-устаревший board → actual inventory; внешний Yabanin blocker → standalone уже принят.
+Main risks and actions: event loss → snapshot/sequence tests; JLine input conflict
+→ early PTY spike; plugin ABI/dependencies → narrow SPI/compatibility matrix;
+state corruption → versioned fixtures/CAS; parallel merge churn → freeze and
+ownership; stale board → actual inventory; external Yabanin blocker → standalone
+product is still accepted first.
 
-Раз в wave coordinator публикует: accepted results, активные lane/card/path,
-blocker с причиной, used/reserved/remaining estimate и следующий runnable increment.
-Отклонение бюджета пакета >20% вызывает перепланирование остатка и явное описание
-tradeoff, но не скрытое ослабление acceptance. Пока есть independent ready task,
-внешний blocker не повод прекращать всю разработку.
+Once per wave, the coordinator publishes: accepted results, active lane/card/path,
+blocker and cause, used/reserved/remaining estimate, and next runnable increment.
+A package budget variance >20% triggers re-planning the remainder and an explicit
+tradeoff description, not a hidden relaxation of acceptance. While independent
+ready work exists, an external blocker is no reason to stop all development.
 
-Источники для executor integration: официальные [OpenCode agents](https://opencode.ai/docs/agents/)
-и [commands](https://opencode.ai/docs/commands/), проверены 2026-10-05. Primary agent
-switch и child-session navigation различаются; ни один не гарантирует filesystem
-isolation. Фактические tools/версию проверять в следующей сессии; интерфейс Raider
-проектируется отдельно от интерфейса OpenCode.
+Sources for executor integration: official [OpenCode agents](https://opencode.ai/docs/agents/)
+and [commands](https://opencode.ai/docs/commands/), checked 2026-10-05. Primary
+agent switching and child-session navigation differ; neither guarantees filesystem
+isolation. Check actual tools/version in the next session; Raider's interface is
+designed separately from OpenCode's interface.

@@ -1,86 +1,63 @@
 <!-- Work record. Original in Russian; key results in English below. -->
 
-# DSL-ERGO (RAI-018 slice): work record — менее вербозный DSL
+# DSL-ERGO (RAI-018 slice): work record — less verbose DSL
 
-Status: done (slice: фасадные спеллинги golden-сценариев; полный RAI-018 —
-отдельная карточка). Date: 2026-10-04. Baseline: предыдущий last-passing
-gate artifacts/quality/20261004-051133 (RAI-013-SLICE).
+Status: done (slice: facade spellings for golden scenarios; full RAI-018 is a separate card). Date: 2026-10-04. Baseline: previous last-passing gate `artifacts/quality/20261004-051133` (RAI-013-SLICE).
 
 ## Resulting behavior
 
-Менее вербозный DSL в REPL (всё через ОДИН интерпретатор — AgentLoop /
-composition, никакой второй семантики; construction dispatches nothing —
-API-03):
+Less verbose DSL in the REPL (everything uses ONE interpreter — AgentLoop/composition, no second semantics; construction dispatches nothing — API-03):
 
-- `scout("исследуй parser")` — ЛЕНИВЫЙ типизированный дескриптор `AgentAsk`:
-  `.run()` / `.ask()` (foreground), `.start()` (фон, :jobs), `.map(f)`
-  (типизированное пост-преобразование); до run/ask/start — ноль вызовов
-  бэкенда (fixture-проверка);
-- `all(scout, reviewer).ask("p")` → (String, String); `all(askA.map(len),
-  askB).run()` → типизированный кортеж — через `raider.dsl.composition.all`
-  (fail-fast COMP-02);
-- `batch(List("parser","config","cli"), parallelism = 2)(name =>
-  scout(s"исследуй $name")).run()` → упорядоченные результаты;
-  `.collect()` → BatchOutcome (доменные падения — значения, внешняя
-  прерываемость — ре-raise, §5);
-- `openSession(worker)` → `Chat` с историей: каждый `ask` добавляет
-  user+assistant ходы — МУЛЬТИХОДОВАЯ непрерывность через тот же AgentLoop
-  (fixture: запрос turn-2 несёт user1, assistant1, user2);
-- `job.await` БЕЗ скобок как перегрузка `await()` через `@targetName`
-  (erasure-clash решён аннотацией); оба спеллинга дают один исход,
-  await идемпотентен;
-- реестр фасада (`:jobs`/`:cancel`) расширен до JobHandle[?] (гетерогенные
-  типизированные джобы), cancel идёт через cancelAny.
+- `scout("research parser")` is a LAZY typed `AgentAsk` descriptor: `.run()` / `.ask()` (foreground), `.start()` (background, `:jobs`), `.map(f)` (typed post-transformation); before run/ask/start there are zero backend calls (fixture check).
+- `all(scout, reviewer).ask("p")` → `(String, String)`; `all(askA.map(len), askB).run()` → typed tuple, through `raider.dsl.composition.all` (fail-fast COMP-02).
+- `batch(List("parser","config","cli"), parallelism = 2)(name => scout(s"research $name")).run()` → results in input order; `.collect()` → `BatchOutcome` (domain failures become values, external interruption is re-raised, §5).
+- `openSession(worker)` → `Chat` with history: each `ask` adds user+assistant turns — MULTI-TURN continuity through the same AgentLoop (fixture: turn-2 request carries user1, assistant1, user2).
+- `job.await` WITHOUT parentheses is an overload of `await()` via `@targetName` (erasure clash resolved by annotation); both spellings produce one outcome, and await is idempotent.
+- Facade registry (`:jobs`/`:cancel`) extended to `JobHandle[?]` (heterogeneous typed jobs); cancel uses `cancelAny`.
 
-Международный контракт не менялся: AgentRef/ask/start/await()/send(RA-CAP)/
-watch как были; Runner.runText не тронут.
+The international contract did not change: AgentRef/ask/start/await()/send(RA-CAP)/watch are unchanged; `Runner.runText` untouched.
 
 ## Changed paths
 
 ```
-107b8f70…  modules/repl/src/main/scala/raider/repl/facade/FacadeOps.scala
-4dd84d3a…  modules/repl/src/test/scala/raider/repl/facade/DslErgonomicsSpec.scala
+107b8f70… modules/repl/src/main/scala/raider/repl/facade/FacadeOps.scala
+4dd84d3a… modules/repl/src/test/scala/raider/repl/facade/DslErgonomicsSpec.scala
 ```
 
 ## Acceptance evidence
 
 | Criterion | Actual | Evidence |
 | --- | --- | --- |
-| Ленивость: построение scout/all/batch — 0 запросов бэкенда (API-03) | pass | DslErgonomicsSpec |
-| scout("p").run() / .ask() / .map(_.length) — 1 dispatch, тип | pass | DslErgonomicsSpec |
-| .start() + await (оба спеллинга) идемпотентны, Succeeded | pass | DslErgonomicsSpec |
-| all(агенты).ask / all(asks).run — кортежи, fail-fast через composition | pass | DslErgonomicsSpec |
-| batch.run() — результаты в порядке ВХОДА (порядок записи запросов при parallelism>1 контрактом НЕ является — гейт поймал мой слишком строгий ассерт, исправлен на set-семантику) | pass | DslErgonomicsSpec + gate 054915 (честный fail) |
-| batch.collect() — доменные падения в ауткамы | pass | DslErgonomicsSpec |
-| openSession: ход-2 несёт user1+assistant1+user2 (непрерывность) | pass | DslErgonomicsSpec |
-| Оба REPL smoke на изменённом фасаде | non-TTY exit 0; PTY 13/13 | /tmp/smoke-dsl.log, /tmp/pty-dsl.log |
-| Стабильность ×3 (repl 16/16) | exit 0 ×3 | /tmp/d9.log, /tmp/dsl-run-{1,2}.log |
-| Полный sbt test | 171 тест, 0 failed, exit 0 ×2 | /tmp/full-test-DSL{,2}.log |
-| Quality gates 6/6 ×2 ПОДРЯД (после фикса ассерта) | exit 0 ×2 | artifacts/quality/20261004-05{5104,5145}/ |
+| Laziness: constructing scout/all/batch makes 0 backend requests (API-03) | pass | DslErgonomicsSpec |
+| `scout("p").run()` / `.ask()` / `.map(_.length)` — 1 dispatch, typed | pass | DslErgonomicsSpec |
+| `.start()` + await (both spellings) are idempotent, Succeeded | pass | DslErgonomicsSpec |
+| `all(agents).ask` / `all(asks).run` — tuples, fail-fast through composition | pass | DslErgonomicsSpec |
+| `batch.run()` — results in INPUT order (request-write order for parallelism>1 is NOT part of the contract; the gate caught my overly strict assertion, corrected to set semantics) | pass | DslErgonomicsSpec + gate 054915 (honest failure) |
+| `batch.collect()` — domain failures as outcomes | pass | DslErgonomicsSpec |
+| `openSession`: turn 2 carries user1+assistant1+user2 (continuity) | pass | DslErgonomicsSpec |
+| Both REPL smokes on changed facade | non-TTY exit 0; PTY 13/13 | `/tmp/smoke-dsl.log`, `/tmp/pty-dsl.log` |
+| Stability ×3 (repl 16/16) | exit 0 ×3 | `/tmp/d9.log`, `/tmp/dsl-run-{1,2}.log` |
+| Full sbt test | 171 tests, 0 failed, exit 0 ×2 | `/tmp/full-test-DSL{,2}.log` |
+| Quality gates 6/6 ×2 CONSECUTIVELY (after assertion fix) | exit 0 ×2 | `artifacts/quality/20261004-05{5104,5145}/` |
 
 ## Commands
 
 | argv | Exit | Log |
 | --- | --- | --- |
-| `COURSIER_CACHE=/tmp/cc-master sbt --batch "raiderRepl/test"` ×3 | 0,0,0 | /tmp/d9.log, /tmp/dsl-run-{1,2}.log |
-| `sh scripts/quality/repl_smoke.sh` | 0 | /tmp/smoke-dsl.log |
-| `python3 scripts/quality/repl_pty_smoke.py` | 0 (13/13) | /tmp/pty-dsl.log |
-| `COURSIER_CACHE=/tmp/cc-master sbt --batch test` ×2 | 0 (171) | /tmp/full-test-DSL{,2}.log |
-| `make quality-changed QUALITY_EXECUTE=1` (до фикса ассерта, честно) | exit 2 | artifacts/quality/20261004-054915/ |
-| `make quality-changed QUALITY_EXECUTE=1` ×2 (после) | 0, 0 | artifacts/quality/20261004-05{5104,5145}/ |
+| `COURSIER_CACHE=/tmp/cc-master sbt --batch "raiderRepl/test"` ×3 | 0,0,0 | `/tmp/d9.log`, `/tmp/dsl-run-{1,2}.log` |
+| `sh scripts/quality/repl_smoke.sh` | 0 | `/tmp/smoke-dsl.log` |
+| `python3 scripts/quality/repl_pty_smoke.py` | 0 (13/13) | `/tmp/pty-dsl.log` |
+| `COURSIER_CACHE=/tmp/cc-master sbt --batch test` ×2 | 0 (171) | `/tmp/full-test-DSL{,2}.log` |
+| `make quality-changed QUALITY_EXECUTE=1` (before assertion fix, honestly) | exit 2 | `artifacts/quality/20261004-054915/` |
+| `make quality-changed QUALITY_EXECUTE=1` ×2 (after) | 0, 0 | `artifacts/quality/20261004-05{5104,5145}/` |
 
 ## Limitations / obligations
 
-- `.named(...)` на композициях, `job.send` (RA-CAP), стриминговый watch —
-  прежние obligations RAI-018.
-- Chat не переживает :reset (состояние в мире интерпретатора — как и весь
-  фасад; это известная модель W10).
-- `all` arity-2 (как composition.all); arity-3+ и heterogeneous tuple map —
-  в полной карточке RAI-018/017.
-- AgentAsk инвариантен по A (JobHandle инвариантен — ковариантная +A ломала
-  start()); на эргономику не влияет.
+- `.named(...)` on compositions, `job.send` (RA-CAP), streaming watch — previous RAI-018 obligations.
+- Chat does not survive `:reset` (state is in interpreter world, like the entire facade; known W10 model).
+- `all` arity-2 (like composition.all); arity-3+ and heterogeneous tuple map — in full card RAI-018/017.
+- `AgentAsk` is invariant in A (`JobHandle` is invariant — covariance +A broke `start()`); this does not affect ergonomics.
 
 ## Review and next task
 
-Независимый review не проводился (координаторская сессия). Следующие:
-child delegation (§11), RAI-022 (headless CLI), structured message contract.
+No independent review was conducted (coordinator session). Next: child delegation (§11), RAI-022 (headless CLI), structured message contract.

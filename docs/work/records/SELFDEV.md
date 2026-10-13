@@ -1,43 +1,43 @@
 <!-- Work record. Original in Russian; key results in English below. -->
 
-# SELFDEV: work record — coder-агент (самостоятельная работа над репо)
+# SELFDEV: work record — coding agent (self-work on the repository)
 
-Status: done (slice: coder = built-in агент с НАСТОЯЩИМИ workspace-инструментами
-fs_read/fs_search/proc_run + live OpenAI-compatible провайдер; edit-инструмент
-и мультиход-память — obligations). Date: 2026-10-04. Baseline: предыдущий
+Status: done (slice: coder = built-in agent with REAL workspace tools
+fs_read/fs_search/proc_run + live OpenAI-compatible provider; edit tool
+and multi-turn memory — obligations). Date: 2026-10-04. Baseline: previous
 last-passing gate artifacts/quality/20261004-163645.
 
 ## Resulting behavior
 
 `raider run --agent coder --provider openai --base-url http://127.0.0.1:8081/v1
---input "…" --out …` — Raider работает над СОБСТВЕННЫМ репо:
+--input "…" --out …` — Raider works on its OWN repository:
 
-- `raider.tools.CodingToolset` — реальные RAI-014/016 инструменты за JSON
-  -контрактом core Tool: `fs_read` (bounded read + sha256 provenance + realpath
-  containment — symlink/`..` эскейпы отклонены), `fs_search` (bounded,
-  declared truncation), `proc_run` (ЯВНЫЙ argv, БЕЗ shell, cwd в workspace,
+- `raider.tools.CodingToolset` — real RAI-014/016 tools under the JSON
+  contract of core Tool: `fs_read` (bounded read + sha256 provenance + realpath
+  containment — symlink/`..` escapes are rejected), `fs_search` (bounded,
+  declared truncation), `proc_run` (EXPLICIT argv, NO shell, cwd in workspace,
   empty-env + allowlist, timeout graceful→force, bounded output). POLICY-
-  отказы (containment/bounds/bad args) — structured feedback МОДЕЛИ (§8/§10:
-  цикл продолжается, модель может скорректироваться); crash-фактуры остаются
-  typed failures. Это ЕДИНСТВЕННЫЙ канал мутаций (argv полностью виден).
+  denials (containment/bounds/bad args) provide structured feedback to the MODEL (§8/§10:
+  the loop continues, allowing the model to correct itself); crash failures remain
+  typed failures. This is the ONLY mutation channel (argv is fully visible).
 - CLI: `--provider mock|openai` (default mock), `--base-url`
-  (default 127.0.0.1:8081/v1 — локальный llama.cpp), `--model` (default
-  local), `--api-key` (default no-key — НЕ секрет-литерал), `--workspace`
-  (default CWD). coder в whitelist BuiltInAgents.
-- `MockBackend` — fixture-маркированный (`[mock]` в тексте) для --mock.
-- Живой backend: non-streaming OpenAIChatBackend (RAI-011 slice) — парсит
-  `tool_calls` → ToolCallReady → инструменты реально исполняются.
+  (default 127.0.0.1:8081/v1 — local llama.cpp), `--model` (default
+  local), `--api-key` (default no-key — NOT a secret literal), `--workspace`
+  (default CWD). coder is in the BuiltInAgents whitelist.
+- `MockBackend` — fixture-marked (`[mock]` in text) for --mock.
+- Live backend: non-streaming OpenAIChatBackend (RAI-011 slice) — parses
+  `tool_calls` → ToolCallReady → tools execute for real.
 
-НАЙДЕНО И ЗАКРЫТО fixture'ами (воспроизведено, потом устранено):
-1. java-glob `**/*.scala` НЕ матчит файл в корне workspace (нужен `*.scala`
-   или `\u007b\u007b`-семантика — задокументировано в тесте).
-2. containment-отказ как typed failure ВАЛИЛ ВЕСЬ прогон (LOOP-03
-   семантика «tool failure → Failed» слишком жёсткая для policy-отказов) —
-   введено разделение policy-denial (feedback) vs crash (fail) в адаптере.
-3. `Stream.empty *> s` в zio-streams ЗАВЕРШАЕТ комбинированный стрим, не
-   потянув s (zip-семантика) — детерминированный park в TurnBackend переведён
-   на `++` + drain; park переведён с ИНДЕКСА вызова на СОДЕРЖАНИЕ запроса
-   (parent/child fork order недетерминирован под нагрузкой).
+FOUND AND CLOSED with fixtures (reproduced, then fixed):
+1. java-glob `**/*.scala` does NOT match a file at the workspace root (`*.scala` is needed
+   or `\u007b\u007b` semantics — documented in the test).
+2. a containment denial as a typed failure FAILED the entire run (LOOP-03
+   “tool failure → Failed” semantics are too strict for policy denials) —
+   the adapter now separates policy denial (feedback) from crash (fail).
+3. `Stream.empty *> s` in zio-streams TERMINATES the combined stream without
+   consuming s (zip semantics) — deterministic parking in TurnBackend changed
+   to `++` + drain; parking changed from call INDEX to request CONTENT
+   (parent/child fork order is nondeterministic under load).
 
 ## Changed paths
 
@@ -57,13 +57,13 @@ fbf91edb…  build.sbt
 
 | Criterion | Actual | Evidence |
 | --- | --- | --- |
-| coder fs_read: модель спрашивает → loop читает РЕАЛЬНЫЙ файл → контент+sha256 доходят до модели, БЕЗ абсолютных путей | pass | CoderAgentSpec |
-| coder fs_search: bounded search находит РЕАЛЬНОЕ совпадение | pass (после glob-фикса) | CoderAgentSpec |
-| containment: fs_read ВНЕ workspace → feedback модели, утечки НЕТ | pass | CoderAgentSpec |
-| делегация: park по контенту запроса детерминирован | pass | AgentLoopDelegationSpec |
-| Стабильность | cli 10/10 ×2, tools 19/19, полный 188 ×2 | /tmp/cli4.log, /tmp/c50.log, /tmp/full-final3.log |
-| Полный sbt test | 188 тестов, 0 failed, exit 0 | /tmp/full-final3.log |
-| cli_smoke (Main-процесс, closed stdin) | PASS | /tmp/final-cli-smoke2.log |
+| coder fs_read: the model requests → the loop reads the REAL file → content+sha256 reach the model, WITHOUT absolute paths | pass | CoderAgentSpec |
+| coder fs_search: bounded search finds a REAL match | pass (after glob fix) | CoderAgentSpec |
+| containment: fs_read OUTSIDE the workspace → model feedback, NO leak | pass | CoderAgentSpec |
+| delegation: parking is deterministic by request content | pass | AgentLoopDelegationSpec |
+| Stability | cli 10/10 ×2, tools 19/19, full suite 188 ×2 | /tmp/cli4.log, /tmp/c50.log, /tmp/full-final3.log |
+| Full sbt test | 188 tests, 0 failed, exit 0 | /tmp/full-final3.log |
+| cli_smoke (Main process, closed stdin) | PASS | /tmp/final-cli-smoke2.log |
 | Quality gates 6/6 | exit 0 | artifacts/quality/20261004-181210/ |
 
 ## Commands
@@ -78,17 +78,17 @@ fbf91edb…  build.sbt
 
 ## Limitations / obligations
 
-- Edit tool RAI-015 СОБРАН (fs_edit: expected-sha, atomic, stale-detect). proc_run остаётся для команд.
-- Мультиход-память для CLI-агента (Chat-класс есть только в REPL-фасаде) —
-  obligation; сейчас один --input = один run.
-- Live-wire верификация (реальный llama.cpp прогон) — НЕ в этой карточке:
-  запуск командой владельца (см. docs/selfdev-prompts.md); продуктовые
-  тесты 8081 не трогают (правило сессии).
-- Системный промпт coder'у пока не передаётся (ModelRequest без system) —
+- Edit tool RAI-015 IMPLEMENTED (fs_edit: expected-sha, atomic, stale-detect). proc_run remains for commands.
+- Multi-turn memory for the CLI agent (the Chat class exists only in the REPL facade) —
+  obligation; currently one --input = one run.
+- Live-wire verification (real llama.cpp run) — is NOT part of this card:
+  launched by the owner (see docs/selfdev-prompts.md); product
+  tests do not touch 8081 (session rule).
+- The coder does not yet receive a system prompt (ModelRequest without system) —
   structured message contract obligation.
 
 ## Review and next task
 
-Независимый review не проводился (координаторская сессия). Self-hosting
-loop готов к владельческому запуску; следующие: RAI-015 (edit tool),
+No independent review was performed (coordinator session). The self-hosting
+loop is ready for owner-run execution; next cards: RAI-015 (edit tool),
 RAI-023 (CI context), structured messages.

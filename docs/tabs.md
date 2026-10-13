@@ -1,169 +1,165 @@
-<!-- RAI-072: документация ФАКТИЧЕСКИ реализованного поведения вкладок сессии
-     (модуль ui, карточки RAI-056/057/061/088, LIN-04A). Новых решений не
-     вносит; каждое утверждение снабжено ссылкой file:line в этом дереве. -->
+<!-- RAI-072: documentation of ACTUALLY implemented session-tab behavior
+     (ui module, cards RAI-056/057/061/088, LIN-04A). Adds no new decisions;
+     every claim has a file:line reference in this tree. -->
 
-# Вкладки сессии: SessionRegistry и таб-шелл
+# Session tabs: SessionRegistry and the tab shell
 
-Слой вкладок — это UI-модуль `modules/ui/src/main/scala/raider/ui/`: read-model
-реестр открытых вкладок над швом событий runtime→UI (см. [events.md](events.md))
-и тонкий JLine-шелл над ним. Документ описывает только реализованное поведение.
+The tab layer is the UI module `modules/ui/src/main/scala/raider/ui/`: a
+read-model registry of open tabs over the runtime→UI event seam (see
+[events.md](events.md)), with a thin JLine shell on top. This document describes
+implemented behavior only.
 
-## 1. Статус реализации (честно)
+## 1. Implementation status (honest account)
 
-- Реестр и шелл реализованы и покрыты unit-тестами
+- The registry and shell are implemented and covered by unit tests
   (`modules/ui/src/test/scala/raider/ui/`: `SessionRegistrySpec`,
-  `TabShellSpec`, `AuxTabSpec`, `ShellViewsStateSpec`) и PTY-пробником
+  `TabShellSpec`, `AuxTabSpec`, `ShellViewsStateSpec`) and the PTY probe
   `scripts/quality/tabs_pty_probe.py`.
-- `TabShell` в этом дереве НЕ подключён к продакшн-точке входа REPL: вызовы
-  `TabShell.run` живут только в тестах (`TabShellSpec.scala:121`,
-  `TabShellPtyApp.scala:68` в `modules/ui/src/test/scala/raider/ui/`);
-  потребители `raider.ui` в `modules/*/src/main` вне самого модуля отсутствуют.
-- `:new` создаёт вкладку с СИНТЕТИЧЕСКИМИ id job/root
-  (`ShellExecutor.scala:61-66` в
-  `modules/ui/src/main/scala/raider/ui/`); реальная привязка вкладки к runtime-job
-  (карточка RAI-062) и REPL cancel-binding не реализованы.
+- `TabShell` in this tree is NOT connected to the production REPL entry point:
+  calls to `TabShell.run` occur only in tests (`TabShellSpec.scala:121`,
+  `TabShellPtyApp.scala:68` under `modules/ui/src/test/scala/raider/ui/`); no
+  consumers of `raider.ui` exist in `modules/*/src/main` outside the module.
+- `:new` creates a tab with SYNTHETIC job/root IDs (`ShellExecutor.scala:61-66`
+  under `modules/ui/src/main/scala/raider/ui/`); binding a tab to a real
+  runtime job (card RAI-062) and REPL cancel binding are not implemented.
 
-## 2. Реестр SessionRegistry
+## 2. SessionRegistry
 
-`SessionRegistry` — UI-состояние вкладок над `EventHub`
-(`SessionRegistry.scala:116-134` в
-`modules/ui/src/main/scala/raider/ui/SessionRegistry.scala`). Ключевые
-свойства:
+`SessionRegistry` is UI tab state over `EventHub`
+(`SessionRegistry.scala:116-134` in
+`modules/ui/src/main/scala/raider/ui/SessionRegistry.scala`). Key properties:
 
-- Идентичность вкладки: `TabId` присваивается один раз при `create` и не
-  меняется (`SessionRegistry.scala:18-24`); вкладки не мутируют — наблюдаемое
-  состояние живёт в ref'ах реестра (`SessionRegistry.scala:240-254`).
-- `create(jobId, rootId, label)`: сначала подписка на hub без окна потери,
-  затем создание состояния и запуск consumer-волокна; новая вкладка становится
-  focus'ом (`SessionRegistry.scala:137-140,289-337`).
-- Один hub-конверт доставляется per-tab consumer'ом: дедупликация и
-  пересортировка по `seq` до свёртки (относительный порядок классов доставки
-  hub не специфицирует) — `Reorder` (`SessionRegistry.scala:256-282`);
-  свёртка через `SessionReducer.reduce` (`SessionRegistry.scala:445-463`).
-- Чтение модели: `tabs` (порядок создания), `tab(tabId)`, `focused`,
-  `snapshot`, `history`, `scrollback` (`SessionRegistry.scala:142-208,339-424`).
-  Статус в `TabView` берётся из свёртки hub (`EventHub.snapshot`) —
-  авторитетное состояние job; `lastSeq` — локальный watermark вкладки
+- Tab identity: `TabId` is assigned once at `create` and never changes
+  (`SessionRegistry.scala:18-24`); tabs are immutable — observable state lives
+  in registry refs (`SessionRegistry.scala:240-254`).
+- `create(jobId, rootId, label)`: first subscribe to the hub without a loss
+  window, then create state and start a consumer fiber; the new tab gets focus
+  (`SessionRegistry.scala:137-140,289-337`).
+- Each per-tab consumer receives one hub envelope: deduplicate and reorder by
+  `seq` before folding (the hub does not specify relative delivery order across
+  classes) using `Reorder` (`SessionRegistry.scala:256-282`); fold with
+  `SessionReducer.reduce` (`SessionRegistry.scala:445-463`).
+- Read model: `tabs` (creation order), `tab(tabId)`, `focused`, `snapshot`,
+  `history`, `scrollback` (`SessionRegistry.scala:142-208,339-424`). Status in
+  `TabView` comes from folding the hub (`EventHub.snapshot`), the authoritative
+  job state; `lastSeq` is the tab's local watermark
   (`SessionRegistry.scala:63-79,613-627`).
-- Unread: каждое событие не-фокусной вкладки увеличивает счётчик, фокус
-  сбрасывает его в 0 (`SessionRegistry.scala:521-528`); фокус и навигация —
-  чисто UI-операции: ни публикации, ни отмены, ни вызовов job/hub/policy
+- Unread: every event for a non-focused tab increments its counter; focusing
+  resets it to 0 (`SessionRegistry.scala:521-528`). Focus and navigation are
+  pure UI operations: no publishing, cancellation, or job/hub/policy calls
   (`SessionRegistry.scala:125-128,379-394`).
-- Draft — UI-локальная строка вкладки (не событие, не публикуется):
+- Draft is a tab-local UI string (not an event and not published):
   `draftAppend`/`draftClear`/`draftGet` (`SessionRegistry.scala:190-197`).
-- Ограниченные буферы с честными счётчиками вытеснения: история последних 200
-  свёрток (`HistoryCap`, `SessionRegistry.scala:212-213,465-478`), scrollback
-  последних 500 строк Diagnostics/ToolProgress
-  (`ScrollbackCap`, `SessionRegistry.scala:215-216,480-509`); Terminal-снимок
-  всегда остаётся последним элементом истории и в `snapshot`
+- Bounded buffers with honest eviction counters: history holds the last 200
+  folds (`HistoryCap`, `SessionRegistry.scala:212-213,465-478`); scrollback
+  holds the last 500 Diagnostics/ToolProgress lines (`ScrollbackCap`,
+  `SessionRegistry.scala:215-216,480-509`). A Terminal snapshot always remains
+  the last history item and appears in `snapshot`
   (`SessionRegistry.scala:44-48`).
-- Разбиение текста в scrollback: CRLF → LF, split по LF, завершающий перенос —
-  терминатор, а не пустая строка (`SessionRegistry.scala:511-519`).
-- Ошибки — типизированные: `UnknownTab` и `NoTabs`, молчаливых unknown'ов нет
+- Scrollback text splitting: CRLF → LF, split on LF; a trailing newline is a
+  terminator, not an empty line (`SessionRegistry.scala:511-519`).
+- Errors are typed: `UnknownTab` and `NoTabs`; unknown values are never silent
   (`SessionRegistry.scala:27-38`).
-- `close(tabId)`: статус job берётся из hub-снимка (авторитет; `None` = job ещё
-  ничего не публиковал — считается живым); терминальный — удаляется
-  (`Closed`), живой — реестр ничего не меняет и возвращает `RunningChoice`
-  (`SessionRegistry.scala:148-157,350-366`). Оба решения несут lineage-набор —
-  другие открытые вкладки того же `rootId` в порядке создания
-  (`SessionRegistry.scala:97-114,603-611`). Удаление прерывает consumer-волокно
-  (оно разрегистрирует hub-очередь) и атомарно чинит фокус; идемпотентно при
-  двойном закрытии (`SessionRegistry.scala:562-601`).
-- `hide(tabId)` — убрать вкладку из UI, не трогая runtime
-  (`SessionRegistry.scala:159-162,368-372`). `rename(tabId, label)` — только
-  отображаемая метка (`SessionRegistry.scala:164-168,374-375`).
-- Навигация — ОДИН вызов: `focus`/`focusNext`/`focusPrev` (кольцо по порядку
-  создания, с переносом) (`SessionRegistry.scala:173-188,530-560`).
-- `stop()` нет: consumer-волокна прерываются `close`/`hide`; реестр —
-  process-lifetime объект (`SessionRegistry.scala:131-134`).
+- `close(tabId)`: job status comes from the hub snapshot (authoritative; `None`
+  means the job has not published yet and is treated as live). A terminal job
+  is removed (`Closed`); for a live job, the registry changes nothing and
+  returns `RunningChoice` (`SessionRegistry.scala:148-157,350-366`). Both
+  decisions carry the lineage set: other open tabs with the same `rootId`, in
+  creation order (`SessionRegistry.scala:97-114,603-611`). Removal interrupts
+  the consumer fiber (which unregisters its hub queue) and atomically repairs
+  focus; repeated close is idempotent (`SessionRegistry.scala:562-601`).
+- `hide(tabId)` removes a tab from the UI without touching runtime
+  (`SessionRegistry.scala:159-162,368-372`). `rename(tabId, label)` changes
+  only the display label (`SessionRegistry.scala:164-168,374-375`).
+- Navigation is ONE call: `focus`/`focusNext`/`focusPrev` (a wrapping ring in
+  creation order) (`SessionRegistry.scala:173-188,530-560`).
+- There is no `stop()`: consumer fibers are interrupted by `close`/`hide`; the
+  registry is a process-lifetime object (`SessionRegistry.scala:131-134`).
 
-## 3. Таб-шелл TabShell
+## 3. TabShell
 
-`TabShell` — тонкий JLine-цикл над реестром + hub
-(`TabShell.scala:7-25` в `modules/ui/src/main/scala/raider/ui/TabShell.scala`):
+`TabShell` is a thin JLine loop over the registry and hub
+(`TabShell.scala:7-25` in `modules/ui/src/main/scala/raider/ui/TabShell.scala`):
 
-- ОДИН писатель/читатель: всё видимое идёт через `ShellTerminal.printAbove`
-  (JLine printAbove — draft переживает фоновые записи); raw println в сессии
-  отсутствует (`TabShell.scala:11-14`;
-  `ShellTerminal.scala:12-33,41-49` в
-  `modules/ui/src/main/scala/raider/ui/ShellTerminal.scala`). EOF ведёт себя
-  как `:quit`; idle Ctrl+C очищает текущую строку и не трогает вкладки/draft'ы
-  (`TabShell.scala:66-72`; `ShellTerminal.scala:24-30,59-65`).
-- Парсинг/рендеринг чистые: `CommandRouter` (`CommandRouter.scala:3-6`),
-  `TabBarRenderer` (`TabBarRenderer.scala:3-5`),
-  `ShellFeedback.render` (`ShellFeedback.scala:73-113` в
-  `modules/ui/src/main/scala/raider/ui/`).
-- Фоновый pump: подписка hub на просматриваемый job и перерисовка таб-бара
-  (label + status + unread) на КАЖДЫЙ доставленный конверт; волокна scoped —
-  прерываются со scope шелла (`TabShell.scala:130-174`).
+- ONE writer/reader: all visible output goes through `ShellTerminal.printAbove`
+  (JLine `printAbove` preserves the draft during background writes); no raw
+  `println` in the session (`TabShell.scala:11-14`; `ShellTerminal.scala:12-33,41-49`).
+- Each loop iteration reads one line, routes a command, renders feedback, and
+  refreshes the prompt with current focus; EOF exits cleanly
+  (`TabShell.scala:88-126`).
+- Pure renderers are separated: `CommandRouter` (`CommandRouter.scala:3-6`),
+  `TabBarRenderer` (`TabBarRenderer.scala:3-5`), and `ShellFeedback.render`
+  (`ShellFeedback.scala:73-113` under `modules/ui/src/main/scala/raider/ui/`).
+- Background pump: subscribe to the hub for the viewed job and redraw the tab
+  bar (label + status + unread) for EACH delivered envelope; fibers are scoped
+  and interrupted with the shell scope (`TabShell.scala:130-174`).
 
-## 4. Команды
+## 4. Commands
 
-Палитра — ровно эти команды (`CommandRouter.scala:11-24`; помощь `:help` —
-`TabBarRenderer.scala:23-37`, строка-подсказка под каждым рендером бара —
-`TabBarRenderer.scala:39-41`):
+The palette consists of exactly these commands (`CommandRouter.scala:11-24`;
+`:help` help is in `TabBarRenderer.scala:23-37`, with a hint line under every
+bar rendering in `TabBarRenderer.scala:39-41`):
 
-| Команда | Поведение |
+| Command | Behavior |
 | --- | --- |
-| `:tabs` | таб-бар: порядок создания, `*` — фокус, статус сессии в едином формате `StatusText` (RAI-097: `<body> \| <counters>`, тот же рендер, что в CLI-чате; honest unknown — «cost unknown»), unread-бейдж (0 скрыт) (`TabBarRenderer.scala:8-20`, `statustext.scala`; пустое состояние — `TabBarRenderer.scala:12`) |
-| `:new <label>` | новая вкладка с синтетическим job/root (см. §1); без аргумента — типизированная ошибка (`ShellCommand.scala:60-63`) |
-| `:switch <n\|label>` | 1-based номер (как в `:tabs`), точная метка, затем уникальный префикс; неоднозначность/неизвестное — типизированная ошибка с альтернативами (`CommandRouter.scala:35-39,118-148`) |
-| `:next` / `:prev` | фокус на следующую/предыдущую вкладку (сброс unread) (`ShellExecutor.scala:104-119`) |
-| `:rename <label>` | переименовать фокусную вкладку, только UI (`ShellExecutor.scala:120-129`) |
-| `:close` | закрыть фокусную вкладку (флоу — §5) (`ShellExecutor.scala:130,164-200`) |
-| `:plugins` | экран загруженных плагинов name/version/active из PURE-провайдера; без плагинов — честное `(no plugins)` (`ShellExecutor.scala:133-134`; `ShellViews.scala:32-46,110-124`) |
-| `:state <scope>` | usage/квота скоупа; без store — типизированная подсказка, не ошибка (`ShellExecutor.scala:135-140`; `ShellViews.scala:126-138`) |
-| `:aux` | единственная вспомогательная вкладка (§6) (`ShellExecutor.scala:141-148`) |
-| `:help` | палитра (`ShellExecutor.scala:131-132`) |
-| `:quit` | выход из шелла (`ShellFeedback.scala:69,113`) |
-| любой ввод без `:` | draft фокусной вкладки (byte-exact), эхо-фидбек (`CommandRouter.scala:52-55`; `ShellExecutor.scala:150-162`; `ShellFeedback.scala:96-97`) |
+| `:tabs` | Tab bar: creation order, `*` marks focus, session status uses the common `StatusText` format (RAI-097: `<body> \| <counters>`, same rendering as CLI chat; honest unknown is “cost unknown”), unread badge (hidden at 0) (`TabBarRenderer.scala:8-20`, `statustext.scala`; empty state: `TabBarRenderer.scala:12`) |
+| `:new <label>` | New tab with synthetic job/root (see §1); missing argument is a typed error (`ShellCommand.scala:60-63`) |
+| `:switch <n\|label>` | 1-based number (as in `:tabs`), exact label, then unique prefix; ambiguous/unknown is a typed error with alternatives (`CommandRouter.scala:35-39,118-148`) |
+| `:next` / `:prev` | Focus next/previous tab (resets unread) (`ShellExecutor.scala:104-119`) |
+| `:rename <label>` | Rename focused tab; UI only (`ShellExecutor.scala:120-129`) |
+| `:close` | Close focused tab (flow in §5) (`ShellExecutor.scala:130,164-200`) |
+| `:plugins` | Loaded plugins screen with name/version/active from a PURE provider; honestly shows `(no plugins)` when empty (`ShellExecutor.scala:133-134`; `ShellViews.scala:32-46,110-124`) |
+| `:state <scope>` | Scope usage/quota; when there is no store, show a typed hint, not an error (`ShellExecutor.scala:135-140`; `ShellViews.scala:126-138`) |
+| `:aux` | The sole auxiliary tab (§6) (`ShellExecutor.scala:141-148`) |
+| `:help` | Palette (`ShellExecutor.scala:131-132`) |
+| `:quit` | Exit the shell (`ShellFeedback.scala:69,113`) |
+| Any input without `:` | Draft for the focused tab (byte-exact), with echo feedback (`CommandRouter.scala:52-55`; `ShellExecutor.scala:150-162`; `ShellFeedback.scala:96-97`) |
 
-Ошибки ввода — типизированные с подсказками: неизвестная команда, пропущенный
-аргумент, нет открытых вкладок, плохой номер/метка, неоднозначный префикс
-(`ShellCommand.scala:46-92`). Ошибки реестра никогда не покидают executor —
-превращаются в `ShellFeedback.Failure` (`error: ...`,
-`ShellExecutor.scala:55-58`).
+Input errors are typed and include hints: unknown command, missing argument,
+no open tabs, invalid number/label, ambiguous prefix (`ShellCommand.scala:46-92`).
+Registry errors never escape the executor; they become `ShellFeedback.Failure`
+(`error: ...`, `ShellExecutor.scala:55-58`).
 
-## 5. Флоу `:close` и отмена
+## 5. `:close` flow and cancellation
 
-Реестр возвращает типизированное решение; выбор для живой вкладки делает
-`CloseChoiceResolver` (`ShellExecutor.scala:8-14,164-175`):
+The registry returns a typed decision; `CloseChoiceResolver` chooses what to do
+for a live tab (`ShellExecutor.scala:8-14,164-175`):
 
-- `Closed(affected)` — job терминален по hub-снимку: вкладка удалена, перечислены
-  другие открытые вкладки того же root (`ShellFeedback.scala:86-87`).
-- Живая вкладка — диалог `[h]ide / [c]ancel-request`
-  (`TabShell.scala:28-32`): `h`/`hide` → `registry.hide` (job продолжает
-  работать, вкладка исчезает из `:tabs`; `ShellFeedback.scala:88-91`);
-  `c`/`cancel` → `TabCloseChoice.CancelRequested` — это ТОЛЬКО ОТЧЁТ: сам слой
-  UI никогда не отменяет, не прерывает и не публикует job; вкладка остаётся
-  открытой (`ShellFeedback.scala:32-40,92-95`; `ShellExecutor.scala:164-198`).
-  Прямого cancel-binding к runtime в UI-слое нет (RAI-062 не реализован).
-- Интерактивный resolver перепрашивает до 3 раз; невалидный ответ, EOF или
-  мёртвый терминал дают безопасный недеструктивный default —
-  `CancelRequested` (report-only) (`ShellExecutor.scala:16-53`).
+- `Closed(affected)` — the job is terminal according to the hub snapshot: the
+  tab is removed and other open tabs with the same root are listed
+  (`ShellFeedback.scala:86-87`).
+- For a live tab, show `[h]ide / [c]ancel-request` (`TabShell.scala:28-32`):
+  `h`/`hide` → `registry.hide` (the job keeps running and the tab disappears
+  from `:tabs`; `ShellFeedback.scala:88-91`); `c`/`cancel` →
+  `TabCloseChoice.CancelRequested` — REPORT ONLY: the UI layer itself never
+  cancels, interrupts, or publishes the job; the tab stays open
+  (`ShellFeedback.scala:32-40,92-95`; `ShellExecutor.scala:164-198`). There is
+  no direct runtime cancel binding in the UI layer (RAI-062 is not implemented).
+- The interactive resolver asks again up to 3 times; invalid input, EOF, or a
+  dead terminal safely defaults to the non-destructive `CancelRequested`
+  (report-only) choice (`ShellExecutor.scala:16-53`).
 
-## 6. Вспомогательная вкладка `:aux`
+## 6. Auxiliary tab `:aux`
 
-- Ровно ОДНА aux-вкладка: чистый `AuxTabProvider` (`title`, `available`,
-  `render`) подключается при построении шелла; default — none (честное «вкладки
-  нет») (`AuxTab.scala:3-17,18-33` в
+- Exactly ONE aux tab: a pure `AuxTabProvider` (`title`, `available`, `render`)
+  is connected when constructing the shell; default is none (honest “no tab”)
+  (`AuxTab.scala:3-17,18-33` in
   `modules/ui/src/main/scala/raider/ui/AuxTab.scala`).
-- `render` вызывается по требованию — один раз за показ, никогда при
-  построении, никогда спекулятивно; `available = false` рендерит типизированную
-  подсказку и содержимое не читает (`AuxTab.scala:9-15,23-27`;
-  `ShellFeedback.scala:59-65,105-108`).
-- Вкладка display-only: без drafts; переключение на неё и обратно не трогает
-  реестр сессии — фокус/unread/draft остаются у сессионных вкладок
+- `render` is called on demand, once per display, never during construction or
+  speculatively; `available = false` renders a typed hint and does not read
+  content (`AuxTab.scala:9-15,23-27`; `ShellFeedback.scala:59-65,105-108`).
+- Display-only tab, with no drafts; switching to it and back does not touch the
+  session registry — focus/unread/draft remain with session tabs
   (`AuxTab.scala:13-16`; `ShellCommand.scala:31-36`).
-- Рендер — один блок: заголовок + строки (CRLF → LF, завершающий перенос —
-  терминатор) через один `printAbove` (`AuxTab.scala:39-57`).
+- Rendering is one block: title + lines (CRLF → LF; trailing newline is a
+  terminator), via one `printAbove` (`AuxTab.scala:39-57`).
 
-## 7. Экраны `:plugins`/`:state`
+## 7. `:plugins`/`:state` screens
 
-UI не выполняет IO сам: данные приходят через PURE-провайдеры `ShellViews`,
-подключаемые при построении шелла; провайдеры тотальные — не бросают; отсутствующий
-store — `None` (`ShellViews.scala:9-15,32-46`). Конвенция scope-строк:
-`""`/`"agent"` — приватный скоуп агента, `root:<rootId>` — общий blackboard
-рана, `global` — явный cross-run; прочая строка — `None`
-(`ShellViews.scala:48-60`). Адаптер реального `StateStore` (RAI-094) отдаёт
-живые usage/квоты (`ShellViews.scala:62-102`).
+The UI performs no IO itself: data comes from PURE `ShellViews` providers,
+connected when constructing the shell; providers are total and do not throw;
+missing store is `None` (`ShellViews.scala:9-15,32-46`). Scope-string
+convention: `""`/`"agent"` is the agent's private scope, `root:<rootId>` is the
+run's shared blackboard, `global` is explicit cross-run scope; any other string
+is `None` (`ShellViews.scala:48-60`). The real `StateStore` adapter (RAI-094)
+provides live usage/quotas (`ShellViews.scala:62-102`).

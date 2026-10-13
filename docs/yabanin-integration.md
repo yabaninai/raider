@@ -2,32 +2,32 @@
 
 # Raider + Yabanin
 
-Yabanin — optional integration. Основной runtime, CI/REPL, model loop, tools и local budgets работают через прямые OpenAI-compatible/Anthropic-compatible profiles: [protocol contract](provider-protocols.md). Этот документ описывает дополнительные гарантии gateway, а не обязательную зависимость.
+Yabanin is an optional integration. The core runtime, CI/REPL, model loop, tools, and local budgets work through direct OpenAI-compatible/Anthropic-compatible profiles: [protocol contract](provider-protocols.md). This document describes additional gateway guarantees, not a required dependency.
 
-## 1. Проверенная локальная база
+## 1. Verified local baseline
 
-Изучен соседний checkout `tokenrouter`, HEAD `0dbb287ac46be0dbf95d77f87a066baa4c42add3`, 2026-10-02. [Snapshot](research/yabanin-snapshot.json) содержит hashes 24 конкретных файлов и их working-tree status. Файлы snapshot были clean. Это read-only исследование, не аудит всего продукта и не проверка deployed сервера.
+The neighboring `tokenrouter` checkout was studied at HEAD `0dbb287ac46be0dbf95d77f87a066baa4c42add3`, dated 2026-10-02. The [snapshot](research/yabanin-snapshot.json) contains hashes for 24 specific files and their working-tree status. The snapshot files were clean. This was read-only research, not an audit of the whole product or a check of a deployed server.
 
-Для исполнения карточек использовать `YABANIN_REPO=/path/to/checkout`. Не зашивать путь компьютера автора в scripts/build.
+For executing cards, use `YABANIN_REPO=/path/to/checkout`. Do not hard-code the author's machine path in scripts/build.
 
-| Что обнаружено | Источник в Yabanin | Как использовать |
+| Finding | Source in Yabanin | How to use it |
 | --- | --- | --- |
-| OpenAI-compatible gateway, routing/cache/failover | `README.md`, `docs/architecture.md`, `pkg/cli/gateway.go` | Один inference endpoint вместо отдельной реализации routing |
-| Chat Completions, Responses, Models routes в текущем коде | `pkg/cli/gateway.go`, `pkg/cli/models_endpoint.go`, `pkg/cli/responses_endpoint.go` | Probe конкретного deployment, Chat-first adapter |
-| CI child environment/session/report | `docs/ci.md`, `pkg/trcli/ci.go` | Wrapper-first integration через `yb ci exec`, без нового control plane |
+| OpenAI-compatible gateway, routing/cache/failover | `README.md`, `docs/architecture.md`, `pkg/cli/gateway.go` | One inference endpoint instead of a separate routing implementation |
+| Chat Completions, Responses, Models routes in current code | `pkg/cli/gateway.go`, `pkg/cli/models_endpoint.go`, `pkg/cli/responses_endpoint.go` | Probe a specific deployment; Chat-first adapter |
+| CI child environment/session/report | `docs/ci.md`, `pkg/trcli/ci.go` | Wrapper-first integration through `yb ci exec`, without a new control plane |
 | Attribution labels | `docs/labels.md`, `pkg/labels/header.go`, `pkg/cli/labels_mw.go` | Root/job/task/model-role attribution |
 | Mint/revoke/finish/usage session keys | `pkg/cli/sessionkeys_api.go` | Scoped credential/accounting boundary |
-| Decision metadata | `pkg/cli/decision.go`, `pkg/cli/chat.go` | Записать requested/actual model и routing evidence |
-| Harness connect/disconnect/doctor | `docs/harness.md`, `pkg/harness/adapters/registry.go` | Добавить Raider adapter отдельной Yabanin-карточкой |
-| Persistent delegation controller | `pkg/delegation/controller/*`, `pkg/trcli/delegate.go` | Сопоставить formats, не создавать два управляющих controller для одного job |
-| Agent-eval contracts и fixtures | `pkg/agenteval/contracts/*` | Экспорт Raider episodes для независимой оценки |
-| Quality runner и защищённый command registry | `scripts/quality/README.md`, `scripts/quality/commands.json` | Перенять модель evidence и gate classification |
+| Decision metadata | `pkg/cli/decision.go`, `pkg/cli/chat.go` | Record requested/actual model and routing evidence |
+| Harness connect/disconnect/doctor | `docs/harness.md`, `pkg/harness/adapters/registry.go` | Add a Raider adapter in a separate Yabanin card |
+| Persistent delegation controller | `pkg/delegation/controller/*`, `pkg/trcli/delegate.go` | Align formats; do not create two controlling controllers for one job |
+| Agent-eval contracts and fixtures | `pkg/agenteval/contracts/*` | Export Raider episodes for independent evaluation |
+| Quality runner and protected command registry | `scripts/quality/README.md`, `scripts/quality/commands.json` | Adopt the evidence and gate-classification model |
 
-Важное расхождение: `docs/api/openapi.yaml` описывает ограниченный Chat API, а текущий router содержит больше endpoint. `pkg/trcli/harness.go` также содержит устаревающее сообщение о неподдержанном `/v1/models`. Поэтому не генерировать весь Raider client из этого OpenAPI без проверки контрактов.
+Important discrepancy: `docs/api/openapi.yaml` describes a limited Chat API, while the current router contains more endpoints. `pkg/trcli/harness.go` also contains an outdated message saying `/v1/models` is unsupported. Therefore, do not generate the entire Raider client from this OpenAPI document without checking the contracts.
 
-`yb delegate` в изученном коде запускает FakeExecutor по design и не является готовым live Scala-agent backend. Существующий MCP Orchestrator — отдельная поверхность; её наличие не доказывает parity с новой моделью jobs Raider.
+In the studied code, `yb delegate` runs FakeExecutor by design and is not a ready live Scala-agent backend. The existing MCP Orchestrator is a separate surface; its presence does not prove parity with Raider's new jobs model.
 
-## 2. Разделение ответственности
+## 2. Separation of responsibilities
 
 ```mermaid
 flowchart LR
@@ -41,15 +41,15 @@ flowchart LR
   E -. correlate root and attempts .-> A
 ```
 
-Raider owns agent lifecycle, context, tools, delegation, local budgets и workflow validation. Yabanin owns provider resolution/routing, своих auth principals, key/session policies, gateway costs и lineage. Raider не подключается напрямую к Postgres/Redis Yabanin и не импортирует его Go packages.
+Raider owns agent lifecycle, context, tools, delegation, local budgets, and workflow validation. Yabanin owns provider resolution/routing, its auth principals, key/session policies, gateway costs, and lineage. Raider does not connect directly to Yabanin Postgres/Redis or import its Go packages.
 
-Model role (`fast`, `worker`, `review`, `architect`) — намерение Raider. Concrete requested model/alias — настройка Yabanin connection. Actual model берётся из response/evidence. Не дублировать cost-aware routing в двух местах по умолчанию.
+The model role (`fast`, `worker`, `review`, `architect`) expresses Raider's intent. The concrete requested model/alias is a Yabanin connection setting. The actual model is taken from the response/evidence. Do not duplicate cost-aware routing in both places by default.
 
-Преимущество объединения: в Yabanin видно, какие workflow/агенты/attempts расходуют средства; в Raider видно, почему был вызван агент и что он сделал. Оба продукта полезны независимо.
+The benefit of combining them: Yabanin shows which workflows/agents/attempts consume funds; Raider shows why an agent was called and what it did. Both products are useful independently.
 
-## 3. Первый connection profile
+## 3. First connection profile
 
-Целевая конфигурация Raider, точная schema утверждается RAI-005:
+Target Raider configuration; the exact schema is to be approved by RAI-005:
 
 ```toml
 [providers.yabanin]
@@ -71,42 +71,42 @@ provider = "yabanin"
 model = "configured-review-alias"
 ```
 
-Значения model намеренно placeholders. Реальные доступные IDs читаются из deployment/configuration. Не копировать названия из устаревшего tutorial и не обещать доступность конкретного GLM.
+The model values are intentionally placeholders. Actual available IDs are read from the deployment/configuration. Do not copy names from an outdated tutorial or promise the availability of a particular GLM.
 
-Credentials: env reference или structured helper command argv; значения не сохранять в TOML/history. Helper не вызывается через shell string, имеет timeout/output bound, stdout только credential, stderr sanitized. MVP env; helper — beta.
+Credentials: an env reference or structured helper command argv; do not store values in TOML/history. The helper is not invoked through a shell string, has a timeout/output bound, writes only the credential to stdout, and has sanitized stderr. Env is MVP; helper is beta.
 
-Base URL нормализуется один раз: к `/v1` добавляется `/chat/completions`, не второй `/v1`. Session-key API расположен относительно origin на `/v1/yabanin/...`; нельзя случайно построить `/v1/v1/yabanin/...`.
+Normalize the base URL once: append `/chat/completions` to `/v1`, not another `/v1`. The session-key API is located relative to the origin at `/v1/yabanin/...`; do not accidentally construct `/v1/v1/yabanin/...`.
 
 ## 4. Capability doctor
 
-`raider doctor --profile yabanin` по умолчанию не вызывает модель. Проверяет URL/TLS/config, доступность health, model registry при permission, status endpoint/session-key support без создания платного задания. Raw keys не выводятся.
+By default, `raider doctor --profile yabanin` does not call a model. It checks URL/TLS/config, health availability, the model registry if permitted, and status endpoint/session-key support without creating a paid task. Raw keys are not printed.
 
-Отдельный explicit `--probe-inference` запускает минимальный capped smoke, только когда выбран live режим/бюджет. Tool/stream/structured-output capabilities подтверждаются fixtures и таким smoke, не выводятся только из `/models`.
+The separate, explicit `--probe-inference` runs a minimal capped smoke only when a live mode/budget is selected. Tool/stream/structured-output capabilities are confirmed by fixtures and such a smoke; they are not inferred from `/models` alone.
 
-Результат сохраняет server version, checked timestamp, endpoint status, supported/unsupported/unknown, TTL capability cache, credentials mode без значения. 401/403 не равны unsupported; 501 session-keys-unavailable не означает, что обычный inference сломан.
+The result records server version, checked timestamp, endpoint status, supported/unsupported/unknown, capability-cache TTL, and credentials mode without its value. 401/403 do not mean unsupported; 501 session-keys-unavailable does not mean ordinary inference is broken.
 
-## 5. HTTP и streaming
+## 5. HTTP and streaming
 
-Yabanin connection MVP: `/v1/chat/completions`, tool calls, SSE, usage. Самостоятельные OpenAI-compatible Chat и Anthropic-compatible Messages входят в M0; [оба wires](provider-protocols.md) нормализуются независимо от gateway. Responses — будущий отдельный adapter. Yabanin `/messages` можно подключить через Anthropic wire после deployment-specific conformance; наличие route не означает готовые feature guarantees.
+Yabanin connection MVP: `/v1/chat/completions`, tool calls, SSE, usage. Standalone OpenAI-compatible Chat and Anthropic-compatible Messages are included in M0; [both wires](provider-protocols.md) are normalized independently of the gateway. Responses is a future, separate adapter. Yabanin `/messages` can be connected through the Anthropic wire after deployment-specific conformance; the existence of a route does not mean feature guarantees are ready.
 
-Parser должен пройти fixtures:
+The parser must pass fixtures for:
 
-- UTF-8 codepoint разбит по network chunks;
-- SSE frame и `data:` строка разбиты на произвольные куски;
-- multi-line data, comments/keepalive, CRLF, пустые delta;
-- content `null` при tool-only ответе;
-- несколько tool calls с interleaved indices и частичными arguments;
-- usage-only chunk, reasoning metadata, finish_reason и `[DONE]`;
-- explicit provider error, invalid JSON, EOF до final marker, idle timeout;
-- truncated oversized frame, cancellation посреди body;
-- gateway denial of tool calls — фактически отсутствующие calls не выполнять;
-- invalid output schema и bounded repair.
+- UTF-8 code points split across network chunks;
+- SSE frames and `data:` lines split into arbitrary chunks;
+- multi-line data, comments/keepalive, CRLF, and empty deltas;
+- `null` content in a tool-only response;
+- multiple tool calls with interleaved indices and partial arguments;
+- usage-only chunk, reasoning metadata, finish_reason, and `[DONE]`;
+- explicit provider error, invalid JSON, EOF before the final marker, and idle timeout;
+- truncated oversized frame and cancellation mid-body;
+- gateway denial of tool calls — do not execute calls that are actually absent;
+- invalid output schema and bounded repair.
 
-По возможности переиспользовать sanitized corpus Yabanin `pkg/apiformat/testdata`, зафиксировав origin/hash/license. Это копирование test fixtures в Raider, не link к изменяемой соседней рабочей папке.
+Where possible, reuse the sanitized Yabanin corpus at `pkg/apiformat/testdata`, recording its origin/hash/license. Copy the test fixtures into Raider; do not link to the mutable neighboring working directory.
 
-## 6. Attribution и IDs
+## 6. Attribution and IDs
 
-Request headers, подтверждённые исходниками:
+Request headers confirmed by the source:
 
 ```text
 Authorization: Bearer <resolved credential>
@@ -115,9 +115,9 @@ X-Yabanin-Task: RAI-021
 X-Yabanin-Labels: <canonical encoded labels>
 ```
 
-`X-Session-Id` — отдельный conversation/job identity; несколько независимых детей не пишут одновременно в одну conversation history. `raider.root` связывает их в одну работу.
+`X-Session-Id` is a separate conversation/job identity; multiple independent children do not write to the same conversation history concurrently. `raider.root` links them into one task.
 
-Предлагаемые client labels:
+Proposed client labels:
 
 ```text
 harness=raider
@@ -133,17 +133,17 @@ git.ref=<branch>
 git.sha=<sha>
 ```
 
-Это новый namespace client labels, не новые auth headers. Они принимаются только если org policy разрешает. Ключи сортируются, значения percent-encoded по Go `url.PathEscape`, пары comma-separated. Space, `+`, `/`, `,`, `=`, Unicode требуют cross-language golden tests; нельзя подменять PathEscape form encoding.
+This is a new namespace for client labels, not new auth headers. They are accepted only if org policy permits them. Keys are sorted; values are percent-encoded using Go `url.PathEscape`; pairs are comma-separated. Space, `+`, `/`, `,`, `=`, and Unicode require cross-language golden tests; do not substitute form encoding for PathEscape.
 
-Изученные limits: до 20 labels на source, default 32 effective, value до 128 characters, prefix `yabanin.` reserved. Клиент выбирает ограниченный набор и показывает dropped/missing metadata; overflow не исправляет скрытым удалением `task`.
+Observed limits: up to 20 labels per source, 32 effective by default, values up to 128 characters, and the `yabanin.` prefix reserved. The client selects a bounded set and displays dropped/missing metadata; on overflow it does not silently fix things by removing `task`.
 
-Locked key/session labels имеют приоритет над request. Labels атрибутируют расход, не дают разрешение. Raider не устанавливает `X-Agent-Id`, `X-Team-Id`, `X-Session-Key-Id` как источник собственной identity: gateway определяет их из authenticated principal.
+Locked key/session labels take precedence over request labels. Labels attribute spend; they do not grant permission. Raider does not set `X-Agent-Id`, `X-Team-Id`, or `X-Session-Key-Id` as its own identity source: the gateway derives them from the authenticated principal.
 
-High-cardinality root/job/attempt labels не добавлять автоматически в hourly rollup dimensions. Сначала запросные logs/export, агрегаты по workflow/agent/model role — согласованная Yabanin analytics карточка.
+Do not automatically add high-cardinality root/job/attempt labels to hourly rollup dimensions. Start with request logs/export; aggregates by workflow/agent/model role belong to an agreed Yabanin analytics card.
 
 ## 7. Session keys
 
-Изученные routes:
+Routes observed:
 
 ```text
 POST   /v1/yabanin/session-keys
@@ -153,81 +153,81 @@ GET    /v1/yabanin/session-keys/{id}/usage
 GET    /v1/yabanin/usage
 ```
 
-Mint требует parent `yb_` key с `can_mint_sessions`; session key не mint следующий key, agent principal не равен mint-capable parent. Есть ограничения TTL/rate и deployment DB availability. Численные limits проверяются против versioned contract, не perpetual hardcode без tests.
+Minting requires a parent `yb_` key with `can_mint_sessions`; a session key cannot mint another key, and an agent principal is not the same as a mint-capable parent. There are TTL/rate limits and deployment DB availability constraints. Check numeric limits against the versioned contract; do not hard-code them perpetually without tests.
 
-Предпочтительно один bounded session key на root workflow, общий для descendants; TTL/cap/labels root pinned. Credential reference хранится отдельно от journal. Agent profile получает opaque credential capability, а не parent secret.
+Prefer one bounded session key per root workflow, shared by descendants; pin the root TTL/cap/labels. Store the credential reference separately from the journal. The agent profile receives an opaque credential capability, not the parent secret.
 
 Modes:
 
-- `disabled`: обычный credential; local root limits, без утверждения gateway scoped cap;
-- `optional`: unsupported mint capability позволяет запуск через явно сконфигурированный parent credential с видимым degraded status;
-- `required`: mint/reconciliation failure блокирует запуск, никакого fallback parent key.
+- `disabled`: ordinary credential; local root limits, without claiming a gateway scoped cap;
+- `optional`: unsupported mint capability allows a run using an explicitly configured parent credential, with visible degraded status;
+- `required`: mint/reconciliation failure blocks the run; no fallback to the parent key.
 
-Нельзя перенести silent fallback поведения существующего `yb harness key` в strict mode Raider. Если helper возвращает parent key, capability check должен обнаружить отличие и не заявлять scoped credential.
+Do not carry over the silent fallback behavior of the existing `yb harness key` into Raider strict mode. If a helper returns a parent key, the capability check must detect the difference and must not claim a scoped credential.
 
-При root completion отправить finish status с idempotent semantics согласно API; при explicit revocation — revoke. Failure не превращает agent outcome в success, хранится unresolved accounting state. Expiration/revocation не доказывает отмену уже dispatch upstream.
+On root completion, send a finish status with idempotent semantics according to the API; on explicit revocation, revoke the key. Failure does not turn the agent outcome into success; retain unresolved accounting state. Expiration/revocation does not prove cancellation of a request already dispatched upstream.
 
-## 8. Расходы и routing evidence
+## 8. Spend and routing evidence
 
-Сохранять requested model, actual model если подтверждена, provider/backend, local AttemptId, gateway request/decision metadata, usage fields, estimates, observed amounts и accounting coverage.
+Record the requested model, actual model if confirmed, provider/backend, local AttemptId, gateway request/decision metadata, usage fields, estimates, observed amounts, and accounting coverage.
 
-Не считать `X-Yabanin-Decision` ответом на вопрос о task correctness. Он отражает gateway routing decision. Не обещать наличие gateway request ID, pricing snapshot или nested attempt IDs, если deployment их не предоставляет.
+Do not treat `X-Yabanin-Decision` as an answer about task correctness. It reflects the gateway routing decision. Do not promise a gateway request ID, pricing snapshot, or nested attempt IDs unless the deployment provides them.
 
-Usage endpoint содержит `complete`, `unpriced_requests`, totals/by_model и optional groups. Reconciliation ждёт bounded interval с учётом logger lag; incomplete не превращается в complete по таймеру. Конечная запись может быть `accounting_pending/partial/complete`, независимо от `execution_status`.
+The usage endpoint contains `complete`, `unpriced_requests`, totals/by_model, and optional groups. Reconciliation waits for a bounded interval that accounts for logger lag; incomplete does not become complete just because a timer expired. The final record may be `accounting_pending/partial/complete`, independently of `execution_status`.
 
-Session cap в существующем deployment надо проверить concurrency/unknown-price/streaming fixtures. В source есть post-hoc sessionbudget logic; наличие `max_cost_usd` поля не является доказательством строго нулевого overshoot. Raider root admission и gateway admission — две разные гарантии; заявлять их нужно только по измеренным контрактам.
+Check the session cap in the existing deployment against concurrency/unknown-price/streaming fixtures. The source contains post-hoc sessionbudget logic; the presence of a `max_cost_usd` field does not prove strictly zero overshoot. Raider root admission and gateway admission are two different guarantees; claim them only when supported by measured contracts.
 
-Budget denial и policy denial не retry forever. Различать 429 rate limit и 429 budget exceeded по structured error; 403 model/whitelist denial terminal; 503 datastore failure не обходить direct provider.
+Do not retry budget denial or policy denial forever. Distinguish 429 rate limit from 429 budget exceeded using the structured error; 403 model/whitelist denial is terminal; do not bypass a 503 datastore failure by using a direct provider.
 
-## 9. Cache и side effects
+## 9. Cache and side effects
 
-Gateway cache replay не должен повторить filesystem/process mutation только потому, что transcript снова содержит тот же call. Каждый tool invocation имеет отдельную identity и execution ledger; это не даёт exactly-once после crash автоматически.
+Gateway cache replay must not repeat a filesystem/process mutation merely because the transcript contains the same call again. Each tool invocation has a separate identity and execution ledger; this does not automatically provide exactly-once behavior after a crash.
 
-До live acceptance проверить cache policy для tool-bearing requests и identity/context keys. Не выдумывать request header для cache disable: использовать только подтверждённую gateway настройку/API. В fixtures явно cache on/off, повторный prompt, different tool schema, stateful session и parallel children.
+Before live acceptance, check the cache policy for tool-bearing requests and identity/context keys. Do not invent a request header to disable caching; use only a confirmed gateway setting/API. Fixtures should explicitly cover cache on/off, repeated prompts, different tool schemas, stateful sessions, and parallel children.
 
 ## 10. Harness integration
 
-В MVP Raider подключается к Yabanin endpoint через generic OpenAI-compatible URL/key profile. Enriched Yabanin connection/labels/doctor и wrapper lifecycle contract реализуются RAI-037/038. Следующий шаг — отдельная Yabanin карточка YB-RAI-01: adapter в `pkg/harness/adapters`, registry entry, managed config block, connect/disconnect/drift/doctor tests.
+In the MVP, Raider connects to a Yabanin endpoint through a generic OpenAI-compatible URL/key profile. Enriched Yabanin connection/labels/doctor and the wrapper lifecycle contract are implemented by RAI-037/038. The next step is a separate Yabanin card, YB-RAI-01: an adapter in `pkg/harness/adapters`, registry entry, managed config block, and connect/disconnect/drift/doctor tests.
 
-Config transaction должна сохранять пользовательские настройки, permissions, backups и secret references. Connect дважды идемпотентен; disconnect восстанавливает предыдущий config; drift не перетирается молча. У adapter отдельный runtime config schema version.
+The config transaction must preserve user settings, permissions, backups, and secret references. Connect is idempotent when run twice; disconnect restores the previous config; drift is not silently overwritten. The adapter has its own runtime config schema version.
 
 ## 11. Agent-eval
 
-Экспортировать compatible run directory: `manifest.json`, `episodes.jsonl`, `calls.jsonl`, `tools.jsonl`, `verdicts.jsonl` по JSON Schema 2020-12 из Yabanin.
+Export a compatible run directory: `manifest.json`, `episodes.jsonl`, `calls.jsonl`, `tools.jsonl`, and `verdicts.jsonl`, following Yabanin's JSON Schema 2020-12.
 
-Отдельные измерения: execution outcome, task outcome, safety outcome, protocol outcome, usage/cost/coverage. Process exit 0 не доказывает task success. Tool arguments в telemetry — digest, не raw secrets. Отказ инструмента содержит deny_reason.
+Keep separate measurements for execution outcome, task outcome, safety outcome, protocol outcome, and usage/cost/coverage. Process exit 0 does not prove task success. Tool arguments in telemetry are represented by a digest, not raw secrets. Tool refusals include `deny_reason`.
 
-Реальный verdict выдаёт protected deterministic verifier; модель не записывает себе success. Для research задач rubrics/LLM judge — только отдельный calibrated soft signal. Coding tasks проверяют diff/tests и сохраняют actual workspace hash.
+The actual verdict is produced by a protected deterministic verifier; the model does not record its own success. For research tasks, rubrics/LLM judge are only a separate calibrated soft signal. Coding tasks check the diff/tests and save the actual workspace hash.
 
-## 12. Порядок объединения
+## 12. Integration sequence
 
-1. Native standalone оба wires; optional gateway endpoint через generic Chat profile. Для CI пользователей затем существующий `yb ci exec` wrapper-first contract, без Go изменений.
-2. Capability doctor и live free/local stand с mock upstream.
-3. Labels/decision metadata и session-key modes.
-4. Capped real provider smoke после deterministic free gate.
-5. Agent-eval export и сравнение моделей на одинаковых fixtures.
-6. `yb harness connect raider` отдельным Yabanin PR.
-7. По подтверждённой потребности: Raider as executor для existing delegation protocol, без двух competing owners.
-8. По подтверждённой потребности: dashboard links/usage drilldown и cross-process budget authority.
+1. Both native standalone wires; optional gateway endpoint through a generic Chat profile. For CI users, then use the existing `yb ci exec` wrapper-first contract, without Go changes.
+2. Capability doctor and a live free/local stand with a mock upstream.
+3. Labels/decision metadata and session-key modes.
+4. Capped real-provider smoke after the deterministic free gate.
+5. Agent-eval export and model comparison on identical fixtures.
+6. `yb harness connect raider` in a separate Yabanin PR.
+7. If need is confirmed: Raider as executor for the existing delegation protocol, without two competing owners.
+8. If need is confirmed: dashboard links/usage drilldown and cross-process budget authority.
 
-Yabanin modifications всегда проходят его `AGENTS.md`, applicable Go skills и `make quality-changed QUALITY_EXECUTE=1`; release/readiness — `make quality-full` плюс integration/acceptance. Gate success Raider не заменяет эти проверки.
+Yabanin modifications must always follow its `AGENTS.md`, applicable Go skills, and `make quality-changed QUALITY_EXECUTE=1`; release/readiness requires `make quality-full` plus integration/acceptance. Passing Raider gates does not replace these checks.
 
 ## 13. CI wrapper-first integration
 
-В изученном Yabanin уже есть `yb ci exec --session=on -- <command>`: child-only URL/credential/labels, сохранение дочернего exit и `yabanin-ci.json`. Это быстрый optional путь без Go modifications:
+The studied Yabanin already provides `yb ci exec --session=on -- <command>`: child-only URL/credential/labels, preservation of the child's exit code, and `yabanin-ci.json`. This is a quick optional path without Go modifications:
 
 ```text
 yb ci exec --session=on -- raider run --bundle pipelines.jar \
-  --workflow audit --input "Проверь проект" --ci auto --profile yabanin \
+  --workflow audit --input "Review the project" --ci auto --profile yabanin \
   --policy ci-readonly --out artifacts/raider
 ```
 
-URL precedence в Raider: explicit CLI override → selected config URL → wrapper env, если profile объявляет env URL source. Credential resolve только через configured env reference; отсутствие config URL не запускает неизвестный endpoint автоматически. Schema RAI-005 фиксирует source и precedence. `YABANIN_LABELS` разбирается canonical decoder; bounded request labels добавляются с сохранением owner/locked CI attribution. Overflow виден, не просто overwrite wrapper environment.
+URL precedence in Raider: explicit CLI override → selected config URL → wrapper env, if the profile declares an env URL source. Resolve credentials only through the configured env reference; absence of a config URL does not automatically call an unknown endpoint. Schema RAI-005 fixes the source and precedence. Parse `YABANIN_LABELS` with the canonical decoder; add bounded request labels while preserving owner/locked CI attribution. Overflow is visible; do not simply overwrite the wrapper environment.
 
-Inherited `YABANIN_API_KEY` может быть `ybs_`: wrapper owns mint/finish/poll, Raider не требует mint-capable parent и не создаёт второй session. В run.json lifecycle owner `wrapper`, local budget/accounting coverage отдельно; descendants получают opaque same-root credential capability. Native own-root mode — RAI-038; если mint unavailable, optional degraded видно, required блокируется.
+Inherited `YABANIN_API_KEY` may be a `ybs_` key: the wrapper owns mint/finish/poll, and Raider neither requires a mint-capable parent nor creates a second session. In `run.json`, the lifecycle owner is `wrapper`; local budget/accounting coverage is recorded separately. Descendants receive an opaque same-root credential capability. Native own-root mode is RAI-038; if minting is unavailable, `optional` visibly degrades and `required` is blocked.
 
-Yabanin CI contract описывает bounded poll: session `complete`, header две одинаковые bodies. Header stability не proof completeness. `yb ci report --pipeline --fail-over-cost` — post-hoc policy с exit 4, не concurrent spend prevention. GitLab Premium metrics widget optional; generic Raider artifacts/JUnit/accounting JSON не требуют paid tier.
+The Yabanin CI contract describes bounded polling: session `complete`, header, and two identical bodies. Header stability is not proof of completeness. `yb ci report --pipeline --fail-over-cost` is a post-hoc policy with exit 4, not concurrent spend prevention. The GitLab Premium metrics widget is optional; generic Raider artifacts/JUnit/accounting JSON do not require a paid tier.
 
-Учитывать wrapper cleanup/poll (до 30s по изученному contract) в CI timeout помимо Raider grace/upload. SIGTERM forwarding/child env/session cleanup проверять actual wrapper acceptance, не предполагать из CLI syntax. Key не помещать в dotenv artifact; fork job не получает gateway key.
+Account for wrapper cleanup/poll (up to 30s in the studied contract) in the CI timeout, in addition to Raider grace/upload. Verify SIGTERM forwarding/child env/session cleanup through actual wrapper acceptance; do not infer them from CLI syntax. Do not put the key in a dotenv artifact; a fork job does not receive a gateway key.
 
-Raider run/result/checks говорят о task correctness, Yabanin report — об observed gateway usage. Один не подменяет другой. Root/pipeline labels связывают evidence без доступа Raider к внутренней DB.
+Raider run/result/checks report task correctness; the Yabanin report describes observed gateway usage. Neither substitutes for the other. Root/pipeline labels connect the evidence without giving Raider access to the internal DB.

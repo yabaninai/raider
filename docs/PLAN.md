@@ -1,109 +1,132 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# Raider: подробная программа разработки
+# Raider: Detailed Development Plan
 
-Текущая очередность улучшений (2026-10-05): [план на 12 000 часов](roadmap-12k.md)
-и [prompt параллельного исполнения](prompts/opencode-12k-parallel.txt).
-Ревизия 2026-10-12: embedding SDK для Scala/ZIO встроен в P0/P4.C/P7/P10
-существующего roadmap (SDK-01–05); RAI-115 audit принят, ближайший шаг —
-RAI-116 ADR. Текущая lineage/TUI волна сохраняется; подробные
-пользовательские руководства остаются поздней работой. Это план, не SDK release.
-Владелец подтвердил полностью open-source направление с существующей MIT/license
-policy; первый прикладной сценарий — CI, метрика пользы — внешнее использование.
-После дополнительного исследования владелец уточнил: удобный Scala DSL для
-AI-native SDLC, first path — один workflow локально и в generic local CI;
-первый target — код TokenRouter, gateway отдельно P11. Цель включает automatic
-commit/PR/merge и local tag/release artifacts, checkpoints задаются в workflow.
-Forge не выбран: contract + local stand сначала. Experimental preview до M4;
-RAI-115 audit → RAI-116 launch ADR → RAI-117 SDLC ADR, roadmap §6b/§6c.
-Runtime/CLI/REPL уже присутствуют в исходниках; исторические статусы ниже не actual
-inventory. Старые acceptance сохраняются; Yabanin/W17 — последняя фаза P11,
-после самостоятельного candidate P10. Общая W18 принимается после P11.
+Current improvement sequence (2026-10-05): [12,000-hour plan](roadmap-12k.md)
+and [parallel execution prompt](prompts/opencode-12k-parallel.txt).
+Revision 2026-10-12: the Scala/ZIO embedding SDK is incorporated into P0/P4.C/P7/P10
+of the existing roadmap (SDK-01–05); the RAI-115 audit is accepted, and the next step
+is the RAI-116 ADR. The current lineage/TUI wave remains in place; detailed
+user guides remain later work. This is a plan, not an SDK release.
+The owner confirmed the fully open-source direction under the existing MIT/license
+policy; the first application scenario is CI, and external use is the usefulness metric.
+After further research, the owner clarified the goal: a convenient Scala DSL for
+AI-native SDLC, with one workflow running locally and in generic local CI as the
+first path; the first target is TokenRouter code, with the gateway separate in P11.
+The goal includes automatic commit/PR/merge and local tag/release artifacts, with
+checkpoints defined in the workflow. No forge has been selected: contract + local
+stand first. Experimental preview before M4; RAI-115 audit → RAI-116 launch ADR →
+RAI-117 SDLC ADR, roadmap §6b/§6c.
+Runtime/CLI/REPL are already present in source; historical statuses below are not an
+actual inventory. Existing acceptance is retained; Yabanin/W17 is the final P11 phase,
+after an independent P10 candidate. Overall W18 is accepted after P11.
 
-Исходный план: 2026-10-02; execution revision: 2026-10-03. Есть feasibility spike, продуктовый runtime ещё не реализован. Actual status сверять по code и board.
+Original plan: 2026-10-02; execution revision: 2026-10-03. A feasibility spike exists;
+the product runtime had not yet been implemented at that time. Check actual status in code and the board.
 
-Итоговый scope: CI-primary; удобный реальный REPL; оба direct API protocols; optional Yabanin; актуальные карточки и зависимости — в [backlog](tasks/backlog.json). Текущий entrypoint: `opencode` → `/raider-finish` (`/raider-build` alias), [инструкция и prompt](handoff-opencode.md).
+Final scope: CI-primary; a useful real REPL; both direct API protocols; optional Yabanin;
+current cards and dependencies are in the [backlog](tasks/backlog.json). Current entrypoint:
+`opencode` → `/raider-finish` (`/raider-build` alias), [instructions and prompt](handoff-opencode.md).
 
-## Уточнение после аудита 2026-10-03
+## Clarification after the 2026-10-03 audit
 
-[Рабочий продукт W01–W18](working-product.md) определяет finish target; [parallel runbook](parallel-development.md) — разрешённые parallel lanes; [review](reviews/2026-10-03-readiness.md) — факты о сделанном; [stage-aware gates](quality-gates.md) устраняют циклы ранней приёмки. Эти документы уточняют исходную очередность и правила исполнения ниже. Старые номера карточек сохранены, M0 — промежуточный результат, sessions/context/SPI/package обязательны для useful coding agent.
+[Working product W01–W18](working-product.md) defines the finish target; the
+[parallel runbook](parallel-development.md) defines permitted parallel lanes; the
+[review](reviews/2026-10-03-readiness.md) records what has been done; and
+[stage-aware gates](quality-gates.md) resolve premature acceptance cycles. These
+documents refine the original sequence and execution rules below. Original card
+numbers are retained; M0 is an interim result, and sessions/context/SPI/package are
+required for a useful coding agent.
 
-## Цель
+## Goal
 
-Создать универсальный расширяемый Scala harness для исполнения агентных сценариев внутри CI job в GitHub/GitLab/других pipelines. Сценарий должен принимать versioned inputs, запускать синхронных/асинхронных сабагентов, соблюдать policy/budgets/deadlines, выдавать проверяемый результат, exit code и artifacts. Полноценный REPL нужен для локального создания и отладки того же сценария без отдельного execution model.
+Create a universal, extensible Scala harness for running agent scenarios inside CI
+jobs in GitHub/GitLab/other pipelines. A scenario must accept versioned inputs, run
+synchronous/asynchronous subagents, observe policy/budgets/deadlines, and return a
+verifiable result, exit code, and artifacts. A full REPL is needed to create and debug
+the same scenario locally, without a separate execution model.
 
-Ключевые свойства:
+Key properties:
 
-1. Portable non-TTY CI runner с одинаковой семантикой в разных orchestrators.
-2. Настоящая Scala в REPL: `val`, `def`, `case class`, imports, многострочный ввод и типы.
-3. Однострочный foreground/background запуск с явными эффектами.
-4. Управляемые дети: владелец, дедлайн, лимиты, сообщения, отмена, результаты.
-5. Расширение инструментов/профилей/backend отдельными модулями.
-6. Возможность использовать профили pi/OpenCode и запускать их движки через адаптеры.
-7. Самостоятельные OpenAI-compatible/Anthropic-compatible API и optional Yabanin gateway/accounting.
-8. Качество обеспечивается воспроизводимыми проверками и маленькими карточками, а не уверенностью модели.
+1. A portable non-TTY CI runner with consistent semantics across orchestrators.
+2. Real Scala in the REPL: `val`, `def`, `case class`, imports, multiline input, and types.
+3. One-line foreground/background launch with explicit effects.
+4. Managed children: owner, deadline, limits, messages, cancellation, results.
+5. Extend tools/profiles/backends through separate modules.
+6. Ability to use pi/OpenCode profiles and run their engines through adapters.
+7. First-class OpenAI-compatible/Anthropic-compatible APIs and optional Yabanin gateway/accounting.
+8. Quality comes from reproducible checks and small cards, not model confidence.
 
-## Как читать пакет
+## How to read this package
 
-| Документ | Назначение |
+| Document | Purpose |
 | --- | --- |
-| [CI runtime](ci-runtime.md) | Основной product contract: invocation, trust, exits, artifacts, orchestrator adapters |
-| [Provider protocols](provider-protocols.md) | Прямые OpenAI/Anthropic wires, optional gateway, capabilities/usage |
-| [Удобство DSL](dsl-experience.md) | Быстрый пользовательский путь и единообразные verbs |
-| [Product и REPL DSL](product-repl.md) | Полный контракт, точные semantics, команды |
-| [Runtime и контракты](runtime-contracts.md) | Модули, состояния, ownership, concurrency, tools, plugins |
-| [Интеграция с Yabanin](yabanin-integration.md) | Проверенные точки интеграции, ограничения, staged rollout |
-| [Этапы и зависимости](development-plan.md) | Очерёдность, milestone acceptance, scope |
-| [Карточки реализации](tasks/README.md) | Маленькие задания для моделей |
-| [Quality gates](quality-gates.md) | Проверки, evidence, матрица рисков, release policy |
-| [Работа простыми моделями](model-workflow.md) | Контекст, handoff, независимый review, escalation |
-| [Запуск в OpenCode](handoff-opencode.md) | Project command, prompt и resume procedure |
-| [Задание для z.ai](handoff-zai.md) | Готовый стартовый prompt и правила исполнения |
-| [Источники и ADR](sources-decisions.md) | Проверенные источники, принятые/отложенные решения |
-| [Snapshot Yabanin](research/yabanin-snapshot.json) | Commit, hashes и dirty markers изученных локальных файлов |
+| [CI runtime](ci-runtime.md) | Main product contract: invocation, trust, exits, artifacts, orchestrator adapters |
+| [Provider protocols](provider-protocols.md) | Direct OpenAI/Anthropic wires, optional gateway, capabilities/usage |
+| [DSL experience](dsl-experience.md) | Quick user path and consistent verbs |
+| [Product and REPL DSL](product-repl.md) | Full contract, exact semantics, commands |
+| [Runtime and contracts](runtime-contracts.md) | Modules, states, ownership, concurrency, tools, plugins |
+| [Yabanin integration](yabanin-integration.md) | Verified integration points, limits, staged rollout |
+| [Stages and dependencies](development-plan.md) | Sequence, milestone acceptance, scope |
+| [Implementation cards](tasks/README.md) | Small tasks for models |
+| [Quality gates](quality-gates.md) | Checks, evidence, risk matrix, release policy |
+| [Working with smaller models](model-workflow.md) | Context, handoff, independent review, escalation |
+| [OpenCode launch](handoff-opencode.md) | Project command, prompt, and resume procedure |
+| [z.ai assignment](handoff-zai.md) | Ready-to-use starting prompt and execution rules |
+| [Sources and ADRs](sources-decisions.md) | Verified sources, accepted/deferred decisions |
+| [Yabanin snapshot](research/yabanin-snapshot.json) | Commit, hashes, and dirty markers of inspected local files |
 
-## Проверка самого пакета
+## Validate the package
 
 ```sh
 python3 scripts/plan/validate.py --out artifacts/plan-review/report.json
 ```
 
-Реализованный validator проверяет links/JSON/fences/card metadata/dependency DAG и соответствие OpenCode command каноническому prompt. Optional `--yabanin-repo /path/to/checkout` сверяет source snapshot hashes read-only. Это проверка проектного пакета; Scala examples, runtime/PTY/CI gates пока не реализованы и не объявляются passed.
+The implemented validator checks links/JSON/fences/card metadata/dependency DAG and
+that the OpenCode command matches the canonical prompt. Optional
+`--yabanin-repo /path/to/checkout` compares source snapshot hashes read-only. This
+validates the planning package; Scala examples and runtime/PTY/CI gates have not yet
+been implemented and are not reported as passed.
 
-## Условия исполнения
+## Execution conditions
 
-- Все примеры DSL и commands в пакете — целевые контракты. Их работоспособность надо доказать карточками и compiler/PTY gates.
-- Сначала RAI-001: проверка toolchain, headless execution и REPL embedding. Она может уточнить технический способ исполнения, но не упрощать REPL до парсера пары команд.
-- Bootstrap: RAI-001 → RAI-003 build → RAI-002 compile/schema contract → RAI-004 gates; затем vertical slice.
-- SDK/SDLC-ревизия включает automatic commit/PR/merge по контракту RAI-117 и выбранной policy; первым принимается generic local stand, реальный forge adapter выбирается позже. Release — local tag и artifacts, без push release tag, package/image publication или deploy. Старая граница CI/runtime меняется отдельным ADR; текущее планирование не выполняет эти операции в TokenRouter.
-- Нативный минимальный agent loop нужен в MVP. Pi/OpenCode bridges добавляются следующим этапом; они не должны быть единственной возможностью запустить Raider.
-- Язык runtime — Scala. Python допустим для маленького переносимого quality runner/проверок metadata; он не становится агентным runtime.
-- Языковая политика (владелец, 2026-10-03): вся дальнейшая разработка — Scala 3 + ZIO. `modules/**`, `contracts/**`, `examples/**`, продуктовые tests и test-стенды — только Scala. Python ограничен: `scripts/plan/validate.py`, `scripts/quality/**` (runner RAI-004), glue `scripts/bootstrap.sh` и замороженные исторические `experiments/**`; Python не попадает в поставку и не растёт. Тестовые HTTP-стенды провайдеров пишутся на Scala (JDK built-in HttpServer) внутри модулей; допускается локально запущенный OpenAI-compatible стенд для тестов по явной конфигурации; платные удалённые endpoint'ы — только с owner cap.
-- Реальное подключение Yabanin проверяется на отдельном стенде. Чтение его исходников не доказывает готовность deployment.
+- All DSL examples and commands in the package are target contracts. Cards and compiler/PTY gates must prove they work.
+- Start with RAI-001: check the toolchain, headless execution, and REPL embedding. It may refine the technical implementation, but must not reduce the REPL to a parser for a few commands.
+- Bootstrap: RAI-001 → RAI-003 build → RAI-002 compile/schema contract → RAI-004 gates; then a vertical slice.
+- The SDK/SDLC revision includes automatic commit/PR/merge under the RAI-117 contract and selected policy; accept a generic local stand first, then choose a real forge adapter later. Release means local tag and artifacts, without pushing a release tag, publishing a package/image, or deploying. The old CI/runtime boundary changes through a separate ADR; current planning does not perform these operations in TokenRouter.
+- A native minimal agent loop is required for MVP. Pi/OpenCode bridges come in the next stage and must not be the only way to run Raider.
+- Runtime language is Scala. Python is allowed for a small portable quality runner/metadata checks; it does not become the agent runtime.
+- Language policy (owner, 2026-10-03): all further development uses Scala 3 + ZIO. `modules/**`, `contracts/**`, `examples/**`, product tests, and test stands use Scala only. Python is limited to `scripts/plan/validate.py`, `scripts/quality/**` (RAI-004 runner), glue in `scripts/bootstrap.sh`, and frozen historical `experiments/**`; Python is not shipped and must not grow. Provider test HTTP stands are written in Scala (JDK built-in HttpServer) within modules; a locally launched OpenAI-compatible stand is allowed for tests when explicitly configured; paid remote endpoints require an owner cap.
+- Verify the real Yabanin connection on a separate stand. Reading its source does not prove deployment readiness.
 
-## Первая CI-приёмка
+## First CI acceptance
 
 ```text
-raider run --bundle pipelines.jar --workflow inspect --ci generic \
-  --context ci-context.json --input "проверь проект" --mock --out artifacts/raider
+raider run --bundle pipelines.jar --workflow inspect --ci generic \\
+  --context ci-context.json --input "inspect the project" --mock --out artifacts/raider
 ```
 
-Одинаковый compiled workflow выполняется без TTY, завершает owned children, сохраняет run/result/events/JUnit/summary и возвращает code по policy. Прогон повторяется с GitHub/GitLab environment fixtures, timeout, SIGTERM и malformed input. Compiler REPL не нужен в classpath runner.
+The same compiled workflow runs without a TTY, completes owned children, saves
+run/result/events/JUnit/summary, and returns a code according to policy. Repeat with
+GitHub/GitLab environment fixtures, timeout, SIGTERM, and malformed input. The compiler
+REPL is not needed on the runner classpath.
 
-## Локальная REPL-приёмка
+## Local REPL acceptance
 
 ```text
 $ raider repl --mock
-raider> scout.ask("Найди README")
-raider> val a = scout.start("Найди интерфейсы")
-raider> val b = scout.start("Найди тесты")
+raider> scout.ask("Find the README")
+raider> val a = scout.start("Find the interfaces")
+raider> val b = scout.start("Find the tests")
 raider> :jobs
 raider> a.await
 raider> b.cancel()
-raider> (scout andThen reviewer).ask("Оцени проект")
+raider> (scout andThen reviewer).ask("Assess the project")
 raider> :load workflows.raider.scala
-raider> :run inspect "проверь проект"
+raider> :run inspect "inspect the project"
 raider> :exit
 ```
 
-В результате нет orphan jobs/processes, корректно отображены ошибки, compiler state сохранился после неудачного ввода, фактические network/tool effects происходят только после запуска. Этот transcript должен стать исполняемым acceptance fixture.
+The result has no orphan jobs/processes; errors display correctly; compiler state is
+preserved after invalid input; actual network/tool effects happen only after launch.
+This transcript should become an executable acceptance fixture.

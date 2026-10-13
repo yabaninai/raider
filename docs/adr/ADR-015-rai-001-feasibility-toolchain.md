@@ -1,66 +1,66 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# ADR-015: RAI-001 feasibility — pinned toolchain и adapter findings
+# ADR-015: RAI-001 Feasibility — Pinned Toolchain and Adapter Findings
 
-Статус: частично подтверждённые candidates, requires revision после independent review 2026-10-03. Исходная дата: 2026-10-02.
+Status: partially confirmed candidates; revision required after the independent review on 2026-10-03. Original date: 2026-10-02.
 Evidence: `artifacts/rai-001/` (run `sh experiments/repl-spike/run_spike.sh`, exit 0, 32/32 checks).
 
-Независимая [оценка](../reviews/2026-10-03-readiness.md) подтверждает compile/основную REPL feasibility, но выявляет false-green suite и непокрытые HTTP/process/exit гарантии. Решения ниже сохранены как исходные предложения: перенос HTTP cancellation, ThreadDeath и signal/report logic в production требует отрицательных fixtures и revised ADR.
+The independent [assessment](../reviews/2026-10-03-readiness.md) confirms compile and basic REPL feasibility, but identifies a false-green suite and uncovered HTTP/process/exit guarantees. The decisions below are retained as initial proposals: moving HTTP cancellation, ThreadDeath, and signal/report logic into production requires negative fixtures and a revised ADR.
 
-## Контекст
+## Context
 
-RAI-001 требует actual compiler/PTY/headless proof, а не утверждения. Spike проверен на
-host darwin/arm64 (macOS 26.5.1), JDK 20.0.1 (Oracle). Все версии ниже — фактически
-использованные в прогоне; inventory с sha256: `artifacts/rai-001/toolchain.json`.
+RAI-001 requires actual compiler/PTY/headless proof, not claims. The spike was tested on
+host darwin/arm64 (macOS 26.5.1), JDK 20.0.1 (Oracle). All versions below were actually
+used in the run; inventory with sha256: `artifacts/rai-001/toolchain.json`.
 
-## Проверенные версии и факты
+## Verified Versions and Facts
 
-| Компонент | Версия | Наблюдение |
+| Component | Version | Observation |
 | --- | --- | --- |
-| Scala compiler | `org.scala-lang:scala3-compiler_3:3.9.0` | единственная 3.9.x на Central; совпадает с планом-кандидатом |
-| Scala REPL | `org.scala-lang:scala3-repl_3:3.9.0` | с 3.8+ отдельный artifact, НЕ входит в compiler jar |
+| Scala compiler | `org.scala-lang:scala3-compiler_3:3.9.0` | the only 3.9.x version on Central; matches the plan candidate |
+| Scala REPL | `org.scala-lang:scala3-repl_3:3.9.0` | a separate artifact since 3.8+; NOT included in the compiler jar |
 | Scala library | `org.scala-lang:scala-library:3.9.0` | unified library; `scala3-library_3:3.9.0` — manifest-only relocation stub (344 B) |
-| JLine | 4.0.14 (терминал/reader/jni) | зависимость scala3-repl_3 |
-| ZIO | `dev.zio:zio_3:2.1.26` | unsafe.run/fork, fiber interrupt, onExit — работают на 3.9.0/JDK 20 |
+| JLine | 4.0.14 (terminal/reader/jni) | dependency of scala3-repl_3 |
+| ZIO | `dev.zio:zio_3:2.1.26` | unsafe.run/fork, fiber interrupt, onExit — work on 3.9.0/JDK 20 |
 | zio-json | `dev.zio:zio-json_3:0.10.0` | DeriveJsonCodec.gen, decode/roundtrip/negative PASS |
-| JDK HttpClient | JDK 20.0.1 встроенный | streaming + fiber-interrupt закрывает body; сервер видит disconnect |
+| JDK HttpClient | built into JDK 20.0.1 | streaming + fiber-interrupt closes the body; the server sees the disconnect |
 
-## Решения
+## Decisions
 
-1. **RAI-003 build** включает `scala3-repl_3` только в dev/compiler distribution;
-   headless distribution = zio/scala-library без compiler/JLine
-   (проверено: 0 загрязняющих jar в headless classpath, HEADLESS-04).
-2. **Запуск compiler/REPL через `java -cp`** требует явного `-classpath`/`-usejavacp`,
-   иначе `MissingCoreLibraryException`. RAI-003 sbt и RAI-019 launcher передают
-   classpath явно; официальный `scala` launcher делает то же неявно.
-3. **REPL interruption**: dotty REPL останавливает evaluation через `StopRepl`
-   (`java.lang.ThreadDeath` в evaluating thread). ZIO `unsafe.run` это переживает:
-   fiber прерывается, observer-cancel `fiber.await` НЕ отменяет наблюдаемый job
-   (SPIKE-03-await-observer: prompt вернулся, `w.info` → state=running). Это ключевая
-   feasibility-основа для facade-семантики из product-repl.md §10.
-4. **HTTP client candidate** (runtime-contracts §1): JDK HttpClient + узкий ZIO
-   async adapter — принят для RAI-011; wire parser отдельным классом.
-5. **JSON codec candidate**: zio-json 0.10.0 — принят для versioned schemas RAI-002
-   (schema-пары финализируются там на compile fixtures).
-6. **PTY harness contract** (для RAI-004/019 repl profile): PTY обязан устанавливать
-   `TIOCSWINSZ` (40×120), `TERM=xterm-256color` и отвечать на Primary DA
-   (`ESC[c` → `ESC[?62;22c`), иначе JLine 4 не рисует промпт. Многострочный ввод
-   REPL завершается пустой строкой. Ответы на capability-queries — часть harness,
-   не продукта.
+1. **RAI-003 build** includes `scala3-repl_3` only in the dev/compiler distribution;
+   headless distribution = zio/scala-library without compiler/JLine
+   (verified: 0 contaminating jars in the headless classpath, HEADLESS-04).
+2. **Launching the compiler/REPL with `java -cp`** requires explicit `-classpath`/`-usejavacp`,
+   otherwise `MissingCoreLibraryException` occurs. RAI-003 sbt and the RAI-019 launcher pass
+   the classpath explicitly; the official `scala` launcher does the same implicitly.
+3. **REPL interruption**: dotty REPL stops evaluation through `StopRepl`
+   (`java.lang.ThreadDeath` in the evaluating thread). ZIO `unsafe.run` survives this:
+   the fiber is interrupted, observer-cancel `fiber.await` does NOT cancel the observed job
+   (SPIKE-03-await-observer: the prompt returned, `w.info` → state=running). This is the key
+   feasibility basis for the facade semantics in product-repl.md §10.
+4. **HTTP client candidate** (runtime-contracts §1): JDK HttpClient + a narrow ZIO
+   async adapter — accepted for RAI-011; wire parser a separate class.
+5. **JSON codec candidate**: zio-json 0.10.0 — accepted for versioned schemas RAI-002
+   (schema pairs are finalized there with compile fixtures).
+6. **PTY harness contract** (for the RAI-004/019 REPL profile): PTY must set
+   `TIOCSWINSZ` (40×120), `TERM=xterm-256color`, and respond to Primary DA
+   (`ESC[c` → `ESC[?62;22c`), otherwise JLine 4 does not render the prompt. Multiline input
+   REPL ends with a blank line. Responses to capability queries are part of the harness,
+   not the product.
 7. **Signals**: `sun.misc.Signal` (TERM/INT) → `System.exit(128+n)` + shutdown hook
-   с bounded interrupt (4s grace) — проверено: 143/130, atomic write partial run.json,
-   owned child убит, orphan по PID нет. RAI-022 runner сохраняет этот механизм
-   (замена на platform-native — отдельной карточкой при необходимости).
+   with a bounded interrupt (4s grace) — verified: 143/130, atomic write of partial run.json,
+   owned child killed, no orphan by PID. RAI-022 runner retains this mechanism
+   (a platform-native replacement, if needed, gets a separate card).
 
-## Дельты и ограничения
+## Gaps and Limitations
 
-- **JDK 21 LTS на host отсутствует** (только 20.0.1 и 11.0.20). Spike проведён на
-  JDK 20.0.1; RAI-003 bootstrap обязан поставить/запинить JDK 21 (Temurin) и
-  перепрогнать compile smoke. Это ограничение evidence, не автоматический pass для 21.
-- REPL печатает stacktrace `ThreadDeath` после Ctrl+C foreground — косметика для
-  RAI-019 (adapter должен рендерить понятную отмену).
-- Вывод background fiber интерливится с edit buffer (транскрипт подтверждает) —
-  single-writer TerminalRenderer обязателен в RAI-019, как и предполагал контракт.
-- JLine рисует серый `~` status-line артефакт поверх узких терминалов — зафиксировано
-  как наблюдение.
-- Windows/Linux suite не входили в spike (darwin/arm64 only).
+- **JDK 21 LTS is absent on the host** (only 20.0.1 and 11.0.20). The spike ran on
+  JDK 20.0.1; RAI-003 bootstrap must install/pin JDK 21 (Temurin) and
+  rerun the compile smoke. This limits the evidence; it is not an automatic pass for 21.
+- The REPL prints a `ThreadDeath` stack trace after foreground Ctrl+C — a cosmetic issue for
+  RAI-019 (the adapter should render a clear cancellation message).
+- Background fiber output interleaves with the edit buffer (confirmed by the transcript) —
+  single-writer TerminalRenderer is required in RAI-019, as the contract anticipated.
+- JLine draws a gray `~` status-line artifact over narrow terminals — recorded
+  as an observation.
+- The Windows/Linux suite was not part of the spike (darwin/arm64 only).

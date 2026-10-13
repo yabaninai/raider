@@ -1,122 +1,122 @@
-# UX baseline protocol (RAI-070) — закреплённая машина, baseline без порогов
+# UX baseline protocol (RAI-070) — pinned machine, baseline without thresholds
 
-Карточка RAI-070 (M0, P0.C остаток / P9 prep). Harness: `scripts/quality/ux_baseline.py`
-(stdlib-only Python). Отчёт: machine-readable JSON (`--out`, по умолчанию
-`artifacts/ux-baseline/ux-baseline.json`), side-files кладутся рядом с отчётом.
+Card RAI-070 (M0, P0.C remainder / P9 prep). Harness: `scripts/quality/ux_baseline.py`
+(stdlib-only Python). Report: machine-readable JSON (`--out`, default
+`artifacts/ux-baseline/ux-baseline.json`); side files are placed alongside the
+report.
 
-**Главное ограничение протокола: этот harness НЕ заявляет пороги UX01–08**
-(roadmap-12k §UX, gap matrix `2026-10-05-p0a-gap-matrix.md` §2). Он записывает
-baseline-числа — machine-clock замеры на одной закреплённой машине, чтобы у
-будущих карточек (P1/P2/P9) была точка отсчёта. Никакое число из этого отчёта
-не является pass/fail против целевых порогов (UX03 p95 ≤ 250 ms, UX04 p95 ≤ 2 s
-warm и т.д.), и не является human-usability evidence. Non-goals карточки:
-human usability sessions, пороги-претензии, CI-обязательность.
+**Main protocol limitation: this harness does NOT claim UX01–08 thresholds**
+(roadmap-12k §UX, gap matrix `2026-10-05-p0a-gap-matrix.md` §2). It records
+baseline numbers — machine-clock measurements on one pinned machine — so future
+cards (P1/P2/P9) have a point of reference. No number in this report is a
+pass/fail result against target thresholds (UX03 p95 ≤ 250 ms, UX04 p95 ≤ 2 s
+warm, etc.), and it is not human-usability evidence. Card non-goals: human
+usability sessions, threshold claims, CI requirement.
 
-## 1. Закрепление машины
+## 1. Pinning the machine
 
-«Закреплённая машина = эта macOS»: параметры фиксируются в КАЖДОМ отчёте
-(`environment`), а не в документе — число читается только вместе со своим
-прогоном. В `environment` попадают: `java -version` (первая строка), sbt
-(версия из `project/build.properties` + строка runner), `TERM` окружения,
-CPU count, platform/hostname, python, load average (1m/5m/15m), timestamp и
-**repo fingerprint** — sha256 по inventory всего репозитория с ТЕМИ ЖЕ
-исключениями, что у quality runner (`target/`, `artifacts/`, `.git/`,
-`.opencode/`, …; см. `environment.repo_fingerprint.excludes`). Изменение
-исходников после прогона инвалидирует привязку evidence — нужен новый прогон.
+“Pinned machine = this macOS”: parameters are fixed in EACH report
+(`environment`), not in this document — a number is meaningful only with its
+own run. `environment` includes: `java -version` (first line), sbt (version
+from `project/build.properties` + runner line), environment `TERM`, CPU count,
+platform/hostname, Python, load average (1m/5m/15m), timestamp, and **repo
+fingerprint** — sha256 over the inventory of the whole repository with the
+SAME exclusions as the quality runner (`target/`, `artifacts/`, `.git/`,
+`.opencode/`, …; see `environment.repo_fingerprint.excludes`). Source changes
+after a run invalidate evidence linkage — a new run is required.
 
-Пины прогона (samples, таймауты, child TERM, provider=mock) — в
-`environment.pins`; их изменение делает прогоны несравнимыми напрямую.
+Run pins (samples, timeouts, child TERM, provider=mock) are in
+`environment.pins`; changing them makes runs not directly comparable.
 
-## 2. Что измеряется
+## 2. What is measured
 
-### 2.1 `measurements.ux03_event_visible_latency` — event→visible (прототип UX03)
+### 2.1 `measurements.ux03_event_visible_latency` — event→visible (UX03 prototype)
 
-Реальный REPL (`java -cp <classpath> raider.repl.Main`) под PTY, владельцем
-которого является harness: winsize 40×120, ISIG выключен, Primary-DA запросы
-JLine отвечаются, `NO_COLOR=1`, `TERM=xterm-256color` у ребёнка (не
-зависит от ambient TERM), изолированный HOME, provider=mock. Техника — как в
+Real REPL (`java -cp <classpath> raider.repl.Main`) under a harness-owned PTY:
+winsize 40×120, ISIG disabled, Primary-DA requests answered by JLine,
+`NO_COLOR=1`, child `TERM=xterm-256color` (independent of ambient TERM),
+isolated HOME, provider=mock. Technique matches
 `scripts/quality/repl_pty_smoke.py` / `renderer_pty_probe.py`.
 
-Сэмпл: в master PTY записывается уникальный токен `z000`…`zNNN` (уникальность —
-чтобы эхо нельзя было спутать с предыдущим вхождением); часы
-(`monotonic_ns`) останавливаются, когда эхо токена появляется в очищенном от
-ANSI выходном потоке. Затем строка очищается backspace'ами (REPL ничего не
-eval'ит — сессия остаётся чистой). N=100 по умолчанию (`--samples`); бюджет
-на сэмпл 5 s. Записываются: n, p50/p95/max/min/mean, **stddev (population)**
-и сырые `samples_ms` (округление 3 знака); перцентили — linear interpolation
-(правило renderer-spike). Таймаут сэмпла — не passed: статус `partial` с
-`failed_samples` > 0, полный промах — `failed`.
+Sample: a unique token `z000`…`zNNN` is written to the PTY master (unique so
+echo cannot be confused with a prior occurrence); the clock (`monotonic_ns`)
+stops when the token echo appears in the ANSI-stripped output stream. The line
+is then erased with backspaces (the REPL does not eval it — session stays
+clean). Default N=100 (`--samples`); budget per sample 5 s. Recorded: n,
+p50/p95/max/min/mean, **stddev (population)** and raw `samples_ms` (rounded to
+3 decimal places); percentiles use linear interpolation (renderer-spike rule).
+A sample timeout is not passed: status `partial` with `failed_samples` > 0;
+complete failure is `failed`.
 
-### 2.2 `measurements.ux04_repl_start` — старт REPL (прототип UX04)
+### 2.2 `measurements.ux04_repl_start` — REPL startup (UX04 prototype)
 
-Одна итерация = пара запусков: **cold** — первый `java -cp <repl-test-classpath>
-raider.repl.Main` до появления промпта `raider> ` в видимом потоке (PTY,
-таймаут 30 s, как в карточке); **warm** — немедленно следующий второй запуск.
-По умолчанию 5 итераций (`--start-samples`) → 5 cold + 5 warm; p50/p95,
-stddev, сырые сэмплы (в секундах) записываются отдельно.
+One iteration is a pair of launches: **cold** — first `java -cp
+<repl-test-classpath> raider.repl.Main` until prompt `raider> ` appears in the
+visible stream (PTY, 30 s timeout, as in the card); **warm** — the immediately
+following second launch. Default 5 iterations (`--start-samples`) → 5 cold + 5
+warm; p50/p95, stddev, and raw samples (in seconds) are recorded separately.
 
-Честные ограничения метрики: warm здесь = тёплые OS page caches
-(class-файлы/библиотеки уже в кэше) при каждом разе новом JVM-процессе; это
-НЕ preloaded server и не JIT-прогрев одного процесса. «Баннер» REPL — это
-первый видимый промпт; отдельного баннера процесс не печатает.
+Honest metric limitations: warm here means warm OS page caches (class
+files/libraries are cached) for each newly launched JVM process; it is NOT a
+preloaded server or JIT warm-up of one process. The REPL “banner” is the first
+visible prompt; the process prints no separate banner.
 
-## 3. Classpath и honest skip
+## 3. Classpath and honest skip
 
-Порядок разрешения classpath (`classpath.source` в отчёте):
+Classpath resolution order (`classpath.source` in the report):
 
-1. `RAIDER_REPL_CP` (env, как в `repl_pty_smoke.py`);
-2. кэш успеха `<out>.classpath-cache.txt` (рядом с отчётом);
+1. `RAIDER_REPL_CP` (env, as in `repl_pty_smoke.py`);
+2. successful cache `<out>.classpath-cache.txt` (beside the report);
 3. `sbt --batch --error export raiderRepl/runtime:fullClasspath`
-   (бюджет `UX_SBT_TIMEOUT_S`, по умолчанию 900 s; `COURSIER_CACHE`
-   пробрасывается как есть — сеть не используется самими замерами).
+   (budget `UX_SBT_TIMEOUT_S`, default 900 s; `COURSIER_CACHE` is passed
+   through as-is — the measurements themselves do not use the network).
 
-Если classpath недоступен, UX-замеры получают статус
-`"skipped: no classpath (documented skip, не passed)"` с конкретной причиной —
-**documented skip не является passed**, и отчёт всё равно пишется валидным
-JSON с environment + skips (exit 0). Причина неудачи sbt кэшируется в
-`<out>.classpath-fail.json` (детерминизм повторных прогонов); повторить
-попытку — `--refresh-classpath`; отключить sbt совсем — `--no-sbt`.
+If the classpath is unavailable, UX measurements receive status
+`"skipped: no classpath (documented skip, not passed)"` with a specific reason —
+**documented skip is not passed**; a valid JSON report with environment + skips
+is still written (exit 0). The sbt failure reason is cached in
+`<out>.classpath-fail.json` (determinism on repeat runs); retry with
+`--refresh-classpath`; disable sbt entirely with `--no-sbt`.
 
-## 4. Как повторять
+## 4. How to repeat
 
 ```bash
-# одиночный прогон (report + environment + baseline)
+# single run (report + environment + baseline)
 python3 scripts/quality/ux_baseline.py \
-  --out /path/to/evidence/ux-baseline.json          # exit 0, если JSON записан
+  --out /path/to/evidence/ux-baseline.json          # exit 0 if JSON was written
 
-# валидность JSON
+# JSON validity
 python3 -m json.tool /path/to/evidence/ux-baseline.json >/dev/null
 
-# повторный прогон (идемпотентен: те же side-file имена перезаписываются)
+# repeat run (idempotent: same side-file names are overwritten)
 python3 scripts/quality/ux_baseline.py --out /path/to/evidence/ux-baseline.json
 ```
 
-### UXB-01 — JSON-baseline с параметрами среды
+### UXB-01 — JSON baseline with environment parameters
 
-Один прогон: exit 0, `environment` заполнено (java/sbt/TERM/cpu_count/
+One run: exit 0, `environment` populated (java/sbt/TERM/cpu_count/
 timestamp/repo_fingerprint), `tests.UXB-01.status = "pass"`.
 
-### UXB-02 — unsupported terminal: явная фиксация, не тихий skip
+### UXB-02 — unsupported terminal: explicit record, not silent skip
 
 ```bash
 TERM=unknown-term python3 scripts/quality/ux_baseline.py \
   --out /path/to/evidence/ux-baseline-uxb02.json    # exit 0
 ```
 
-В отчёте обязано появиться: `terminal.status = "unsupported"`,
-`terminal.supported = false`, `terminal_unsupported = true`, finding с
-пояснением — отсутствие support записано явно, а не молча пропущено. Дети
-PTY продолжают работать с probe-owned `TERM=xterm-256color` (ambient TERM
-влияет только на запись environment). Классификация: точное совпадение или
-префикс известных семейств (xterm*, screen*, tmux*, vt100*, dumb, …);
-`TERM=dumb` считается supported-limited (RENDER-03: plain fallback работает).
+The report must contain: `terminal.status = "unsupported"`,
+`terminal.supported = false`, `terminal_unsupported = true`, and a finding that
+explains this — lack of support is explicitly recorded, not silently skipped.
+PTY children continue to use probe-owned `TERM=xterm-256color` (ambient TERM
+affects only the environment record). Classification: exact match or prefix
+of known families (xterm*, screen*, tmux*, vt100*, dumb, …); `TERM=dumb` is
+supported-limited (RENDER-03: plain fallback works).
 
-### UXB-03 — повторный прогон стабилен (дисперсия записана)
+### UXB-03 — repeat run is stable (variance recorded)
 
-Два прогона подряд по §4. (1) Дисперсия: в каждом замере записан
-`stddev_ms` (population) + сырые сэмплы. (2) Идентичность структуры:
-рекурсивное множество ключей совпадает (значения и timestamp естественно
-различаются):
+Two consecutive runs per §4. (1) Variance: each measurement records
+`stddev_ms` (population) + raw samples. (2) Structural identity: recursive key
+sets match (values and timestamps naturally differ):
 
 ```bash
 python3 - <<'EOF'
@@ -136,12 +136,11 @@ print("STRUCTURE_IDENTICAL" if a == b else
 EOF
 ```
 
-## 5. Exit codes и идемпотентность
+## 5. Exit codes and idempotency
 
-- exit 0 — отчёт записан (skips и честные `failed`/`partial` статусы
-  допустимы и записаны в JSON); пропущенный замер никогда не помечается
-  passed;
-- exit 2 — записать отчёт не удалось;
-- побочные файлы: `<out>.classpath-cache.txt`, `<out>.classpath-fail.json`,
-  `<out>-transcripts/` (транскрипты PTY-сессий), `<out>.tmp` → атомарный
-  `os.replace`. Повторный прогон перезаписывает их детерминированно.
+- exit 0 — report written (skips and honest `failed`/`partial` statuses are
+  allowed and recorded in JSON); a skipped measurement is never marked passed;
+- exit 2 — report could not be written;
+- side files: `<out>.classpath-cache.txt`, `<out>.classpath-fail.json`,
+  `<out>-transcripts/` (PTY session transcripts), `<out>.tmp` → atomic
+  `os.replace`. A repeated run deterministically overwrites them.

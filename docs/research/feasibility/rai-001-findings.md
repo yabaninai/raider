@@ -2,55 +2,52 @@
 
 # RAI-001 feasibility findings
 
-Исторические findings первого прогона. Актуальный verdict и независимые повторения: [review 2026-10-03](../../reviews/2026-10-03-readiness.md). Полная карточка changes-required; цифра 32/32 сама по себе недостаточна из-за false-green entrypoint.
+Historical findings from the first run. Current verdict and independent reruns: [review 2026-10-03](../../reviews/2026-10-03-readiness.md). The full card is changes-required; 32/32 alone is insufficient because the entrypoint produced a false green.
 
 
-Дата: 2026-10-02. Прогон: `sh experiments/repl-spike/run_spike.sh` → exit 0,
-32/32 checks (7 headless + 25 REPL). Все артефакты: `artifacts/rai-001/`.
+Date: 2026-10-02. Run: `sh experiments/repl-spike/run_spike.sh` → exit 0,
+32/32 checks (7 headless + 25 REPL). All artifacts: `artifacts/rai-001/`.
 
-## Измерения (host darwin/arm64, macOS 26.5.1, JDK 20.0.1)
+## Measurements (host darwin/arm64, macOS 26.5.1, JDK 20.0.1)
 
-| Метрика | Значение | Где |
+| Metric | Value | Source |
 | --- | --- | --- |
-| REPL cold start до первого промпта | 1.15–1.62 s (3 прогона) | repl-summary.json |
-| REPL peak RSS (с compiler+JLine) | ~547–667 MiB | repl-summary.json |
-| Headless cold start (нормальный сценарий 2.5 s работы) | ~3.0 s wall | headless-harness.log |
-| Headless peak RSS (ZIO runtime, без compiler) | ~103 MiB | headless-harness.log |
-| Background start → возврат промпта | 0.34–0.46 s | SPIKE-01-start-nonblocking |
+| REPL cold start to first prompt | 1.15–1.62 s (3 runs) | repl-summary.json |
+| REPL peak RSS (with compiler+JLine) | ~547–667 MiB | repl-summary.json |
+| Headless cold start (normal scenario, 2.5 s work) | ~3.0 s wall | headless-harness.log |
+| Headless peak RSS (ZIO runtime, without compiler) | ~103 MiB | headless-harness.log |
+| Background start → prompt return | 0.34–0.46 s | SPIKE-01-start-nonblocking |
 
-## Подтверждённое поведение (ключевые транскрипты)
+## Confirmed behavior (key transcripts)
 
-1. **Foreground Ctrl+C** (`blocking(15000)`): REPL печатает
-   `Attempting to interrupt running REPL command`, бросает `ThreadDeath` через
-   `dotty.tools.repl.StopRepl` в evaluating thread; ZIO fiber прерывается;
-   prompt возвращается ~2 s; bindings сохранены (`postFg: Int = 1` PASS).
+1. **Foreground Ctrl+C** (`blocking(15000)`): REPL prints
+   `Attempting to interrupt running REPL command`, throws `ThreadDeath` via
+   `dotty.tools.repl.StopRepl` in the evaluating thread; the ZIO fiber is interrupted;
+   the prompt returns in ~2 s; bindings are preserved (`postFg: Int = 1` PASS).
    — repl-transcript.txt.
-2. **Await Ctrl+C**: `w.await` прерван тем же механизмом, но job-волокно живёт
-   (`w.info` → `state=running` PASS); явный `w.cancel()` → `state=interrupted` PASS.
-   Разделение observer/owner cancellation подтверждено на настоящем REPL.
-3. **Compile error сохраняет bindings**: `val bad: Int = "oops"` → 1 error,
-   затем `good * 6` → `42` PASS; общий runtime-объект жив (`j.info` после ошибки).
-4. **Многострочный ввод**: завершается пустой строкой (`val multi = 1 + 2` → 3).
-5. **Unicode**: `val uni = "проект ✓"` round-trip в REPL PASS.
+2. **Await Ctrl+C**: `w.await` is interrupted by the same mechanism, but the job fiber stays alive
+   (`w.info` → `state=running` PASS); explicit `w.cancel()` → `state=interrupted` PASS.
+   Observer/owner cancellation separation is confirmed in the real REPL.
+3. **Compile error preserves bindings**: `val bad: Int = "oops"` → 1 error,
+   then `good * 6` → `42` PASS; the shared runtime object stays alive (`j.info` after the error).
+4. **Multiline input**: ends with a blank line (`val multi = 1 + 2` → 3).
+5. **Unicode**: `val uni = "project ✓"` round-trip in REPL PASS.
 6. **Headless SIGTERM**: exit 143, `status=interrupted`, `signal=TERM`,
-   `stepsCompleted=4` (truthful partial), child убит (`childAliveAfterCleanup=false`),
-   orphan по PID нет. SIGINT: exit 130. Нормальный путь: exit 0, `succeeded`.
-7. **Classpath split**: headless classpath (11 jar) не содержит
+   `stepsCompleted=4` (truthful partial), child killed (`childAliveAfterCleanup=false`),
+   no orphan process by PID. SIGINT: exit 130. Normal path: exit 0, `succeeded`.
+7. **Classpath split**: headless classpath (11 jars) does not contain
    scala3-compiler/scala3-repl/JLine (HEADLESS-04 PASS).
-8. **HTTP**: JDK HttpClient streaming; fiber-interrupt через 900 ms закрывает body —
-   python slow-server зафиксировал `client disconnected` (probe-http-cancelled.log,
+8. **HTTP**: JDK HttpClient streaming; fiber interrupt after 900 ms closes the body —
+   Python slow server recorded `client disconnected` (probe-http-cancelled.log,
    http-server.log).
 9. **zio-json**: decode/roundtrip/negative — 3/3 PASS (probe-json.log).
-10. **Missing toolchain**: REPL без library jar падает `NoClassDefFoundError`
-    c exit 1 — явная недоступность, не молчание (repl-missing-toolchain.log).
+10. **Missing toolchain**: REPL without the library jar fails with `NoClassDefFoundError`
+    with exit 1 — explicit unavailability, not silence (repl-missing-toolchain.log).
 
-## Ограничения / открытые вопросы для следующих карточек
+## Limitations / open questions for follow-up cards
 
-- JDK 21 LTS не установлен на host: RAI-003 ставит и пинит Temurin 21, compile smoke
-  повторяется там (см. ADR-015).
-- Вывод background jobs интерливится с edit buffer → single-writer renderer (RAI-019).
-- `sun.misc.Signal` — jdk.unsupported API: достаточно для MVP runner, но
-  platform-контракт фиксируется в RAI-022.
-- REPL eval не изолирован от ThreadDeath для произвольного user-кода — уже отражено
-  в product-repl.md §10 (обещаний сохранить bindings после hard stop нет).
-- PTY-harness требования (winsize/TERM/DA-ответы) переносятся в repl profile RAI-004.
+- JDK 21 LTS was not installed on the host: RAI-003 installs and pins Temurin 21, and repeats the compile smoke there (see ADR-015).
+- Background job output interleaves with the edit buffer → single-writer renderer (RAI-019).
+- `sun.misc.Signal` is a jdk.unsupported API: sufficient for the MVP runner, but the platform contract is fixed in RAI-022.
+- REPL evaluation is not isolated from ThreadDeath for arbitrary user code — already documented in product-repl.md §10 (there is no promise to preserve bindings after a hard stop).
+- PTY harness requirements (winsize/TERM/DA responses) are carried into the RAI-004 REPL profile.

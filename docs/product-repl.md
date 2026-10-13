@@ -1,135 +1,173 @@
-<!-- Translated from Russian original. Key terms preserved as-is. -->
+# Product, REPL, and DSL
 
-# Product, REPL и DSL
+All APIs here are target contracts. Signatures are refined by RAI-002 and then
+frozen in compile fixtures. This document takes precedence over older examples
+from discussions.
 
-Все API здесь — целевой контракт. Сигнатуры уточняются RAI-002 и затем фиксируются compile fixtures. Документ имеет приоритет над старыми примерами из обсуждения.
+## 1. Core usage model
 
-## 1. Основная модель использования
+Primary product mode is the CI runner in the [CI contract](ci-runtime.md). The
+REPL is a local development environment for the same Program/Task/runtime, with
+a prepared prelude. It is not a chat with a text parser that recognizes strings
+that look like Scala.
 
-Основной product mode — CI runner по [CI-контракту](ci-runtime.md). REPL — среда локальной разработки того же Program/Task/runtime, с подготовленным prelude. Это не чат с текстовым парсером, распознающим строки, похожие на Scala.
+The user launches `raider` or `raider repl`. The working directory comes from
+cwd; override it with `--workspace`. The prelude imports `raider.dsl.*`,
+`raider.repl.*`, duration types, and safe local defaults; it shows workspace,
+session ID, backend/profile, connectivity, and mock/live mode. It never shows
+keys. Ready-to-use string profiles `assistant`, `scout`, `planner`, `worker`,
+`reviewer`, `researcher`, and `writer` are available from the prelude. Registry
+and inventory show their permissions; coding tools may require explicit policy.
+Configuring a new agent before the first question is not required.
 
-Пользователь запускает `raider` или `raider repl`. Рабочая директория берётся из cwd, override — `--workspace`. Prelude импортирует `raider.dsl.*`, `raider.repl.*`, длительности и безопасные локальные defaults; показывает workspace, session ID, backend/profile, connectivity и режим mock/live. Ключи не показывает. Готовые string-профили `assistant`, `scout`, `planner`, `worker`, `reviewer`, `researcher`, `writer` доступны из prelude. Registry и inventory показывают их permissions; coding tools могут требовать explicit policy. Настраивать новый agent перед первым вопросом не обязательно.
-
-Самый короткий пользовательский путь:
+Shortest user path:
 
 ```scala
-scout.ask("Как устроена авторизация?")
-val job = scout.start("Проверь обработку ошибок")
-job.send("Сначала изучи сетевые границы")
+scout.ask("How is authorization implemented?")
+val job = scout.start("Check error handling")
+job.send("First inspect the network boundaries")
 val result = job.await
-(scout andThen reviewer).ask("Оцени архитектуру")
+(scout andThen reviewer).ask("Review the architecture")
 ```
 
-Подробные UX решения: [Удобство DSL](dsl-experience.md). `.ask` и `.start` — explicit REPL extension methods над одинаковым Program contract; никаких macro/parser tricks.
+Detailed UX decisions: [DSL experience](dsl-experience.md). `.ask` and `.start`
+are explicit REPL extension methods over the same Program contract; no
+macro/parser tricks.
 
 ```scala
 val scout = agent("scout")
   .model("fast")
-  .instructions("Исследуй проект и приведи ссылки на файлы")
+  .instructions("Investigate the project and cite file paths")
   .tools("fs.read", "fs.search")
 
-val task = scout("Как устроена авторизация?")
-// task: Task[String]. Network/tool execution ещё не было.
+val task = scout("How is authorization implemented?")
+// task: Task[String]. No network/tool execution has happened yet.
 
 val answer = task.run()
-// Foreground: показывает поток результата, ожидает завершения, возвращает String.
+// Foreground: streams output, waits for completion, returns a String.
 
-val job = scout.start("Проверь обработку ошибок")
-// Background: немедленно возвращает Job[String], ввод следующей команды доступен.
+val job = scout.start("Check error handling")
+// Background: immediately returns Job[String], allowing the next command.
 
 val result = job.await
 ```
 
-Промпт необязателен: `agent("name")` получает небольшой общий prompt. `.instructions(text)` заменяет его, `.appendInstructions(text)` добавляет раздел. Agent descriptor immutable; новые параметры применяются только к новым запускам.
+Prompt is optional: `agent("name")` gets a small general prompt. `.instructions(text)`
+replaces it; `.appendInstructions(text)` adds a section. Agent descriptor is
+immutable; new settings apply only to new runs.
 
-`model("fast")` означает именованную роль из конфигурации Raider, а не гарантированное имя модели у провайдера. Можно задать provider/model явно. Без live credentials команда запуска сообщает actionable configuration error; ничего не оплачивает и не использует молча другой аккаунт.
+`model("fast")` means a named role in Raider configuration, not a guaranteed
+provider model name. Provider/model can be set explicitly. Without live
+credentials, a launch command reports an actionable configuration error; it
+does not spend money or silently use another account.
 
-## 2. Разделение описания и выполнения
+## 2. Separate description from execution
 
-| API | Эффект в момент вызова | Результат |
+| API | Effect when called | Result |
 | --- | --- | --- |
-| `agent(name)` и `.tools/.model/.instructions` | Только построение descriptor | `Agent[String, String]` |
-| `a(input)` | Построение задачи; сам input вычисляется обычной Scala | `Task[O]` |
-| `task.map/flatMap` | Построение вычисления | `Task[B]` |
-| `a.ask(input)` | Создать root job и ждать с streaming | `O` или `RunFailed` |
-| `a.start(input)` | Создать session-owned root job | `Job[O]` |
-| `task.run()` / `task.start()` | Запустить подготовленную задачу foreground/background | `A` / `Job[A]` |
-| `a andThen b` | Построить typed pipeline: результат A становится входом B | `Program[I, P]` |
-| `job.await / .send / .cancel / .watch / .info` | Управление существующим job | Typed result/receipt/snapshot |
-| `run(task)` | Создать root job и ждать его завершения | `A` или понятное исключение `RunFailed` |
-| `spawn(task)` | Создать session-owned root job | `Job[A]` |
-| `await(job)` | Ожидать существующий job; не запускать заново | `A` или `RunFailed` |
-| `cancel(job)` | Запросить отмену и дождаться подтверждения в пределах deadline | `CancelResult` |
-| `send(job, text)` | Добавить steering message в mailbox | `MessageReceipt` |
-| `inspect(job)` | Прочитать snapshot состояния | `JobSnapshot` |
-| `watch(job)` | Наблюдать events до завершения/отмены наблюдения | `Unit` |
-| `all(a, b)` для Tasks | Описать параллельные разнотипные задачи | `Task[(A, B)]` |
-| `all(a, b)` для Programs | Построить fanout с общим входом | `Program[I, (A, B)]` |
-| `fork(task)` внутри workflow | Описать создание дочернего job | `Task[Child[A]]` |
-| `child.join` | Описать ожидание ребёнка | `Task[A]` |
+| `agent(name)` and `.tools/.model/.instructions` | Build descriptor only | `Agent[String, String]` |
+| `a(input)` | Build task; input itself is evaluated as ordinary Scala | `Task[O]` |
+| `task.map/flatMap` | Build computation | `Task[B]` |
+| `a.ask(input)` | Create root job and wait with streaming | `O` or `RunFailed` |
+| `a.start(input)` | Create session-owned root job | `Job[O]` |
+| `task.run()` / `task.start()` | Run prepared task in foreground/background | `A` / `Job[A]` |
+| `a andThen b` | Build typed pipeline: A's result becomes B's input | `Program[I, P]` |
+| `job.await / .send / .cancel / .watch / .info` | Control existing job | Typed result/receipt/snapshot |
+| `run(task)` | Create root job and wait for completion | `A` or clear `RunFailed` exception |
+| `spawn(task)` | Create session-owned root job | `Job[A]` |
+| `await(job)` | Wait for existing job; do not launch again | `A` or `RunFailed` |
+| `cancel(job)` | Request cancellation and await confirmation within deadline | `CancelResult` |
+| `send(job, text)` | Add steering message to mailbox | `MessageReceipt` |
+| `inspect(job)` | Read state snapshot | `JobSnapshot` |
+| `watch(job)` | Observe events until completion/observer cancellation | `Unit` |
+| `all(a, b)` for Tasks | Describe parallel tasks with different types | `Task[(A, B)]` |
+| `all(a, b)` for Programs | Build fan-out with shared input | `Program[I, (A, B)]` |
+| `fork(task)` within workflow | Describe creation of child job | `Task[Child[A]]` |
+| `child.join` | Describe waiting for child | `Task[A]` |
 
-`ask/start`, Task/Job launch/control extensions и `run/spawn/await/send/cancel` входят в REPL facade. Functions — низкоуровневый launch/control путь, а не второй набор implementations. В headless/library code есть асинхронный `Runtime` API, возвращающий ZIO effects; facade не импортируется по умолчанию в workflows/plugins. Не применять blocking facade из fibers. Каждая facade операция делегирует одному canonical runtime method; outcomes, scopes и events совпадают.
+`ask/start`, Task/Job launch/control extensions, and `run/spawn/await/send/cancel`
+are part of the REPL facade. Functions are the low-level launch/control path,
+not a second set of implementations. Headless/library code has an asynchronous
+`Runtime` API that returns ZIO effects; the facade is not imported by default in
+workflows/plugins. Do not use the blocking facade from fibers. Each facade
+operation delegates to one canonical runtime method; outcomes, scopes, and
+events match.
 
-Построение descriptor не обязано быть совершенно без I/O: `.instructionsFile(path)` может явно прочитать локальный файл. Оно не вызывает модель и не выполняет agent tools. `.instructionsFile` фиксирует содержимое/hash при регистрации версии; running job не читает файл заново посреди выполнения.
+Building a descriptor need not be entirely free of I/O: `.instructionsFile(path)`
+may explicitly read a local file. It does not call a model or run agent tools.
+`.instructionsFile` pins contents/hash when the version is registered; a running
+job does not reread the file mid-run.
 
-Повторный `run(task)` создаёт новый root ID и выполняет задачу снова. Повторный `await(job)` возвращает сохранённый outcome без повторения действий. Snapshot/REPL history не должны неявно перезапускать задачи.
+Repeating `run(task)` creates a new root ID and runs the task again. Repeating
+`await(job)` returns the saved outcome without repeating actions. Snapshot/REPL
+history must not implicitly restart tasks.
 
-## 3. Настоящая интерактивность
+## 3. Real interactivity
 
-Обязательно поддержать:
+Required support:
 
-- variables и последующее использование их результатов;
-- `def`, `case class`, pattern matching, коллекции, `for`;
-- многострочный ввод и bracketed paste;
-- autocomplete доступных Scala symbols плюс агентные/tool/model names в meta-командах;
-- history с управляемым сохранением и исключением секретов;
-- сохранение корректных bindings после compile error и runtime error;
-- foreground streaming и background summary без разрушения редактируемой строки;
-- печать дескрипторов/jobs кратко, без prompts, секретов, гигантских transcripts;
-- portable no-color/non-TTY режим и structured JSON output для CLI;
-- загрузку файла сценария и запуск зарегистрированных workflows;
-- `help` с рабочими примерами, а не со списком внутренних классов.
+- variables and later use of their results;
+- `def`, `case class`, pattern matching, collections, `for`;
+- multiline input and bracketed paste;
+- autocomplete for available Scala symbols plus agent/tool/model names in meta-commands;
+- history with controlled persistence and secret exclusion;
+- preserve valid bindings after compile errors and runtime errors;
+- foreground streaming and background summaries without disrupting the edited line;
+- concise printing of descriptors/jobs, without prompts, secrets, or huge transcripts;
+- portable no-color/non-TTY mode and structured JSON output for CLI;
+- load a scenario file and run registered workflows;
+- `help` with working examples, not a list of internal classes.
 
-Compiler state обрабатывается последовательно. Background jobs не изменяют его и не выполняют compiler API. Completion и evaluation синхронизируются адаптером REPL engine.
+Compiler state is handled sequentially. Background jobs do not modify it or call
+compiler APIs. Completion and evaluation are synchronized by the REPL engine
+adapter.
 
-## 4. Запуск всего набора задач
+## 4. Running a group of tasks
 
-Короткий путь для разнотипных результатов:
+Short path for results of different types:
 
 ```scala
 val (facts, review) = all(
-  scout("Найди важные интерфейсы"),
-  reviewer("Оцени архитектуру")
+  scout("Find important interfaces"),
+  reviewer("Review the architecture")
 ).run()
 ```
 
-Для группы одного типа с ограничением параллельности:
+For a group of one type with a parallelism bound:
 
 ```scala
 val topics = List("auth", "cache", "routing", "streaming")
 val checks = batch(topics, parallelism = 2)(topic => scout(topic)).run()
 ```
 
-`batch` возвращает результаты в порядке входа, не порядке завершения. Пустая коллекция возвращает пустую коллекцию без model calls. Invalid parallelism отклоняется до запуска. Default failure policy — fail-fast с отменой остальных и cleanup.
+`batch` returns results in input order, not completion order. An empty collection
+returns an empty collection without model calls. Invalid parallelism is rejected
+before launch. Default failure policy is fail-fast with cancellation of the
+others and cleanup.
 
-Для независимых проверок:
+For independent checks:
 
 ```scala
 val outcomes = batchCollect(topics, parallelism = 2)(topic => scout(topic)).run()
 ```
 
-`batchCollect` возвращает `List[Outcome[String]]`, сохраняет failures, но внешняя отмена всё равно останавливает всю группу. `raceSuccess` и `quorum` — P2; не добавлять их в MVP вместо обязательного `all/batch/batchCollect`.
+`batchCollect` returns `List[Outcome[String]]` and preserves failures, but
+external cancellation still stops the whole group. `raceSuccess` and `quorum`
+are P2; do not add them to MVP instead of required `all/batch/batchCollect`.
 
-Для одного входа нескольким агентам:
+For multiple agents on one input:
 
 ```scala
 val audit = all(scout, reviewer)
-val (facts, critique) = audit.ask("Оцени расширяемость проекта")
+val (facts, critique) = audit.ask("Review the project's extensibility")
 ```
 
-`all` overloads для Tasks и Programs разделены по erased signatures; compile fixtures проверяют inference и mixed input rejection. В MVP arity 2; beta 3/4 при такой же type safety. Не приводить heterogeneous results к `List[Any]`.
+`all` overloads for Tasks and Programs have separate erased signatures; compile
+fixtures check inference and rejection of mixed inputs. MVP arity is 2; beta may
+support 3/4 with the same type safety. Do not coerce heterogeneous results to
+`List[Any]`.
 
-## 5. Workflow из REPL и файла
+## 5. Workflow from REPL and file
 
 ```scala
 val inspectProject = workflow[String, String]("inspect"): question =>
@@ -139,12 +177,14 @@ val inspectProject = workflow[String, String]("inspect"): question =>
   yield review
 
 register(inspectProject)
-val result = inspectProject.ask("Оцени расширяемость")
+val result = inspectProject.ask("Review the project's extensibility")
 ```
 
-Explicit `register` добавляет immutable versioned definition в registry. Создание workflow не изменяет registry. Новый registration того же имени создаёт новую версию; старые jobs используют snapshot предыдущей версии.
+Explicit `register` adds an immutable, versioned definition to the registry.
+Creating a workflow does not modify the registry. Registering the same name
+again creates a new version; old jobs use the previous version's snapshot.
 
-Управляемые дети:
+Managed children:
 
 ```scala
 val investigate = workflow[String, String]("investigate"): question =>
@@ -155,30 +195,38 @@ val investigate = workflow[String, String]("investigate"): question =>
       plan  <- planner(question)
       facts <- a.join
       docs  <- b.join
-      text  <- writer(s"План: $plan\nФакты: $facts\nИсточники: $docs")
+      text  <- writer(s"Plan: $plan\nFacts: $facts\nSources: $docs")
     yield text
 
-val job = investigate.start("Как добавить плагины?")
+val job = investigate.start("How can plugins be added?")
 ```
 
-`scope` создаёт область владения детьми. Выход из неё отменяет и завершает незавершённых детей; default не делает бесконечный implicit join. `all/batch` сами ожидают свои ветви. Вся root task также получает scope, поэтому `fork` безопасен и без вложенного `scope`.
+`scope` creates an ownership scope for children. Exiting it cancels and completes
+unfinished children; default behavior does not do an unbounded implicit join.
+`all/batch` wait for their branches themselves. The root task also gets a scope,
+so `fork` is safe without a nested `scope`.
 
-Файл `workflows.raider.scala` содержит Scala declarations и explicit registrations. `:load` **исполняет пользовательский Scala-код**, не является sandbox и не гарантирует отсутствие side effects. Для обычных сценариев в файле держат definitions, а запуск делают отдельно. `:load` не должен автоматически replay history.
+`workflows.raider.scala` contains Scala declarations and explicit registrations.
+`:load` **executes user Scala code**, is not a sandbox, and does not guarantee
+absence of side effects. For ordinary scenarios, keep definitions in the file
+and launch separately. `:load` must not automatically replay history.
 
-После загрузки:
+After loading:
 
 ```text
 :workflows
-:run inspect "Оцени проект"
-:spawn investigate "Исследуй провайдеры"
+:run inspect "Review the project"
+:spawn investigate "Research the providers"
 ```
 
-Meta-команды с string input передают остаток аргумента как текст согласно своей грамматике, не делают Scala interpolation. Typed input идёт через `--input-json` или Scala expression.
+Meta-commands with string input pass the remaining argument as text according
+to their grammar; they do not interpolate Scala. Typed input goes through
+`--input-json` or a Scala expression.
 
-## 6. Настройки запуска
+## 6. Launch settings
 
 ```scala
-val task = scout("Проверь проект")
+val task = scout("Check the project")
   .within(2.minutes)
   .limit(Limits(maxSteps = 10, maxLlmAttempts = 12, maxChildren = 3))
   .tag("task", "RAI-017")
@@ -186,105 +234,144 @@ val task = scout("Проверь проект")
 val job = task.start()
 ```
 
-Настройки задачи задают верхнюю границу; global/session/parent policy может её только ужесточить. Deadlines включают очередь, retries, tools и cleanup grace отдельно. Agent defaults < task options < обязательные ceilings; overrides не расширяют полномочия.
+Task settings set an upper bound; global/session/parent policy may only tighten
+it. Deadlines account separately for queue, retries, tools, and cleanup grace.
+Agent defaults < task options < mandatory ceilings; overrides do not widen
+authority.
 
-Root budget задаётся настройкой сессии/launch options. Все descendants расходуют один root ledger. Отдельный child cap ограничивает его долю и не создаёт новые деньги/attempts.
+Root budget is set in session/launch options. All descendants consume one root
+ledger. A separate child cap limits its share and creates no additional money or
+attempts.
 
-## 7. Типизированный путь
+## 7. Typed path
 
 ```scala
 case class Question(text: String)
 case class Finding(path: String, explanation: String)
 case class Findings(items: List[Finding])
 
-// В реальном примере здесь также объявлены Codec/Schema instances.
+// The real example also declares Codec/Schema instances.
 val typedScout = agent[Question, Findings]("typed-scout")
-  .instructions("Верни находки по заданной схеме")
+  .instructions("Return findings that match the specified schema")
   .tools("fs.read", "fs.search")
 
-val findings: Findings = typedScout.ask(Question("Найди публичные API"))
+val findings: Findings = typedScout.ask(Question("Find public APIs"))
 ```
 
-Команда имеет входной/выходной codec и schema. Нет runtime `asInstanceOf` на пользовательском пути. Неверный JSON, неподдержанная schema и исчерпанный repair budget дают explicit error. Импортированные Markdown agents сначала `Agent[String,String]`; `.output[Findings]` добавляет проверяемую схему, не обещает её соблюдать одной инструкцией.
+The command has input/output codecs and schemas. No runtime `asInstanceOf` on
+the user path. Invalid JSON, unsupported schema, and exhausted repair budget
+produce explicit errors. Imported Markdown agents begin as
+`Agent[String,String]`; `.output[Findings]` adds a checkable schema, but does not
+promise that one instruction will make the model obey it.
 
-Первый публичный sugar — строки. Typed agents/tools входят в beta и обязательны для [working coding agent](working-product.md); их инфраструктурные contracts нужны раньше, чтобы не переписывать ядро.
+First public sugar is strings. Typed agents/tools enter beta and are required
+for the [working coding agent](working-product.md); their infrastructure
+contracts are needed earlier to avoid rewriting the core.
 
-## 8. Продолжительное общение
+## 8. Ongoing interaction
 
-В MVP `job.send(text)` — steering работающего запуска. Это не новый model call и не отдельный turn; runtime применяет сообщение на следующей безопасной границе между шагами. Functional `send(job,text)` вызывает тот же метод service.
+In MVP, `job.send(text)` steers a running job. It is not a new model call or a
+separate turn; runtime applies the message at the next safe boundary between
+steps. Functional `send(job,text)` calls the same service method.
 
-Receipt содержит message ID, sequence, состояние `queued/applied/rejected`. Если job завершился между enqueue и consume, message получает rejected/finalized status и не теряется молча. Модель не гарантирует выполнение просьбы; receipt подтверждает доставку в контекст.
+Receipt contains message ID, sequence, and state `queued/applied/rejected`. If
+job finishes between enqueue and consume, the message gets a rejected/finalized
+status and is not silently lost. The model is not guaranteed to follow the
+request; receipt confirms delivery into context.
 
-Session API реализуется в P1 и обязателен для [working coding agent](working-product.md), хотя не блокирует первоначальный runtime M0:
+Session API is implemented in P1 and required for the [working coding
+agent](working-product.md), though it does not block initial runtime M0:
 
 ```scala
 val chat = openSession(researcher)
-val first = chat.ask("Исследуй варианты хранения")
-val second = chat.ask("Сравни два лучших")
+val first = chat.ask("Research storage options")
+val second = chat.ask("Compare the two best")
 chat.close()
 ```
 
-Session implements Program-style application: `chat(input)` возвращает Task, `chat.ask(input)` запускает foreground, `chat.start(input)` ставит turn в фон. Turns одной session сериализуются, cancellation одного turn не стирает прошлую историю. Session хранит отдельный conversation context, не mutates `Agent`. На overflow mailbox — bounded wait/error; не бесконечный рост памяти. В v1 нет автоматической замены interactive facade магическим direct-style macro.
+Session implements a Program-style application: `chat(input)` returns a Task,
+`chat.ask(input)` launches foreground, `chat.start(input)` backgrounds a turn.
+Turns in one session are serialized; cancelling a turn does not erase earlier
+history. Session stores separate conversation context and does not mutate
+`Agent`. On mailbox overflow, use bounded wait/error; memory must not grow without
+limit. V1 does not automatically replace the interactive facade with a magical
+direct-style macro.
 
-## 9. Meta-команды
+## 9. Meta-commands
 
-| Команда | Целевое поведение | Этап |
+| Command | Target behavior | Stage |
 | --- | --- | --- |
-| `:help [topic]` | Короткие примеры, topic lookup | MVP |
+| `:help [topic]` | Short examples, topic lookup | MVP |
 | `:agents`, `:tools`, `:models` | Registry/model-role inventory | MVP |
-| `:jobs [--all]` | ID, owner, status, age, limits, краткий cost status | MVP |
-| `:job ID` | Snapshot плюс причина остановки | MVP |
-| `:watch ID` | Поток events, Ctrl+C прекращает наблюдение | MVP |
-| `:await ID` | Ждать outcome существующего job | MVP |
-| `:cancel ID` | Отмена с подтверждением/неопределённостью | MVP |
+| `:jobs [--all]` | ID, owner, status, age, limits, brief cost status | MVP |
+| `:job ID` | Snapshot plus stop reason | MVP |
+| `:watch ID` | Event stream; Ctrl+C stops watching | MVP |
+| `:await ID` | Await outcome of existing job | MVP |
+| `:cancel ID` | Cancellation with confirmation/uncertainty | MVP |
 | `:send ID TEXT` | Steering message | MVP |
 | `:load PATH` | Evaluate trusted local script | MVP |
-| `:workflows` | Зарегистрированные definitions/версии | MVP |
+| `:workflows` | Registered definitions/versions | MVP |
 | `:run NAME TEXT` | Foreground workflow | MVP |
 | `:spawn NAME TEXT` | Background workflow | MVP |
-| `:doctor` | Toolchain/runtime/provider checks без оплат по умолчанию | MVP |
-| `:history` | History без автоматического исполнения | MVP |
-| `:reset` | Закрыть текущую runtime session, отменить jobs, создать новую и reset compiler | MVP |
-| `:exit` | Graceful shutdown, подтвердить отсутствие owned jobs | MVP |
-| `:session save NAME` | Сохранить registry references, outcomes и transcript metadata | P1 |
-| `:session open NAME` | Открыть архив без запуска кода; jobs как исторические records | P1 |
-| `:export PATH` | Сохранить reviewable Scala history/script, без автоматического replay | P1 |
-| `:replay RUN_ID` | Deterministic fixture replay без сетевых/мутационных эффектов | P1 |
-| `:type`, `:imports` | Compiler-native introspection через engine adapter | MVP |
+| `:doctor` | Toolchain/runtime/provider checks; no spending by default | MVP |
+| `:history` | History without automatic execution | MVP |
+| `:reset` | Close current runtime session, cancel jobs, create new session and reset compiler | MVP |
+| `:exit` | Graceful shutdown; confirm no owned jobs remain | MVP |
+| `:session save NAME` | Save registry references, outcomes, and transcript metadata | P1 |
+| `:session open NAME` | Open archive without running code; jobs remain historical records | P1 |
+| `:export PATH` | Save reviewable Scala history/script without automatic replay | P1 |
+| `:replay RUN_ID` | Deterministic fixture replay without network/mutation effects | P1 |
+| `:type`, `:imports` | Compiler-native introspection via engine adapter | MVP |
 
-`:run` получает только registered workflow, не arbitrary shell command. `:load` расширяет `~`, принимает quoted path, показывает локальную ошибку с line/column. Не использовать shell для разбора путей.
+`:run` accepts only a registered workflow, not an arbitrary shell command. `:load`
+expands `~`, accepts a quoted path, and shows local errors with line/column. Do
+not use shell for path parsing.
 
-## 10. Ctrl+C и завершение
+## 10. Ctrl+C and shutdown
 
-| Контекст | Первый Ctrl+C |
+| Context | First Ctrl+C |
 | --- | --- |
-| Редактирование команды | Очистить текущий ввод, jobs продолжаются |
-| `agent.ask(input)` / `task.run()` / `run(task)` | Отменить foreground root и его детей, затем вернуть prompt |
-| `job.await` / `await(existingJob)` / `:await` | Прекратить ожидание; job остаётся работать |
-| `job.watch()` / `watch(job)` / `:watch` | Отписаться; job остаётся работать |
-| Pending approval | Не разрешать действие; отменить foreground или закончить observer согласно контексту |
+| Editing a command | Clear current input; jobs continue |
+| `agent.ask(input)` / `task.run()` / `run(task)` | Cancel foreground root and its children, then return prompt |
+| `job.await` / `await(existingJob)` / `:await` | Stop waiting; job keeps running |
+| `job.watch()` / `watch(job)` / `:watch` | Unsubscribe; job keeps running |
+| Pending approval | Do not authorize action; cancel foreground or finish observer according to context |
 
-Повторный Ctrl+C во время shutdown может завершить процесс после bounded grace; pending remote actions сохраняются как uncertain/interrupted, не succeeded. Нельзя `Thread.stop`, ловить cancellation и продолжать agent loop или ждать бесконечно финализатор.
+A second Ctrl+C during shutdown may terminate process after bounded grace;
+pending remote actions are recorded as uncertain/interrupted, not succeeded.
+Do not use `Thread.stop`, catch cancellation and continue the agent loop, or wait
+forever for a finalizer.
 
-MVP: закрытие REPL отменяет session-owned jobs. Background означает «не мешает следующему вводу», а не «переживает выход из процесса». Daemon/remote attachment — отдельный P2.
+MVP: closing REPL cancels session-owned jobs. Background means “does not block
+the next input,” not “survives process exit.” Daemon/remote attachment is a
+separate P2.
 
-Произвольная Scala может выполнять бесконечный CPU loop или native blocking code. Spike обязан проверить interruptibility pinned REPL. Если безопасно остановить arbitrary evaluation невозможно, runtime cancellation всё равно работает, а escape path завершает REPL процесс; обещание сохранить bindings после такого hard stop не даётся.
+Arbitrary Scala can run an infinite CPU loop or native blocking code. Spike must
+check interruptibility of the pinned REPL. If arbitrary evaluation cannot be
+stopped safely, runtime cancellation still works and an escape path terminates
+the REPL process; no promise is made to preserve bindings after that hard stop.
 
-## 11. Терминальное представление
+## 11. Terminal presentation
 
-При background spawn печатать одну строку с job ID и возможностью `:watch`. Ввод следующей команды не ждёт model/network.
+On background spawn, print one line with job ID and `:watch` hint. Entering the
+next command does not wait for model/network.
 
 ```text
 Job[String](j_018, queued, owner=session:s_03)
 ```
 
-Summary обновления выводить coalesced, не каждый token всех jobs одновременно. `:watch` выбирает один stream; critical state changes не теряются. TerminalRenderer — единственный владелец terminal writes; slow renderer не останавливает бюджет/accounting state machine.
+Print coalesced summary updates, not every token from all jobs simultaneously.
+`:watch` selects one stream; critical state changes are not lost.
+TerminalRenderer is the sole owner of terminal writes; a slow renderer does not
+stop the budget/accounting state machine.
 
-`run` streams текст, затем возвращает значение без повторного полного вывода того же длинного текста. Pretty printer для Task/Agent/Job не вызывает эффекты. No-color output не содержит ANSI; JSON stdout не смешивается с логами, stderr предназначен для diagnostics.
+`run` streams text, then returns the value without printing the same long text
+again in full. Pretty printing Task/Agent/Job causes no effects. No-color output
+contains no ANSI; JSON stdout is not mixed with logs, and stderr is for diagnostics.
 
-## 12. CLI и переносимость
+## 12. CLI and portability
 
-Целевые команды:
+Target commands:
 
 ```text
 raider repl --mock
@@ -292,13 +379,21 @@ raider repl --profile direct
 raider repl --profile claude
 raider repl --profile yabanin
 raider compile workflows.raider.scala --output pipelines.jar
-raider run --bundle pipelines.jar --workflow inspect --input "Оцени проект"
+raider run --bundle pipelines.jar --workflow inspect --input "Review the project"
 raider run --bundle pipelines.jar --workflow typed-inspect --input-json input.json
-raider run --bundle pipelines.jar --workflow inspect --input "Оцени проект" --json
+raider run --bundle pipelines.jar --workflow inspect --input "Review the project" --json
 raider doctor --profile yabanin
 raider test examples/ --mock
 ```
 
-Production CI запускает compiled trusted bundle без compiler; source evaluation — dev mode через тот же pinned engine. Подробные CLI/exits/artifacts/trust: [CI contract](ci-runtime.md); подключения без gateway: [provider contract](provider-protocols.md). Пустой stdin, EOF, compile error, missing workflow и wrong input codec дают стабильные exit codes. Headless invocation не спрашивает разрешение интерактивно: потребуются explicit policy/capabilities; отсутствие решения — error, не auto-allow.
+Production CI runs a compiled trusted bundle without compiler; source evaluation
+is dev mode through the same pinned engine. Details on CLI/exits/artifacts/trust:
+[CI contract](ci-runtime.md); gateway-independent connections:
+[provider contract](provider-protocols.md). Empty stdin, EOF, compile error,
+missing workflow, and wrong input codec produce stable exit codes. Headless
+invocation does not ask for interactive approval: explicit policy/capabilities
+are required; missing decision is an error, not auto-allow.
 
-Все документированные examples должны исполняться через fake backend в docs gate и выбранные — через реальный Scala REPL. Переписать пример, чтобы замаскировать дефект REPL, без обновления контракта нельзя.
+All documented examples must execute through fake backend in docs gate and
+selected examples through real Scala REPL. Do not rewrite an example to hide a
+REPL defect without updating the contract.

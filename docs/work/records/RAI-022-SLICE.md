@@ -2,69 +2,68 @@
 
 # RAI-022-SLICE: work record — headless runner + bundle loading
 
-Status: done (slice: RUN-01/02/03 скелет + remainder [--agent + SIGTERM
-bounded stop]; packaged distribution/CI-адаптеры — milestone-обязанности).
-Date: 2026-10-04 (updated same day). Baseline: предыдущий last-passing gate
+Status: done (slice: RUN-01/02/03 skeleton + remainder [--agent + SIGTERM
+bounded stop]; packaged distribution/CI adapters are milestone obligations).
+Date: 2026-10-04 (updated the same day). Baseline: previous last-passing gate
 artifacts/quality/20261004-064809 (DELEGATION).
 
 ## Resulting behavior (remainder, same day)
 
-**--agent режим**: `run --agent scout|worker --input … --out … --mock` —
-built-in агенты (whitelist `CliArgs.BuiltInAgents`) на `MockBackend`
-(маркер `[mock]` В ТЕКСТЕ ответа — fixture discipline; tools=Unsupported
-честно); `--agent` XOR `--bundle/--workflow` (RA-CFG). **Runner НЕ
-двойной-admission**: bundle-программы — opaque Task, runner сам даёт
-внешний slot; AgentLoop выполняет СВОЙ admission внутри — вложенный take
-на maxLLM=1 = deadlock (поймано fixture'ом, разделено по веткам target).
+**`--agent` mode**: `run --agent scout|worker --input … --out … --mock` —
+built-in agents (whitelist `CliArgs.BuiltInAgents`) on `MockBackend`
+(`[mock]` marker IN RESPONSE TEXT — fixture discipline; tools=Unsupported,
+honestly); `--agent` XOR `--bundle/--workflow` (RA-CFG). **Runner does NOT
+double-admit**: bundle programs are opaque Tasks, runner provides an outer slot;
+AgentLoop performs ITS OWN admission inside — nested take at maxLLM=1 = deadlock
+(caught by fixture, separated by target branches).
 
-**SIGTERM bounded stop**: shutdown-hook → interrupt fiber'ы → ожидание
-финализаторов ≤ 5 c → RETURN (никогда System.exit из хука — exit из хука
-дедлочит Shutdown.runHooks, поймано probe'ом). POSIX-смерть после хуков
-даёт 143; нормальное завершение помечает `done` — hook мгновенный no-op.
+**SIGTERM bounded stop**: shutdown-hook → interrupt fibers → wait for finalizers
+≤ 5 s → RETURN (never System.exit from hook — exit from a hook deadlocks
+Shutdown.runHooks, caught by probe). POSIX termination after hooks yields 143;
+normal completion marks `done` — hook is an immediate no-op.
 
-**Три ловушки zio/Scala 3.9 этого remainder** (все пойманы probe'ами):
-1. `.fork` (не-daemon) на top-level Unsafe: супервизор прерывает child,
-   когда parent root fiber завершился → runner умирал сразу → `.forkDaemon`.
-2. `System.exit` не флёшит piped stdout → println терялся → явный flush.
-3. Scala 3.9 E046-cyclic на member-select-чейнах (`x.call.y`) в файле
-   AgentLoop — поля деструктурированы по одному; добавлен отсутствующий
-   import ToolCallId (раньше тип выводился, не именовался).
+**Three zio/Scala 3.9 traps in this remainder** (all caught by probes):
+1. `.fork` (non-daemon) on top-level Unsafe: supervisor interrupts child when
+   parent root fiber finishes → runner died immediately → `.forkDaemon`.
+2. `System.exit` does not flush piped stdout → println output was lost → explicit
+   flush.
+3. Scala 3.9 E046-cyclic on member-select chains (`x.call.y`) in AgentLoop file
+   — destructured fields one by one; added missing import ToolCallId (previously
+   the type was inferred, not named).
 
-Headless runner БЕЗ компилятора/JLine/сети (headless distribution rule):
+Headless runner WITHOUT compiler/JLine/network (headless distribution rule):
 
-- `raider.core.BundleWorkflow` — замороженный v1 SPI (allowed path
-  `modules/core/**/bundle/**`): публичный класс, no-arg конструктор,
-  `name` + `program: Program[String,String]`; программы ленивы —
-  инстанцирование ничего не диспетчит (API-03);
-- `raider.cli.run.BundleLoader` — манифест из `META-INF/raider-bundle.json`
-  внутри jar (validate → BundleManifest), инстанцирование entries через
-  изолированный URLClassLoader; имя класса обязано совпадать с entry;
-  НЕ Desktop-сетевой резолюции нет — только локальный jar;
-- `raider.cli.run.CliArgs` — чистый парсер `run --bundle --workflow
-  (--input|--input-json) --out [--mock]`; unknown/дубликаты/missing →
-  typed RA-CFG; stdin НИКОГДА не читается (closed-stdin safe);
-- `raider.cli.run.HeadlessRunner` — preflight ДО spend (manifest → load →
-  entry → input; RUN-02), затем ОДИН admitted dispatch (admission.withSlot,
-  root = cli_<uuid>); артефакты в `<out>/work-<uuid>/` (RUN-03: раздельные
-  директории конкурентных запусков): `run.json` (RunResult, ВАЛИДИРОВАН
-  до записи, атомарный temp+rename; schema-проверка — настоящая, её
-  результат внутри документа), `events.jsonl` (versioned envelopes,
-  bounded), `summary.md` с ОБЯЗАТЕЛЬНЫМ fixture-маркером при --mock
-  (mock никогда не выдаётся за live);
-- `--mock` обязателен в slice: live-провайдеры не подключены — без флага
-  typed отказ (exit 21);
-- `ExitCodes`-маппинг (ci-runtime §8): ВСЕ 18 семейств ошибок → коды
-  10/20/21/22/23/24/25/26/27; успех 0; никакого catch-all нуля;
-- `scripts/quality/cli_smoke.sh` — НАСТОЯЩИЙ процесс Main с закрытым
-  stdin (`printf '' |`), exit 0 + run.json Succeeded + fixture marker.
+- `raider.core.BundleWorkflow` — frozen v1 SPI (allowed path
+  `modules/core/**/bundle/**`): public class, no-arg constructor,
+  `name` + `program: Program[String,String]`; programs are lazy — instantiation
+  does not dispatch anything (API-03);
+- `raider.cli.run.BundleLoader` — manifest from `META-INF/raider-bundle.json`
+  inside the jar (validate → BundleManifest), instantiate entries through an
+  isolated URLClassLoader; class name must match entry; NO Desktop network
+  resolution — local jar only;
+- `raider.cli.run.CliArgs` — pure parser for `run --bundle --workflow
+  (--input|--input-json) --out [--mock]`; unknown/duplicate/missing → typed
+  RA-CFG; stdin is NEVER read (safe with closed stdin);
+- `raider.cli.run.HeadlessRunner` — preflight BEFORE spend (manifest → load →
+  entry → input; RUN-02), then ONE admitted dispatch (`admission.withSlot`,
+  root = cli_<uuid>); artifacts in `<out>/work-<uuid>/` (RUN-03: separate
+  directories for concurrent runs): `run.json` (RunResult, VALIDATED before
+  writing, atomic temp+rename; schema check is real, its result is inside the
+  document), `events.jsonl` (versioned envelopes, bounded), `summary.md` with
+  REQUIRED fixture marker when `--mock` (mock is never presented as live);
+- `--mock` is required in the slice: live providers are not connected — without
+  the flag, typed refusal (exit 21);
+- `ExitCodes` mapping (ci-runtime §8): ALL 18 error families → codes
+  10/20/21/22/23/24/25/26/27; success 0; no catch-all zero;
+- `scripts/quality/cli_smoke.sh` — REAL Main process with closed stdin
+  (`printf '' |`), exit 0 + run.json Succeeded + fixture marker.
 
-Fixture-jar собирается В ТЕСТЕ из скомпилированных классов
-(`modules/cli-fixtures`, Scala-классы DemoWorkflow/SecondWorkflow) —
-runtime-компилятор не нужен.
+Fixture jar is built IN THE TEST from compiled classes (`modules/cli-fixtures`,
+Scala classes DemoWorkflow/SecondWorkflow) — no runtime compiler needed.
 
-Найдено fixture'ами: гонка параллельного копирования keep-jar (три
-конкурентных Files.copy на один путь — FileAlreadyExistsException) —
-сериализовано локом.
+Found by fixtures: race during parallel copying of keep-jar (three concurrent
+Files.copy calls to one path — FileAlreadyExistsException) — serialized with a
+lock.
 
 ## Changed paths
 
@@ -85,14 +84,14 @@ a3a2112a…  scripts/quality/cli_smoke.sh
 | Criterion | Actual | Evidence |
 | --- | --- | --- |
 | RUN-01: jar bundle → mock Program headlessly, artifacts, closed stdin | pass (unit + Main-process smoke) | HeadlessRunnerSpec RUN-01 + cli_smoke.sh |
-| RUN-02: unknown workflow / not-a-jar / missing --mock / duplicate flags → typed preflight, exit 21/20, без output/spend | pass | HeadlessRunnerSpec RUN-02 |
-| RUN-03 (light): конкурентные запуски → раздельные work-директории | pass (3 параллельно, dirs unique) | HeadlessRunnerSpec RUN-03 |
-| exit-маппинг полон по 18 семействам | структурно (total function) | HeadlessRunner.exitCodeFor |
-| Стабильность ×3 | 5/5 → 7/7 (после remainder), exit 0 ×3 | /tmp/c12.log, /tmp/c38.log, /tmp/cli-run-{1,2}.log, /tmp/cli3-run-{1,2}.log |
-| Полный sbt test | 185 тестов, 0 failed, exit 0 | /tmp/full-test-R022{,b}.log |
-| Quality gates 6/6 ×2 ПОДРЯД | exit 0 ×2 | artifacts/quality/20261004-14{5246,5334}/ (slice), 20261004-163216 (remainder, 6 passed) |
-| SIGTERM probe: TERM в окне запуска → процесс завершается boundedly (без orphan) | pass | ручной probe (kill -TERM, process exited) |
-| cli_smoke | PASS exit 0 (после flush-фикса) | /tmp/cli-smoke8.log |
+| RUN-02: unknown workflow / not-a-jar / missing --mock / duplicate flags → typed preflight, exit 21/20, no output/spend | pass | HeadlessRunnerSpec RUN-02 |
+| RUN-03 (light): concurrent runs → separate work directories | pass (3 in parallel, unique dirs) | HeadlessRunnerSpec RUN-03 |
+| Exit mapping complete for all 18 families | structurally (total function) | HeadlessRunner.exitCodeFor |
+| Stability ×3 | 5/5 → 7/7 (after remainder), exit 0 ×3 | /tmp/c12.log, /tmp/c38.log, /tmp/cli-run-{1,2}.log, /tmp/cli3-run-{1,2}.log |
+| Full sbt test | 185 tests, 0 failed, exit 0 | /tmp/full-test-R022{,b}.log |
+| Quality gates 6/6 ×2 IN A ROW | exit 0 ×2 | artifacts/quality/20261004-14{5246,5334}/ (slice), 20261004-163216 (remainder, 6 passed) |
+| SIGTERM probe: TERM during launch window → process exits boundedly (no orphan) | pass | manual probe (kill -TERM, process exited) |
+| cli_smoke | PASS exit 0 (after flush fix) | /tmp/cli-smoke8.log |
 
 ## Commands
 
@@ -101,23 +100,23 @@ a3a2112a…  scripts/quality/cli_smoke.sh
 | `COURSIER_CACHE=/tmp/cc-master sbt --batch "raiderCli/test"` ×5 | 0,0,0,0,0 | /tmp/c12.log, /tmp/cli-run-{1,2}.log, /tmp/c38.log, /tmp/cli3-run-{1,2}.log |
 | `sh scripts/quality/cli_smoke.sh` | 0 | /tmp/cli-smoke8.log |
 | `COURSIER_CACHE=/tmp/cc-master sbt --batch test` ×2 | 0 (183/185) | /tmp/full-test-R022{,b}.log |
-| `make quality-changed QUALITY_EXECUTE=1` ×4 | 0 ×4 (один честный FAIL 054915 — DSL-ERGO ассерт, исправлен) | artifacts/quality/20261004-14{5246,5334}/, 20261004-163216 |
+| `make quality-changed QUALITY_EXECUTE=1` ×4 | 0 ×4 (one honest FAIL 054915 — DSL-ERGO assertion, fixed) | artifacts/quality/20261004-14{5246,5334}/, 20261004-163216 |
 
 ## Limitations / obligations
 
-- Packaged distribution (zip/изолированный classpath) и SIGTERM-фаза
-  (shutdown-hook interrupt, bounded stop, exit 143) — ci/milestone
-  обязательства; в slice SIGTERM-обработчика нет (root cleanup = scope
-  вызывающего).
-- Строгая изоляция загрузчика (child-first/sealed parent) — security
-  profile obligation; сейчас parent-delegation.
-- --agent режим (built-in агенты в CLI) — следующая часть RAI-022;
-  сегодя только bundle-режим.
-- Манифест-подписи/trust chain — вне slice (trust по declaredTrustLevel —
-  честно задокументировано; «trust from bare hash» — non-goal карточки).
+- Packaged distribution (zip/isolated classpath) and SIGTERM phase
+  (shutdown-hook interrupt, bounded stop, exit 143) are CI/milestone obligations;
+  the slice has no SIGTERM handler (root cleanup = caller's scope).
+- Strict loader isolation (child-first/sealed parent) is a security-profile
+  obligation; currently parent-delegation.
+- `--agent` mode (built-in agents in CLI) is the next part of RAI-022;
+  today only bundle mode.
+- Manifest signatures/trust chain are outside the slice (trust by
+  declaredTrustLevel is honestly documented; “trust from bare hash” is a card
+  non-goal).
 
 ## Review and next task
 
-Независимый review не проводился (координаторская сессия). Следующие:
---agent режим + structured message contract; RAI-023 (CI context/trust
-preflight) поверх готовых артефактов.
+Independent review was not performed (coordinator session). Next: `--agent` mode
++ structured message contract; RAI-023 (CI context/trust preflight) on top of the
+  completed artifacts.

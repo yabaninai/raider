@@ -1,4 +1,10 @@
 val description = scout("This is a scripted fixture prompt").map(_.length)
+var observed = 0
+println("TYPE_QUERY_BEGIN")
+:type description
+:type { observed += 1; description.run() }
+println("TYPE_QUERY_END")
+assert(observed == 0, "type inspection executed the expression")
 val length = description.run()
 assert(length > 0); println(s"EXAMPLE-02 PASS (scripted fixture text length=$length)")
 :quit

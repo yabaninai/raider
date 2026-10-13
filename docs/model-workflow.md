@@ -1,46 +1,60 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# Разработка простыми моделями
+# Working with simpler models
 
-## 1. Что делает качество воспроизводимым
+## 1. What makes quality reproducible
 
-Основная единица работы — маленькая карточка с фиксированным входом, allowed paths, контрактом и executable acceptance. Большая модель нужна для решения архитектурной неопределённости; реализацию узких контрактов можно вести более простыми моделями. Название модели не является доказательством качества.
+The basic unit of work is a small card with fixed inputs, allowed paths, a
+contract, and executable acceptance. A stronger model is useful for resolving
+architectural uncertainty; simpler models can implement narrow contracts. A
+model name is not evidence of quality.
 
-Все обязательные знания хранятся в git. Нельзя требовать, чтобы следующий исполнитель помнил чат, предыдущую сессию или имел определённый MCP.
+All required knowledge is stored in git. Do not require the next executor to
+remember a chat, a previous session, or to have a particular MCP.
 
-## 2. Роли
+## 2. Roles
 
-| Роль | Объём | Выход |
+| Role | Scope | Output |
 | --- | --- | --- |
-| Owner | Приоритеты, продуктовые/лицензионные решения, риск/бюджет | Выбранные карточки и acceptance |
-| Planner | Разбить неопределённость, зафиксировать интерфейс | ADR + маленькие карточки |
-| Implementer | Одна карточка | Diff, tests, work record |
-| Reviewer | Проверить контракт/diff/evidence | Findings и verdict |
-| Integrator | Собрать accepted cards, проверить downstream | Final full/acceptance evidence |
+| Owner | Priorities, product/license decisions, risk/budget | Selected cards and acceptance |
+| Planner | Break down uncertainty, record interfaces | ADR + small cards |
+| Implementer | One card | Diff, tests, work record |
+| Reviewer | Check contract/diff/evidence | Findings and verdict |
+| Integrator | Combine accepted cards, check downstream | Final full/acceptance evidence |
 
-Одна модель может исполнять разные роли в разных чистых контекстах. Independent review означает fresh context и самостоятельное чтение diff/tests, а не обязательно другой vendor. Автор не утверждает себе изменения protected verifier/quality policy.
+One model may perform different roles in separate clean contexts. Independent
+review means a fresh context and independent reading of diff/tests, not
+necessarily a different vendor. An author cannot approve their own changes to
+protected verifiers/quality policy.
 
-## 3. Размер карточки
+## 3. Card size
 
-Практический ориентир: 1–3 production files, 1 interface или один observable behavior, обычно 100–400 строк diff плюс нужные tests. Это не жёсткая норма: task splitting определяется dependency и пониманием, не искусственным LOC limit.
+Practical guideline: 1–3 production files, one interface or observable
+behavior, usually 100–400 lines of diff plus necessary tests. This is not a
+hard rule: task splitting depends on dependencies and understanding, not an
+artificial LOC limit.
 
-Если карточка требует новых публичных API, redesign state machine и изменения пяти модулей одновременно, сначала design/contract card, затем реализация. Одна «сделай весь REPL» карточка запрещена этой программой.
+If a card requires new public APIs, state-machine redesign, and changes to
+five modules at once, start with a design/contract card, then implement. This
+program does not allow a single “build the whole REPL” card.
 
-## 4. Входной packet
+## 4. Input packet
 
-Для каждой карточки:
+For each card:
 
 1. `AGENTS.md`.
-2. Текст карточки и только relevant specification sections.
-3. Exact allowed files/symbols и принятую API signature.
-4. Existing tests/fixtures и evidence baseline.
-5. Dependencies и их accepted work records.
+2. Card text and only relevant specification sections.
+3. Exact allowed files/symbols and the accepted API signature.
+4. Existing tests/fixtures and evidence baseline.
+5. Dependencies and their accepted work records.
 6. Required test commands/gate profiles.
-7. Non-goals и критерии остановки/escalation.
+7. Non-goals and stop/escalation criteria.
 
-Не отправлять всю программу на 50 страниц в каждую coding task. Full index помогает найти нужные разделы, work packet содержит конкретику. Обязательный invariant не вырезать ради короткого контекста.
+Do not send the entire 50-page program with each coding task. The full index
+helps locate sections; the work packet contains specifics. Do not omit a
+required invariant to shorten context.
 
-## 5. Рабочий цикл
+## 5. Work cycle
 
 ```text
 read card → inspect code/status → identify contract tests
@@ -48,72 +62,109 @@ read card → inspect code/status → identify contract tests
 → required gates → fresh review → accepted → next dependent card
 ```
 
-При исправлении bug: сначала reproduction, потом fix. При новой функции: acceptance fixture из контракта, затем реализация. Не создавать tests, которые лишь подтверждают текущий случайный implementation.
+For a bug fix: reproduce first, then fix. For a feature: create the acceptance
+fixture from the contract, then implement. Do not create tests that merely
+confirm the current accidental implementation.
 
-После двух неудачных содержательных попыток по одной причине прекратить одинаковое самоповторение: подготовить precise blocker/reproducer и design packet. Простая missing import/format issue исправляется локально и не требует escalation. Нет права «временно» отключить failing test.
+After two substantive failed attempts for the same reason, stop repeating the
+same approach: prepare a precise blocker/reproducer and design packet. A
+simple missing import/format issue can be fixed locally and does not require
+escalation. Never temporarily disable a failing test.
 
-Если нужен change публичного API: представить minimal diff contract/ADR, обновить designated fixtures и dependent cards. Runtime implementer не меняет naming потому, что ему привычнее другой DSL.
+For a public API change, present the minimal contract/ADR diff and update the
+designated fixtures and dependent cards. A runtime implementer does not change
+names merely because a different DSL feels more familiar.
 
-## 6. Готовый prompt исполнителю
-
-```text
-Работаешь в репозитории raider. Выполни только карточку <ID>.
-Прочитай AGENTS.md, текст карточки, указанные спецификации и текущий code path.
-Проверь git status (или manifest baseline для snapshot без Git) и dependencies; сохрани чужие изменения.
-Реализуй контракт с минимальным diff в allowed paths. Сначала подготовь
-acceptance/reproduction tests. Не меняй protected gates/fixtures/thresholds.
-Запусти targeted tests и все required profiles; failed/skipped/stale не passed.
-Подготовь work record до финальных gates. Передай exact commands, exit codes,
-evidence path, limitations и следующую доступную карточку.
-Если контракт неоднозначен, подготовь конкретный design decision, продолжи
-независимую разрешённую работу, не изобретай несовместимый API молча.
-```
-
-## 7. Готовый prompt reviewer
+## 6. Ready-to-use implementer prompt
 
 ```text
-Проверь карточку <ID> по actual diff и текущим исходникам. Summary автора
-используй только как навигацию. Прочитай contract и required gates.
-Проверь normal/error/cancellation/race cases, ownership, budgets, secrets,
-backward compatibility и неослабленные verifiers. Проверь source/log/policy
-hashes manifest. При необходимости воспроизведи конкретный сценарий.
-Дай accepted / changes-required / blocked с фактами, file:line, severity и
-минимальной корректировкой. Не добавляй соседние features в эту карточку.
+You are working in the raider repository. Execute only card <ID>.
+Read AGENTS.md, the card, named specifications, and the current code path.
+Check git status (or the manifest baseline for a snapshot without Git) and dependencies; preserve others' changes.
+Implement the contract with the smallest diff in allowed paths. First prepare
+acceptance/reproduction tests. Do not change protected gates/fixtures/thresholds.
+Run targeted tests and all required profiles; failed/skipped/stale is not passed.
+Prepare the work record before final gates. Report exact commands, exit codes,
+evidence path, limitations, and the next available card.
+If the contract is ambiguous, prepare a concrete design decision and continue
+independent authorized work; do not silently invent an incompatible API.
 ```
 
-Reviewer не доверяет fabricated evidence пути: файл должен существовать и быть проверен runner. Нет требования согласиться с автором. На выбранные risk boundaries ревью включает adversarial check, а не простое перефразирование diff.
+## 7. Ready-to-use reviewer prompt
 
-## 8. Управление board
+```text
+Review card <ID> against the actual diff and current source. Use the author's
+summary only for navigation. Read the contract and required gates.
+Check normal/error/cancellation/race cases, ownership, budgets, secrets,
+backward compatibility, and unchanged verifiers. Check source/log/policy
+hashes in the manifest. Reproduce a concrete scenario if needed.
+Return accepted / changes-required / blocked with facts, file:line, severity,
+and the smallest correction. Do not add adjacent features to this card.
+```
 
-Состояния карточек: todo → ready → in-progress → review → accepted. `blocked` хранит dependency/cause и не превращается в accepted по истечении времени.
+A reviewer does not trust a fabricated evidence path: the file must exist and
+be verified by the runner. Agreement with the author is not required. Review
+of selected risk boundaries includes adversarial checks, not just a restatement
+of the diff.
 
-`docs/tasks/README.md` — static backlog; текущее исполнение можно вести в issue tracker или отдельном board file. Work records создавать только для выполненных карточек. В work record сохранять task ID, source baseline, actual changed paths, acceptance IDs, commands/exit codes, evidence и ограничения.
+## 8. Board management
 
-Владелец разрешил parallel development 2026-10-03. [Runbook](parallel-development.md): coordinator + до трёх workers, isolated worktrees/snapshot copies, frozen signatures/allowed paths, automatic fresh review и последовательная интеграция. Один writer **на checkout**, независимые каталоги могут собираться параллельно. Implementation dependencies отличаются от final integration dependencies: компонент можно реализовать против accepted interface/testkit, parent принимает фактическую общую работу. Refinement фиксируется до coding и проходит review; «почти готово» не accepted prerequisite.
+Card states: todo → ready → in-progress → review → accepted. `blocked` records
+a dependency/cause and does not become accepted merely with time.
 
-Finish target — [working coding agent](working-product.md), включая sessions/context/package/fixtures. Milestone M0 не финал продукта. Stage-aware gates не требуют будущий runtime от первого compile-only контракта; все итоговые obligations остаются mandatory.
+`docs/tasks/README.md` is the static backlog; current execution can be tracked
+in an issue tracker or separate board file. Create work records only for
+completed cards. A work record retains task ID, source baseline, actual
+changed paths, acceptance IDs, commands/exit codes, evidence, and limitations.
 
-## 9. Контроль scope и качества
+The owner authorized parallel development on 2026-10-03. The
+[runbook](parallel-development.md) specifies coordinator + up to three workers,
+isolated worktrees/snapshot copies, frozen signatures/allowed paths, automatic
+fresh review, and sequential integration. One writer **per checkout**;
+independent directories may build in parallel. Implementation dependencies
+differ from final integration dependencies: a component can be implemented
+against an accepted interface/testkit, while the parent accepts the actual
+combined work. Record and review refinements before coding; “almost ready” is
+not an accepted prerequisite.
 
-- Реальные платные calls не требуются для повседневной разработки.
-- Mock mode виден пользователю и в artifacts; fixture output нельзя показывать как ответ живой модели.
-- API examples компилируются/исполняются, устаревший пример блокирует docs gate.
-- Dependency addition требует объяснить существующий gap и compatibility/license result.
-- Нет speculative framework/macro, автоматического исправления всех lint findings чужого модуля, массового рефакторинга соседнего кода.
-- Flaky test не принимается как «особенность асинхронности»: fix virtual-time/coordination или documented platform cause.
-- `run` succeeded и task verifier accepted — отдельные факты.
+The finish target is a [working coding agent](working-product.md), including
+sessions/context/package/fixtures. Milestone M0 is not the product finish.
+Stage-aware gates do not require future runtime from the first compile-only
+contract; all final obligations remain mandatory.
 
-## 10. Z.ai для разработки и для продукта
+## 9. Scope and quality control
 
-Исполнитель может использовать доступный z.ai coding tool и любую назначенную модель. Raider не должен зависеть от имени этой модели или её subscriptions.
+- Real paid calls are not required for everyday development.
+- Mock mode is visible to users and in artifacts; fixture output must not be
+  shown as a live-model answer.
+- API examples are compiled/run; a stale example fails the docs gate.
+- A dependency addition must explain the existing gap and compatibility/license result.
+- No speculative framework/macro, automatic fixing of all lint findings in
+  another's module, or broad refactoring of neighboring code.
+- A flaky test is not accepted as an “async quirk”: fix virtual time/coordination
+  or document the platform cause.
+- `run` succeeded and task verifier accepted are separate facts.
 
-Продукт не требует Yabanin. OpenAI-compatible/Anthropic-compatible profiles first-class; Yabanin — optional gateway/accounting. Direct Z.ai profile использует explicit base URL/account configuration и собственную capability проверку. General API и Coding Plan endpoint отличаются; не подставлять один вместо другого автоматически. Поддержку custom harness/account подтверждают актуальные docs и owner account, не наличие похожего URL.
+## 10. z.ai for development and product use
 
-Коммерческие limits/model IDs не фиксировать навсегда в AGENTS.md. Work records/eval сохраняют фактически использованные IDs и gateway actual model. Route simple worker/review tasks через роли; повышать модель для конкретной доказанной сложности.
+An implementer may use an available z.ai coding tool and any assigned model.
+Raider must not depend on the model name or its subscription.
+
+The product does not require Yabanin. OpenAI-compatible/Anthropic-compatible
+profiles are first-class; Yabanin is an optional gateway/accounting layer. A
+direct Z.ai profile uses an explicit base URL/account configuration and its
+own capability check. General API and Coding Plan endpoints differ; do not
+automatically substitute one for the other. Support for a custom harness/account
+must be confirmed by current docs and the owner's account, not by a similar-looking URL.
+
+Do not hardcode commercial limits/model IDs forever in AGENTS.md. Work
+records/eval retain the actual IDs used and the gateway's actual model. Route
+simple worker/review tasks by role; use a stronger model for a specific,
+demonstrated difficulty.
 
 ## 11. Escalation packet
 
-Если простая модель не решает задачу:
+If a simpler model cannot solve the task:
 
 ```text
 Card ID / contract clause:
@@ -126,8 +177,12 @@ Two bounded implementation options:
 Required decision / missing external dependency:
 ```
 
-Так owner/более сильная модель принимает конкретное решение. Нельзя просить «переделай всё качественно» без reproducer.
+This lets the owner/stronger model make a concrete decision. Do not ask to
+“redo everything well” without a reproducer.
 
-## 12. Приёмка владельцем без чтения всего кода
+## 12. Owner acceptance without reading all the code
 
-Для каждого milestone — одна команда demo acceptance, одна команда gate verification, краткая таблица результатов и known limitations. Owner видит реальные terminal transcripts, root/job trees, cleanup, расходы/uncertainty и actual diff. Большой narrative report не заменяет эти артефакты.
+For each milestone, provide one demo-acceptance command, one gate-verification
+command, a short results table, and known limitations. The owner sees actual
+terminal transcripts, root/job trees, cleanup, costs/uncertainty, and actual
+diff. A long narrative report does not replace these artifacts.

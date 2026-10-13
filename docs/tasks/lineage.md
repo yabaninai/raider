@@ -1,415 +1,415 @@
 <!-- Cards for P-LIN (roadmap-12k rev 2026-10-10, ADR-027). Same rules as m0.md. -->
 
-# P-LIN: Session lineage — дерево вызовов как валидная Scala-программа
+# P-LIN: Session lineage — the call tree as a valid Scala program
 
-Приоритет: впереди всего плана (решение владельца 2026-10-10, ADR-027).
-Контракт и решения: [ADR-027](../adr/ADR-027-session-lineage.md). Общий DoD как
-в [индексе](README.md); гейты — по [quality-gates](../quality-gates.md).
+Priority: ahead of the rest of the plan (owner decision, 2026-10-10, ADR-027).
+Contract and decisions: [ADR-027](../adr/ADR-027-session-lineage.md). Shared DoD
+is in the [index](README.md); gates follow [quality-gates](../quality-gates.md).
 
-## LIN-01: SessionGraph-модель и редуктор events → граф
+## LIN-01: SessionGraph model and events → graph reducer
 
 Status: ready. Milestone: LIN. Dependencies: RAI-004.
 
-**Сценарий и контракт.** Event-sourced граф сессии: узлы ModelCall/ToolCall(kind, RecoveryClass)/Delegation/Phase; редуктор events.jsonl → граф детерминирован; node kinds расширяемы без смены контракта.
+**Scenario and contract.** Event-sourced session graph with ModelCall/ToolCall(kind, RecoveryClass)/Delegation/Phase nodes; the events.jsonl → graph reducer is deterministic; node kinds can be extended without changing the contract.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/lineage/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/lineage/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN1-01: реальный events.jsonl кампании → граф; повтор идентичен (hash).
-- Error/adversarial: LIN1-02: битые события — типированная ошибка, не молчаливый пропуск.
-- Cancellation/concurrency: LIN1-03: параллельные дети — корректные поддеревья.
+- Normal: LIN1-01: a real campaign events.jsonl file produces a graph; repeating the reduction produces an identical hash.
+- Error/adversarial: LIN1-02: malformed events produce a typed error, not a silent skip.
+- Cancellation/concurrency: LIN1-03: parallel children produce correct subtrees.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-02: Проекция граф → валидная Scala-программа
+## LIN-02: Project the graph into a valid Scala program
 
 Status: todo. Milestone: LIN. Dependencies: LIN-01, RAI-017.
 
-**Сценарий и контракт.** Детерминированная проекция графа в lineage.scala: узлы — композиции Program/Task (RAI-017 frozen), делегации — вложенные блоки, фазы — defs; данные — lineage-data.json.
+**Scenario and contract.** Deterministically project the graph into lineage.scala: nodes become Program/Task compositions (RAI-017 is frozen), delegations become nested blocks, phases become defs; data is written to lineage-data.json.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/**` `contracts/lineage/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/**` `contracts/lineage/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN2-01: проекция компилируется scalac (пиннинг); повтор — байт-идентичен.
-- Error/adversarial: LIN2-02: неизвестный node kind — отказ, не невалидный код.
-- Cancellation/concurrency: LIN2-03: конкурентное чтение — снапшот.
+- Normal: LIN2-01: the projection compiles with pinned scalac; repeated output is byte-identical.
+- Error/adversarial: LIN2-02: an unknown node kind is rejected rather than emitted as invalid code.
+- Cancellation/concurrency: LIN2-03: concurrent reads observe a snapshot.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-03: Лайв-инкрементальная поддержка графа и проекции
+## LIN-03: Live incremental graph and projection support
 
 Status: todo. Milestone: LIN. Dependencies: LIN-01, LIN-02.
 
-**Сценарий и контракт.** Инкрементальное достраивание графа и проекции в ходе сессии; периодическая инкрементальная компиляция-валидация; артефакт консистентен последнему завершённому узлу при crash.
+**Scenario and contract.** Incrementally extend the graph and projection during a session; periodically compile and validate the incremental output; on crash, the artifact remains consistent through the last completed node.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/cli/src/main/scala/raider/cli/run/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/cli/src/main/scala/raider/cli/run/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN3-01: артефакт соответствует графу после каждого раунда; ≥200 раундов.
-- Error/adversarial: LIN3-02: сбой компиляции не рушит сессию; статус невалидности виден.
-- Cancellation/concurrency: LIN3-03: crash между узлами — консистентность последнего узла.
+- Normal: LIN3-01: the artifact matches the graph after every round, for at least 200 rounds.
+- Error/adversarial: LIN3-02: a compile failure does not crash the session; the invalid status is visible.
+- Cancellation/concurrency: LIN3-03: a crash between nodes leaves the artifact consistent through the last completed node.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-04: Вкладка Lineage в TUI
+## LIN-04: Lineage tab in the TUI
 
 Status: todo. Milestone: LIN. Dependencies: LIN-03.
 
-**Сценарий и контракт.** Минимальный tab-host (одна вкладка, без черновик­ов P2): дерево сессии, исходник lineage.scala, статус валидности; доступ в живой сессии без блокировки ввода.
+**Scenario and contract.** Minimal tab host (one tab, without P2 drafts): session tree, lineage.scala source, and validity status; accessible during a live session without blocking input.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/ui/**` `modules/cli/src/main/scala/raider/cli/chat/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/ui/**` `modules/cli/src/main/scala/raider/cli/chat/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN4-01: вкладка живая, без блокировки ввода.
-- Error/adversarial: LIN4-02: невалидная проекция — честный статус.
-- Cancellation/concurrency: LIN4-03: переключение вкладок без рассинхрона.
+- Normal: LIN4-01: the tab remains live without blocking input.
+- Error/adversarial: LIN4-02: an invalid projection has an honest status.
+- Cancellation/concurrency: LIN4-03: switching tabs does not desynchronize the view.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-05: Replay-recorded интерпретатор и компаратор графов
+## LIN-05: Replay-recorded interpreter and graph comparator
 
 Status: todo. Milestone: LIN. Dependencies: LIN-02, LIN-03.
 
-**Сценарий и контракт.** Исполнение lineage-программы в replay-recorded (default): LLM из записи, детерминированные тулколлы пересчитываются; успех = идентичный граф вызовов (компаратор graph-hash).
+**Scenario and contract.** Execute the lineage program in replay-recorded mode (default): use LLM responses from the recording and recompute deterministic tool calls. Success means an identical call graph, checked by a graph-hash comparator.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `scripts/quality/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `scripts/quality/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN5-01: replay — идентичный нормализованный graph-hash.
-- Error/adversarial: LIN5-02: расхождение — провал с первым расходящимся узлом.
-- Cancellation/concurrency: LIN5-03: прерывание — консистентный частичный граф + чекпоинт.
+- Normal: LIN5-01: replay produces an identical normalized graph hash.
+- Error/adversarial: LIN5-02: a mismatch fails and identifies the first divergent node.
+- Cancellation/concurrency: LIN5-03: interruption leaves a consistent partial graph and checkpoint.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-06: Live re-run, изоляция мутаций, diff-отчёт
+## LIN-06: Live rerun, mutation isolation, and diff report
 
 Status: todo. Milestone: LIN. Dependencies: LIN-05.
 
-**Сценарий и контракт.** Opt-in live re-run: реальные вызовы; Mutating — только в изолированной копии WS (RecoveryClass-политика); бюджет; diff-отчёт живого vs записанного графа.
+**Scenario and contract.** Opt-in live rerun makes real calls. Mutating operations run only in an isolated WS copy (RecoveryClass policy); enforce a budget; report the diff between the live and recorded graphs.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/tools/src/main/scala/raider/tools/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/tools/src/main/scala/raider/tools/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN6-01: live в изоляции завершается; diff-отчёт пофазово.
-- Error/adversarial: LIN6-02: Mutating вне изоляции — отказ до исполнения; бюджет — остановка.
-- Cancellation/concurrency: LIN6-03: отмена — копия классифицирована, повтор без дублей.
+- Normal: LIN6-01: the live rerun completes in isolation and reports differences by phase.
+- Error/adversarial: LIN6-02: reject Mutating operations outside isolation before execution; stop when the budget is exhausted.
+- Cancellation/concurrency: LIN6-03: on cancellation, classify the copy; a retry creates no duplicates.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-07: Частичный replay фаз/поддеревьев
+## LIN-07: Partial replay of phases/subtrees
 
 Status: todo. Milestone: LIN. Dependencies: LIN-05.
 
-**Сценарий и контракт.** Replay именованной фазы/поддерева с явным контрактом входов; изоляция непересекающихся фаз; ошибки контракта вместо пустых подстановок.
+**Scenario and contract.** Replay a named phase/subtree with an explicit input contract; isolate non-overlapping phases; report contract errors instead of substituting empty values.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN7-01: replay фазы только по её поддереву и входам.
-- Error/adversarial: LIN7-02: внешние зависимости — ошибка контракта.
-- Cancellation/concurrency: LIN7-03: concurrent replay фаз изолирован.
+- Normal: LIN7-01: replay a phase using only its subtree and inputs.
+- Error/adversarial: LIN7-02: external dependencies produce a contract error.
+- Cancellation/concurrency: LIN7-03: concurrent phase replays are isolated.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-08: Области (chat/headless/кампании), пиннинг, каталог
+## LIN-08: Scopes (chat/headless/campaigns), pinning, catalog
 
 Status: todo. Milestone: LIN. Dependencies: LIN-03, LIN-05.
 
-**Сценарий и контракт.** Lineage для chat, headless, ночных кампаний (каталог деревьев); сверка pinned-окружения: предупреждение + попытка + отчёт расхождений.
+**Scenario and contract.** Lineage for chat, headless, and overnight campaigns (tree catalog); compare the pinned environment: warning + attempt + discrepancy report.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `docs/lineage.md` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `docs/lineage.md` Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN8-01: каталог с graph-hash и статусами; chat==headless формат.
-- Error/adversarial: LIN8-02: пиннинг расходится — предупреждение и маркировка.
-- Cancellation/concurrency: LIN8-03: каталог при параллельных ранах — atomic append.
+- Normal: LIN8-01: Catalog with graph-hash and statuses; chat==headless format.
+- Error/adversarial: LIN8-02: Pinning differs — warning and marking.
+- Cancellation/concurrency: LIN8-03: Catalog during parallel runs — atomic append.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** См. docs/tasks/lineage.md карточку.
+**Non-goals.** See the card in docs/tasks/lineage.md.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-09: Запись lineage-артефактов рядом с продовым раном
+## LIN-09: Write lineage artifacts beside the production run
 
 Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
-**Сценарий и контракт.** HeadlessRunner при settle пишет lineage.scala (проекция) и lineage-data.json рядом с events.jsonl/summary рана; запись атомарная в каталог рана; сбой проекции/записи не меняет exit-код рана, но честно отражается в summary; формат chat==headless.
+**Scenario and contract.** On settle, HeadlessRunner writes lineage.scala (projection) and lineage-data.json beside the run events.jsonl/summary; atomic write in the run directory; projection/write failure does not change the run exit code but is reported in summary; chat==headless format.
 
-**Context.** docs/lineage.md §9.2 «Запись артефактов в каталог рана» и §10; обязательство LIN-03; ADR-027.
+**Context.** docs/lineage.md §9.2 “Write artifacts to the run directory” and §10; LIN-03 obligation; ADR-027.
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN9-01: продовый ран оставляет валидные lineage.scala + lineage-data.json (frozen schema, compile-gate зелёный на артефактах).
-- Error/adversarial: LIN9-02: сбой проекции — typed диагностика в summary; ран завершается штатным exit-кодом.
-- Cancellation/concurrency: LIN9-03: параллельные раны — артефакты в разных каталогах ранов, без пересечений (atomic per-run).
+- Normal: LIN9-01: Production run leaves valid lineage.scala + lineage-data.json (frozen schema, compile-gate passes on artifacts).
+- Error/adversarial: LIN9-02: Projection failure — typed diagnostic in summary; run exits with its normal exit code.
+- Cancellation/concurrency: LIN9-03: Parallel runs — artifacts in separate run directories, without overlap (atomic per-run).
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Каталог кампаний (LIN-08 scan/persistence), live-wire, изменение frozen lineage-schema.
+**Non-goals.** Campaign catalog (LIN-08 scan/persistence), live-wire, changing the frozen lineage schema.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-10: CLI-командная поверхность replay
+## LIN-10: CLI command surface for replay
 
 Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
-**Сценарий и контракт.** Standalone CLI-вход replay-цепочки: флаги/команда запускают ReplayHarness по lineage-data.json из рана/каталога, выводят вердикт Match/Mismatch с первым расходящимся узлом и graph-hash, exit-код различает исходы; recorded-only, без модельных вызовов.
+**Scenario and contract.** Standalone CLI entry for replay: flags/command run ReplayHarness on lineage-data.json from a run/catalog, print Match/Mismatch with first divergent node and graph-hash, and distinguish outcomes by exit code; recorded-only, no model calls.
 
-**Context.** docs/lineage.md §9.2 «CLI-командная поверхность replay»; ReplayHarness/ReplayModelBackend готовы (§9.1, LIN5-01 end-to-end); ADR-027.
+**Context.** docs/lineage.md §9.2 “CLI command surface for replay”; ReplayHarness/ReplayModelBackend ready (§9.1, LIN5-01 end-to-end); ADR-027.
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN10-01: replay по артефактам LIN-09 — Match + graph-hash; Mismatch печатает первый расходящийся узел.
-- Error/adversarial: LIN10-02: отсутствующий/битый lineage-data.json — typed error и невалидный (не нулевой) exit.
-- Cancellation/concurrency: LIN10-03: параллельные replay — изолированные workspace (verifyUntouched), без общих записей.
+- Normal: LIN10-01: Replay from LIN-09 artifacts — Match + graph-hash; Mismatch prints the first divergent node.
+- Error/adversarial: LIN10-02: Missing/malformed lineage-data.json — typed error and non-zero exit.
+- Cancellation/concurrency: LIN10-03: Parallel replays — isolated workspaces (verifyUntouched), no shared writes.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Live-модель за replay (LIN-06), изменение ReplayHarness-контракта, второй runner/scheduler.
+**Non-goals.** Live model behind replay (LIN-06), changing the ReplayHarness contract, second runner/scheduler.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-11: LineageRenderer: компилируемые проекции графов без named-def корней
+## LIN-11: LineageRenderer: compilable graph projections without named-def roots
 
 Status: ready. Milestone: LIN. Dependencies: LIN-02.
 
-**Сценарий и контракт.** LineageRenderer эмитит синтаксически-валидную внешнюю область проекции для графов без named-def корней (comment-only тело объекта закрывается легальным statement, например `()`); проекция любого валидного графа компилируется pinned dotc 3.9.0; формат остальных проекций не меняется.
+**Scenario and contract.** LineageRenderer emits a syntactically valid outer projection scope for graphs without named-def roots (a comment-only object body is closed with a legal statement, e.g. `()`); every valid graph projection compiles with pinned dotc 3.9.0; other projection formats remain unchanged.
 
-**Context.** LIN-09 contract-change request (reproducer: object X: + indented comment-only тело → dotc «indented definitions expected, eof found»); LIN2-01 compile-gate; docs/lineage.md §9.1.
+**Context.** LIN-09 contract-change request (reproducer: object X with indented comment-only body → dotc “indented definitions expected, eof found”); LIN2-01 compile-gate; docs/lineage.md §9.1.
 
-**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN11-01: проекция графа plain-рана (model/tool-only, без named-def) компилируется pinned dotc 3.9.0 (compile-gate).
-- Error/adversarial: LIN11-02: негативный compile-gate: повреждение тела проекции ловится гейтом (негатив остаётся негативом).
-- Cancellation/concurrency: LIN11-03: повторная проекция байт-идентична; golden tiny-graph/deep-tree инварианты LIN2-01 не меняются.
+- Normal: LIN11-01: Projection of a plain-run graph (model/tool-only, without named-def) compiles with pinned dotc 3.9.0 (compile-gate).
+- Error/adversarial: LIN11-02: Negative compile-gate catches projection body corruption (the negative remains negative).
+- Cancellation/concurrency: LIN11-03: Repeated projection is byte-identical; LIN2-01 golden tiny-graph/deep-tree invariants remain unchanged.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Изменение frozen lineage-data schema, GraphHash/нормализации компаратора, формата существующих golden-проекций.
+**Non-goals.** Changing frozen lineage-data schema, GraphHash/comparator normalization, or existing golden projection format.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## RAI-109: replay в продукт-команду raider (CLI wiring LIN-10)
+## RAI-109: Add replay to the raider product command (CLI wiring for LIN-10)
 
 Status: ready. Milestone: LIN. Dependencies: LIN-09, LIN-10.
 
-**Сценарий и контракт.** Подкоманда общего CLI: `raider replay <run-dir> --workspace <dir> [--data <file>]` — паритет флагов и exit-кодов LIN-10 (0/10/20/21/22/23/24/26) через делегирование в ReplayCli.exec (без дублирования логики); docs/lineage.md §10 обновлён на продуктовый вход; standalone ReplayCliMain сохраняется (переходный вход).
+**Scenario and contract.** Shared CLI subcommand: `raider replay <run-dir> --workspace <dir> [--data <file>]` matches LIN-10 flags and exit codes (0/10/20/21/22/23/24/26) by delegating to ReplayCli.exec without duplicating logic; docs/lineage.md §10 is updated to use the product entry point; standalone ReplayCliMain is retained as a transitional entry point.
 
-**Context.** LIN-10 accepted (standalone entry, reviewer risk 1: wiring отдельной карточкой); docs/lineage.md §10; ci-runtime §8 exit-маппинг.
+**Context.** LIN-10 accepted (standalone entry; reviewer risk 1: wiring was a separate card); docs/lineage.md §10; ci-runtime §8 exit mapping.
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `docs/lineage.md` Tests belong within the same modules/contract areas. Clarify concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN13-01: продуктовый вход даёт Match+graph-hash/exit 0 и Mismatch/exit 10 с первым расходящимся узлом (process-смоки через `raider replay`).
-- Error/adversarial: LIN13-02: битый/отсутствующий lineage-data.json — typed + exit 21; usage/незвестный флаг — typed, exit невалидный.
-- Cancellation/concurrency: LIN13-03: параллельные `raider replay` — изолированные workspace (verifyUntouched), без общих записей.
+- Normal: LIN13-01: the product entry point returns Match + graph hash/exit 0 and Mismatch/exit 10 with the first divergent node (process mocks through `raider replay`).
+- Error/adversarial: LIN13-02: malformed/missing lineage-data.json returns a typed error + exit 21; usage/unknown flag returns a typed error and invalid exit.
+- Cancellation/concurrency: LIN13-03: parallel `raider replay` invocations use isolated workspaces (verifyUntouched), with no shared writes.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
 
-**Non-goals.** Live/гибрид-флаги replay (LIN-06), второй runner, смена frozen exit-маппинга, headless JLine-правило.
+**Non-goals.** Live/hybrid replay flags (LIN-06), a second runner, changing the frozen exit mapping, or the headless JLine rule.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; use a versioned migration/ADR separately. Rolling back the feature does not replay side effects; retain persistent incomplete/uncertain artifacts for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-12: Каталог деревьев: persistence (LIN-08 remainder)
+## LIN-12: Tree catalog persistence (LIN-08 remainder)
 
 Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-09, LIN-10.
 
-**Сценарий и контракт.** LineageCatalog получает persistence: scan-записи (run-dir, graph-hash, verifyPartial-вердикт, pinned-env сводка) сохраняются атомарно (tmp+move/single-writer паттерн LineageDataStore) в каталог кампаний; конкурентные appends атомарны без потерь; reload roundtrip консистентен; chat==headless формат; битый persisted-файл — typed ошибка, не молча.
+**Scenario and contract.** Add persistence to LineageCatalog: scan records (run-dir, graph-hash, verifyPartial verdict, pinned-env summary) are atomically saved (tmp+move/single-writer LineageDataStore pattern) in campaign catalog; concurrent appends are atomic without loss; reload roundtrip is consistent; chat==headless format; malformed persisted file yields typed error, not silent handling.
 
-**Context.** docs/lineage.md §9.2 (LineageCatalog — scan без persistence) и §5; LIN-08 accepted-в-коде; LIN-09/10 дали артефакты и CLI-поверхность.
+**Context.** docs/lineage.md §9.2 (LineageCatalog scan without persistence) and §5; LIN-08 accepted in code; LIN-09/10 provided artifacts and CLI surface.
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `modules/runtime/src/test/scala/raider/runtime/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `modules/runtime/src/test/scala/raider/runtime/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LINC-01: persist+reload roundtrip — записи идентичны (graph-hash, вердикты); каталог читается replay-CLI поверх.
-- Error/adversarial: LINC-02: повреждённый persisted-каталог — typed error с указанием записи; scan не падает молча.
-- Cancellation/concurrency: LINC-03: параллельные appends из нескольких ранов — atomic, 0 потерь, детерминированный порядок чтения.
+- Normal: LINC-01: persist+reload roundtrip — identical records (graph-hash, verdicts); replay CLI can read catalog.
+- Error/adversarial: LINC-02: Malformed persisted catalog — typed error identifies record; scan does not fail silently.
+- Cancellation/concurrency: LINC-03: Parallel appends from multiple runs — atomic, zero losses, deterministic read order.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Изменение frozen lineage-data schema, live-wire, UI каталога, распределённый каталог.
+**Non-goals.** Changing frozen lineage-data schema, live-wire, catalog UI, or a distributed catalog.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-13: docs/lineage.md §9.2 sync — честность статусов реализации
+## LIN-13: Sync docs/lineage.md §9.2 — truthful implementation status
 
 Status: ready. Milestone: LIN. Dependencies: LIN-09, RAI-108, RAI-109.
 
-**Сценарий и контракт.** §9.2 привести в соответствие интегрированному состоянию на базовом коммите lane: TabShell-wiring закрыт (RAI-108 --tabs), запись артефактов рана закрыта (LIN-09: lineage.scala/lineage-data.json рядом с events.jsonl/summary), продуктовый вход raider replay (RAI-109) сверить; каждый пункт — evidence-ссылка на record или file:line; открытые пункты (live-wire, multi-job export, phase/recovery schema-card, LIN2-03 coverage, LIN-12 persistence) остаются честно открытыми со ссылками на карточки; ничего не заявлять сверх интегрированного состояния.
+**Scenario and contract.** Bring §9.2 in line with integrated state at lane base commit: TabShell wiring complete (RAI-108 --tabs), run artifact writing complete (LIN-09: lineage.scala/lineage-data.json beside events.jsonl/summary), verify product raider replay entry point (RAI-109); every item links to evidence (record or file:line); open items (live-wire, multi-job export, phase/recovery schema-card, LIN2-03 coverage, LIN-12 persistence) remain honestly open with card links; claim nothing beyond integrated state.
 
-**Context.** docs/lineage.md §9.2 snapshot застал W21: строки TabShell-wiring и «запись артефактов в каталог рана» устарели после RAI-108/LIN-09 (оба accepted, records в docs/work/records/).
+**Context.** docs/lineage.md §9.2 snapshot caught W21: TabShell-wiring and “write artifacts to run directory” rows became outdated after RAI-108/LIN-09 (both accepted; records in docs/work/records/).
 
-**Allowed paths.** `docs/lineage.md` До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `docs/lineage.md` Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: DOC-13-01: каждая строка §9.2 несёт evidence-ссылку (record path или file:line), проверяемую на базовом коммите.
-- Error/adversarial: DOC-13-02: ни один in-flight/owner-gated пункт не помечен закрытым; расхождение факта и текста — finding, не умолчание.
-- Cancellation/concurrency: DOC-13-03: docs-профиль зелёный; якоря/ссылки валидны; diff только в docs/lineage.md.
+- Normal: DOC-13-01: Every §9.2 row has an evidence link (record path or file:line) verifiable at base commit.
+- Error/adversarial: DOC-13-02: No in-flight/owner-gated item is marked complete; fact/text mismatch is a finding, not an omission.
+- Cancellation/concurrency: DOC-13-03: Docs profile passes; anchors/links valid; diff only in docs/lineage.md.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Продуктовый код, изменение контрактов ADR-027/схем, §9.1-переписывание сверх фактов, board/tasks-файлы.
+**Non-goals.** Product code, changing ADR-027/schema contracts, rewriting §9.1 beyond facts, board/task files.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-14: LIN2-03 remainder: конкурентное чтение проекции — snapshot-покрытие
+## LIN-14: LIN2-03 remainder: concurrent projection reads — snapshot coverage
 
 Status: ready. Milestone: LIN. Dependencies: LIN-02.
 
-**Сценарий и контракт.** Тестовое покрытие LIN2-03 («конкурентное чтение — снапшот»): property-спека — конкурентные чтения LineageDataStore/проекции во время атомарной tmp+move записи видят либо старый, либо новый ПОЛНЫЙ документ, никогда частичный; чтение не маскирует гонку как Missing/Corrupt; детерминированный seed, ≥100 итераций, 3 повтора без flake. Вскрытый дефект — не чинить молча в этой карточке: typed reproducer + contract-change request (фикс — отдельная карточка).
+**Scenario and contract.** Test coverage for LIN2-03 (“concurrent read — snapshot”): property spec verifies concurrent LineageDataStore/projection reads during atomic tmp+move writes see either the old or new COMPLETE document, never partial; reads do not mask a race as Missing/Corrupt; deterministic seed, ≥100 iterations, 3 repetitions without flakes. Do not silently fix a discovered defect here: typed reproducer + contract-change request (fix is a separate card).
 
-**Context.** docs/lineage.md §9.2 «Прочее, честно»: LIN2-03 покрыт частично; store атомарен (tmp+move), формальное конкурентное покрытие отсутствует.
+**Context.** docs/lineage.md §9.2 “Other, honestly”: LIN2-03 is partially covered; store is atomic (tmp+move), formal concurrency coverage is absent.
 
-**Allowed paths.** `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN2-03-01: property ≥100 итераций concurrent read/write — 0 частичных чтений (каждое чтение — валидный документ schemaVersion 1).
-- Error/adversarial: LIN2-03-02: 3 повтора зелёные (flake=0); при воспроизведённом дефекте — typed reproducer в record, ассерты не ослаблены.
-- Cancellation/concurrency: LIN2-03-03: повторная проекция чтений байт-идентична для неизменного документа; новые файлы только в allowed paths.
+- Normal: LIN2-03-01: Property ≥100 concurrent read/write iterations — 0 partial reads (each read is a valid schemaVersion 1 document).
+- Error/adversarial: LIN2-03-02: 3 repetitions pass (flake=0); reproduced defect has typed reproducer in record, assertions not weakened.
+- Cancellation/concurrency: LIN2-03-03: Repeated read projection is byte-identical for unchanged document; new files only in allowed paths.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Изменение LineageDataStore/кодеков/frozen schema, изменение LIN-12 области, утилиты вне спек.
+**Non-goals.** Changing LineageDataStore/codecs/frozen schema, changing LIN-12 scope, utilities outside the spec.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## LIN-15: LIN-06 scripted acceptance — LIN6-01/02/03 (бюджет/изоляция/отмена)
+## LIN-15: LIN-06 scripted acceptance — LIN6-01/02/03 (budget/isolation/cancellation)
 
 Status: ready. Milestone: LIN. Dependencies: LIN-06.
 
-**Сценарий и контракт.** Deterministic offline acceptance LIN-06 на готовой механике (IsolatedRerun/WorkspaceIsolation/RunDiffReport/ReplayHarness/Admission), scripted backend с ЯВНОЙ маркировкой scripted: LIN6-01 — isolated rerun завершается, пофазовый diff-отчёт живой-vs-записанный; LIN6-02 — исчерпание бюджета останавливает rerun typed (RerunError.Replay поверх Admission), mutating-узел вне изоляции — отказ ДО исполнения; LIN6-03 — отмена (interrupt) посреди rerun: копия остаётся классифицированной/консистентной, повторный rerun без дублей побочных эффектов. Минимальные typed-фиксы продуктовых файлов allowed paths допустимы, если acceptance вскрывает дефект; каждый фикс — с reproducer в record.
+**Scenario and contract.** Deterministic offline LIN-06 acceptance using existing mechanics (IsolatedRerun/WorkspaceIsolation/RunDiffReport/ReplayHarness/Admission), with backend EXPLICITLY labeled scripted: LIN6-01 isolated rerun completes with per-phase live-vs-recorded diff; LIN6-02 budget exhaustion stops rerun with typed error (RerunError.Replay over Admission), mutating node outside isolation rejected BEFORE execution; LIN6-03 interrupt during rerun leaves copy classified/consistent and retry does not duplicate side effects. Minimal typed fixes to product files in allowed paths are permitted if acceptance reveals a defect; each fix needs a reproducer in record.
 
-**Context.** W22-review: объекты L52 (LIN-06C)/L53 (LIN-07-full)/L54 accepted; F-W22R1-1 закрыт 5ff5318; IsolatedRerunSpec покрывает happy-path/tamper, но LIN6-02 (бюджет) и LIN6-03 (отмена/повтор) acceptance-кейсы не исполнены как фикстуры.
+**Context.** W22 review: L52 (LIN-06C)/L53 (LIN-07-full)/L54 accepted; F-W22R1-1 closed in 5ff5318; IsolatedRerunSpec covers happy-path/tamper, but LIN6-02 (budget) and LIN6-03 (cancel/retry) acceptance cases are not fixture-tested.
 
-**Allowed paths.** `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/cli/src/main/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/cli/src/main/scala/raider/cli/lineage/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: LIN6-01(sc): rerun в изоляции завершается; diff-отчёт пофазовый и детерминированный (повтор — идентичен).
-- Error/adversarial: LIN6-02(sc): бюджет исчерпан — typed остановка до выхода за бюджет; mutating вне изоляции — typed отказ до исполнения (продуктовый путь, не только тест-хелпер).
-- Cancellation/concurrency: LIN6-03(sc): interrupt посреди rerun — нет orphan-записей в оригинал; повторный rerun даёт консистентный вердикт без дублей.
+- Normal: LIN6-01(sc): LIN6-01(sc): isolated rerun completes; diff report is per-phase and deterministic (identical on repeat).
+- Error/adversarial: LIN6-02(sc): LIN6-02(sc): exhausted budget stops with typed error before exceeding budget; mutating outside isolation rejected before execution (product path, not only test helper).
+- Cancellation/concurrency: LIN6-03(sc): LIN6-03(sc): interrupt during rerun leaves no orphan writes to original; retry yields consistent verdict without duplicates.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Живая модель за replay (owner live-wire), LIN-12 каталог, новые wire-события, ослабление verifyUntouched/snapshot-границ.
+**Non-goals.** Live model behind replay (owner live-wire), LIN-12 catalog, new wire events, weakening verifyUntouched/snapshot boundaries.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
-## RAI-120: IsolatedRerun canonical-path guard (alias-дыра requireIsolatedTarget)
+## RAI-120: IsolatedRerun canonical-path guard (requireIsolatedTarget alias bypass)
 
 Status: ready. Milestone: LIN. Dependencies: LIN-15.
 
-**Сценарий и контракт.** Review-finding LIN-15 (minor, блокер для будущего live-rerun CLI): requireIsolatedTarget сравнивает target==original синтаксически (Path equality) — алиас оригинала (ws.resolve("..").resolve(ws.getFileName), symlink) проходит байт-проверку как «faithful copy», и mutating replay исполнился бы IN-PLACE. Фикс: canonical-сравнение (Files.isSameFile/toRealPath с обработкой MissingFile) ДО исполнения, typed отказ существующим MutatingUnisolated; reproducer-тест алиаса и symlink-алиаса из review; verifyUntouched-дисциплина и существующие LIN6-фикстуры не ослабляются.
+**Scenario and contract.** LIN-15 review finding (minor, blocker for future live-rerun CLI): requireIsolatedTarget compares target==original syntactically (Path equality); original alias (ws.resolve("..").resolve(ws.getFileName), symlink) passes byte check as “faithful copy,” so mutating replay would run IN-PLACE. Fix: canonical comparison (Files.isSameFile/toRealPath with MissingFile handling) BEFORE execution, typed rejection using existing MutatingUnisolated; reproducer tests for alias and symlink alias; do not weaken verifyUntouched discipline or LIN6 fixtures.
 
-**Context.** LIN-15 review finding 1 (обоснование: до подключения guard'а к пользовательским target в CLI-слое); reproducer: guard с target = original.resolve("..").resolve(name) возвращает Right сегодня.
+**Context.** LIN-15 review finding 1 (rationale: before connecting the guard to user targets in the CLI layer); reproducer: guard currently returns Right for target = original.resolve("..").resolve(name).
 
-**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests находятся внутри тех же modules/contract areas. До назначения уточнить concrete files; расширение path boundary требует отдельной scope card.
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests are within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
 
 **Acceptance.**
 
-- Normal: ISO-01: алиас-репродуктор reviewer'а — typed отказ ДО исполнения (байты оригинала неизменны, parent без dirt).
-- Error/adversarial: ISO-02: symlink-алиас оригинала — typed отказ; несуществующий target — honest typed-ошибка (не молчаливый pass).
-- Cancellation/concurrency: ISO-03: легитимная изолированная копия проходит guard — существующие LiveRerunScriptedAcceptanceSpec/IsolatedRerunSpec зелёные ×3 без правок ассертов.
+- Normal: ISO-01: Reviewer alias reproducer — typed rejection BEFORE execution (original bytes unchanged, parent clean).
+- Error/adversarial: ISO-02: Symlink alias of original — typed rejection; missing target — honest typed error (not silent pass).
+- Cancellation/concurrency: ISO-03: Legitimate isolated copy passes guard — existing LiveRerunScriptedAcceptanceSpec/IsolatedRerunSpec pass ×3 without assertion changes.
 
-**Required gates.** После foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification с каждым required profile. full/release aggregates разрешены, если реально включают весь список. External prerequisites explicit; unavailable не passed.
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification for each required profile. Full/release aggregates are allowed if they actually include the full list. External prerequisites must be explicit; unavailable is not passed.
 
-**Non-goals.** Живая модель (LIN-06 live-wire — owner), смена семантики WorkspaceIsolation/isolate, новые typed-кейсы вне guard'а, каталог LIN-12.
+**Non-goals.** Live model (LIN-06 live-wire — owner), changing WorkspaceIsolation/isolate semantics, new typed cases outside the guard, LIN-12 catalog.
 
-**Compatibility/rollback.** Frozen schemas/API и downstream fixtures не менять молча; versioned migration/ADR отдельно. Откат feature не replay side effects; persistent incomplete/uncertain artifacts сохраняются для reconciliation.
+**Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
-**Deliverables.** Минимальный diff в allowed paths, перечисленные executable fixtures с actual IDs, обновлённый relevant contract/example, actual work record по template и текущий evidence/log hashes. Реальные платные вызовы/публикация не implied. Если задача слишком велика, перед coding разбить на независимые дочерние карточки; родитель принимает их совместный contract gate.
+**Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.

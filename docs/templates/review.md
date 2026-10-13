@@ -4,7 +4,7 @@ Verdict: accepted / changes-required / blocked. Reviewed source fingerprint: <ac
 
 ## Contract and acceptance
 
-<Какие clauses/tests проверены; реальные результаты.>
+<Clauses/tests checked; actual results.>
 
 ## Findings
 
@@ -18,4 +18,4 @@ Verdict: accepted / changes-required / blocked. Reviewed source fingerprint: <ac
 
 ## Unresolved risk
 
-<Существенные ограничения без неподтверждённых предположений.>
+<Material limitations without unsupported assumptions.>

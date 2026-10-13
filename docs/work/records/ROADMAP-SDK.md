@@ -5,26 +5,26 @@ Baseline commit: `4b46dc7`; git checkout, initial `git status --short` empty.
 
 ## Resulting behavior
 
-В существующий roadmap встроен embedding SDK для Scala/ZIO: P0 audit/ADR,
-P4.C внешний consumer и lifecycle, P7 общий workflow host/REPL/CI и прикладной
-сценарий, P10 versioned artifacts/clean consumer acceptance. SDK-01–05 явно
-включены в M4 exit. RAI-115 зарегистрирована ready для read-only audit и packet
-следующей ADR-карточки; реализация SDK этой работой не выполнена.
+The embedding SDK for Scala/ZIO was incorporated into the existing roadmap: P0 audit/ADR,
+P4.C external consumer and lifecycle, P7 shared workflow host/REPL/CI and application
+scenario, P10 versioned artifacts/clean consumer acceptance. SDK-01–05 are explicitly
+included in M4 exit. RAI-115 is registered as ready for a read-only audit and packet
+for the next ADR card; this work did not implement the SDK.
 
-Решения владельца: Raider + SDK, первый сценарий CI; текущая волна продолжается;
-полностью open-source проект. Подробные руководства отложены; сохраняются
-MIT/license policy, W01–W18, текущие lineage/TUI карточки и P11 после M4.
-13 100 h — прежний envelope; оценка добавочного труда/остатка нужна до coding.
+Owner decisions: Raider + SDK, first scenario is CI; the current wave continues;
+the project is fully open source. Detailed guides are deferred; MIT/license policy,
+W01–W18, current lineage/TUI cards, and P11 after M4 are retained.
+13,100 h is the previous envelope; incremental effort/remaining work must be estimated before coding.
 
 ## Changed paths
 
-- `docs/roadmap-12k.md`: scope, фазы, dependencies и SDK acceptance.
-- `docs/PLAN.md`, `docs/prompts/opencode-12k-parallel.txt`: согласованный вход;
-  prompt также приведён к действующим 13 100 h и spawn/worktree правилам.
+- `docs/roadmap-12k.md`: scope, phases, dependencies, and SDK acceptance.
+- `docs/PLAN.md`, `docs/prompts/opencode-12k-parallel.txt`: aligned entrypoint;
+  the prompt also reflects the current 13,100 h and spawn/worktree rules.
 - `docs/tasks/backlog.json`, `docs/tasks/m1.md`, `docs/tasks/README.md`: RAI-115.
-- `docs/tasks/roadmap-sdk-integration.md`: scope текущей planning card.
-- `docs/work/board.md`: решения владельца и следующая независимая lane.
-- Этот record. Runtime, build, gate policy, публичные signatures не менялись.
+- `docs/tasks/roadmap-sdk-integration.md`: scope of the current planning card.
+- `docs/work/board.md`: owner decisions and the next independent lane.
+- This record. Runtime, build, gate policy, and public signatures were not changed.
 
 ## Acceptance evidence
 
@@ -45,29 +45,29 @@ MIT/license policy, W01–W18, текущие lineage/TUI карточки и P1
 | `make quality-changed` | 0 | selected docs |
 | `make quality-changed QUALITY_EXECUTE=1` | 0 | manifest above, docs passed |
 
-Эти результаты получены до добавления данного record. Фактический runner
-включает board/records в fingerprint, несмотря на описанный в quality spec
-operational allowlist; policy не изменялась. Поэтому manifest выше — evidence
-своего pre-record snapshot, не final freshness claim. Повторная проверка final
-tree после записи record должна сохранить commands/exits/manifest path в
-`artifacts/plan-review/roadmap-sdk-final.json`, логи рядом (вне product inputs).
-Итоговый отчёт с коммитом опирается на этот финальный receipt; отсутствие receipt
-или nonzero exit не означает passed. Record после финального прогона не менять.
+These results were obtained before this record was added. The actual runner
+includes board/records in the fingerprint despite the operational allowlist described in the quality spec;
+policy was not changed. Therefore, the manifest above is evidence of
+its pre-record snapshot, not a final freshness claim. Final tree verification
+after writing the record must save commands/exits/manifest path in
+`artifacts/plan-review/roadmap-sdk-final.json`, with logs alongside (outside product inputs).
+The final report with the commit relies on this final receipt; missing receipt
+or nonzero exit does not mean passed. Do not change the record after the final run.
 
 ## Limitations / blockers
 
-Это приёмка планового изменения. Scala/runtime/live tests не запускались:
-изменены только плановые документы и backlog. Пользователи, сроки и состав
-команды не заданы; пилоты остаются pending. SDK API/артефакты ещё не приняты.
-Старая арифметика/исторические статусы всего roadmap не переаудированы;
-13 100 h не выдаются за measured estimate-to-complete. Никакой публикации,
-сообщений третьим лицам или платных вызовов не выполнялось.
+This is acceptance of a planning change. Scala/runtime/live tests were not run:
+only planning documents and the backlog were changed. Users, dates, and team composition
+are unspecified; pilots remain pending. The SDK API/artifacts have not yet been accepted.
+The existing arithmetic/historical statuses across the roadmap were not re-audited;
+13,100 h is not presented as a measured estimate-to-complete. No publication,
+messages to third parties, or paid calls were made.
 
 ## Review and next task
 
-Reviewer `/root/roadmap_review` проверил code seams и финальный diff независимо;
-замечание о M4 acceptance устранено, финальный verdict approved.
-Coordinator — единственный writer; reviewer read-only, общих mutable builds нет.
-Следующая SDK-карточка: RAI-115; текущая волна LIN-13/14/15 + RAI-113/114
-продолжается. После audit — отдельная ADR-карточка с reviewed public boundary,
-затем small implementation/consumer cards по фактическим dependencies.
+Reviewer `/root/roadmap_review` independently reviewed code seams and the final diff;
+the M4 acceptance finding was resolved, and the final verdict was approved.
+The coordinator is the sole writer; the reviewer was read-only, with no shared mutable builds.
+Next SDK card: RAI-115; current wave LIN-13/14/15 + RAI-113/114
+continues. After the audit, create a separate ADR card with a reviewed public boundary,
+then small implementation/consumer cards based on actual dependencies.

@@ -1,41 +1,42 @@
-# Raider: правила для исполнителей
+# Raider: contributor instructions
 
-## Статус и источник требований
+## Status and requirements
 
-На 2026-10-03 есть спецификация и feasibility spikes RAI-001/SPIKE-OAI-01; продуктового runtime пока нет. При каждом запуске проверять actual code/board, а не считать этот статус вечным. Целевое применение — CI pipelines и полезный standalone coding workflow с реальным Scala REPL. Обязательный вход: `docs/working-product.md`, `docs/parallel-development.md`, `docs/PLAN.md`, назначенная карточка и applicable contracts. Working acceptance и stage-aware gates уточняют старую milestone очередность. Не выдавать проектируемые API/gates или spike за готовый продукт.
+As of 2026-10-03, the project had specifications and feasibility spikes RAI-001/SPIKE-OAI-01, but no product runtime. Check the actual code and board on every run; this historical status is not permanent. The intended use is CI pipelines and a useful standalone coding workflow with a real Scala REPL. Required reading: `docs/working-product.md`, `docs/parallel-development.md`, `docs/PLAN.md`, the assigned task card, and applicable contracts. Working acceptance and stage-aware gates refine the older milestone sequence. Do not present planned APIs/gates or a spike as a finished product.
 
-## Работа по карточкам
+## Task cards
 
-- Одна задача — одна карточка и один проверяемый результат. Прежде чем менять код, проверить `git status --short` и существующую реализацию; в изолированной копии без `.git` записать этот режим и проверить baseline inventory/current hashes по parallel runbook. Не возвращаться в root checkout ради Git-команды.
-- Соблюдать allowed paths, зависимости и non-goals карточки. Изменение публичного контракта требует отдельного ADR и обновления потребителей/примеров.
-- Продолжать разрешённую работу без промежуточных запросов подтверждения. Не запрашивать повторно уже полученное разрешение.
-- Языковая политика (2026-10-03): продуктовый код — только Scala 3 + ZIO (`modules/**`, `contracts/**`, `examples/**`, tests, HTTP-стенды). Python только в `scripts/plan`, `scripts/quality`, bootstrap glue и замороженных `experiments/**`; в поставку не входит. Для provider-тестов — Scala stand или локально запущенный OpenAI-compatible стенд по явной конфигурации.
-- Не добавлять соседние функции, зависимости, daemon, DSL-макросы или новые abstraction layers по инициативе исполнителя.
-- Владелец явно разрешил параллельную разработку; 2026-10-12 авторизован агрессивный параллелизм: минимум 8 потоков через git worktrees (branch-per-lane, коммиты в свою ветку, merge-интеграция coordinator'ом) по `docs/parallel-development.md` §1a. Snapshot-режим — fallback. Root checkout/shared contracts/build/gate registry/board имеют единственного назначенного owner. Child session не является изолированным checkout; параллельные mutable builds одного checkout запрещены.
-- Режим исполнения (решение владельца 2026-10-12, `docs/parallel-development.md` §1b): карточки исполняются **видимыми spawn-субагентами** в интерактивной сессии владельца (`/raider-wave`, агенты `raider-worker`/`raider-reviewer` в `.opencode/agents/`). Фоновые bash-циклы `opencode run` (nohup/night-loop) для исполнения карточек запрещены по умолчанию; headless-ночной режим — только отдельным явным решением владельца, фиксируемым в board.
-- Параллельные lanes открыты (2026-10-12, ревизия roadmap): вместе с остатком P-LIN можно вести TUI-остатки P2 (drafts/scrollback/unread badges/palette/help — карточки регистрирует coordinator), P1-остатки (RAI-059/060) и P3 (RAI-063, send/steering); зависимости §5 roadmap закрыты evidence (P0-WAVE0, W1).
-- Не менять соседний Yabanin репозиторий в рамках карточки Raider. Yabanin-изменения получают отдельные карточки и его собственные обязательные правила.
+- One task, one card, one verifiable result. Before changing code, check `git status --short` and the existing implementation. In an isolated copy without `.git`, record that mode and verify the baseline inventory/current hashes according to the parallel runbook. Do not return to the root checkout just to run Git.
+- Respect the card's allowed paths, dependencies, and non-goals. Public contract changes require a separate ADR and updates to consumers/examples.
+- Continue authorized work without intermediate confirmation requests. Do not ask again for permission already granted.
+- Language policy (2026-10-03): product code uses Scala 3 + ZIO only (`modules/**`, `contracts/**`, `examples/**`, tests, and HTTP stands). Python is limited to `scripts/plan`, `scripts/quality`, bootstrap glue, and frozen `experiments/**`; it is not shipped. Provider tests use a Scala stand or an explicitly configured local OpenAI-compatible stand.
+- Documentation language policy (owner decision, 2026-10-13): all repository documentation must be in English, including guides, plans, task prose, ADRs, prompts, contributor instructions, and work records. Keep identifiers, file paths, API names, and immutable evidence values intact. New documentation and documentation updates must follow this rule.
+- Do not add adjacent features, dependencies, daemons, DSL macros, or abstraction layers on your own initiative.
+- The owner explicitly authorized parallel development. On 2026-10-12, aggressive parallelism was authorized: at least 8 lanes through Git worktrees (one branch per lane, commits to that branch, merge integration by the coordinator), according to `docs/parallel-development.md` §1a. Snapshot mode is a fallback. The root checkout, shared contracts, build, gate registry, and board each have a single designated owner. A child session is not an isolated checkout; concurrent mutable builds in one checkout are forbidden.
+- Execution mode (owner decision, 2026-10-12, `docs/parallel-development.md` §1b): cards run through **visible spawned subagents** in the owner's interactive session (`/raider-wave`, agents `raider-worker`/`raider-reviewer` in `.opencode/agents/`). Background Bash loops running `opencode run` (nohup/night-loop) are forbidden by default. A headless overnight mode requires a separate explicit owner decision recorded in the board.
+- Parallel lanes are open (2026-10-12 roadmap revision): alongside the remaining P-LIN work, lanes may cover remaining P2 TUI work (drafts/scrollback/unread badges/palette/help; coordinator registers cards), remaining P1 work (RAI-059/060), and P3 (RAI-063, send/steering). Roadmap §5 dependencies are closed by evidence (P0-WAVE0, W1).
+- Do not modify the neighboring Yabanin repository under a Raider card. Yabanin changes require separate cards and its own mandatory rules.
 
-## Проверки и evidence
+## Checks and evidence
 
-- Каталог и смысл гейтов: `docs/quality-gates.md`, включая обязательный activation stage. До runner выполнять exact bootstrap checks. Component stage проверяет конкретные реализуемые cases, остальные остаются milestone obligations; full/milestone не имеют green skips. Не требовать packaged REPL/CI от карточки, которая только создаёт его prerequisites.
-- После появления runner: перед завершением задачи выполнять `make quality-changed`, затем `make quality-changed QUALITY_EXECUTE=1`; дополнительно выполнить семантически необходимые профили из карточки.
-- Изменения runtime/concurrency требуют cancellation/ownership/budget tests. Изменения REPL требуют настоящих compiler/PTY проверок, а не только mock interpreter.
-- Core/CLI обязаны работать без Yabanin: OpenAI-compatible и Anthropic-compatible transports — first-class MVP. Нет скрытого direct fallback из gateway при auth/policy failure.
-- Изменения headless runner/CI adapter требуют non-TTY, SIGTERM, exit-code, artifact/schema и trust-boundary acceptance. GitHub/GitLab adapters не реализуют второй scheduler/runtime.
-- Пропуск, timeout, scanner error, отсутствие инструмента или внешний blocker не являются passed. Нельзя уменьшать пороги или отключать проверки ради зелёного статуса.
-- Evidence относится к проверенному fingerprint исходников и gate configuration. Изменение исходников после проверки требует повторения затронутых гейтов.
-- После реального выполнения создать work record по `docs/templates/work-record.md`. Не создавать пустые отчёты заранее.
-- Evidence привязано к immutable product-input snapshot. Operational board/records могут быть исключены только точным reviewed allowlist с отдельными audit hashes; code/specs/prompts/build/fixtures/gate policy остаются в fingerprint. Изменение product inputs требует новых затронутых проверок; lane evidence не заменяет проверку интегрированного candidate.
+- Gate catalog and meanings: `docs/quality-gates.md`, including the mandatory activation stage. Before the runner exists, run the exact bootstrap checks. Component stage checks the specific cases being implemented; the rest remain milestone obligations. Full/milestone stages have no green skips. Do not require a packaged REPL/CI from a card that only creates its prerequisites.
+- Once the runner exists, run `make quality-changed`, then `make quality-changed QUALITY_EXECUTE=1` before completing a task. Also run the card's semantically required profiles.
+- Runtime/concurrency changes require cancellation/ownership/budget tests. REPL changes require real compiler/PTY checks, not only a mock interpreter.
+- Core/CLI must work without Yabanin: OpenAI-compatible and Anthropic-compatible transports are first-class MVP requirements. There is no hidden direct fallback from a gateway after auth/policy failure.
+- Headless runner/CI adapter changes require non-TTY, SIGTERM, exit-code, artifact/schema, and trust-boundary acceptance. GitHub/GitLab adapters must not implement a second scheduler/runtime.
+- A skip, timeout, scanner error, missing tool, or external blocker is not a pass. Do not lower thresholds or disable checks to obtain a green status.
+- Evidence applies to the checked source fingerprint and gate configuration. Source changes after a check require rerunning affected gates.
+- Create a work record using `docs/templates/work-record.md` after actual execution. Do not create empty reports in advance.
+- Evidence is tied to an immutable product-input snapshot. Operational board/records may be excluded only through an exact reviewed allowlist with separate audit hashes; code/specifications/prompts/build/fixtures/gate policy remain in the fingerprint. Product-input changes require new affected checks; lane evidence does not replace checking the integrated candidate.
 
-## Границы доверия
+## Trust boundaries
 
-- REPL и Scala-плагины исполняют доверенный пользовательский код с полномочиями процесса. Tool policy не является sandbox для произвольной Scala.
-- Не писать секреты в git, history, snapshots, примеры, argv, отчёты и tool output. Credentials задаются через ссылки на env/helper, значения не логируются.
-- Не делать реальные платные вызовы без явно заданного режима и бюджета. Обычные development/CI gates используют mock/replay.
-- Не повторять мутационные tool calls автоматически после неоднозначного результата. Не заявлять exactly-once или durable resume для произвольной Scala-лямбды.
-- Нельзя менять protected verifiers, скрытые acceptance fixtures и gate policy в карточке реализации продукта. Такие изменения требуют отдельной карточки и независимого рассмотрения.
+- REPL and Scala plugins execute trusted user code with the process's permissions. Tool policy is not a sandbox for arbitrary Scala.
+- Never write secrets to Git, history, snapshots, examples, argv, reports, or tool output. Credentials are supplied through env/helper references; values must not be logged.
+- Do not make real paid calls without an explicit mode and budget. Ordinary development/CI gates use mock/replay.
+- Do not automatically repeat mutating tool calls after an ambiguous result. Do not claim exactly-once execution or durable resume for arbitrary Scala lambdas.
+- Do not change protected verifiers, hidden acceptance fixtures, or gate policy in a product implementation card. Such changes require a separate card and independent review.
 
-## Передача результата
+## Handoff
 
-Сообщить changed paths, поведение, точные команды/exit codes, evidence path, риски/ограничения и следующую доступную карточку. Не выдумывать выполненные проверки, commit/PR URL, оплаченные результаты и проценты качества.
+Report changed paths, behavior, exact commands/exit codes, evidence path, risks/limitations, and the next available card. Do not invent executed checks, commit/PR URLs, paid results, or quality percentages.

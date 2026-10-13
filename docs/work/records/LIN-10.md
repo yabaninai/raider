@@ -1,109 +1,108 @@
 # LIN-10: work record
 
 Status: done (lane lane/lin-10, worktree wt/lin-10). Date: 2026-10-12.
-Baseline commit/source: 831dabf (чистый статус на входе, сверен при старте
-lane). Evidence run: quality run_id `20261012-035305-84550-0001`
-(manifest sha256 `9d0292586c0624f4c69f8c7c166f69d2a8206017e778455dfbc7a6ec9cff48ee`,
+Baseline commit/source: 831dabf (clean status on entry, verified at lane start).
+Evidence run: quality run_id `20261012-035305-84550-0001` (manifest sha256
+`9d0292586c0624f4c69f8c7c166f69d2a8206017e778455dfbc7a6ec9cff48ee`,
 fingerprint fresh — `quality-verify ... OK`).
 
 ## Resulting behavior
 
-Standalone CLI-вход replay-цепочки (LIN-10, ADR-027 §4): команда
-`ReplayCli [replay] <run-dir> --workspace <dir> [--data <file>]` в
+Standalone CLI entry for the replay chain (LIN-10, ADR-027 §4): command
+`ReplayCli [replay] <run-dir> --workspace <dir> [--data <file>]` in
 `raider.cli.lineage`:
 
-- читает `lineage-data.json` из каталога рана (или `--data`) через frozen
-  `LineageDataStore.read` (строгая single-value декодировка);
-- изолирует workspace: одноразовая копия через `WorkspaceIsolation.isolate`
-  в уникальном staging-каталоге на вызов (UUID — параллельные вызовы не имеют
-  общего write-target), байт-снапшот оригинала до прогона,
-  `verifyUntouched` после — нарушение изоляции перекрывает любой вердикт
-  typed-ошибкой;
-- проигрывает запись через frozen `ReplayHarness` (recorded-only:
-  `ReplayModelBackend` играет ответы из записи, модельных/платных вызовов нет);
-- сравнивает графы через `GraphComparator.compareNormalized`:
-  - `verdict: match` + нормализованный graph-hash + число узлов (stdout);
-  - `verdict: mismatch` + детерминированный `RunDiffReport` (первый
-    расходящийся узел в нормализованных id, оба hash, счётчики узлов);
-- typed-ошибки (закрытый набор `ReplayCli.Failure` над frozen типами
-  `StoreError` / `IsolationError` / `RaiderError` / `ReduceError`) — строка
-  `typed-error: …` на stderr; схема-valid, но нетранслируемый документ
-  (`recordedGraph` отказал) — typed `Record`, не дефект;
-- exit-коды — только frozen ci-runtime §8 (`raider.core.result.ExitCodes`):
-  0 = Match, 10 = Mismatch (TaskRejected), 21 = битый/отсутствующий data.json,
-  misuse argv, отказанный shape workspace, нетранслируемый документ;
-  20 = runtime/IO/reduce/replay-loop; 22/23/24 — маппинг typed `RaiderError`;
-  26 = Tampered (исход подменён во время replay — вердикт недоверенный).
-- собственный argv-парсер (опциональный литерал `replay`, позиционный
-  `<run-dir>`, обязательный `--workspace`, опциональный `--data`); общий
-  `raider.cli.run.CliArgs` и `run/**` (lane LIN-09) не тронуты — вписывание в
-  продукт-команду `raider` отдельная карточка coordinator'а.
+- reads `lineage-data.json` from the run directory (or `--data`) through frozen
+  `LineageDataStore.read` (strict single-value decoding);
+- isolates the workspace: a one-time copy via `WorkspaceIsolation.isolate`
+  into a unique staging directory per call (UUID — parallel calls do not share
+  a write target), byte snapshot of the original before replay, then
+  `verifyUntouched` — an isolation violation overrides any verdict with a
+  typed error;
+- replays the recording through frozen `ReplayHarness` (recorded-only:
+  `ReplayModelBackend` plays responses from the recording; no model/paid calls);
+- compares graphs using `GraphComparator.compareNormalized`:
+  - `verdict: match` + normalized graph hash + node count (stdout);
+  - `verdict: mismatch` + deterministic `RunDiffReport` (first diverging node
+    in normalized IDs, both hashes, node counts);
+- typed errors (closed set `ReplayCli.Failure` over frozen types `StoreError` /
+  `IsolationError` / `RaiderError` / `ReduceError`) — `typed-error: …` on
+  stderr; a schema-valid but unreducible document (`recordedGraph` refused) is
+  typed `Record`, not a defect;
+- exit codes follow only frozen ci-runtime §8 (`raider.core.result.ExitCodes`):
+  0 = Match, 10 = Mismatch (TaskRejected), 21 = corrupt/missing data.json,
+  argv misuse, rejected workspace shape, unreducible document; 20 = runtime/IO/
+  reduce/replay-loop; 22/23/24 = typed `RaiderError` mapping; 26 = Tampered
+  (source changed during replay — verdict is untrusted).
+- own argv parser (optional `replay` literal, positional `<run-dir>`, required
+  `--workspace`, optional `--data`); shared `raider.cli.run.CliArgs` and
+  `run/**` (lane LIN-09) unchanged — integrating into product command `raider`
+  is a separate coordinator card.
 
 ## Changed paths
 
-- `modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala` (новый —
-  entry, парсер, пайплайн, рендер, exit-коды);
-- `modules/cli/src/test/scala/raider/cli/lineage/ReplayCliSpec.scala` (новый —
-  7 behavioral-тестов LIN10-01/02/03 + parse/exitCode);
-- `docs/lineage.md` — §9.1 (+строка LIN-10), §9.2 (честный статус standalone
-  входа), §10 (фактическая команда, формат вывода, exit-коды, пример).
+- `modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala` (new — entry,
+  parser, pipeline, rendering, exit codes);
+- `modules/cli/src/test/scala/raider/cli/lineage/ReplayCliSpec.scala` (new —
+  7 behavioral tests LIN10-01/02/03 + parse/exitCode);
+- `docs/lineage.md` — §9.1 (+LIN-10 row), §9.2 (honest status of standalone
+  entry), §10 (actual command, output format, exit codes, example).
 
-Публичный API/схемы lineage не менялись: ReplayHarness, ReplayModelBackend,
-RecordedSource, GraphComparator/ReplayVerifier, WorkspaceIsolation,
-lineage-data.schema.json — потреблены как есть (frozen).
+Lineage public API/schemas were not changed: `ReplayHarness`, `ReplayModelBackend`,
+`RecordedSource`, `GraphComparator`/`ReplayVerifier`, `WorkspaceIsolation`,
+`lineage-data.schema.json` are consumed as-is (frozen).
 
 ## Acceptance evidence
 
 | Criterion / test ID | Actual result | Evidence |
 | --- | --- | --- |
-| LIN10-01 (Match + graph-hash) | passed: replay документа из run-каталога → Match, hash совпал с `compareNormalized(recorded, recorded)`, exit 0 | `ReplayCliSpec` «LIN10-01: … Match» в `sbt-test.log` (manifest 20261012-035305-84550-0001, стр. ~679); процессный smoke 1: `verdict: match`, `graph-hash: be568cfb…de59`, exit 0 |
-| LIN10-01 (Mismatch + первый расходящийся узел) | passed: мутация round-1 ответа → Mismatch, первый divergence = `job-1:n7` (missing-node, нормализованный id), hashes различны, exit 10 | `ReplayCliSpec` «LIN10-01: … Mismatch»; процессный smoke 2: `first-divergence: missing-node`, `path: root -> job-1:n7`, exit 10 |
-| LIN10-02 (битый/отсутствующий data.json) | passed: `StoreError.Missing` / `StoreError.Corrupt` → typed-error, exit 21 (nonzero) | `ReplayCliSpec` «LIN10-02: missing/corrupt …»; процессные smoke 3/5 (exit 21, `typed-error: lineage-data …`) |
-| LIN10-03 (параллельные replay, verifyUntouched) | passed: два параллельных replay одного рана над одним оригиналом — оба Match, оба прошли внутренний verifyUntouched, тестовый verify оригинала против pre-snapshot Right | `ReplayCliSpec` «LIN10-03: parallel replays …»; процессный smoke 6: два concurrent `java`-процесса, оба exit 0, один hash, `ws/notes.txt` байт-цел |
+| LIN10-01 (Match + graph hash) | passed: replay document from run directory → Match, hash matched `compareNormalized(recorded, recorded)`, exit 0 | `ReplayCliSpec` “LIN10-01: … Match” in `sbt-test.log` (manifest 20261012-035305-84550-0001, approx. line 679); process smoke 1: `verdict: match`, `graph-hash: be568cfb…de59`, exit 0 |
+| LIN10-01 (Mismatch + first diverging node) | passed: round-1 response mutation → Mismatch, first divergence = `job-1:n7` (missing-node, normalized ID), hashes differ, exit 10 | `ReplayCliSpec` “LIN10-01: … Mismatch”; process smoke 2: `first-divergence: missing-node`, `path: root -> job-1:n7`, exit 10 |
+| LIN10-02 (corrupt/missing data.json) | passed: `StoreError.Missing` / `StoreError.Corrupt` → typed-error, exit 21 (nonzero) | `ReplayCliSpec` “LIN10-02: missing/corrupt …”; process smokes 3/5 (exit 21, `typed-error: lineage-data …`) |
+| LIN10-03 (parallel replays, verifyUntouched) | passed: two parallel replays of one run against one original — both Match, both passed internal verifyUntouched, test verification of original against pre-snapshot was Right | `ReplayCliSpec` “LIN10-03: parallel replays …”; process smoke 6: two concurrent `java` processes, both exit 0, same hash, `ws/notes.txt` byte-identical |
 | Gates (static/unit/contracts/docs) | passed, verify OK (fingerprint fresh) | `artifacts/quality/20261012-035305-84550-0001/manifest.json` |
 
 ## Commands
 
 | argv / command | Exit | Log / manifest |
 | --- | --- | --- |
-| `make quality-changed` | 0 (classification: contracts/docs/static/unit) | stdout-JSON, этом же дереве |
+| `make quality-changed` | 0 (classification: contracts/docs/static/unit) | stdout JSON, same tree |
 | `make quality-changed QUALITY_EXECUTE=1` | 0 (passed) | `artifacts/quality/20261012-035305-84550-0001/manifest.json` |
-| `make quality-verify MANIFEST=artifacts/quality/20261012-035305-84550-0001/manifest.json PROFILES=static,unit,contracts,docs` | 0 — «satisfies … (policy/toolchain/logs hashes checked, fingerprint fresh)» | verify-вывод |
-| `sbt 'raiderCli/testOnly raider.cli.lineage.ReplayCliSpec'` | 0 — 7 tests passed, 0 failed | до gate-прогона; финальные тесты — в `sbt-test.log` гейта |
+| `make quality-verify MANIFEST=artifacts/quality/20261012-035305-84550-0001/manifest.json PROFILES=static,unit,contracts,docs` | 0 — “satisfies … (policy/toolchain/logs hashes checked, fingerprint fresh)” | verify output |
+| `sbt 'raiderCli/testOnly raider.cli.lineage.ReplayCliSpec'` | 0 — 7 tests passed, 0 failed | before gate run; final tests in gate `sbt-test.log` |
 | `java -cp <cp> raider.cli.lineage.ReplayCli <run-1> --workspace <ws>` (smoke Match) | 0 | stdout: verdict/graph-hash/nodes |
 | `… ReplayCli <run-2> --workspace <ws>` (smoke Mismatch) | 10 | stdout: RunDiffReport (job-1:n7) |
 | `… ReplayCli <run-missing> --workspace <ws>` | 21 | stderr: typed StoreError.Missing |
 | `… ReplayCli <run-corrupt> --workspace <ws>` | 21 | stderr: typed StoreError.Corrupt |
-| `… ReplayCli` (без аргументов) | 21 | stderr: usage |
-| `… ReplayCli <run-1> --workspace <ws>` × 2 параллельно | 0, 0 | оба Match, оригинал нетронут |
+| `… ReplayCli` (no arguments) | 21 | stderr: usage |
+| `… ReplayCli <run-1> --workspace <ws>` × 2 in parallel | 0, 0 | both Match, original untouched |
 
-Замечание к evidence: промежуточный гейт-прогон 20261012-034923-76295-0001 —
-failed (scalafmt-check: файлы не отформатированы; compile-fixtures: отсутствовал
-pre-existing `artifacts/tools/m2` в worktree — докопирован по
-parallel-development §1a, untracked). После форматирования — финальный passed
-прогон 20261012-035305-84550-0001; исходники после него не менялись.
+Evidence note: intermediate gate run 20261012-034923-76295-0001 failed
+(scalafmt-check: files not formatted; compile-fixtures: pre-existing
+`artifacts/tools/m2` was missing from worktree — copied per
+parallel-development §1a, untracked). After formatting, final run
+20261012-035305-84550-0001 passed; sources were not changed afterward.
 
 ## Limitations / blockers
 
-- ReplayHarness — frozen fixture-campaign контракт: пользовательское
-  сообщение, maxRounds и emission-seq layout зафиксированы (см. scaladoc
-  `ReplayHarness`). Replay произвольного рана честно матчится только при
-  записи через тот же loop-layout; иная форма расходится LOUDLY на первом
-  поле (компаратор работает как задуман). Генерализация входа — не в карточке
-  (non-goal: изменение ReplayHarness-контракта).
-- Продуктовая команда `raider` не расширялась: standalone-вход
-  (`java -cp … raider.cli.lineage.ReplayCli`), вписывание флагов в общий CLI —
-  отдельная карточка coordinator'а (`run/**` — lane LIN-09).
-- `-cp` для смоуков — `sbt 'export raiderCli/Compile/fullClasspath'`; packaged
-  jar/assembly для replay-команды не собирался (не требуется карточкой).
-- Live-модель за replay (LIN-06), каталог кампаний (LIN-08 persistence) — вне
-  scope.
+- ReplayHarness is a frozen fixture-campaign contract: user message, maxRounds,
+  and emission-seq layout are fixed (see ReplayHarness scaladoc). An arbitrary
+  run honestly matches only if recorded with the same loop layout; another
+  shape diverges LOUDLY on the first field (comparator works as designed).
+  Input generalization is not in this card (non-goal: changing ReplayHarness contract).
+- Product command `raider` was not extended: standalone entry
+  (`java -cp … raider.cli.lineage.ReplayCli`); adding flags to shared CLI is a
+  separate coordinator card (`run/**` — lane LIN-09).
+- Smoke `-cp` used `sbt 'export raiderCli/Compile/fullClasspath'`; no packaged
+  jar/assembly was built for replay command (not required by card).
+- Live model behind replay (LIN-06), campaign catalog (LIN-08 persistence) are
+  outside scope.
 
 ## Review and next task
 
-- Reviewer: назначается coordinator'ом (lane-отчёт = финальное сообщение
-  субагента; независимый review — по процессу §1a/§1b).
-- Следующие ready-шаги по карточкам P-LIN: вписывание replay-команды в общий
-  CLI после LIN-09 (координация с `run/**`), каталог кампаний LIN-08
-  (scan+persist поверх вердиктов ReplayCli), partial-replay поверхность
-  (LIN-07) поверх той же командной механики.
+- Reviewer: assigned by coordinator (lane report = subagent final message;
+  independent review follows §1a/§1b process).
+- Next ready steps for P-LIN cards: integrate replay command into common CLI
+  after LIN-09 (coordinate with `run/**`), LIN-08 campaign catalog (scan+persist
+  over ReplayCli verdicts), partial-replay surface (LIN-07) over the same
+  command mechanism.

@@ -4,7 +4,7 @@ Status: done / partial / blocked. Date: <UTC>. Baseline commit/source: <actual>.
 
 ## Resulting behavior
 
-<Конкретное изменение, без истории отвергнутых подходов.>
+<Concrete change, without history of rejected approaches.>
 
 ## Changed paths
 
@@ -30,4 +30,4 @@ Status: done / partial / blocked. Date: <UTC>. Baseline commit/source: <actual>.
 
 <Reviewer verdict/reference and next ready card.>
 
-Product-input hash и operational record hash различаются по reviewed policy. Изменение code/spec/build/fixtures требует affected rerun; обновление строки board/record не перепривязывает старый manifest к новому исходному дереву. Lane report относится к её snapshot; final acceptance — к интегрированному candidate.
+Product-input hash and operational-record hash differ under the reviewed policy. Changes to code/spec/build/fixtures require affected reruns; updating a board/record line does not rebind an old manifest to the new source tree. A lane report applies to its snapshot; final acceptance applies to the integrated candidate.

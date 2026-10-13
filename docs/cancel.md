@@ -1,165 +1,169 @@
-<!-- RAI-072: документация ФАКТИЧЕСКИ реализованного поведения отмены заданий
-     (RAI-007/008/059/063). Новых решений не вносит; каждое утверждение
-     снабжено ссылкой file:line в этом дереве. -->
+<!-- RAI-072: documentation of ACTUALLY implemented job-cancellation behavior
+     (RAI-007/008/059/063). Adds no new decisions; every claim includes a
+     file:line reference in this tree. -->
 
-# Отмена заданий: JobManager, scopes, OOB-канал
+# Job cancellation: JobManager, scopes, OOB channel
 
-Документ описывает реализованную механику отмены в
-`modules/runtime/src/main/scala/raider/runtime/` (плюс UI-граница в
-`modules/ui/`). Контрактная рамка — [runtime-contracts.md](runtime-contracts.md)
-§4–§5; здесь — фактическое поведение кода.
+This document describes the implemented cancellation mechanics in
+`modules/runtime/src/main/scala/raider/runtime/` (plus the UI boundary in
+`modules/ui/`). The contract frame is [runtime-contracts.md](runtime-contracts.md)
+§4–§5; this document describes actual code behavior.
 
-## 1. Статусная машина и Cancelling
+## 1. State machine and Cancelling
 
-Реализованные статусы: `Queued`, `Running`, `Waiting`, `WaitingApproval`,
-`Cancelling` и терминальные `Succeeded`, `Failed`, `Cancelled`, `Interrupted`,
-`Uncertain` (`JobStatus.scala:12-27` в
-`modules/runtime/src/main/scala/raider/runtime/jobs/JobStatus.scala`). Легальные
-переходы проверяет единственный guard `canTransition` (`JobStatus.scala:29-42`):
-в `Cancelling` можно из `Queued`/`Running`/`Waiting`/`WaitingApproval`; из
-`Cancelling` — только в `Cancelled`/`Interrupted`/`Uncertain`. Терминальный
-статус не переходит повторно; поздняя попытка завершения — late observation
-(`JobStatus.scala:5-9`).
+Implemented statuses: `Queued`, `Running`, `Waiting`, `WaitingApproval`,
+`Cancelling`, and terminal `Succeeded`, `Failed`, `Cancelled`, `Interrupted`,
+`Uncertain` (`JobStatus.scala:12-27` in
+`modules/runtime/src/main/scala/raider/runtime/jobs/JobStatus.scala`). The sole
+guard `canTransition` checks legal transitions (`JobStatus.scala:29-42`):
+`Cancelling` can be entered from `Queued`/`Running`/`Waiting`/`WaitingApproval`;
+from `Cancelling`, only `Cancelled`/`Interrupted`/`Uncertain` are allowed. A
+terminal status cannot transition again; a late completion attempt is a late
+observation (`JobStatus.scala:5-9`).
 
-Отмена не пишет отдельный статус-текст: причина завершения кодируется типом
-терминального статуса и typed-ошибкой (см. §3), а не произвольными строками.
+Cancellation does not write a separate status string: the completion reason is
+encoded by the terminal status type and typed error (see §3), not arbitrary
+strings.
 
 ## 2. JobManager.cancel / cancelAny
 
-`JobManager` владеет каждым job-волокном; `cancel`/`cancelAny` — точка входа
-отмены (`JobManager.scala:291-311` в
+`JobManager` owns each job fiber; `cancel`/`cancelAny` are the cancellation
+entry point (`JobManager.scala:291-311` in
 `modules/runtime/src/main/scala/raider/runtime/jobs/JobManager.scala`):
 
-- Семантика: одна атомарная STM-транзакция `transitionSTM(entry, Cancelling)`;
-  если транзакция отклонена guard'ом (job уже терминален или ребро
-  недопустимо) — возвращается `false`, ничего не происходит; иначе — `true`
+- Semantics: one atomic STM transaction `transitionSTM(entry, Cancelling)`;
+  if the guard rejects the transaction (job is already terminal or the edge is
+  invalid), it returns `false` and does nothing; otherwise it returns `true`
   (`JobManager.scala:294-296,305-308`).
-- Событийный хук перехода в `Cancelling` вызывается ДО выдачи interrupt'а —
-  порядок событий job'а равен порядку коммитов (`JobManager.scala:297-303`).
-- `cancel` и `cancelAny` имеют одинаковую семантику; `cancelAny` —
-  гетерогенный вариант для scope/admin-владения (`JobManager.scala:282-289`).
+- The event hook for transition to `Cancelling` runs BEFORE issuing the
+  interrupt — the job event order equals commit order
+  (`JobManager.scala:297-303`).
+- `cancel` and `cancelAny` have identical semantics; `cancelAny` is the
+  heterogeneous variant for scope/admin ownership (`JobManager.scala:282-289`).
 
-Регистрация job'а — в узкой uninterruptible-секции: нет окна, где волокно уже
-работает, а реестр о нём не знает (`JobManager.scala:29-32,115-124`). Если
-прервана сама регистрация в окне fork'а, entry не остаётся «ghost Running»:
-срабатывает `abortGhost` — статус `Cancelled`, публикация typed-исхода
-`RaiderError.Cancelled` (`JobManager.scala:136-142,334-351`).
+Job registration is in a narrow uninterruptible section: there is no window in
+which the fiber is already running but the registry does not know about it
+(`JobManager.scala:29-32,115-124`). If registration itself is interrupted in
+the fork window, no “ghost Running” entry remains: `abortGhost` runs — status
+`Cancelled`, typed result `RaiderError.Cancelled` is published
+(`JobManager.scala:136-142,334-351`).
 
-## 3. Гонка отмены с завершением: cancel побеждает
+## 3. Cancellation racing with completion: cancellation wins
 
-Финальное завершение — одна тотальная STM-транзакция `settle`
+Final completion is one total STM transaction, `settle`
 (`JobManager.scala:166-221`):
 
-- если статус уже терминальный — только late observation, статус не меняется,
-  хук не вызывается (`JobManager.scala:200-204,225`);
-- если завершение соревнуется с подтверждённой отменой (`Cancelling` уже
-  закоммичен, и `canTransition` запрещает прямое `Succeeded`/`Failed`) —
-  ПОБЕЖДАЕТ отмена: статус `Cancelled`, waiters получают typed-исход
-  `RaiderError.Cancelled("...cancelled while completing")`, завершение
-  фиксируется как late observation (`JobManager.scala:205-216,227-243`).
+- If the status is already terminal, this is only a late observation; status
+  does not change and the hook is not called (`JobManager.scala:200-204,225`).
+- If completion races with a confirmed cancellation (`Cancelling` has already
+  been committed and `canTransition` forbids direct `Succeeded`/`Failed`),
+  cancellation WINS: status becomes `Cancelled`; waiters receive typed result
+  `RaiderError.Cancelled("...cancelled while completing")`; completion is
+  recorded as a late observation (`JobManager.scala:205-216,227-243`).
 
-Следствия:
+Consequences:
 
-- один терминальный победитель, один root result completion; `Terminal`-событие
-  ровно одно на job (хук вызывается один раз на закоммиченное изменение,
-  терминальный статус не допускает дальнейших переходов —
-  `JobManager.scala:33-39`).
-- `await` идемпотентен, поддерживает любое число waiters и не перезапускает
-  задачу (`JobManager.scala:22-27,273-278`).
-- Дефект в watcher'е не оставляет waiters висеть: публикуется typed `Failed`
+- One terminal winner and one root result completion; exactly one `Terminal`
+  event per job (the hook runs once per committed change, and a terminal status
+  allows no further transitions — `JobManager.scala:33-39`).
+- `await` is idempotent, supports any number of waiters, and does not restart
+  the task (`JobManager.scala:22-27,273-278`).
+- A watcher defect does not leave waiters hanging: typed `Failed` is published
   (`JobManager.scala:145-161`).
-- Реестр ограничен (`maxRetained = 256` по умолчанию): при переполнении
-  вытесняются самые старые ТЕРМИНАЛЬНЫЕ записи; живые job'ы не вытесняются
+- The registry is bounded (`maxRetained = 256` by default): on overflow, the
+  oldest TERMINAL entries are evicted; live jobs are not evicted
   (`JobManager.scala:250-271,408-417`).
 
-## 4. RaiderScope: поддерево и честная отчётность
+## 4. RaiderScope: subtree and truthful reporting
 
-`RaiderScope` (RAI-008) владеет форкнутыми детьми и финализаторами
-(`RaiderScope.scala:26-35` в
+`RaiderScope` (RAI-008) owns forked children and finalizers
+(`RaiderScope.scala:26-35` in
 `modules/runtime/src/main/scala/raider/runtime/scopes/RaiderScope.scala`):
 
-- `fork` отказывает в новых форках после начала закрытия — typed
-  `RaiderError.Cancelled("scope ... is closing")`; запуск+регистрация — один
-  uninterruptible шаг (no-orphan) (`RaiderScope.scala:45-67`).
-- `close(grace)`: отмена всех незашитых детей через `cancelAny`, ожидание
-  терминального исхода в пределах grace, затем финализаторы LIFO
-  (`RaiderScope.scala:77-115`). Весь cancel+settle ребёнка ограничен grace:
-  ребёнок, застрявший в uninterruptible-регионе, не держит scope заложником —
-  он отчётится `Uncertain`, никогда не фиктивным `Cancelled`
+- `fork` rejects new forks after closing begins with typed
+  `RaiderError.Cancelled("scope ... is closing")`; launch+registration is one
+  uninterruptible step (no-orphan) (`RaiderScope.scala:45-67`).
+- `close(grace)`: cancels all unjoined children via `cancelAny`, waits for a
+  terminal result within grace, then runs finalizers LIFO
+  (`RaiderScope.scala:77-115`). The entire child cancel+settle is bounded by
+  grace: a child stuck in an uninterruptible region cannot hold the scope
+  hostage — it is reported as `Uncertain`, never fake `Cancelled`
   (`RaiderScope.scala:84-96`).
-- Отчёт `ScopeCloseReport` честный: `cancelledChildren` (подтверждённо
-  завершённые), `uncertainChildren` (не терминальные в grace), счётчики и
-  ошибки финализаторов, признак прерванных финализаторов; итоговый статус
+- `ScopeCloseReport` is truthful: `cancelledChildren` (confirmed complete),
+  `uncertainChildren` (nonterminal at grace), counters and finalizer errors,
+  and whether finalizers were interrupted; final status is
   `Closed | Uncertain | Interrupted` (`RaiderScope.scala:9-24,109-115`).
-- `scoped`: сбой тела сохраняется; при чистом теле незавершённая уборка
-  превращает успех в typed-провал — `ToolOutcomeUncertain` для Uncertain и
-  `Cancelled` для прерванной уборки — фиктивного успеха нет
+- `scoped`: a body failure is preserved; with a clean body, incomplete cleanup
+  turns success into typed failure — `ToolOutcomeUncertain` for Uncertain and
+  `Cancelled` for interrupted cleanup — there is no fake success
   (`RaiderScope.scala:119-150`).
 
-## 5. Делегирование: model-tool, OOB-канал, дедлайны
+## 5. Delegation: model tool, OOB channel, deadlines
 
-Дочерние агенты живут в том же `JobManager`/root, что и workflow-fork
-(`DelegationToolset.scala:17-20` в
+Child agents live in the same `JobManager`/root as workflow forks
+(`DelegationToolset.scala:17-20` in
 `modules/runtime/src/main/scala/raider/runtime/delegate/DelegationToolset.scala`).
 
-- Model-tool `cancel_agent`: родитель тратит model-раунд; для неизвестного
-  ребёнка — структурный JSON-фидбек, для известного — `jobs.cancelAny` и
-  `{"child_id":...,"cancelled":true|false}` (`DelegationToolset.scala:276-297,333-334`).
-- Out-of-band канал (RAI-063): `cancelOutOfBand(childId)` и
-  `cancelAllOutOfBand` зовут `jobs.cancelAny` НАПРЯМУЮ — без model-tool раунда
-  и без model-admission; отмена доступна и когда «припаркованный» ребёнок
-  держит единственный model-slot (`DelegationToolset.scala:52-59,366-387`).
-  Возврат: `false` — неизвестный или уже терминальный ребёнок;
-  `cancelAllOutOfBand` возвращает id, чья отмена принята.
-- Дедлайны детей (Scala-level API, публичная схема delegate-tool не меняется):
-  `setChildDeadline` планирует owner-side watchdog, повторный вызов заменяет
-  предыдущий (`DelegationToolset.scala:389-410`); watchdog по истечении
-  дедлайна отменяет ребёнка вне model-admission и ограничивает cleanup тем же
-  grace-паттерном, что `RaiderScope.close` (`DelegationToolset.scala:443-478`).
-- Честный исход дедлайна — `DeadlineOutcome`: `Settled` (отменён и терминален в
-  grace), `Uncertain` (не терминален в grace — ненаблюдаемо, не фиктивный
-  `Cancelled`), `AlreadyTerminal` (дедлайн сработал после завершения)
-  (`DelegationToolset.scala:412-429,646-647`); grace по умолчанию 5 с
+- Model tool `cancel_agent`: the parent spends a model round; for an unknown
+  child it returns structured JSON feedback, for a known child it calls
+  `jobs.cancelAny` and returns `{"child_id":...,"cancelled":true|false}`
+  (`DelegationToolset.scala:276-297,333-334`).
+- Out-of-band channel (RAI-063): `cancelOutOfBand(childId)` and
+  `cancelAllOutOfBand` call `jobs.cancelAny` DIRECTLY — without a model-tool
+  round or model admission; cancellation is available even when a “parked”
+  child holds the only model slot (`DelegationToolset.scala:52-59,366-387`).
+  Return: `false` means unknown or already terminal child;
+  `cancelAllOutOfBand` returns IDs whose cancellation was accepted.
+- Child deadlines (Scala-level API; the public delegate-tool schema is
+  unchanged): `setChildDeadline` schedules an owner-side watchdog; a repeated
+  call replaces the previous deadline (`DelegationToolset.scala:389-410`); on
+  expiry the watchdog cancels the child outside model admission and bounds
+  cleanup with the same grace pattern as `RaiderScope.close`
+  (`DelegationToolset.scala:443-478`).
+- Truthful deadline result is `DeadlineOutcome`: `Settled` (cancelled and
+  terminal within grace), `Uncertain` (nonterminal within grace — unobservable,
+  not fake `Cancelled`), `AlreadyTerminal` (deadline fired after completion)
+  (`DelegationToolset.scala:412-429,646-647`); default grace is 5 s
   (`DelegationToolset.scala:671-672`).
 
-## 6. События отмены и exit code
+## 6. Cancellation events and exit code
 
-- Слой job публикует переходы через `StatusLedger`: `to: Cancelling` идёт как
-  `JobStatusChanged(..., to = Cancelling)`, терминальный `to` — как
-  `Terminal(outcome)`; ошибки публикации поглощаются
-  (`StatusLedger.scala:36-50` в
+- The job layer publishes transitions through `StatusLedger`: `to: Cancelling`
+  is emitted as `JobStatusChanged(..., to = Cancelling)`, terminal `to` as
+  `Terminal(outcome)`; publication errors are swallowed
+  (`StatusLedger.scala:36-50` in
   `modules/runtime/src/main/scala/raider/runtime/jobs/StatusLedger.scala`).
-- Слой loop при отменённом запуске/пост-пермитной отмене root'а излучает
-  `ToolFinished(callId, tool, Cancelled)`; прерванный вызов ничего не излучает
-  (`LoopEvents.scala:200-220` в
+- On a cancelled launch/root post-permit cancellation, the loop layer emits
+  `ToolFinished(callId, tool, Cancelled)`; an interrupted call emits nothing
+  (`LoopEvents.scala:200-220` in
   `modules/runtime/src/main/scala/raider/runtime/loop/LoopEvents.scala`).
-- Headless exit code: `RaiderError.Cancelled` маппится в `ExitCodes.Uncertain`
-  (= 26) (`HeadlessRunner.scala:83` в
+- Headless exit code: `RaiderError.Cancelled` maps to `ExitCodes.Uncertain`
+  (= 26) (`HeadlessRunner.scala:83` in
   `modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala`;
-  `result.scala:29` в `modules/core/src/main/scala/raider/core/`).
+  `result.scala:29` in `modules/core/src/main/scala/raider/core/`).
 
-## 7. UI-граница: report-only
+## 7. UI boundary: report-only
 
-Слой вкладок никогда не отменяет сам: `:close` на живой вкладке возвращает
-выбор `Hide`/`CancelRequested`; `CancelRequested` — ТОЛЬКО отчёт (типизированный
-фидбек `CancelReported`), прямого cancel-binding к runtime в UI нет —
-привязка (RAI-062) не реализована
-(`SessionRegistry.scala:84-95,97-114` в
+The tab layer never cancels on its own: `:close` on a live tab returns the
+`Hide`/`CancelRequested` choice; `CancelRequested` is REPORTING ONLY (typed
+feedback `CancelReported`), there is no direct cancel binding to runtime in the
+UI — the binding (RAI-062) is not implemented
+(`SessionRegistry.scala:84-95,97-114` in
 `modules/ui/src/main/scala/raider/ui/SessionRegistry.scala`;
-`ShellExecutor.scala:164-198`; `ShellFeedback.scala:32-40,92-95`). Детали —
+`ShellExecutor.scala:164-198`; `ShellFeedback.scala:32-40,92-95`). Details:
 [tabs.md](tabs.md) §5.
 
-## 8. Честные ограничения
+## 8. Honest limitations
 
-- Ожидание прерывания не безгранично: волокно в uninterruptible-регионе
-  задерживает cancel; scope/watchdog в этом случае честно отчётятся
-  `Uncertain`, а не ждут вечно (`RaiderScope.scala:84-96`;
+- Waiting for interruption is not unbounded: a fiber in an uninterruptible
+  region delays cancellation; in this case the scope/watchdog honestly reports
+  `Uncertain` rather than waiting forever (`RaiderScope.scala:84-96`;
   `DelegationToolset.scala:443-478`).
-- Cancel побеждает завершение в статусе, но не переписывает уже
-  опубликованный исход: поздние завершения — только late observations в
-  счётчике (`JobManager.scala:196-221`).
-- Документируемая семантика не обещает durable resume или exactly-once для
-  произвольных лямбд: отмена прерывает волокно; `await` ждёт опубликованный
-  исход и не перезапускает задачу (`JobManager.scala:22-27,273-278`);
-  автоматическое восстановление/повтор не реализованы (рамка —
+- Cancellation wins the status race, but does not rewrite an already published
+  result: late completions are only late observations in the counter
+  (`JobManager.scala:196-221`).
+- The documented semantics do not promise durable resume or exactly-once for
+  arbitrary lambdas: cancellation interrupts the fiber; `await` waits for the
+  published result and does not restart the task (`JobManager.scala:22-27,273-278`);
+  automatic recovery/retry is not implemented (see
   [runtime-contracts.md](runtime-contracts.md) §13).

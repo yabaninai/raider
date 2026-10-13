@@ -1,42 +1,41 @@
-# ADR-026: модель-исправимые ошибки тулз чтения — структурированный feedback, не death-of-run
+# ADR-026: Model-correctable read-tool errors — structured feedback, not run termination
 
-Status: **Accepted** (operator decision, 2026-10-10, autonomous self-dev campaign). Дата: 2026-10-10.
-Owner: operator (campaign driver). Карточка: cross-cutting, вне RAI-нумерации;
-не меняет `raider.core.tool` (RAI-002.b freeze) и не меняет семантику AgentLoop
-emission (RAI-058, `AgentLoopEmissionSpec` остаётся эталоном).
+Status: **Accepted** (operator decision, 2026-10-10, autonomous self-development campaign). Date: 2026-10-10.
+Owner: operator (campaign driver). Card: cross-cutting, outside RAI numbering;
+does not change `raider.core.tool` (RAI-002.b freeze) or AgentLoop emission semantics
+(RAI-058, `AgentLoopEmissionSpec` remains the reference).
 
-## 1. Контекст
+## 1. Context
 
-Автономная self-dev кампания (53 карточки, live-модель glm-5.3-flash через
-гейтвей Yabanin) стабильно гибла на бытовых ошибках модели: `fs_read`
-несуществующего пути, чтение каталога, бинарного файла. Классификация
-`CodingToolset.toolOf` отправляла `ToolFailed` в `throw` → ZIO Defect →
-`JobManager.settle` фиксировал «job died» и весь прогон умирал с exit 10.
-Это делало цикл «модель ошиблась в пути → прогон потерян» нормой, что
-противоречит назначению tool-набора (RAI-014: workspace tools для кодинг-агента).
+The autonomous self-development campaign (53 cards, live model glm-5.3-flash through
+the Yabanin gateway) repeatedly failed on ordinary model mistakes: `fs_read` of a
+nonexistent path, reading a directory, or a binary file. The `CodingToolset.toolOf`
+classification sent `ToolFailed` to `throw` → ZIO Defect → `JobManager.settle` recorded
+“job died” and the entire run ended with exit 10. This made “model used the wrong
+path → run lost” the norm, contrary to the purpose of the toolset (RAI-014: workspace
+tools for a coding agent).
 
-## 2. Решение
+## 2. Decision
 
-1. `ReadTool`: `file not found`, `binary file`, «path is a directory» —
-   переклассифицированы из `ToolFailed` в `InputValidation`. `InputValidation`
-   уже входит в `isPolicyDenial` → `toolOf` возвращает модели структурированный
-   `{"error":code,"detail":...}` и прогон продолжается (тот же канал, что и
-   unknown_tool/invalid_args; см. комментарий POLICY в `toolOf`).
-2. `RateLimitRetries`: `ProviderUnavailable` (502/503) ретраится наравне с 429 —
-   в таксономии §14 он уже `retryable=true`; возникает до первого события стрима,
-   поэтому дубликатов эмиссии нет.
-3. Агентный цикл (AgentLoop), JobManager, контракты ошибок (§14) — НЕ менялись:
-   `AgentLoopEmissionSpec` (RA-TOOLFAIL/RA-DEADLINE фатальность scripted-тулз)
-   восстановлен бит-в-бит после эксперимента с catchAllCause, отклонённого как
-   нарушение защищённой семантики.
+1. `ReadTool`: `file not found`, `binary file`, and “path is a directory” are
+   reclassified from `ToolFailed` to `InputValidation`. `InputValidation` is already
+   included in `isPolicyDenial` → `toolOf` returns structured `{"error":code,"detail":...}`
+   to the model and the run continues (same channel as unknown_tool/invalid_args; see
+   POLICY comment in `toolOf`).
+2. `RateLimitRetries`: `ProviderUnavailable` (502/503) is retried like 429 — it is
+   already `retryable=true` in the §14 taxonomy; it occurs before the first stream
+   event, so no duplicate emissions result.
+3. The agent loop (AgentLoop), JobManager, and error contracts (§14) were NOT changed:
+   `AgentLoopEmissionSpec` (RA-TOOLFAIL/RA-DEADLINE scripted-tool fatality) was restored
+   bit-for-bit after an experiment with catchAllCause was rejected as violating
+   protected semantics.
 
 ## 3. Consequences
 
-- Модель получает машинный код ошибки и исправляет аргументы; прогон выживает.
-- Честность события сохранена: ToolFinished(Failed) для refusal-классов
-  остаётся как был; error-JSON в success-канале виден в transcript.
-- Спеки: ReadToolSpec не ассертит not-found/binary (проверено) — правок спек
-  не потребовалось. Поведение задокументировано здесь как ADR-ссылка для
-  будущих карточек RAI-014/016 rev.
-- Реальные IO-сбои ( vanished mid-read, resolve IOException ) остаются
-  crash-flavored — фальсификация успешного чтения по-прежнему невозможна.
+- The model gets a machine-readable error code and corrects its arguments; the run survives.
+- Event honesty is preserved: `ToolFinished(Failed)` for refusal classes remains as before;
+  error JSON in the success channel is visible in the transcript.
+- Specs: `ReadToolSpec` does not assert not-found/binary (verified), so no spec edits were
+  needed. This behavior is documented here as an ADR reference for future RAI-014/016 rev.
+- Real I/O failures (vanished mid-read, resolve IOException) remain crash-flavored —
+  successful reading is still not falsely reported.

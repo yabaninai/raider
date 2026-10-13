@@ -1,39 +1,41 @@
-# audit-hook — fixture-плагин Raider с хуком (RAI-096)
+# audit-hook — Raider fixture plugin with a hook (RAI-096)
 
-Плагин БЕЗ tools: один hook `audit.runStart` на узком v1 `RaiderHook` SPI
-(RAI-084). `apply(inputJson)` — один синхронный вызов JSON-строка →
-JSON-строка; хук помечает старт прогона и вкладывает вход verbatim. Временную
-границу держит хост (`HookRunner`, 2000 ms по умолчанию) — trait сам ничего не
-гарантирует о завершении.
+A plugin with NO tools: one `audit.runStart` hook using the narrow v1
+`RaiderHook` SPI (RAI-084). `apply(inputJson)` is one synchronous call from JSON
+string to JSON string; the hook marks the run start and embeds the input
+verbatim. The host (`HookRunner`, 2000 ms by default) enforces the time boundary;
+the trait itself makes no completion guarantee.
 
-## Файлы
+## Files
 
 - `src/main/scala/audithook/AuditHookPlugin.scala` — `AuditHookPlugin`
-  (`RaiderPlugin`, capability kind `hook`) + `AuditRunStartHook`
+  (`RaiderPlugin`, capability kind `hook`) and `AuditRunStartHook`
   (`RaiderHook`, name = `audit.runStart`).
-- `manifest.json` — форма `META-INF/raider-plugin.json`.
+- `manifest.json` — the `META-INF/raider-plugin.json` form.
 
-## Честность v1 (важно)
+## v1 truthfulness (important)
 
-Загрузчик (PluginLoader) валидирует hook-capability на preflight, но
-ИНСТАНЦИИ хуков пока не создаёт — у загруженного audit-hook плагина `tools`
-пуст. Провайдер находится стандартным ServiceLoader по загруженному
-classloader'у (`META-INF/services/raider.core.plugin.RaiderHook` →
-`audithook.AuditRunStartHook`) и передаётся в `HookRunner.runHook` строго под
-объявленным именем. Хук исполняется с полномочиями процесса: classloader —
-граница совместимости, НЕ sandbox (ADR-025 §2.4).
+The loader (`PluginLoader`) validates hook capability during preflight, but does
+not yet create hook INSTANCES — the loaded audit-hook plugin has an empty
+`tools` collection. The provider is discovered through the standard
+`ServiceLoader` using the loaded classloader
+(`META-INF/services/raider.core.plugin.RaiderHook` →
+`audithook.AuditRunStartHook`) and passed to `HookRunner.runHook` strictly under
+its declared name. The hook runs with process privileges: the classloader is a
+compatibility boundary, NOT a sandbox (ADR-025 §2.4).
 
-## Jar-layout / сборка / установка
+## Jar layout / build / installation
 
-Идентично [hello-tool](../hello-tool/README.md), но в capabilities —
-`{"kind": "hook", "name": "audit.runStart"}`, и вместо tool-services в jar
-лежит hook-services. Пин `sha256` пересчитывать после каждой пересборки.
+Same as [hello-tool](../hello-tool/README.md), except capabilities contains
+`{"kind": "hook", "name": "audit.runStart"}`, and the jar contains hook
+services instead of tool services. Recalculate the pinned `sha256` after every
+rebuild.
 
-## Исполняемый контракт
+## Executable contract
 
-`contracts/plugins/FixturePluginsSpec.scala`: загрузка с hook-capability,
-ServiceLoader-дискавери провайдера, `HookRunner.runHook` под объявленным
-именем (typed `Completed`).
+`contracts/plugins/FixturePluginsSpec.scala`: loading with hook capability,
+ServiceLoader discovery of the provider, and `HookRunner.runHook` under the
+declared name (typed `Completed`).
 
-Ссылки: [docs/plugins.md](../../../docs/plugins.md),
+References: [docs/plugins.md](../../../docs/plugins.md),
 [ADR-025](../../../docs/adr/ADR-025-plugin-spi.md).

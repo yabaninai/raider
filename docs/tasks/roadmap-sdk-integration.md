@@ -1,47 +1,47 @@
-# ROADMAP-SDK: встраиваемый SDK в существующих фазах Raider
+# ROADMAP-SDK: Embedding SDK in existing Raider phases
 
 Date: 2026-10-12. Type: coordinator planning card.
-Baseline: `4b46dc7`. Основание: запрос владельца изучить проект, уточнить
-приоритеты, встроиться в текущий roadmap и закоммитить изменения плана.
-Ответы владельца: Raider + SDK, первый сценарий CI; текущую волну не останавливать;
-проект полностью open source. Состав команды, участники и сроки пока не заданы.
+Baseline: `4b46dc7`. Basis: owner request to study the project, clarify
+priorities, fit the work into the current roadmap, and commit the plan changes.
+Owner answers: Raider + SDK, first scenario is CI; do not stop the current wave;
+the project is fully open source. Team composition, participants, and dates are not yet defined.
 
-## Результат
+## Result
 
-Согласованный roadmap/backlog/entry prompt: embedding SDK получает scope и
-наблюдаемую приёмку внутри P0/P4/P7/P10, пользовательские пилоты — P0/P7/P9.
-Ближайшая ready карточка — RAI-115, audit границ SDK. Текущая волна продолжает
-работу. Подробная пользовательская документация отложена по запросу владельца.
+The roadmap/backlog/entry prompt are aligned: the embedding SDK receives scope and
+observable acceptance within P0/P4/P7/P10, and user pilots within P0/P7/P9.
+The nearest ready card is RAI-115, an audit of the SDK boundary. The current wave
+continues. Detailed user documentation is deferred at the owner's request.
 
-## Allowed paths и ownership
+## Allowed paths and ownership
 
-Coordinator единолично меняет `docs/roadmap-12k.md`, `docs/PLAN.md`,
+The coordinator is the sole editor of `docs/roadmap-12k.md`, `docs/PLAN.md`,
 `docs/prompts/opencode-12k-parallel.txt`, `docs/tasks/backlog.json`,
-`docs/tasks/m1.md`, `docs/tasks/README.md`, эту карточку, `docs/work/board.md`
-и итоговый `docs/work/records/ROADMAP-SDK.md`. Независимый spawn-reviewer
-читает исходники и финальный diff; mutable workers/builds отсутствуют.
-Одна плановая задача не создаёт восемь искусственных implementation lanes;
-правила изоляции и параллельного исполнения продуктовых карточек сохраняются.
+`docs/tasks/m1.md`, `docs/tasks/README.md`, this card, `docs/work/board.md`,
+and the final `docs/work/records/ROADMAP-SDK.md`. An independent spawned reviewer
+reads the source material and final diff; there are no mutable workers/builds.
+One planning task does not create eight artificial implementation lanes;
+the isolation and parallel execution rules for product cards remain in force.
 
 ## Acceptance
 
-- Normal: SDK-01–05 привязаны к существующим фазам, RAI-115 зарегистрирована
-  синхронно в JSON/Markdown/index; указаны следующий ADR и dependencies.
-- Error: план не объявляет SDK опубликованным, спрос доказанным или replay
-  произвольных Scala effects реализованным; нет новых runtime/gates/public API.
-- Concurrency: существующие card IDs/acceptance и активная волна сохранены;
-  audit может идти независимо; contracts/build/board имеют единственного owner.
-- Budget: верхнеуровневые фазы/бюджеты не увеличены; оценка добавочного труда и
-  перераспределение остатка обязательны до implementation, старые cases не удалены.
+- Normal: SDK-01–05 are mapped to existing phases, RAI-115 is registered
+  synchronously in JSON/Markdown/index; the next ADR and dependencies are specified.
+- Error: the plan does not claim the SDK is published, demand is proven, or replay
+  of arbitrary Scala effects is implemented; no new runtime/gates/public API.
+- Concurrency: existing card IDs/acceptance and active wave are preserved;
+  the audit can proceed independently; contracts/build/board have a single owner.
+- Budget: top-level phases/budgets are not increased; incremental effort estimates and
+  reallocation of remaining work are required before implementation; existing cases are not removed.
 
-## Проверки и non-goals
+## Checks and non-goals
 
-`python3 scripts/plan/validate.py`, `make quality-changed`, затем
-`make quality-changed QUALITY_EXECUTE=1`, docs profile и независимый review.
-Work record создаётся после выполнения; если runner включает records в product
-fingerprint, после записи record повторить затронутые проверки. Не менять
-gate policy ради исключения operational файлов.
+`python3 scripts/plan/validate.py`, `make quality-changed`, then
+`make quality-changed QUALITY_EXECUTE=1`, docs profile, and independent review.
+Create the work record after execution; if the runner includes records in the product
+fingerprint, repeat affected checks after writing the record. Do not change
+gate policy to exclude operational files.
 
-Non-goals: реализация SDK/RAI-115, переписывание README/API guides, внешняя
-публикация, сообщения потенциальным пользователям, платные вызовы, новый ADR
-публичных signatures без отдельной карточки, изменения соседнего Yabanin.
+Non-goals: SDK/RAI-115 implementation, rewriting README/API guides, external
+publication, messages to potential users, paid calls, a new ADR for public signatures
+without a separate card, and changes to the neighboring Yabanin repository.

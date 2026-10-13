@@ -120,7 +120,7 @@ def validate(yabanin_repo=None):
                 errors.append(f"{ident}: title/milestone mismatch")
             end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
             section = content[match.end():end]
-            dependencies = ", ".join(card["dependencies"]) or "нет"
+            dependencies = ", ".join(card["dependencies"]) or "none"
             if f"Dependencies: {dependencies}." not in section:
                 errors.append(f"{ident}: dependency metadata differs from Markdown")
             for value in (card["behavior"], card["context"], card["non_goals"],

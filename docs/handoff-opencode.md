@@ -1,77 +1,116 @@
-# Довести Raider до рабочего состояния через OpenCode
+# Bring Raider to working condition through OpenCode
 
-## Текущий запрос: 12 000 часов, параллельная разработка
+## Current request: 12,000 hours, parallel development
 
-Для дальнейшего улучшения используй [roadmap-12k](roadmap-12k.md) и
-[полный prompt](prompts/opencode-12k-parallel.txt). Открой OpenCode в корне
-репозитория, выбери Build и вставь:
+For further work, use [roadmap-12k](roadmap-12k.md) and the
+[full prompt](prompts/opencode-12k-parallel.txt). Open OpenCode at the repository
+root, select Build, and paste:
 
 ```text
-Выполни @docs/prompts/opencode-12k-parallel.txt по @docs/roadmap-12k.md.
-Начни со сверки actual source/board и ближайших ready карточек.
-Coordinator + до 3 workers в изолированных worktrees/snapshot copies.
-Приоритет: живые статусы, вкладки сабагентов, удобные плагины.
-Yabanin строго последней фазой P11 после принятого standalone candidate P10.
-Продолжай реализацию, review, интеграцию и проверки; при лимите сессии сохрани handoff.
+Execute @docs/prompts/opencode-12k-parallel.txt according to @docs/roadmap-12k.md.
+Start by checking the actual source/board and nearest ready cards.
+Coordinator + up to 3 workers in isolated worktrees/snapshot copies.
+Priority: live statuses, subagent tabs, convenient plugins.
+Yabanin strictly in final phase P11, after standalone candidate P10 is accepted.
+Continue implementation, review, integration, and checks; save a handoff if the session limit is reached.
 ```
 
-Старые `/raider-finish` и `/raider-build` ниже описывают предыдущий finish target.
-Они не заменяют новый prompt и его Yabanin-last порядок. Установленные tools и
-поддержку изолированных cwd проверяет coordinator при запуске.
+The old `/raider-finish` and `/raider-build` below describe the previous finish
+target. They do not replace the new prompt or its Yabanin-last order. The
+coordinator checks installed tools and isolated-cwd support at startup.
 
-## Запуск
+## Launch
 
-В корне репозитория запустить `opencode`, затем:
+From the repository root, start `opencode`, then:
 
 ```text
 /raider-finish
 ```
 
-Команда [.opencode/commands/raider-finish.md](../.opencode/commands/raider-finish.md) выбирает Build и содержит полный [finish prompt](prompts/opencode-finish.txt). Старое имя `/raider-build` сохранено как идентичный alias. Vendor/model не зашиты: используется owner-selected coding profile. Формат project commands подтверждён [OpenCode docs](https://opencode.ai/docs/commands/); на момент review установлен OpenCode 1.18.34. Перед запуском исполнитель проверяет свою фактическую версию и доступные subagent tools.
+The command [.opencode/commands/raider-finish.md](../.opencode/commands/raider-finish.md)
+selects Build and includes the full [finish prompt](prompts/opencode-finish.txt).
+The old name `/raider-build` remains an identical alias. Vendor/model are not
+hardcoded: the owner-selected coding profile is used. Project command format
+is confirmed in [OpenCode docs](https://opencode.ai/docs/commands/); OpenCode
+1.18.34 was installed at the time of review. Before launch, the worker checks
+its actual version and available subagent tools.
 
-Короткий prompt для ручной вставки в Build:
-
-```text
-Доведи Raider до рабочего coding agent по @docs/working-product.md.
-Выполни @docs/prompts/opencode-finish.txt и AGENTS.md.
-Учти текущий код и @docs/reviews/2026-10-03-readiness.md; не начинай заново.
-Параллельная разработка разрешена: coordinator + до 3 workers
-в изолированных worktrees/snapshot copies по docs/parallel-development.md.
-Исправляй defects, интегрируй, запускай проверки и продолжай до W01–W17.
-Покажи установленный CLI, настоящий REPL/DSL, coding workflow и CI evidence.
-Live/model comparison отражай отдельно; не выдавай mock success за parity.
-```
-
-## Что уже есть и откуда продолжать
-
-Есть спецификация, `docs/work/board.md`, records и реальные REPL/headless и OpenAI-compatible feasibility spikes. [Независимый review](reviews/2026-10-03-readiness.md) нашёл false-green в обоих launchers, неполную воспроизводимость harness/evidence и непокрытые production guarantees. Продуктовые build/runtime/DSL/provider/tools/CLI/gates ещё предстоит реализовать. Следующая сессия сначала сверяет actual repository: статус может измениться.
-
-Первый результат нового запуска — закрытие актуальных review findings и foundation prerequisites, затем параллельные runtime/providers/tools slices. Старые «32/32» и «6/6» не закрывают полную приёмку: нужно подтвердить scope и надёжность checks. Исходный evidence сохраняется, новый прогон получает отдельные hash/run identity.
-
-`python3 scripts/plan/validate.py` проверяет только план/links/backlog/prompts. Его успешный exit не доказывает выполнение Scala или готовность coding agent. Product gates создавать и выполнять по [stage contract](quality-gates.md).
-
-## Полномочия coordinator
-
-Владелец разрешил parallel development. Coordinator назначает ready child cards, отдельные каталоги, path ownership и independent reviewer без повторного вопроса на каждую задачу. Он один интегрирует изменения, контролирует shared APIs/build/quality registry и reruns affected shared tests. Worktree не появляется от факта spawn subagent; механизм изоляции проверяется до coding.
-
-Git сейчас unborn/untracked: до появления пригодного commit использовать immutable source snapshot copies с включением нужных untracked files и исключением secrets/.git/outputs. Не создавать commit/stash/reset из чужой работы ради удобства. Каждый worker получает absolute path/baseline/точные files/signatures/tests; передаёт patch+hashes/evidence. [Подробный runbook](parallel-development.md).
-
-Использовать узкие packets для простых моделей. Reviewer свежим контекстом читает actual diff и tests/logs. Большие contracts разбиваются до implementation; новая архитектура не возникает незаметно внутри worker diff. Future stage checks остаются pending, active failing tests не отключаются.
-
-## Когда работа закончена
-
-[W01–W17](working-product.md) требуют не только M0 runtime, но и нормальные файловые tools, test-driven coding loop, sessions/history/context/compaction, typed DSL, real REPL, installable package и CI. Один бинарник/исходный snapshot проходит всю общую приёмку. Базовый Yabanin contract W17 обязателен offline; запуск через gateway, enriched integration и внешние backends опциональны и не заменяют native loop.
-
-Отдельно: engineering_ready, live_verified, opencode_comparison. Live smoke/comparison выполняется с configured endpoint и явным budget; без него результат помечается pending. Сама coding-модель OpenCode относится к выбранной владельцем development session, не к продуктовым paid evals.
-
-## Продолжение после остановки сессии
+Short prompt for manual insertion in Build:
 
 ```text
-Продолжи выполнение docs/prompts/opencode-finish.txt.
-Сверь git status, board/records, active lane paths/baselines/session IDs.
-Проверь живых workers и applied patches, не дублируй их.
-Возобнови nearest ready action, интегрируй и повтори affected gates.
-Заверши W01–W17; внешние blockers перечисли точно, остальную работу продолжай.
+Bring Raider to a working coding agent according to @docs/working-product.md.
+Execute @docs/prompts/opencode-finish.txt and AGENTS.md.
+Account for the current code and @docs/reviews/2026-10-03-readiness.md; do not start over.
+Parallel development is authorized: coordinator + up to 3 workers
+in isolated worktrees/snapshot copies per docs/parallel-development.md.
+Fix defects, integrate, run checks, and continue through W01–W17.
+Show the installed CLI, real REPL/DSL, coding workflow, and CI evidence.
+Report live/model comparison separately; do not present mock success as parity.
 ```
 
-На каждый handoff: active task, source baseline, actual changed paths, exact commands/exits/log hashes, reviewer verdict, оставшиеся obligations и next executable action. Перечень файлов или запущенных workers не закрывает milestone.
+## What exists and where to continue
+
+There is a specification, `docs/work/board.md`, records, and real REPL/headless
+and OpenAI-compatible feasibility spikes. The [independent review](reviews/2026-10-03-readiness.md)
+found false-green results in both launchers, incomplete harness/evidence
+reproducibility, and uncovered production guarantees. Product build/runtime/DSL/provider/tools/CLI/gates
+still need implementation. The next session first checks the actual repository:
+status may have changed.
+
+The first result of a new run is closure of current review findings and
+foundation prerequisites, then parallel runtime/providers/tools slices. Old
+“32/32” and “6/6” do not close full acceptance: confirm their scope and check
+reliability. Preserve original evidence; each new run gets separate hash/run
+identity.
+
+`python3 scripts/plan/validate.py` checks only the plan/links/backlog/prompts.
+A successful exit does not prove Scala execution or coding-agent readiness.
+Create and execute product gates according to the [stage contract](quality-gates.md).
+
+## Coordinator authority
+
+The owner has authorized parallel development. The coordinator assigns ready
+child cards, separate directories, path ownership, and an independent reviewer
+without asking again for each task. The coordinator alone integrates changes,
+controls shared APIs/build/quality registry, and reruns affected shared tests.
+Spawning a subagent does not create a worktree; verify the isolation mechanism
+before coding.
+
+Git is currently unborn/untracked: until a suitable commit exists, use
+immutable source snapshot copies that include needed untracked files and exclude
+secrets/.git/outputs. Do not create a commit/stash/reset of others' work for
+convenience. Each worker gets an absolute path/baseline/exact files/signatures/tests
+and returns a patch+hashes/evidence. See the [detailed runbook](parallel-development.md).
+
+Use narrow packets for simpler models. A fresh-context reviewer reads the
+actual diff and tests/logs. Split large contracts before implementation; do not
+let new architecture appear silently inside a worker diff. Future-stage checks
+remain pending; do not disable active failing tests.
+
+## When work is complete
+
+[W01–W17](working-product.md) require more than an M0 runtime: useful file tools,
+a test-driven coding loop, sessions/history/context/compaction, typed DSL, real
+REPL, installable package, and CI. One binary/source snapshot passes shared
+acceptance. Baseline Yabanin contract W17 is required offline; gateway execution,
+enriched integration, and external backends are optional and do not replace
+the native loop.
+
+Report these separately: engineering_ready, live_verified, opencode_comparison.
+Run live smoke/comparison with a configured endpoint and explicit budget;
+without those, mark the result pending. The coding model used by OpenCode is
+part of the owner-selected development session, not product paid evals.
+
+## Resume after a session stops
+
+```text
+Continue executing docs/prompts/opencode-finish.txt.
+Check git status, board/records, active lane paths/baselines/session IDs.
+Check live workers and applied patches; do not duplicate them.
+Resume the nearest ready action, integrate, and rerun affected gates.
+Complete W01–W17; list external blockers precisely and continue the rest of the work.
+```
+
+For every handoff: active task, source baseline, actual changed paths, exact
+commands/exits/log hashes, reviewer verdict, remaining obligations, and next
+executable action. A list of files or spawned workers does not close a milestone.

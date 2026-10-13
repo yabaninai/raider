@@ -1,120 +1,105 @@
-# REPL и typed bundle: проверяемые примеры
+# Scala REPL and typed workflow examples
 
-Это руководство показывает только поведение текущего REPL и bundle loader. Все
-REPL-примеры используют scripted fixture backend (`RAIDER_PROVIDER=mock`):
-ответ содержит `[scripted-fixture]`, сеть и модель не вызываются. Эти примеры
-проверяют Scala compiler, API и runtime-механику; они не доказывают качество
-ответов модели.
+These examples exercise the current Scala REPL and compiled bundle loader. The REPL examples use `RAIDER_PROVIDER=mock`; each response contains `[scripted-fixture]`. The first five use fixed mock replies. The billing review example can run against a configured OpenAI-compatible model; mock success checks DSL compilation and composition mechanics, not model reasoning.
 
-## Подготовка
+## Prepare the classpath
 
-Из корня репозитория выполните:
+From the repository root:
 
 ```sh
 sh scripts/build/user-examples.sh
 RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 ```
 
-Скрипт собирает classpath и bundle в `artifacts/user-examples/`. Перед запуском
-REPL-пункта убедитесь, что `RAIDER_CP` содержит одну строку classpath. Каждый
-файл ниже запускается в отдельном процессе, поэтому binding-и не переносятся
-между примерами.
+Each `.repl` file runs in its own process. Bindings do not carry over between examples.
 
-## 1. Настоящий Scala compiler
+## 1. Scala compiler
 
-Ввод `val`, `case class`, типизированная функция и многострочное определение
-выполняются встроенным Scala 3.9.0 REPL. `assert` проверяет результат до
-печати маркера.
+The real Scala 3.9.0 REPL compiles values, a case class, a typed function and a multiline definition. The assertion checks the result before printing the marker.
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/01compiler.repl
 ```
 
-Ожидаемый маркер: `EXAMPLE-01 PASS`.
+Expected marker: `EXAMPLE-01 PASS`.
 
-## 2. Ленивый запрос и map
+## 2. Lazy ask and map
 
-`scout(prompt)` создаёт lazy descriptor. Вызов `run()` выполняет его; `map`
-преобразует текст scripted fixture в длину. Проверяется только то, что fixture
-ответ непустой.
+`scout(prompt)` creates a descriptor. `run()` executes it, and `map` transforms the fixed fixture answer into a length. Before running the ask, `:type` inspects its descriptor and a deliberately effectful expression. Printed boundaries isolate the type-query answers, and an assertion checks that inspection did not execute the expression. The final assertion checks that the fixture text is nonempty.
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/02lazy-map.repl
 ```
 
-Ожидаемый маркер: `EXAMPLE-02 PASS`; длина зависит от scripted fixture текста.
+Expected marker: `EXAMPLE-02 PASS`.
 
-## 3. Parallel `all` и упорядоченный `batch`
+## 3. Parallel `all` and ordered `batch`
 
-`all` над двумя lazy asks запускает их через tuple-композицию. `batch` допускает
-ограничить параллелизм и сохраняет порядок входа; пример проверяет порядок,
-прикрепляя метку к результату каждого descriptor. Оба backend-ответа остаются
-одинаковым фиксированным fixture текстом и ничего не говорят о качестве модели.
+`all` combines two asks into a tuple. `batch` runs an ordered input list with a concurrency bound and keeps the input order in its result. The returned strings are scripted placeholders.
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/03parallel-batch.repl
 ```
 
-Ожидаемый маркер: `EXAMPLE-03 PASS`.
+Expected marker: `EXAMPLE-03 PASS`.
 
-## 4. Фоновая job
+## 4. Background job
 
-`start` возвращает handle фоновой job; `await` ждёт её завершения. После
-проверяемого ответа команда `:jobs` показывает snapshot завершённой job; её ID
-назначается процессом, поэтому конкретное значение заранее не фиксировано.
+`start` returns a job handle and `await` obtains its result. `:jobs` prints the completed job snapshot. The process assigns the job ID, so its exact value varies.
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/04background-job.repl
 ```
 
-Ожидайте `EXAMPLE-04 PASS`, затем строку `j_<id>  Succeeded  worker: ...` от
-`:jobs`. В этой scripted-сессии проверяется job lifecycle, а не работа агента.
+Expected marker: `EXAMPLE-04 PASS`, followed by a succeeded `worker` job.
 
-## 5. Session и история turns
+## 5. In-memory session history
 
-`openSession(worker)` хранит user/assistant turns в памяти объекта `Chat`.
-Файл проверяет два вызова `ask` и четыре сообщения в истории. У текущего `Chat`
-нет метода `close`; история не сохраняется на диск и исчезает при завершении
-процесса. Scripted ответы фиксированы и не доказывают, что модель использовала
-контекст предыдущего turn.
+`openSession(worker)` keeps two user/assistant turns in the `Chat` object. The assertion checks four messages. This session has no close operation or disk persistence, and fixed mock replies do not prove the second turn used prior context.
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/05session.repl
 ```
 
-Ожидаемый маркер: `EXAMPLE-05 PASS`.
+Expected marker: `EXAMPLE-05 PASS`.
 
-## 6. Typed workflow в bundle
+## 6. Parallel billing review with typed labels
 
-`TaskSummary` реализует `BundleWorkflow`. Внутри он связывает два типизированных
-`Program`: `String => List[String]` и `List[String] => String`. Это обычный
-детерминированный Scala-код через `Program.andThen`; provider и сеть не нужны.
-Bundle manifest объявляет `schemaVersion: 1`, entry `task-summary` и
-`trusted-local`. Объявление trust описывает заявленный уровень доверия, но само
-по себе не является sandbox: исполняйте только доверенный bundle.
+This runnable Scala REPL example creates two lazy asks about the same actual billing boundary defect, maps their answers into a typed `(label, answer)` result, and executes both with `all(...).run()`. Each prompt asks for useful review or tests and forbids tools.
 
-Скрипт подготовки компилирует класс и создаёт
-`artifacts/user-examples/task-summary.jar`. Передайте входную строку CLI:
+```sh
+RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
+  < examples/user-guide/repl/06billing-review.repl
+```
+
+Expected marker: `EXAMPLE-06 PASS`. Mock replies are placeholders. To exercise the prompts with a live model, the verifier runs this same file once with the configured OpenAI-compatible endpoint:
+
+```sh
+RAIDER_LIVE_APPROVED=1 RAIDER_PROVIDER=openai \
+RAIDER_BASE_URL="$RAIDER_BASE_URL" RAIDER_MODEL="$RAIDER_MODEL" \
+python3 scripts/quality/user_examples.py --only repl-review --live
+```
+
+The run executes both asks through the actual DSL. In live mode, it checks that the JSON test plan agrees with the policy at all three boundary inputs and rejects observed tool requests. Choose the model and budget before opting in.
+
+## 7. Typed release-readiness bundle
+
+`TaskSummary` is the existing workflow entry name. Its typed `Program` parses check records, validates that `tests`, `migration`, and `rollback` are present, rejects duplicate/unknown checks and invalid statuses, then returns a structured readiness decision. Pending checks appear in the result's action field.
 
 ```sh
 java -cp "$RAIDER_CP" raider.cli.Main run \
   --bundle artifacts/user-examples/task-summary.jar \
   --workflow task-summary \
-  --input 'fix bug, add test' \
-  --out artifacts/user-examples/summary-run \
+  --input 'tests=pass,migration=pass,rollback=pending' \
+  --out artifacts/user-examples/release-check \
   --mock
 ```
 
-Результат workflow: `2 tasks: fix bug | add test`. Он находится в артефактах
-созданного каталога `artifacts/user-examples/summary-run/work-<id>/`; точный
-каталог выводится CLI. Этот пример использует `--mock` только для интерфейса
-headless runner: сам workflow не обращается к model backend.
+The run output reports `BLOCKED`, lists `rollback` as pending, and gives a follow-up action. `--mock` satisfies the current CLI backend configuration; the workflow itself makes no model call. Missing required checks and invalid statuses fail validation with CLI exit 21.
 
-Пустая строка должна завершиться ошибкой валидации workflow (`InputValidation`,
-CLI exit code `21`), а не успешным пустым summary. Не используйте этот
-негативный вызов в shell с `set -e` без обработки ожидаемого exit code.
+The bundle manifest declares `trusted-local`. That is a trust declaration, not a sandbox. Only run bundles you trust.

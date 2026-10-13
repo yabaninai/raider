@@ -1,89 +1,89 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# DSL: повседневный путь в REPL
+# DSL: Everyday path in the REPL
 
-Статус: целевой дизайн DSL. Часть API уже реализована, но разделы ниже сохраняют проектные obligations и не являются инструкцией для текущего бинарного интерфейса. Проверенные команды и примеры текущей версии — в [user guide](user-guide.md) и [REPL gallery](user-guide-repl.md). Этот документ уточняет целевое удобство поверх [полного контракта](product-repl.md).
+Status: target DSL design. Some API is already implemented, but the sections below retain design obligations and are not instructions for the current binary interface. Verified commands and examples for the current version are in the [user guide](user-guide.md) and [REPL gallery](user-guide-repl.md). This document refines the target usability described by the [full contract](product-repl.md).
 
-## 1. Первый ответ без настройки агента
+## 1. First answer without agent setup
 
 ```text
 $ raider --mock
-raider> scout.ask("Как устроен проект?")
+raider> scout.ask("How is the project structured?")
 ```
 
-В live режиме достаточно ранее настроенного provider profile. Предустановленные роли доступны сразу, startup показывает выбранный режим. `--mock` даёт scripted fixture ответ и явно маркирует его; никакой маскировки под реальную модель.
+In live mode, a previously configured provider profile is sufficient. Preset roles are immediately available, and startup shows the selected mode. `--mock` returns a scripted fixture response and labels it explicitly; it never pretends to be a real model.
 
-Пользователь изучает три verbs:
+The user learns three verbs:
 
 ```scala
-scout.ask("Вопрос")            // Ответ сейчас
-val job = scout.start("Вопрос") // Работа в фоне
-val answer = job.await         // Результат существующего запуска
+scout.ask("Question")            // Answer now
+val job = scout.start("Question") // Background work
+val answer = job.await         // Result of the existing run
 ```
 
-Infix Scala syntax работает теми же methods:
+Infix Scala syntax uses the same methods:
 
 ```scala
-scout ask "Найди основные интерфейсы"
-val job = scout start "Исследуй retry"
+scout ask "Find the main interfaces"
+val job = scout start "Investigate retry"
 ```
 
-Документация по умолчанию показывает dot syntax: он проще для completion и многострочного ввода. Infix verbs помечены `infix`, tests проверяют оба пути.
+Documentation defaults to dot syntax: it is simpler for completion and multiline input. Infix verbs are marked `infix`, and tests cover both forms.
 
-## 2. Управление рядом с job
+## 2. Control next to the job
 
 ```scala
-val job = worker.start("Добавь tests для parser")
+val job = worker.start("Add tests for the parser")
 job.info
-job.send("Учитывай UTF-8, разбитый по network chunks")
+job.send("Account for UTF-8 split across network chunks")
 job.watch()
 job.cancel()
 ```
 
-`info` — небольшой безопасный snapshot. `watch` не запускает задачу заново. `cancel` возвращает подтверждённый/неподтверждённый результат, а не просто Unit. Receipt `send` сообщает queued/applied/rejected; доставка не обещает compliance модели.
+`info` is a small, safe snapshot. `watch` does not restart the task. `cancel` returns whether cancellation was confirmed, not just Unit. The `send` receipt reports queued/applied/rejected; delivery does not promise model compliance.
 
-ID доступен как `job.id`; `:jobs` и completion позволяют управлять потерянным binding через `:job/:watch/:cancel`. Последний foreground job также виден в jobs registry при compile/runtime error, даже если `val result = ...` не создал binding.
+The ID is available as `job.id`; `:jobs` and completion let users control a lost binding with `:job/:watch/:cancel`. The last foreground job also remains visible in the jobs registry after a compile/runtime error, even if `val result = ...` did not create a binding.
 
-## 3. Цепочка в одну строку
+## 3. A chain in one line
 
 ```scala
-(scout andThen planner andThen worker).ask("Добавь поддержку плагинов")
+(scout andThen planner andThen worker).ask("Add plugin support")
 ```
 
-Все built-in quick profiles здесь string-in/string-out. `andThen` передаёт output предыдущего Program во input следующего. Original goal сохраняется как ограниченная root-context metadata, но полная история предыдущих агентов не копируется автоматически. Typed pipeline несовместимых inputs/outputs не компилируется.
+All built-in quick profiles here are string-in/string-out. `andThen` passes the previous Program output as the next Program input. The original goal is retained as bounded root-context metadata, but the full history of previous agents is not copied automatically. A typed pipeline with incompatible inputs/outputs does not compile.
 
-Сохранить цепочку:
+Save the chain:
 
 ```scala
 val implement = (scout andThen planner andThen worker).named("implement")
 register(implement)
-implement.ask("Добавь новый инструмент")
-val job = implement.start("Добавь новый provider adapter")
+implement.ask("Add a new tool")
+val job = implement.start("Add a new provider adapter")
 ```
 
-`named` создаёт descriptor, `register` обновляет registry явно. При registration сохраняется snapshot версий stages; reload не меняет текущий job.
+`named` creates a descriptor; `register` updates the registry explicitly. Registration stores a snapshot of stage versions; reload does not change a current job.
 
-## 4. Несколько агентов одновременно
+## 4. Multiple agents at once
 
-Общий вход:
+Shared input:
 
 ```scala
 val audit = all(scout, reviewer)
-val (facts, critique) = audit.ask("Проверь архитектуру")
+val (facts, critique) = audit.ask("Review the architecture")
 ```
 
-Разные входы:
+Different inputs:
 
 ```scala
 val job = all(
-  scout("Изучи routing"),
-  reviewer("Изучи cache")
+  scout("Study routing"),
+  reviewer("Study the cache")
 ).start()
 
 val (routing, cache) = job.await
 ```
 
-Список задач:
+List of tasks:
 
 ```scala
 val topics = List("routing", "cache", "streaming")
@@ -91,35 +91,35 @@ val job = batch(topics, parallelism = 2)(topic => scout(topic)).start()
 val answers = job.await
 ```
 
-По умолчанию группа fail-fast. Независимый сбор ошибок — явный `batchCollect(...).run()`. Везде results сохраняют тип и порядок; `all` tuple сохраняет разнотипные outputs.
+By default, the group is fail-fast. Collecting independent errors requires explicit `batchCollect(...).run()`. Results preserve their types and order; the `all` tuple preserves heterogeneous outputs.
 
-## 5. Где начинается выполнение
+## 5. Where execution begins
 
 ```scala
-val task = scout("Изучи проект") // Только описание
-task                           // Краткий preview, без model calls
+val task = scout("Study the project") // Description only
+task                           // Brief preview, no model calls
 task.run()                     // Foreground
 task.start()                   // Background
 ```
 
-Это правило одинаково для Agent, Workflow и Session: `program(input)` создаёт Task; `ask/start` явно выполняют её. Не делать `agent(input)` иногда eager, иногда lazy в зависимости от импортов.
+This rule is the same for Agent, Workflow, and Session: `program(input)` creates a Task; `ask/start` explicitly execute it. Do not make `agent(input)` sometimes eager and sometimes lazy depending on imports.
 
-Если новичок вводит bare Task expression, printer показывает `Task[String](...; use .run() or .start())`. Renderer не выполняет задачу. Task construction is lazy относительно provider/tools, но обычная Scala вычисляет переданные input expressions.
+If a newcomer enters a bare Task expression, the printer shows `Task[String](...; use .run() or .start())`. The renderer does not execute the task. Task construction is lazy with respect to providers/tools, but ordinary Scala still evaluates the input expressions passed to it.
 
-`run(task)` и `spawn(task)` доступны как низкоуровневые launch functions; они delegates единому launch API. Нет отдельного lifecycle только для method syntax. Старые варианты `parallel/each/collect` в первом обсуждении не являются обязательным API: их заменяют `all/batch/batchCollect`, чтобы не плодить имена.
+`run(task)` and `spawn(task)` are available as low-level launch functions; they delegate to the single launch API. Method syntax does not have a separate lifecycle. The earlier `parallel/each/collect` proposals are not required API; `all/batch/batchCollect` replace them to avoid proliferating names.
 
-## 6. Свой агент без длинного boilerplate
+## 6. Your own agent without lengthy boilerplate
 
 ```scala
 val security = reviewer
   .named("security")
   .model("review")
-  .appendInstructions("Особое внимание: auth и границы доверия")
+  .appendInstructions("Pay special attention to auth and trust boundaries")
 
-security.ask("Проверь обработку session keys")
+security.ask("Review session key handling")
 ```
 
-С нуля:
+From scratch:
 
 ```scala
 val researcher = agent("researcher")
@@ -128,9 +128,9 @@ val researcher = agent("researcher")
   .tools("fs.read", "fs.search")
 ```
 
-Fluent API достаточен для MVP. Второй builder language с mutable contextual setters не добавлять до доказанной UX потребности.
+The fluent API is sufficient for MVP. Do not add a second builder language with mutable contextual setters until a user experience need is demonstrated.
 
-## 7. Сложная координация без магии
+## 7. Complex coordination without magic
 
 ```scala
 val investigate = workflow[String, String]("investigate"): question =>
@@ -141,30 +141,30 @@ val investigate = workflow[String, String]("investigate"): question =>
       plan     <- planner(question)
       sources  <- research.join
       facts    <- code.join
-      report   <- writer(s"Задача: $question\n$plan\n$sources\n$facts")
+      report   <- writer(s"Task: $question\n$plan\n$sources\n$facts")
     yield report
 
-investigate.start("Где лучше добавить новый backend?")
+investigate.start("Where should the new backend be added?")
 ```
 
-Внутри workflow используются Task expressions и `fork/join`; outside — ask/start/await. Это обычная Scala, без rewriting block в асинхронный код. Смешивание blocking facade внутрь workflow обнаруживается guardrail/test; error объясняет, какой expression использовать.
+Inside a workflow, use Task expressions and `fork/join`; outside, use ask/start/await. This is ordinary Scala, with no rewriting of the block into asynchronous code. A guardrail/test detects a blocking facade used inside a workflow; the error explains which expression to use.
 
-## 8. Повторное общение
+## 8. Continued conversation
 
 ```scala
 val chat = openSession(researcher)
-chat.ask("Изучи варианты хранения")
-chat.ask("Сравни два лучших")
-val job = chat.start("Подготовь рекомендации")
+chat.ask("Study storage options")
+chat.ask("Compare the two best options")
+val job = chat.start("Prepare recommendations")
 job.await
 chat.close()
 ```
 
-Verb semantics не меняется: ask foreground, start background, apply Task. Turns одной conversation сериализованы. Это P1 capability, не обещание MVP.
+Verb semantics do not change: ask is foreground, start is background, apply runs a Task. Turns in one conversation are serialized. This is a P1 capability, not an MVP promise.
 
-## 9. Перенос в файл и CLI
+## 9. Move to a file and CLI
 
-В `workflows.raider.scala`:
+In `workflows.raider.scala`:
 
 ```scala
 import raider.dsl.*
@@ -173,32 +173,32 @@ val inspect = (agents.scout andThen agents.reviewer).named("inspect")
 register(inspect)
 ```
 
-`agents` и `register` в loaded scripts приходят через definition context, не import blocking facade. RAI-002 закрепляет mechanism `using DefinitionContext`, который REPL/CLI предоставляет одинаково. Bare library use передаёт этот context явно.
+In loaded scripts, `agents` and `register` come from the definition context, not an imported blocking facade. RAI-002 specifies the `using DefinitionContext` mechanism, provided consistently by the REPL/CLI. Bare library use passes this context explicitly.
 
 ```text
 raider> :load workflows.raider.scala
-raider> inspect.ask("Оцени расширяемость")
-raider> :spawn inspect "Оцени streaming"
+raider> inspect.ask("Assess extensibility")
+raider> :spawn inspect "Assess streaming"
 
 $ raider compile workflows.raider.scala --output pipelines.jar
-$ raider run --bundle pipelines.jar --workflow inspect --input "Оцени расширяемость"
+$ raider run --bundle pipelines.jar --workflow inspect --input "Assess extensibility"
 ```
 
-Production runner исполняет bundle без compiler. `pipeline` добавляет к Workflow codecs и trusted checks: [CI DSL](ci-runtime.md). Прямые OpenAI/Anthropic profiles и Yabanin выбираются конфигурацией: [provider contract](provider-protocols.md). Тот же callable Program, тот же runtime. File loading выполняет trusted code, не replay command history автоматически.
+The production runner executes the bundle without a compiler. `pipeline` adds codecs and trusted checks to a Workflow: [CI DSL](ci-runtime.md). Direct OpenAI/Anthropic profiles and Yabanin are selected through configuration: [provider contract](provider-protocols.md). Same callable Program, same runtime. Loading a file executes trusted code; it does not automatically replay command history.
 
-## 10. Проверка удобства
+## 10. Usability checks
 
-Обязательные UX transcripts:
+Required UX transcripts:
 
-1. Первый вопрос без ручного создания agent.
-2. Два background jobs и свободный prompt.
-3. Chain из трёх stages в одной строке.
-4. Fanout двух разных outputs без casts.
-5. Batch с bounded parallelism.
-6. Steering/cancellation рядом с job handle.
-7. Save/load definitions и headless запуск того же workflow.
-8. Compile error не теряет ранее созданные handles.
-9. Bare Task объясняет, как её запустить, ничего не выполняя.
-10. Import `raider.dsl.*` сам по себе не открывает runtime и не делает paid calls.
+1. First question without manually creating an agent.
+2. Two background jobs while the prompt remains available.
+3. A three-stage chain in one line.
+4. Fanout producing two different outputs without casts.
+5. Batch with bounded parallelism.
+6. Steering/cancellation next to the job handle.
+7. Save/load definitions and headless execution of the same workflow.
+8. A compile error does not lose previously created handles.
+9. A bare Task explains how to run it without executing anything.
+10. Importing `raider.dsl.*` alone does not open the runtime or make paid calls.
 
-Эти fixtures обязательны для DSL/REPL gates. Первые семь задач должны выполняться по короткому встроенному `:help`, без чтения runtime architecture.
+These fixtures are required for DSL/REPL gates. The first seven tasks must be doable using the short built-in `:help`, without reading the runtime architecture.

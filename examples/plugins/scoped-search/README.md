@@ -1,41 +1,40 @@
-# scoped-search — fixture-плагин Raider с ограниченным поиском (RAI-096)
+# scoped-search — Raider fixture plugin with bounded search (RAI-096)
 
-READ-ONLY tool `scoped.search`: литеральный поиск по ИМЕНАМ файлов строго
-внутри одного заданного каталога. Демонстрирует: параметры tool через
-`parametersJsonSchema`, честную ограниченность (bounded scan ≤ 500 записей,
-`truncated` вместо тихой обрезки) и typed-ошибки ввода
-(`RaiderError.InputValidation` — родной error-канал `Tool`, не исключения
-через шов).
+Read-only tool `scoped.search`: literal search by file names strictly inside a
+single specified directory. It demonstrates tool parameters through
+`parametersJsonSchema`, honest bounds (bounded scan ≤ 500 entries, `truncated`
+instead of silent truncation), and typed input errors
+(`RaiderError.InputValidation` — the `Tool`'s native error channel, not
+exceptions across the boundary).
 
-## Файлы
+## Files
 
 - `src/main/scala/scopedsearch/ScopedSearchPlugin.scala` —
   `ScopedSearchPlugin` (`RaiderPlugin`) + `ScopedSearchTool` (`Tool`).
-- `manifest.json` — форма `META-INF/raider-plugin.json`.
+- `manifest.json` — shape of `META-INF/raider-plugin.json`.
 
-## Аргументы
+## Arguments
 
 ```json
-{"root": "<каталог>", "query": "<подстрока имени>"}
+{"root": "<directory>", "query": "<filename substring>"}
 ```
 
-Оба поля обязательны; отсутствующий/недиректорийный `root` и пустой `query` —
-typed отказ. Результат: `{"root":..., "query":..., "matches":[...],
-"truncated":bool}` — имена файлов, отсортированы.
+Both fields are required; missing/non-directory `root` and empty `query` are
+typed rejections. Result: `{"root":..., "query":..., "matches":[...],
+"truncated":bool}` — sorted file names.
 
-## Jar-layout / сборка / установка
+## Jar layout / build / installation
 
-Идентично [hello-tool](../hello-tool/README.md): services —
-`raider.core.plugin.RaiderPlugin` → `scopedsearch.ScopedSearchPlugin` и
-`raider.core.tool$Tool` → `scopedsearch.ScopedSearchTool`; двухпроходная
-сборка с пином `PluginLoader.payloadSha256`; после пересборки пересчитать
-`sha256`.
+Identical to [hello-tool](../hello-tool/README.md): services are
+`raider.core.plugin.RaiderPlugin` → `scopedsearch.ScopedSearchPlugin` and
+`raider.core.tool$Tool` → `scopedsearch.ScopedSearchTool`; two-pass build with
+`PluginLoader.payloadSha256` pinned; recalculate `sha256` after rebuilding.
 
-## Исполняемый контракт
+## Executable contract
 
-`contracts/plugins/FixturePluginsSpec.scala`: загрузка, поиск по fixture-дереву
-(`alpha.txt`, `beta.md`, `sub/gamma.txt`), typed отказ на отсутствующем
-каталоге, co-install overlay вместе с hello-tool.
+`contracts/plugins/FixturePluginsSpec.scala`: loading, search in a fixture
+tree (`alpha.txt`, `beta.md`, `sub/gamma.txt`), typed rejection for a missing
+directory, co-install overlay together with hello-tool.
 
-Ссылки: [docs/plugins.md](../../../docs/plugins.md),
+References: [docs/plugins.md](../../../docs/plugins.md),
 [ADR-025](../../../docs/adr/ADR-025-plugin-spi.md).

@@ -1,18 +1,18 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# Raider в CI: главный контракт продукта
+# Raider in CI: primary product contract
 
-Все API/команды ниже проектируются, а не реализованы. Документ уточняет [DSL](product-repl.md) и имеет приоритет для headless invocation. Все три сценария входят в scope: review PR/MR, подготовка patch с проверками, произвольные research/generation/check workflows.
+All APIs and commands below are designed, not implemented. This document clarifies the [DSL](product-repl.md) and takes precedence for headless invocation. All three scenarios are in scope: PR/MR review, preparing a patch with checks, and arbitrary research/generation/check workflows.
 
-## 1. Граница с orchestrator
+## 1. Boundary with the orchestrator
 
-Raider исполняет один агентный workflow внутри одного CI job. GitHub/GitLab/другой orchestrator управляет DAG между jobs, runner allocation, secrets, matrix, manual approvals, artifact upload и retry job. Raider управляет детьми внутри своего процесса, инструментами, deadline и локальным root budget. Не нужен второй GitLab/GitHub scheduler.
+Raider runs one agent workflow inside one CI job. GitHub/GitLab/another orchestrator manages the DAG between jobs, runner allocation, secrets, matrix, manual approvals, artifact upload, and job retries. Raider manages children within its process, tools, deadline, and local root budget. A second GitLab/GitHub scheduler is not needed.
 
-Один Program запускается из REPL и compiled bundle. `pipeline[I,O]` — фабрика Workflow с versioned input/output codecs, требуемыми checks и declared success policy, а не отдельный runtime. Она доступна в MVP вместе с `workflow`; typed agents с schema repair добавляются в beta. В M0 schema decoding входа/результата и deterministic checks уже обязательны.
+One Program runs from the REPL and from a compiled bundle. `pipeline[I,O]` is a Workflow factory with versioned input/output codecs, required checks, and a declared success policy; it is not a separate runtime. It is available in the MVP together with `workflow`; typed agents with schema repair are added in beta. In M0, schema decoding of input/output and deterministic checks are already required.
 
-## 2. Удобный DSL
+## 2. Convenient DSL
 
-В файле definitions:
+In a definitions file:
 
 ```scala
 import raider.dsl.*
@@ -29,19 +29,19 @@ val audit = pipeline[String, String]("audit"): request =>
 register(audit)
 ```
 
-`pipeline` требует implicit Codec[I]/Codec[O] и immutable DefinitionContext. `verify(name, output):Task[Unit]` вызывает trusted registered verifier с declared input codec; fail возвращает structured CheckFailed, без success-строки от модели. Runtime сохраняет check evidence вне мутируемого agent workspace. `check(name):Task[CheckResult]` запускает заранее зарегистрированную детерминированную проверку workspace; произвольная command string от модели здесь запрещена. Если check fail не преобразован в explicit advisory policy, root неуспешен. Registry фиксируется до dispatch.
+`pipeline` requires implicit `Codec[I]`/`Codec[O]` and an immutable `DefinitionContext`. `verify(name, output):Task[Unit]` calls a trusted registered verifier with its declared input codec; failure returns structured `CheckFailed`, with no success string from the model. The runtime stores check evidence outside the mutable agent workspace. `check(name):Task[CheckResult]` runs a pre-registered deterministic workspace check; an arbitrary command string from the model is forbidden here. If a check failure is not converted by an explicit advisory policy, the root fails. The registry is frozen before dispatch.
 
-Локально:
+Locally:
 
 ```scala
-audit.ask("Проверь изменение")
-val job = audit.start("Проверь изменение")
+audit.ask("Review the change")
+val job = audit.start("Review the change")
 job.await
 ```
 
-В library/CI исполняется `audit(input):Task[String]` через Runner; blocking REPL facade не импортируется. Composition, child ownership, tools, policy и output codec те же.
+In a library/CI, `audit(input):Task[String]` runs through the Runner; the blocking REPL facade is not imported. Composition, child ownership, tools, policy, and output codec are the same.
 
-Review получает ChangeSet/diff context, результат — findings с severity/path/evidence. Patch workflow получает Spec, возвращает patch artifact и фактические checks. Research получает Question, возвращает output artifact и source references. Domain codecs и examples добавляются отдельными карточками; sketch ниже предполагает созданные доменные типы:
+Review receives a ChangeSet/diff context and returns findings with severity/path/evidence. A patch workflow receives a Spec and returns a patch artifact and actual checks. Research receives a Question and returns an output artifact and source references. Domain codecs and examples are added in separate cards; the sketch below assumes the domain types have been created:
 
 ```scala
 val repair = pipeline[Spec, Patch]("repair"): spec =>
@@ -53,127 +53,127 @@ val repair = pipeline[Spec, Patch]("repair"): spec =>
   yield patch
 ```
 
-`tests` — evidence реальной проверки. В MVP user-facing string presets остаются удобными, доменный `patcher:Program[String,Patch]` создаётся с output codec; typed model repair — RAI-028. `.ask/.start`, `andThen/all/batch`, `scope/fork/join` остаются единственными execution/composition verbs. Не вводить второй язык stage/job/YAML для внутренних агентов.
+`tests` is evidence of a real check. In the MVP, user-facing string presets remain available for convenience; a domain `patcher:Program[String,Patch]` is created with an output codec; typed model repair is RAI-028. `.ask/.start`, `andThen/all/batch`, and `scope/fork/join` remain the only execution/composition verbs. Do not introduce a second stage/job/YAML language for internal agents.
 
-## 3. CLI и сборка
+## 3. CLI and packaging
 
-Для обычной задачи предусмотрен также `raider run --agent worker --input "..."` через общий Runner; mutually exclusive с bundle/workflow path. Уточнение UX и обязательной готовности: [working product](working-product.md).
+For an ordinary task, `raider run --agent worker --input "..."` is also provided through the shared Runner; it is mutually exclusive with the bundle/workflow path. For UX and required readiness details, see [working product](working-product.md).
 
 ```text
 raider compile workflows.raider.scala --output pipelines.jar
 
 raider run --bundle pipelines.jar --workflow audit \
-  --input "Проверь проект" --ci generic --context ci-context.json \
+  --input "Review the project" --ci generic --context ci-context.json \
   --profile yabanin --policy ci-readonly --out artifacts/raider
 
 raider run --bundle pipelines.jar --workflow review \
   --input-json input.json --ci auto --policy ci-readonly --out artifacts/raider
 ```
 
-`--input` только для string codec, `--input-json` читает ограниченный versioned JSON; взаимоисключение проверяется до provider call. Не читать stdin по умолчанию. `--mock` заменяет backend fixtures и явно сохраняется в artifacts. `--out` обязателен в CI, вне CI имеет documented default. Не угадывать workflow при нескольких registrations.
+`--input` is only for a string codec; `--input-json` reads bounded versioned JSON. Mutual exclusivity is checked before a provider call. Do not read stdin by default. `--mock` replaces the backend with fixtures and is explicitly recorded in artifacts. `--out` is required in CI and has a documented default outside CI. Do not guess the workflow when multiple workflows are registered.
 
-Два distribution: `raider-run` содержит core/runtime/headless CLI, `raider-dev` добавляет compiler/REPL/JLine. Production runner не подтягивает compiler и не разрешает зависимости из сети во время запуска. Source shorthand `raider run workflows.raider.scala ...` допустим только в dev distribution и явно сообщает compilation phase.
+Two distributions: `raider-run` contains core/runtime/headless CLI; `raider-dev` adds compiler/REPL/JLine. The production runner does not include the compiler and does not resolve dependencies from the network at runtime. The source shorthand `raider run workflows.raider.scala ...` is allowed only in the dev distribution and explicitly reports the compilation phase.
 
-Bundle manifest: schema, Raider API/Scala/JDK compatibility, registered names/codecs, source/dependency/toolchain fingerprint, profile/verifier declarations. JAR SHA-256 проверяется до load. Bundle — исполняемый доверенный JVM code, hash подтверждает целостность относительно trusted expected hash, а не доверие к неизвестному источнику. Pin artifact digest и provenance в pipeline config; artifact из fork не становится trusted bundle.
+Bundle manifest: schema, Raider API/Scala/JDK compatibility, registered names/codecs, source/dependency/toolchain fingerprint, and profile/verifier declarations. The JAR SHA-256 is checked before loading. A bundle is executable, trusted JVM code; the hash confirms integrity relative to a trusted expected hash, not trust in an unknown source. Pin the artifact digest and provenance in pipeline config; an artifact from a fork does not become a trusted bundle.
 
-Preflight order: arguments → bundle/context/input schema → trust/policy/capabilities → output-directory writable/space probe → provider profile/credentials → root creation/dispatch. Unsupported required capability блокирует запуск до spend. Reporter сохраняет preflight failure по возможности; отсутствие root обозначается null, не fabricated job.
+Preflight order: arguments → bundle/context/input schema → trust/policy/capabilities → output-directory writable/space probe → provider profile/credentials → root creation/dispatch. An unsupported required capability blocks the run before spend. The reporter records preflight failure where possible; absence of a root is represented as null, not as a fabricated job.
 
-Invalid output-path syntax/config — 21; filesystem permission/space/write failure обязательных artifacts — 27, включая preflight write probe. Probe не гарантирует, что диск останется доступным: final writes тоже проверяются. `--profile` выбирает named role bindings/defaults; resolver по [provider contract](provider-protocols.md). Explicit Agent provider/model pair сохраняется; роли разрешаются в выбранном profile, каждый resolved provider фиксируется до dispatch. Mixed-provider workflow не меняет endpoints после launch скрыто.
+Invalid output-path syntax/config — 21; filesystem permission/space/write failure for required artifacts — 27, including the preflight write probe. The probe does not guarantee that the disk remains available; final writes are checked too. `--profile` selects named role bindings/defaults; resolution follows the [provider contract](provider-protocols.md). An explicit Agent provider/model pair is preserved; roles are resolved in the selected profile, and each resolved provider is fixed before dispatch. A mixed-provider workflow does not silently change endpoints after launch.
 
-## 4. Нормализованный CI context
+## 4. Normalized CI context
 
-Versioned schema: `schemaVersion`, `system`, `instanceId`, `repositoryId`, `repositoryUrl`, `pipelineId`, `jobId`, `jobName`, `matrixKey`, `attempt`, `eventType`, `headSha`, `baseSha`, `ref`, `changeRequestId`, `runnerIdentity`, `declaredTrustLevel`. Required generic minimum: system/instance/repository/pipeline/job/attempt/trust; optional values nullable, не пустые вымышленные IDs. Identity fields bounded/validated, labels subset отдельно.
+Versioned schema: `schemaVersion`, `system`, `instanceId`, `repositoryId`, `repositoryUrl`, `pipelineId`, `jobId`, `jobName`, `matrixKey`, `attempt`, `eventType`, `headSha`, `baseSha`, `ref`, `changeRequestId`, `runnerIdentity`, `declaredTrustLevel`. Required generic minimum: system/instance/repository/pipeline/job/attempt/trust; optional values are nullable, not fabricated non-empty IDs. Identity fields are bounded/validated; labels are handled separately as a subset.
 
-`--ci auto` выбирает platform adapter по environment и при конфликте требует explicit выбор. Env detection не повышает trust. `declaredTrustLevel` задаётся trusted owner policy, repository input не может объявить себя protected. SHA/diff получаются из подтверждённого checkout/context и сохраняют provenance; no blind interpolation PR title/ref в shell.
+`--ci auto` selects a platform adapter from the environment and requires an explicit choice in case of conflict. Environment detection does not raise trust. `declaredTrustLevel` is set by trusted owner policy; repository input cannot declare itself protected. SHA/diff are obtained from the verified checkout/context and retain provenance; never interpolate a PR title/ref blindly into a shell.
 
-Каждая invocation получает новый RootId. Logical key `(instance, repository, pipeline, job, matrix, attempt)` связывает аналитику. `GITHUB_JOB` недостаточен для различения matrix entries; matrixKey передаётся явно. Retry создаёт новый execution и расход; logical key не является exactly-once token.
+Each invocation receives a new RootId. The logical key `(instance, repository, pipeline, job, matrix, attempt)` links analytics. `GITHUB_JOB` is insufficient to distinguish matrix entries; `matrixKey` must be passed explicitly. A retry creates a new execution and incurs new spend; the logical key is not an exactly-once token.
 
-## 5. Policy и исполнение repository code
+## 5. Policy and execution of repository code
 
-`ci-readonly` ограничивает model-directed writes/publish/network/tools. Для patch scenario owner выбирает `ci-patch` с workspace/diff bounds. Commit/push/PR-comment/deploy не часть baseline; publisher отдельно, с credentials и approved actions из CI configuration.
+`ci-readonly` restricts model-directed writes/publish/network/tools. For a patch scenario, the owner selects `ci-patch` with workspace/diff bounds. Commit/push/PR-comment/deploy are not part of the baseline; a publisher is separate, with credentials and approved actions from CI configuration.
 
-Pipeline bundle, policy и верifiers берутся из protected/pinned источника, а не переписываемого branch workspace. Agent output/diff и repository instructions — недоверенные данные. Model не может менять success policy, artifacts writer, verifier executable или ceiling budget.
+The pipeline bundle, policy, and verifiers come from a protected/pinned source, not from a branch workspace that can be rewritten. Agent output/diff and repository instructions are untrusted data. The model cannot change the success policy, artifacts writer, verifier executable, or budget ceiling.
 
-Запуск тестов repository исполняет его код. Untrusted code должен выполняться в credential-free изолированном worker/container без доступа к runner/gateway secrets, host mounts и privileged socket. Stripped env полезен, но не является host sandbox. Process tool без sandbox capability не допускается для required-untrusted-execution profile. JVM plugin/Scala bundle имеет полномочия Raider process: никакой иллюзии, что tools policy ограничивает произвольную Scala.
+Running repository tests executes its code. Untrusted code must run in a credential-free isolated worker/container without access to runner/gateway secrets, host mounts, or privileged sockets. A stripped environment helps but is not a host sandbox. The process tool without sandbox capability is not allowed for a required-untrusted-execution profile. A JVM plugin/Scala bundle has the permissions of the Raider process: do not assume that tools policy constrains arbitrary Scala code.
 
-Fork PR pipeline не получает provider/publish secrets. Для free deterministic preview доступен mock. Live review fork data допускается только через отдельный owner-controlled service/job с trusted code и isolated data path. Не исполнять fork scripts рядом с privileged `pull_request_target` credentials. Основание: [GitHub security guide](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
+Fork PR pipelines do not receive provider/publish secrets. A mock is available for a free deterministic preview. Live review of fork data is allowed only through a separate owner-controlled service/job with trusted code and an isolated data path. Do not run fork scripts beside privileged `pull_request_target` credentials. See the [GitHub security guide](https://docs.github.com/en/actions/reference/security/securely-using-pull_request_target).
 
-## 6. Без терминала, cancellation и deadline
+## 6. No terminal, cancellation, and deadlines
 
-Headless mode не спрашивает вопросы, не требует TTY и не блокируется на stdin. Policy `ask` превращается в NeedsApproval; owner может организовать manual gate снаружи и запустить новую invocation с narrowed approval capability. Результат ожидания не разрешает действие автоматически.
+Headless mode does not ask questions, require a TTY, or block on stdin. Policy `ask` becomes NeedsApproval; the owner can arrange a manual gate externally and start a new invocation with a narrowed approval capability. The result of waiting does not automatically authorize the action.
 
-SIGINT/SIGTERM прекращает admission и отменяет owned subtree, HTTP streams и process groups. Cleanup имеет bounded grace; interrupted outcome/accounting сохраняются best effort. Launcher/container forwarding проверяется на настоящем процессе. Internal deadline меньше CI timeout с запасом на cleanup/artifact upload. Параметры grace/deadline validate до dispatch.
+SIGINT/SIGTERM stops admission and cancels the owned subtree, HTTP streams, and process groups. Cleanup has a bounded grace period; interrupted outcome/accounting are saved on a best-effort basis. Launcher/container forwarding is checked with a real process. The internal deadline is shorter than the CI timeout, leaving time for cleanup/artifact upload. Grace/deadline parameters are validated before dispatch.
 
-SIGKILL, OOM и удаление runner не позволяют гарантировать финальные artifacts. Periodic journal/progress полезны, но отсутствие complete result всегда incomplete. CI повторяет только допустимую task policy: mutation/Uncertain outcome не replay автоматически. Общий cap между matrix jobs потребует shared authority; local root limit не даёт pipeline-wide hard cap.
+SIGKILL, OOM, and runner removal make final artifacts impossible to guarantee. Periodic journal/progress is useful, but absence of a complete result always means incomplete. CI retries only when permitted by task policy: a mutation/Uncertain outcome is not replayed automatically. A shared authority is required for a common cap across matrix jobs; a local root limit does not provide a pipeline-wide hard cap.
 
-## 7. Артефакты
+## 7. Artifacts
 
-| Файл | Контракт |
+| File | Contract |
 | --- | --- |
 | `run.json` | schema/RootId/context/bundle-policy hashes/execution/verdict/accounting/timestamps/errors |
-| `result.json` | validated output или structured failure; output codec/version; model output ≠ verifier verdict |
+| `result.json` | Validated output or structured failure; output codec/version; model output ≠ verifier verdict |
 | `events.jsonl` | sanitized bounded versioned lifecycle/tool/check events; stream writer |
-| `checks.junit.xml` | реальные executed checks: pass/fail/error/skipped, stable IDs и escaping |
-| `summary.md` | компактный human report: outcome/findings/patch/checks/usage uncertainty |
-| `artifacts.json` | manifest output files: sha256/mediaType/size/provenance; own file исключён из self-hash |
+| `checks.junit.xml` | Actual executed checks: pass/fail/error/skipped, stable IDs, and escaping |
+| `summary.md` | Compact human report: outcome/findings/patch/checks/usage uncertainty |
+| `artifacts.json` | Output files manifest: sha256/mediaType/size/provenance; the manifest file itself is excluded from its self-hash |
 
-Optional: `patch.diff`, SARIF schema-validated findings, `usage.json`, agent-eval directory. JUnit пустой suite не изображает проверку task correctness; minimal schema check отражён как настоящий check, skipped явно отмечен. Patch применяется только explicit downstream step после проверки hash/baseSha.
+Optional: `patch.diff`, SARIF schema-validated findings, `usage.json`, and an agent-eval directory. An empty JUnit suite does not pretend to verify task correctness; a minimal schema check is represented as a real check, and skipped checks are explicitly marked. A patch is applied only in an explicit downstream step after checking hash/baseSha.
 
-Atomic temp+rename для complete JSON; interrupted JSONL tail recovery documented. Reporter имеет size/path bounds, XML/Markdown sanitization, secret redaction и не выполняет строки output. Не включать raw env, токены, full prompts/tool args по умолчанию. Event truncation/overflow отражается в evidence; обязательные checks нельзя потерять тихо. Disk failure → nonzero, не green без artifacts.
+Use atomic temp+rename for complete JSON; document recovery of an interrupted JSONL tail. The reporter has size/path bounds, XML/Markdown sanitization, secret redaction, and does not execute output strings. Do not include raw env, tokens, full prompts, or tool args by default. Event truncation/overflow is reflected in evidence; required checks must not be silently lost. Disk failure → nonzero, never green without artifacts.
 
-`executionStatus`, `taskVerdict`, `safetyVerdict`, `protocolVerdict`, `accountingStatus` — отдельные поля. Exit определяется declared pipeline policy: advisory review может успешно создать отчёт с findings, blocking review завершится task-failed при превышении threshold. Policy и threshold frozen/provenance записаны. Никаких «agent сказал готово → exit 0».
+`executionStatus`, `taskVerdict`, `safetyVerdict`, `protocolVerdict`, and `accountingStatus` are separate fields. Exit is determined by the declared pipeline policy: an advisory review may successfully produce a report with findings, while a blocking review ends as task-failed if a threshold is exceeded. The policy and threshold are frozen and their provenance is recorded. Never use “the agent said done → exit 0.”
 
-## 8. Стабильные exit codes
+## 8. Stable exit codes
 
-| Code | Причина |
+| Code | Reason |
 | --- | --- |
-| 0 | Declared success policy выполнена, cleanup и обязательные artifacts завершены |
+| 0 | Declared success policy satisfied, cleanup and required artifacts complete |
 | 10 | Task/verifier/check rejection |
 | 20 | Runtime/provider/protocol failure |
 | 21 | Config/input/bundle/compilation/preflight-invalid |
 | 22 | Policy/capability denial |
 | 23 | Budget exhausted/required hard cap unavailable |
 | 24 | Internal deadline exceeded |
-| 25 | NeedsApproval в noninteractive mode |
+| 25 | NeedsApproval in noninteractive mode |
 | 26 | Side effect/cancellation outcome uncertain |
 | 27 | Artifact/evidence write failure |
 | 130 / 143 | SIGINT / SIGTERM handling |
 
-При нескольких причинах записать primary и secondary errors. Signal code сохраняется при signal shutdown; иначе artifact failure 27 имеет приоритет, затем uncertainty 26, затем причина root stop. Wrapper обязан сохранить дочерний code, если не документирована отдельная accounting policy. No catch-all exit 0.
+When there are multiple causes, record primary and secondary errors. Preserve the signal code on signal shutdown; otherwise, artifact failure 27 takes precedence, followed by uncertainty 26, then the reason the root stopped. The wrapper must preserve the child code unless a separate accounting policy is documented. No catch-all exit 0.
 
-## 9. Тонкие адаптеры платформ
+## 9. Thin platform adapters
 
-GitHub: normalize context; safe summary в `GITHUB_STEP_SUMMARY`; только allowlisted scalar outputs через `GITHUB_OUTPUT` с корректным framing. Raw model text не превращать в workflow commands `::...`. Default permissions read-only; SARIF upload/PR publisher отдельные optional credentials/capabilities. Reusable workflow/action — wrapper вокруг CLI, pin dependencies/actions SHA. Механизм summary/output описан в [официальной документации](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands).
+GitHub: normalize context; write a safe summary to `GITHUB_STEP_SUMMARY`; write only allowlisted scalar outputs through `GITHUB_OUTPUT` with correct framing. Do not turn raw model text into workflow commands `::...`. Default permissions are read-only; SARIF upload/PR publishing use separate optional credentials/capabilities. A reusable workflow/action is a wrapper around the CLI; pin dependencies/actions by SHA. The summary/output mechanism is described in the [official documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands).
 
-GitLab: normalize `CI_*`; template с `artifacts:when:always`, paths и `reports:junit`. Protected/masked variables — credentials channel; никогда secrets в dotenv artifacts. `retry`, `interruptible`, `resource_group` — параметры orchestrator, а не Raider API. Tier-specific MR widgets optional; generic files/JUnit остаются core. Поддерживаемые report types: [GitLab docs](https://docs.gitlab.com/ci/yaml/artifacts_reports/).
+GitLab: normalize `CI_*`; provide a template with `artifacts:when:always`, paths, and `reports:junit`. Protected/masked variables are the credentials channel; never put secrets in dotenv artifacts. `retry`, `interruptible`, and `resource_group` are orchestrator parameters, not Raider APIs. Tier-specific MR widgets are optional; generic files/JUnit remain core. Supported report types are documented in [GitLab docs](https://docs.gitlab.com/ci/yaml/artifacts_reports/).
 
-Другие pipelines: explicit generic context JSON/CLI, output directory и exit code. No hardcoded runner paths, dependency on Docker-in-Docker, GitHub API или GitLab paid tier. MVP portability Linux runner; macOS REPL/package contract; Windows supported только после suite.
+Other pipelines: explicit generic context JSON/CLI, output directory, and exit code. No hardcoded runner paths or dependency on Docker-in-Docker, GitHub API, or a paid GitLab tier. MVP portability targets Linux runners; macOS has the REPL/package contract; Windows is supported only after the suite passes.
 
-## 10. Optional Yabanin wrapper-first
+## 10. Optional Yabanin wrapper-first integration
 
 ```text
 yb ci exec --session=on -- raider run --bundle pipelines.jar \
   --workflow audit --ci auto --profile yabanin --policy ci-readonly \
-  --input "Проверь проект" --out artifacts/raider
+  --input "Review the project" --out artifacts/raider
 ```
 
-Raider напрямую работает с OpenAI/Anthropic-compatible API без wrapper/gateway: [provider contract](provider-protocols.md). Если выбран Yabanin, использовать child-only `YABANIN_GATEWAY_URL`, `YABANIN_API_KEY`, `YABANIN_LABELS`, подтверждённые локальным Yabanin CI contract. При inherited session key Raider не mint второй root key; wrapper owns finish/accounting, Raider сохраняет local attempts/root labels. Самостоятельный mode Raider может own session mint/finish. Один session lifecycle owner на root, explicit в run.json.
+Raider works directly with OpenAI/Anthropic-compatible APIs without a wrapper/gateway: [provider contract](provider-protocols.md). If Yabanin is selected, use child-only `YABANIN_GATEWAY_URL`, `YABANIN_API_KEY`, and `YABANIN_LABELS`, as confirmed by the local Yabanin CI contract. With an inherited session key, Raider does not mint a second root key; the wrapper owns finish/accounting, and Raider retains local attempts/root labels. In standalone mode, Raider can own session mint/finish. There is one session lifecycle owner per root, stated explicitly in `run.json`.
 
-Yabanin accounting report не заменяет Raider task verdict. `yb ci report --fail-over-cost` — post-hoc check, не hard admission. Подробнее и реальные gaps: [integration contract](yabanin-integration.md).
+The Yabanin accounting report does not replace the Raider task verdict. `yb ci report --fail-over-cost` is a post-hoc check, not hard admission. See the [integration contract](yabanin-integration.md) for details and actual gaps.
 
-## 11. Обязательная CI-приёмка
+## 11. Required CI acceptance
 
-1. Одинаковый bundle/input/backend fixture → одинаковый semantic result в generic/GitHub/GitLab contexts.
-2. Closed stdin/noTTY/noANSI; никаких prompts или auto-allow.
-3. Malformed context/bundle/input и policy deny не делают model call.
-4. Matrix/retry attribution различима, secrets env не экспортируются.
-5. SIGTERM parent cancels subtree/process groups; partial artifacts/code честны.
-6. Disk-full/permission reporter failure никогда exit 0.
-7. Fork fixtures не читают provider credentials, protected verifiers вне workspace.
-8. XML/Markdown/output command/path injection fixtures безопасно сериализуются.
-9. Все exits и precedence проходят table-driven tests.
-10. Uncertain mutation не replay при restart/retry.
-11. Headless packaged classpath/launch не содержит compiler/REPL/JLine и network dependency resolution.
-12. Реальные template jobs проверены на чистом runner; YAML presence не считается acceptance.
+1. The same bundle/input/backend fixture produces the same semantic result in generic/GitHub/GitLab contexts.
+2. Closed stdin/noTTY/noANSI; no prompts or auto-allow.
+3. Malformed context/bundle/input and policy denial do not make a model call.
+4. Matrix/retry attribution is distinguishable; secrets are not exported in the environment.
+5. SIGTERM from the parent cancels the subtree/process groups; partial artifacts/code are truthful.
+6. Disk-full/permission failures in the reporter never return exit 0.
+7. Fork fixtures cannot read provider credentials; protected verifiers are outside the workspace.
+8. XML/Markdown/output command/path injection fixtures are serialized safely.
+9. All exits and precedence pass table-driven tests.
+10. An uncertain mutation is not replayed on restart/retry.
+11. Headless packaged classpath/launch does not contain compiler/REPL/JLine and does not resolve dependencies from the network.
+12. Real template jobs are checked on a clean runner; the presence of YAML alone does not count as acceptance.
 
-M0 доказывает все контракты local/mock suite; actual hosted template readiness требует отдельного запуска владельцем/стенда и evidence. Обычные development gates не требуют paid provider.
+M0 proves all contracts with the local/mock suite; actual hosted template readiness requires a separate run by the owner/on a stand and evidence. Ordinary development gates do not require a paid provider.

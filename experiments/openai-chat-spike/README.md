@@ -1,37 +1,38 @@
 # SPIKE-OAI-01: OpenAI-compatible Chat wire spike (owner-directed)
 
-Feasibility-прототип будущего RAI-011/012: настоящий Scala-клиент
-(JDK HttpClient + ZIO-адаптер + zio-json codecs) против локального mock-гейтвея,
-реализующего `POST /v1/chat/completions`. Не продуктовый модуль.
+Feasibility prototype for future RAI-011/012: a real Scala client
+(JDK HttpClient + ZIO adapter + zio-json codecs) against a local mock gateway
+implementing `POST /v1/chat/completions`. Not a product module.
 
-## Запуск
+## Run
 
 ```sh
-sh experiments/repl-spike/run_spike.sh        # один раз: toolchain + classpath'ы
+sh experiments/repl-spike/run_spike.sh        # once: toolchain + classpaths
 sh experiments/openai-chat-spike/run_spike.sh
 ```
 
-Выход 0 ⟺ 9/9 проверок (F0-remediation добавила malformed-SSE, premature-EOF,
-cancel-before-headers). Evidence: `artifacts/oai-spike/` (override через
-`RAIDER_OAI_EVIDENCE`; summary.json, логи сценариев, source manifest,
-REPL-транскрипт). Fault-injection: `run_spike.sh --self-test-fault-injection`.
+Exit 0 ⟺ 9/9 checks (F0 remediation added malformed-SSE, premature-EOF,
+cancel-before-headers). Evidence: `artifacts/oai-spike/` (override via
+`RAIDER_OAI_EVIDENCE`; summary.json, scenario logs, source manifest,
+REPL transcript). Fault injection: `run_spike.sh --self-test-fault-injection`.
 
-## Что доказано
+## What was demonstrated
 
-| ID | Сценарий |
+| ID | Scenario |
 | --- | --- |
 | OAI-01 | non-streaming: JSON roundtrip, usage |
-| OAI-02 | SSE streaming == non-streaming (каждый SSE-кадр фрагментирован на два HTTP-chunk) |
-| OAI-03 | tool-calls: id/name/args собираются по index из дельт, partial args не исполняются |
+| OAI-02 | SSE streaming == non-streaming (each SSE frame is fragmented across two HTTP chunks) |
+| OAI-03 | tool calls: id/name/args are assembled by index from deltas; partial args are not executed |
 | OAI-04 | 401 → `[classified] ProviderAuth`, exit 10 |
-| OAI-05 | fiber-interrupt посреди стрима закрывает body, гейтвей видит disconnect |
-| OAI-06 | тот же клиент стримит из настоящего REPL (`replAsk`) |
+| OAI-05 | fiber interrupt during a stream closes the body; the gateway sees the disconnect |
+| OAI-06 | the same client streams from the real REPL (`replAsk`) |
 | OAI-07 | malformed SSE payload → `[classified] StreamProtocol`, exit 21 |
-| OAI-08 | premature EOF/truncated body без terminal event → exit 21 |
-| OAI-09 | cancel до headers отзывает request (`cf.cancel`), body не открывается |
+| OAI-08 | premature EOF/truncated body without a terminal event → exit 21 |
+| OAI-09 | cancel before headers cancels the request (`cf.cancel`); the body is not opened |
 
-## Границы
+## Boundaries
 
-Mock-гейтвей на python stdlib; нет TLS/redirect/429/5xx-сценариев, нет настоящих
-эндпоинтов. Продуктовая реализация — RAI-011 (HTTP Chat) и RAI-012 (SSE state
-machine) со своими transport/security профилями. Record: `docs/work/records/SPIKE-OAI-01.md`.
+The mock gateway uses Python stdlib; there are no TLS/redirect/429/5xx scenarios
+and no real endpoints. Product implementation is RAI-011 (HTTP Chat) and RAI-012
+(SSE state machine), with their own transport/security profiles. Record:
+`docs/work/records/SPIKE-OAI-01.md`.

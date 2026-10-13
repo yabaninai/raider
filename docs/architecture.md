@@ -17,7 +17,8 @@ raider (root)
 ├── raiderUi              tab/session UI state over the event seam
 │                         (SessionRegistry, TabShell)
 ├── raiderDsl             composition interpreter (all / batch, fail-fast)
-├── raiderTestkit         scripted backends (test scope only — never shipped)
+├── raiderTestkit         scripted backends and fixtures (used by REPL mock
+│                         wiring; excluded from the headless CLI dependency graph)
 ├── raiderTools           CodingToolset: fs_read/fs_search/fs_edit/fs_patch/
 │                         fs_tree/proc_run over a Workspace
 ├── raiderProviderChat    OpenAI-compatible transport (+ SSE streaming)
@@ -156,12 +157,14 @@ come only from the environment — `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`;
 ### REPL
 
 The REPL embeds the pinned scala3-repl in-process. The classloader split is
-real: interpreter-world classes load SELF-FIRST, so live backend/tools/model
-cross via `MainBridge` ThreadLocals (JVM-wide, same thread). The facade
-(`AgentRef.ask`, `all`, `batch`, `openSession`) blocks the REPL thread over the
-same async runtime — one semantics, two spellings. With
-`RAIDER_PROVIDER=openai` the prelude wires the SSE streaming backend, coding
-tools, `RAIDER_MODEL` and live echo into the session.
+real: interpreter-world classes load SELF-FIRST, so the prelude constructs the
+backend, tools, and session inside that interpreter world instead of passing
+console-world statics across the boundary. The facade (`AgentRef.ask`, `all`,
+`batch`, `openSession`) blocks the REPL thread over the same async runtime —
+one semantics, two spellings. With a resolvable key, the OpenAI branch wires
+the SSE streaming backend and coding tools; the Anthropic branch wires the
+Anthropic Messages streaming backend. The Anthropic request currently omits
+tool definitions (RAI-127 remains open), so do not infer tool-call parity.
 
 ## 5. Provider transport
 

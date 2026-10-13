@@ -1,73 +1,73 @@
-# LIN-13: work record — docs/lineage.md §9.2 sync (честность статусов реализации)
+# LIN-13: work record — docs/lineage.md §9.2 sync (truthful implementation statuses)
 
-Status: done. Date: 2026-10-12. Baseline commit: `4b46dc7` (ветка `lane/lin-13`,
-чистый worktree на старте; lane-коммит `ebc9e99`).
+Status: done. Date: 2026-10-12. Baseline commit: `4b46dc7` (branch `lane/lin-13`,
+clean worktree at start; lane commit `ebc9e99`).
 
 ## Resulting behavior
 
-§9.2 «Чего ещё нет» в `docs/lineage.md` приведён в соответствие
-интегрированному состоянию на baseline `4b46dc7`; каждая строка таблицы несёт
-evidence-ссылку (record path или file:line), верифицированную скриптом на
+§9.2 “What is still missing” in `docs/lineage.md` was aligned with
+the integrated state at baseline `4b46dc7`; each table row carries
+an evidence link (record path or file:line), verified by a script against
 baseline (17/17 OK):
 
-- **TabShell-wiring в product REPL — ЗАКРЫТО (RAI-108).** Продуктовый вход
-  `--tabs` поднимает TabShell: флаг и диспетчер `runTabs` в `main`
+- **TabShell wiring in the product REPL — CLOSED (RAI-108).** Product entry
+  `--tabs` starts TabShell: the flag and dispatcher `runTabs` in `main`
   (`modules/repl/src/main/scala/raider/repl/Main.scala:230-242,280-288`),
   `TabShellHost.wiring`/`TabShellHost.run`
-  (`modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); legacy-цикл
-  без флага не изменён; PTY-acceptance P2E-01..03 —
-  `docs/work/records/RAI-108.md`. Устаревшее упоминание
-  `modules/cli/chat` убрано.
-- **Запись артефактов в каталог рана — ЗАКРЫТО (LIN-09).** Settled-ран пишет
-  `lineage.scala` + `lineage-data.json` в свой каталог рана рядом с
+  (`modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); legacy loop
+  without the flag is unchanged; PTY acceptance P2E-01..03 —
+  `docs/work/records/RAI-108.md`. The outdated reference
+  `modules/cli/chat` was removed.
+- **Writing artifacts to the run directory — CLOSED (LIN-09).** A settled run writes
+  `lineage.scala` + `lineage-data.json` to its run directory beside
   `events.jsonl`/`summary.md`
   (`modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala:665-677`;
-  писатель `RunLineageArtifacts` —
+  writer `RunLineageArtifacts` —
   `modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala:52-55`);
-  сбой — typed `unavailable`-строка, exit-код не меняется —
+  on failure, a typed `unavailable` line is written and the exit code stays unchanged —
   `docs/work/records/LIN-09.md`.
-- **`raider replay` (RAI-109) — сверено, закрыто.** Факт уже был в тексте;
-  добавлены evidence: `ReplayCommand.scala:37` (делегирование `ReplayCli.exec`),
+- **`raider replay` (RAI-109) — verified, closed.** The fact was already in the text;
+  evidence was added: `ReplayCommand.scala:37` (delegation `ReplayCli.exec`),
   `docs/work/records/RAI-109.md`.
-- **Открытые пункты остались честно открытыми** (DOC-13-02):
-  LIN-06 live re-run (карточка LIN-06 в `docs/tasks/lineage.md`, status: todo;
-  механика — `WorkspaceIsolation`, `Admission.make` —
-  `ReplayHarness.scala:298`; live-провайдера нет —
-  `ReplayModelBackend.scala:75`); live-wire verification (owner, не
-  проводилась; проверяемый факт отсутствия live-провайдера — та же строка
-  кода); multi-job export (owner `cli/run/**`, ADR-027 §6.4;
+- **Open items remain truthfully open** (DOC-13-02):
+  LIN-06 live re-run (LIN-06 card in `docs/tasks/lineage.md`, status: todo;
+  mechanism — `WorkspaceIsolation`, `Admission.make` —
+  `ReplayHarness.scala:298`; there is no live provider —
+  `ReplayModelBackend.scala:75`); live-wire verification (owner, not
+  performed; the verifiable fact that no live provider exists is in the same line
+  code); multi-job export (owner `cli/run/**`, ADR-027 §6.4;
   per-job evidence — `EventExport.scala:21`); phase/recovery schema-card
   (wire frozen 13 cases —
   `modules/runtime/src/main/scala/raider/runtime/events/events.scala:26`);
-  LIN2-03 частично — **in-flight (карточка LIN-14)**; `LineageCatalog` без
-  persistence (`LineageCatalog.scala:87`) — **in-flight (карточка LIN-12)**.
-  Ничего не заявлено закрытым сверх интегрированного состояния.
-- **Заключительный абзац §9.2:** из перечня открытых milestone-обязательств
-  убран «product wiring» (закрыт RAI-108), зафиксированы закрытия RAI-108/LIN-09.
-- **§10 (сопутствующая согласованность того же файла):** строка
-  `artifacts/<run>/lineage.*` («обязательство LIN-03/08») переписана на
-  фактическую запись LIN-09 в `<out>/work-<uuid>/`; комментарий примера
-  «(после P-LIN)» заменён на фактическое поведение. Основание — те же факты
-  LIN-09 (`HeadlessRunner.scala:665-677`, record LIN-09.md); без этой правки
-  §10 прямо противоречил бы обновлённому §9.2 внутри одного файла. Выходит за
-  букву «§9.2», в пределах allowed path `docs/lineage.md` и цели карточки
-  (честность статусов); помечено здесь для review.
+  LIN2-03 partially — **in flight (card LIN-14)**; `LineageCatalog` without
+  persistence (`LineageCatalog.scala:87`) — **in-flight (card LIN-12)**.
+  Nothing is claimed closed beyond the integrated state.
+- **Closing paragraph §9.2:** from the list of open milestone obligations
+  “product wiring” was removed (closed by RAI-108), closures were recorded for RAI-108/LIN-09.
+- **§10 (consistency adjustment in the same file):** the line
+  `artifacts/<run>/lineage.*` (“LIN-03/08 obligation”) was changed to reflect
+  the actual LIN-09 write LIN-09 write in `<out>/work-<uuid>/`; example comment
+  “(after P-LIN)” was changed to reflect actual behavior. Basis: the same facts
+  LIN-09 (`HeadlessRunner.scala:665-677`, record LIN-09.md); without this edit
+  §10 would directly contradict the updated §9.2 within the same file. This goes beyond
+  the literal scope of “§9.2”, within the allowed path `docs/lineage.md` and the card’s goal
+  (truthful statuses); noted here for review.
 
 ## Changed paths
 
-- `docs/lineage.md` (+14/−12): §9.2 таблица (7 строк), заключительный абзац
-  §9.2, §10 строка lineage-артефактов, комментарий примера §10.
-- `docs/work/records/LIN-13.md` — этот record (draft в worktree; operational
-  файл вне allowed paths карточки, создаётся по обязательному требованию
-  work record и доставляется coordinator'ом).
+- `docs/lineage.md` (+14/−12): §9.2 table (7 rows), closing paragraph
+  §9.2, §10 lineage artifact line, example comment §10.
+- `docs/work/records/LIN-13.md` — this record (draft in the worktree; operational
+  file outside the card’s allowed paths, created as required by the
+  work record requirement and delivered by the coordinator).
 
 ## Acceptance evidence
 
 | Criterion | Actual result | Evidence |
 | --- | --- | --- |
-| DOC-13-01: каждая строка §9.2 несёт evidence-ссылку, проверяемую на baseline | 17/17 ссылок OK (file:line grep-проверка на `4b46dc7`) | вывод проверки в lane-отчёте; ссылки в самом diff |
-| DOC-13-02: ни один in-flight/owner-gated пункт не помечен закрытым | LIN-06/live-wire/multi-job/schema-card — открыты; LIN2-03 и catalog persistence — помечены in-flight с карточками LIN-14/LIN-12 | diff §9.2 (`git show ebc9e99`) |
-| DOC-13-03: docs-профиль зелёный, якоря/ссылки валидны, diff только в docs/lineage.md | quality passed, profiles=['docs'], mode=git-status (изменён только `docs/lineage.md`) | manifests ниже |
+| DOC-13-01: each §9.2 row contains an evidence link verifiable against the baseline | 17/17 links OK (file:line grep check against `4b46dc7`) | check output in lane report; links in the diff |
+| DOC-13-02: no in-flight/owner-gated item is marked closed | LIN-06/live-wire/multi-job/schema-card — remain open; LIN2-03 and catalog persistence are marked in flight with cards LIN-14/LIN-12 | diff §9.2 (`git show ebc9e99`) |
+| DOC-13-03: docs profile green, anchors/links valid, diff only in docs/lineage.md | quality passed, profiles=['docs'], mode=git-status (only `docs/lineage.md` changed) | manifests below |
 
 ## Commands
 
@@ -79,17 +79,17 @@ baseline (17/17 OK):
 
 ## Limitations / blockers
 
-- Правки §10 (2 места) — сопутствующая согласованность сверх буквального
-  «§9.2»; reviewer может откатить только их, §9.2 самодостаточен.
-- file:line-ссылки на код валидны на baseline `4b46dc7`; сдвиг строк возможен
-  после merge параллельных lane — при интеграции сверить ссылки (не блокер:
-  record-ссылки стабильны).
-- Номера строк `docs/tasks/lineage.md` не использовались как evidence (только
-  заголовки карточек) — устойчиво к сдвигам.
+- Edits to §10 (two locations) are a consistency adjustment beyond the literal
+  “§9.2”; reviewer may revert only those; §9.2 is self-contained.
+- file:line code links are valid at baseline `4b46dc7`; line shifts are possible
+  after parallel lane merges — verify the links during integration (not a blocker:
+  record links are stable).
+- Line numbers `docs/tasks/lineage.md` were not used as evidence (only
+  card headings were used), so shifts do not affect them.
 
 ## Review and next task
 
-Review не проводился (lane-воркер; независимый review — на coordinator).
-Следующие ready-карточки lineage-трека: LIN-14 (LIN2-03 coverage), LIN-12
+Review was not performed (lane worker; independent review is for the coordinator).
+Next ready cards in the lineage track: LIN-14 (LIN2-03 coverage), LIN-12
 (catalog persistence), LIN-06 (live re-run scripted acceptance — RAI-113/114
-по board волны 4).
+per wave 4 of the board).

@@ -21,7 +21,7 @@ No public API/schema changes. No changes outside `modules/repl/**`.
 | Criterion / test ID | Actual result | Evidence |
 | --- | --- | --- |
 | Bridge differential probe (fix baseline) | interpreter world: `liveModel = "scripted"`, `backend = null`, `MainBridge.getClass.getClassLoader = dotty.tools.repl.AbstractFileClassLoader`, thread `main` (split confirmed, not a ZIO thread hop) | session transcript 2026-10-08 |
-| Live round trip | `scout.ask("Ответь ровно одним словом: живой?")` → streamed `Да`, `res0: String = "Да"` via local llama.cpp (127.0.0.1:8081, Qwen3.8-27B BF16) | session transcript 2026-10-08 |
+| Live round trip | `scout.ask("Answer in exactly one word: are you alive?")` → streamed `Yes`, `res0: String = "Yes"` via local llama.cpp (127.0.0.1:8081, Qwen3.8-27B BF16) | session transcript 2026-10-08 |
 | raiderRepl unit tests | 21 passed / 0 failed (incl. `configured live model name replaces the scripted label`) | sbt raiderRepl/test |
 | Non-TTY smoke | PASS (exit 0, all assertions) | scripts/quality/repl_smoke.sh output |
 | PTY smoke | 13/13 PASS (compile-error-keeps-state, ask, start-nonblocking, await, jobs, reset-prelude, idle-ctrlc, clean-exit …) | scripts/quality/repl_pty_smoke.py output |

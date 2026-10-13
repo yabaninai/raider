@@ -1,91 +1,134 @@
 <!-- Translated from Russian original. Key terms preserved as-is. -->
 
-# Параллельная разработка Raider
+# Raider parallel development
 
-Владелец явно разрешил параллельную разработку 2026-10-03. Этот runbook применяется к агентам, разрабатывающим Raider. Product subagents Raider проверяются отдельно по runtime scopes/workspaces. Goal: [working product](working-product.md).
+The owner explicitly authorized parallel development on 2026-10-03. This
+runbook applies to agents developing Raider. Raider product subagents are
+checked separately against runtime scopes/workspaces. Goal: [working product](working-product.md).
 
-## 1. Роли и ограничение concurrency
+## 1. Roles and concurrency limit
 
-По умолчанию один coordinator/integrator и до трёх активных исполнителей суммарно. Reviewer занимает свободный слот; не добавлять четвёртого writer поверх лимита. Число workers уменьшается при недостатке RAM/CPU, свободных задач или действительно изолированных каталогов. Большая карточка делится до coding.
+By default, one coordinator/integrator and up to three active implementers in
+total. A reviewer occupies a free slot; do not add a fourth writer beyond the
+limit. Reduce the number of workers when RAM/CPU, available tasks, or truly
+isolated directories are insufficient. Split a large card before coding.
 
-Coordinator единолично владеет интеграционным checkout, shared `build.sbt`/`project/**`, public core/DSL signatures, gate registry/thresholds, dependency graph, board и финальной acceptance. Изменять эти файлы может назначенный отдельный owner, пока coordinator удерживает запрет на competing edits. Worker получает feature module/конкретные файлы и tests. Reviewer проверяет другой diff в свежем контексте; не принимает свой implementation.
+The coordinator solely owns the integration checkout, shared `build.sbt`/`project/**`,
+public core/DSL signatures, gate registry/thresholds, dependency graph, board,
+and final acceptance. A separately assigned owner may change these files while
+the coordinator prevents competing edits. A worker gets a feature module/specific
+files and tests. A reviewer checks a different diff in a fresh context; authors
+do not review their own implementation.
 
-## 1a. Worktree-режим (решение владельца 2026-10-12: агрессивный параллелизм, минимум 8 потоков)
+## 1a. Worktree mode (owner decision 2026-10-12: aggressive parallelism, at least 8 lanes)
 
-Владелец явно авторизовал 8+ параллельных lanes через **git worktrees**
-(вместо snapshot-копий). Worktree-режим — primary; snapshot-режим из §2 —
-fallback, когда Git недоступен.
+The owner explicitly authorized 8+ parallel lanes through **git worktrees**
+(instead of snapshot copies). Worktree mode is primary; snapshot mode in §2 is
+the fallback when Git is unavailable.
 
-- Подготовка: coordinator коммитит чистое дерево в `main`; на каждый поток:
-  `git worktree add <WT-ROOT>/raider-wt-<N> -b lane/wXX-r<N> main`. Worktree
-  имеет собственный `.git` (файл-ссылку), собственный `target/`, отдельную
-  ветку. `artifacts/tools/m2` копируется в worktree (untracked;
-  bootstrap-SSL окружения — pre-existing).
-- Worker работает ТОЛЬКО в своём worktree/ветке. Коммит в СВОЮ ветку разрешён
-  и обязателен (деливерабл = ветка + RECORD.md); push запрещён; `main` и
-  shared-файлы (build.sbt/project/**, board, docs/tasks/**, docs/adr/**,
-  scripts/**, .gitignore) — только coordinator.
-- Гейты в worktree идут в git-mode (`make quality-changed` без
-  QUALITY_BASE_MANIFEST — классификация vs HEAD ветки). sbtlock не нужен
-  (изолированные target/); shared coursier-cache конкурентно-безопасен.
-- Интеграция: coordinator мержит lane-ветки в `main` последовательно
-  (`git merge --no-ff`), конфликты решает сам, после каждого батча мержей —
-  полные гейты на main. Lane-зелёное ≠ финальное: main-гейты обязательны.
-- REVIEW-поток занимает один из worktree-слотов (read-only, вердикт-файл).
-- Лимит: минимум 8, вверх ограничен только RAM/CPU (18 ядер / 128 GB —
-  эмпирически 8-10 sbt-JVM устойчиво) и числом независимых ready-карточек.
+- Preparation: coordinator commits a clean tree to `main`; for each lane:
+  `git worktree add <WT-ROOT>/raider-wt-<N> -b lane/wXX-r<N> main`. Each
+  worktree has its own `.git` (a pointer file), its own `target/`, and a
+  separate branch. Copy `artifacts/tools/m2` into the worktree (untracked;
+  the bootstrap-SSL environment is pre-existing).
+- Worker works ONLY in its own worktree/branch. Committing to its OWN branch is
+  allowed and required (deliverable = branch + RECORD.md); pushing is
+  prohibited; `main` and shared files (`build.sbt`/`project/**`, board,
+  `docs/tasks/**`, `docs/adr/**`, `scripts/**`, `.gitignore`) belong to the
+  coordinator only.
+- In worktrees, gates use git mode (`make quality-changed` without
+  QUALITY_BASE_MANIFEST classifies changes vs branch HEAD). No sbtlock is
+  needed (isolated `target/`); the shared coursier cache is concurrency-safe.
+- Integration: coordinator merges lane branches into `main` sequentially
+  (`git merge --no-ff`), resolves conflicts, and runs full gates on main after
+  each merge batch. Green lane ≠ final acceptance: main gates are required.
+- REVIEW lane occupies one worktree slot (read-only, verdict file).
+- Limit: at least 8, bounded upward only by RAM/CPU (empirically 8–10 sbt JVMs
+  are stable on 18 cores / 128 GB) and the number of independent ready cards.
 
-## 1b. Видимые spawn-агенты (решение владельца 2026-10-12 — основной режим исполнения)
+## 1b. Visible spawn agents (owner decision 2026-10-12 — primary execution mode)
 
-Доработки запускаются как **видимые spawn-субагенты в интерактивной сессии
-владельца**, а не фоновыми процессами. Владелец открывает opencode, говорит
-`/raider-wave` (или `/raider-wave <IDs>`) и наблюдает каждую lane как агента
-в TUI в реальном времени.
+Work runs as **visible spawned subagents in the owner's interactive session**,
+not as background processes. The owner opens OpenCode, enters `/raider-wave`
+(or `/raider-wave <IDs>`), and sees each lane as an agent in the TUI in real time.
 
-- Coordinator — primary-сессия с владельцем. Workers — субагенты
-  `raider-worker`, reviewer — `raider-reviewer` (`.opencode/agents/*.md`);
-  диспатч — команда `.opencode/command/raider-wave.md`. Spawn через task tool.
-- Изоляция §1a не ослабляется: worker получает в assignment packet ABSOLUTE
-  worktree path + ветку и адресует все tool calls этим путём. Worktree по
-  умолчанию — `wt/<card-id>` внутри репозитория (gitignored), чтобы spawn-агент
-  оставался в пределах project dir и его permissions; внешний `<WT-ROOT>` —
-  только если владелец явно настроил external_directory allow.
-- Child session сама по себе не worktree — isolation даёт worktree + ветка +
-  absolute paths, а не факт спавна. Все правила §1a (branch-per-lane, запрет
-  push/merge воркером, sequential merge coordinator'ом, main-гейты после
-  батча) действуют без изменений.
-- Запрещено по умолчанию: исполнение карточек фоновыми bash-циклами `opencode
-  run`/`nohup` (night-loop из docs/prompts/opencode-1k-continuation.txt).
-  Ночной headless-режим — только отдельным явным решением владельца,
-  фиксируемым в board с причиной; по умолчанию он не используется.
-- Отчёт lane = финальное сообщение субагента (changed paths, команды/exits,
-  evidence, риски) по формату deliverable агента; coordinator интегрирует и
-  пишет records/board. Не требовать от владельца чтения логов, чтобы узнать
-  статус lane: статус виден в TUI и в отчёте coordinator'а.
-- Fallback (в порядке деградации): (1) task tool недоступен в установленной
-  версии → worker'ы исполняются последовательно в primary-сессии, review
-  параллельно; (2) явное отдельное решение владельца про night-loop. Причина
-  fallback фиксируется в board. Не выдумывать API fields (`cwd` у task и т.п.).
+- Coordinator is the primary session with the owner. Workers are `raider-worker`
+  subagents and the reviewer is `raider-reviewer` (`.opencode/agents/*.md`);
+  dispatch is `.opencode/command/raider-wave.md`. Spawn using the task tool.
+- Isolation in §1a is not weakened: the worker receives an ABSOLUTE worktree
+  path + branch in the assignment packet and directs every tool call there.
+  Default worktree is `wt/<card-id>` inside the repository (gitignored), so the
+  spawned agent remains within project dir and its permissions; external
+  `<WT-ROOT>` is allowed only if the owner explicitly configures external_directory allow.
+- A child session is not itself a worktree — isolation comes from the worktree
+  + branch + absolute paths, not the fact of spawning. All §1a rules (branch
+  per lane, no worker push/merge, sequential coordinator merge, main gates after
+  a batch) remain in force.
+- Prohibited by default: executing cards in background bash loops using
+  `opencode run`/`nohup` (night loop in docs/prompts/opencode-1k-continuation.txt).
+  Headless night mode requires a separate explicit owner decision, recorded in
+  the board with a reason; it is not used by default.
+- Lane report = subagent's final message (changed paths, commands/exits,
+  evidence, risks) in the agent deliverable format; coordinator integrates and
+  updates records/board. Do not require the owner to read logs to learn lane
+  status: it is visible in the TUI and coordinator report.
+- Fallback, in order: (1) task tool unavailable in installed version → workers
+  execute sequentially in primary session, review in parallel; (2) separate
+  explicit owner decision for night loop. Record the fallback reason in the
+  board. Do not invent API fields (`cwd` on task, etc.).
 
-## 2. Сначала доказать изоляцию
+## 2. Prove isolation first
 
-Перед запуском writers записать Git state, installed OpenCode version, доступные task/subagent tools, cwd и baseline fingerprint. На момент аудита repository unborn и все исходники untracked; обычный worktree от HEAD сейчас невозможен.
+Before starting writers, record Git state, installed OpenCode version,
+available task/subagent tools, cwd, and baseline fingerprint. At the time of
+the audit, the repository was unborn and all sources untracked; a normal
+worktree from HEAD was not possible.
 
-Если существует подходящий immutable commit и Git writable: отдельный worktree/branch на lane. Dirty user files не прятать stash/reset и не включать произвольным initial commit. Если нужный baseline включает uncommitted work, использовать snapshot путь.
+If a suitable immutable commit exists and Git is writable: create a separate
+worktree/branch per lane. Do not hide dirty user files with stash/reset or
+include them in an arbitrary initial commit. If the needed baseline includes
+uncommitted work, use the snapshot path.
 
-Fallback без commits или записи в `.git`: immutable source snapshot и отдельная копия на lane в разрешённом scratch directory. Manifest включает все выбранные source/config/docs/scripts, в том числе untracked, relative paths/modes/hashes/symlink targets. Исключить `.git`, `.env*`/credentials, runtime state, outputs/caches и raw evidence; allowlist config examples явно. Никаких hardlinks на mutable source. Symlink за пределы snapshot не становится способом читать secrets; перечисленные immutable toolchain artifacts можно использовать отдельно read-only.
+Fallback without commits or `.git` write access: create an immutable source
+snapshot and a separate lane copy in an allowed scratch directory. The manifest
+includes all selected source/config/docs/scripts, including untracked files,
+with relative paths/modes/hashes/symlink targets. Exclude `.git`, `.env*`/credentials,
+runtime state, outputs/caches, and raw evidence; explicitly allowlist config
+examples. Do not hardlink mutable source. A symlink outside the snapshot must
+not become a way to read secrets; listed immutable toolchain artifacts may be
+used separately read-only.
 
-Snapshot copy без `.git` — полноценный supported lane mode. Worker фиксирует `Git unavailable: isolated snapshot`, сверяет root-provided base manifest и cwd; отсутствие Git не заставляет вернуться в общий checkout. RAI-004 обязан поддержать diff по before/after inventory (path/hash/mode/symlink/add/delete; rename может быть delete+add), например через целевой `QUALITY_BASE_MANIFEST`. До реализации этого режима использовать явные scoped bootstrap commands с тем же manifest. Manifest mode проверяет base/current hashes, active path classification и минимум active fast при отсутствии изменений; не пропускает проверки. Flag сначала реализуется и тестируется, только затем используется в отчётах.
+A snapshot copy without `.git` is a fully supported lane mode. Worker records
+`Git unavailable: isolated snapshot`, checks the root-provided base manifest
+and cwd; missing Git does not force a return to the shared checkout. RAI-004
+must support diffing before/after inventories (path/hash/mode/symlink/add/delete;
+rename may be delete+add), for example through the planned `QUALITY_BASE_MANIFEST`.
+Until this mode is implemented, use explicit scoped bootstrap commands with
+the same manifest. Manifest mode checks base/current hashes, active path
+classification, and at least active fast when nothing has changed; it does not
+skip checks. Implement and test the flag before using it in reports.
 
-Worktree/copy path абсолютный и передаётся каждому tool call. До работы worker доказывает свой cwd и baseline; coordinator убеждается, что output/build directories различаются. OpenCode child session сама по себе не создаёт worktree. Основной режим привязки lane — видимый spawn-субагент (§1b): isolation дают worktree + ветка + absolute paths в packet. Отдельный OpenCode process с `--dir <lane>` — fallback последней очереди (только при недоступности task tool и с записью причины в board); не выдумывать task API parameter `cwd`, если установленная версия его не имеет.
+Worktree/copy path is absolute and passed to every tool call. Before work,
+worker proves its cwd and baseline; coordinator confirms output/build directories
+differ. An OpenCode child session alone does not create a worktree. The primary
+lane binding mode is a visible spawned subagent (§1b): isolation comes from the
+worktree + branch + absolute paths in the packet. A separate OpenCode process
+with `--dir <lane>` is a last-resort fallback (only if task tool is unavailable,
+with reason recorded in the board); do not invent a task API `cwd` parameter
+if the installed version lacks one.
 
-OpenCode 1.18.34 в аудитируемой среде подтверждён командой `--version`; `run --help` поддерживает `--dir`, `--agent`, `--file`. Перед новым запуском перепроверить версию. Командные/agent schemas могут различаться между версиями. Документация: [CLI](https://opencode.ai/docs/cli/), [agents](https://opencode.ai/docs/agents/).
+OpenCode 1.18.34 was confirmed in the audited environment by `--version`;
+`run --help` supports `--dir`, `--agent`, `--file`. Recheck the version before
+new runs. Command/agent schemas may differ across versions. Docs: [CLI](https://opencode.ai/docs/cli/),
+[agents](https://opencode.ai/docs/agents/).
 
-Если изоляция временно недоступна, writers исполняются по очереди, research/review остаются параллельными; причина видна в board. Не называть одновременную запись нескольких агентов в root checkout параллельной lane работой.
+If isolation is temporarily unavailable, writers work sequentially while
+research/review remain parallel; record the reason in the board. Do not call
+multiple agents writing the root checkout at the same time parallel lane work.
 
 ## 3. Assignment packet
 
-Coordinator передаёт каждому worker:
+Coordinator gives each worker:
 
 ```text
 Assignment / parent card / lane:
@@ -99,45 +142,91 @@ Expected deliverable (patch + before/after hashes + evidence):
 Heartbeat / bounded task size / escalation condition:
 ```
 
-Не передавать весь многотысячестрочный план в каждую coding task. Обязательные invariants, относящиеся к изменению, входят в packet. Worker не выдаёт отсутствующий signature за согласованный: при расхождении возвращает reproducer и минимальный contract-change request.
+Do not pass the entire multi-thousand-line plan in each coding task. Required
+invariants relevant to the change go in the packet. A worker must not present
+an absent signature as agreed: on discrepancy, return a reproducer and minimal
+contract-change request.
 
-## 4. Практические waves
+## 4. Practical waves
 
-| Wave | Lane A | Lane B | Lane C | Условие интеграции |
+| Wave | Lane A | Lane B | Lane C | Integration condition |
 | --- | --- | --- | --- | --- |
-| F0 | Spike fixes/reproduction | Read-only contracts/gate review | Acceptance fixtures/design | Истинные exits/evidence; frozen bootstrap decisions |
-| Foundation | Build/toolchain owner | Public contracts owner после build skeleton | Gate runner/testkit/minimal CI после interface freeze | Shared compile/contract tests, stage registry |
-| F1 | Jobs/scopes/budgets/native loop | OpenAI+Anthropic protocol slices | Filesystem/process tools | Один native tool loop через HTTP fixture |
-| F2 | DSL/runtime integration | REPL/terminal adapter | Headless CI/reports | Один Program работает в REPL и CI |
-| F3 | Sessions/context/journal | Typed tools/SPI/examples | Packaging/task fixtures | Ежедневный coding workflow из installed package |
-| F4 | Исправления найденных defects | Independent reviewer/verification | Gateway baseline / optional enriched integration | W01–W17 на одном candidate |
+| F0 | Spike fixes/reproduction | Read-only contracts/gate review | Acceptance fixtures/design | Truthful exits/evidence; frozen bootstrap decisions |
+| Foundation | Build/toolchain owner | Public contracts owner after build skeleton | Gate runner/testkit/minimal CI after interface freeze | Shared compile/contract tests, stage registry |
+| F1 | Jobs/scopes/budgets/native loop | OpenAI+Anthropic protocol slices | Filesystem/process tools | One native tool loop through HTTP fixture |
+| F2 | DSL/runtime integration | REPL/terminal adapter | Headless CI/reports | One Program works in REPL and CI |
+| F3 | Sessions/context/journal | Typed tools/SPI/examples | Packaging/task fixtures | Daily coding workflow from installed package |
+| F4 | Fixes for found defects | Independent reviewer/verification | Gateway baseline / optional enriched integration | W01–W17 on one candidate |
 
-Таблица — lanes, не разрешение начинать зависимые части раньше signatures. Два provider wires можно разделить на двух workers, когда свободен слот; shared HTTP/SSE framing имеет одного владельца. Контракты меняет root или эксклюзивно назначенный owner, затем все затронутые lanes получают новый frozen baseline.
+The table lists lanes; it does not authorize starting dependent work before
+signatures are available. Two provider wires can be split across workers when
+slots are available; shared HTTP/SSE framing has one owner. Root or an
+exclusively assigned owner changes contracts; then all affected lanes get a
+new frozen baseline.
 
-## 5. Что делает worker
+## 5. Worker responsibilities
 
-Проверяет assignment/cwd/source hashes, пишет behavioral fixture, реализует узкий behavior, запускает локальные gate cases, формирует deliverable. Tools/tests работают внутри lane; ports выделяются динамически, temp paths уникальны. `target/`, compiler state, generated files и reports не общие. Shared dependency download caches только с поддерживаемой concurrency/lock semantics; при сомнении separate cache или предварительный bootstrap.
+Check assignment/cwd/source hashes, write a behavioral fixture, implement
+narrow behavior, run local gate cases, and prepare the deliverable. Tools/tests
+run inside the lane; allocate ports dynamically and use unique temp paths.
+`target/`, compiler state, generated files, and reports are not shared. Share
+dependency-download caches only with supported concurrency/lock semantics; if
+uncertain, use a separate cache or bootstrap first.
 
-Worker не редактирует центральный board/другие lanes; отправляет coordinator status и record. Результат содержит base hash, add/modify/delete/rename inventory, patch/binary payload где нужно, resulting source hash, test argv/exits, log hashes, unresolved findings. Не копировать весь lane каталог поверх root.
+Worker does not edit the central board/other lanes; sends status and record to
+coordinator. Result includes base hash, add/modify/delete/rename inventory,
+patch/binary payload where needed, resulting source hash, test argv/exits, log
+hashes, and unresolved findings. Do not copy the whole lane directory over root.
 
-## 6. Интеграция и конфликт
+## 6. Integration and conflicts
 
-Coordinator проверяет paths/secret exclusions/base hashes, читает diff, получает independent review, применяет изменение последовательно. Если target path изменился относительно base, выполнить осмысленный merge/rebase и повторить affected tests; запрещено force-overwrite. Изменения пользователя сохраняются.
+Coordinator checks paths/secret exclusions/base hashes, reads the diff, gets
+independent review, and applies changes sequentially. If a target path changed
+since baseline, do a meaningful merge/rebase and rerun affected tests; never
+force-overwrite. Preserve user changes.
 
-После каждого integration batch: shared compile/contracts + affected active gates; после каждой wave runnable demo из интегрированного дерева. Lane evidence доказывает её baseline; финальный milestone требует нового общего прогона, а не объединения старых manifests. Для shared contract change dependent lanes приостанавливают несовместимые edits и обновляют snapshots.
+After each integration batch: shared compile/contracts + affected active gates;
+after each wave, a runnable demo from the integrated tree. Lane evidence proves
+its baseline; a final milestone requires a new shared run, not a union of old
+manifests. For a shared contract change, dependent lanes pause incompatible
+edits and refresh snapshots.
 
-Если checks отсутствуют, coordinator не принимает «passed by inspection». Создать scoped fixture/runner task; пока obligation pending. If failure cause повторился дважды, fresh reviewer решает bounded redesign/reproducer, executor не отключает gate.
+If checks are absent, coordinator does not accept “passed by inspection”.
+Create a scoped fixture/runner task; until then the obligation is pending. If a
+failure cause repeats twice, a fresh reviewer decides on a bounded redesign/reproducer;
+the executor does not disable the gate.
 
-## 7. Статусы без вечного review-blocker
+## 7. Statuses without a permanent review blocker
 
-Card states: todo → ready → in-progress → review → accepted; при defects changes-required; при внешнем impediment blocked с причиной. `ready` означает реально удовлетворённые implementation dependencies; «ready, ждёт dependency» недопустим. У parent separate integration acceptance — parent не accepted от одного компонента.
+Card states: todo → ready → in-progress → review → accepted; with defects,
+changes-required; with an external impediment, blocked with a reason. `ready`
+means implementation dependencies are actually satisfied; “ready, waiting on
+dependency” is invalid. A parent has separate integration acceptance — one
+component does not make the parent accepted.
 
-Coordinator планирует reviewer автоматически, как только diff готов. Нет требования ждать owner confirmation на каждую локальную карточку: запрос владельца уже разрешает implementation/review/integration по этому runbook. Owner нужен для новых продуктов/публикации/live spend/изменения обязательных требований, которые ещё не разрешены контекстом. Pending review не решается самоприёмкой автора.
+Coordinator schedules a reviewer automatically as soon as the diff is ready.
+There is no need to wait for owner confirmation on every local card: the
+owner's request already authorizes implementation/review/integration under
+this runbook. Owner input is needed for new products/publication/live spend or
+changes to mandatory requirements not already authorized by context. Pending
+review is not resolved by the author accepting their own work.
 
-Operational board/records описывают ход работы. Product evidence привязано к immutable input snapshot; operational files исключаются только по точному protected policy allowlist, а их revision/hashes сохраняются как audit metadata. Acceptance fixtures, specs, prompts, source/build/gate registry из fingerprint не исключаются. Документационные изменения проверяются отдельно, но не заставляют пересобирать бинарник только из-за новой строки статуса.
+Operational board/records describe progress. Product evidence is tied to an
+immutable input snapshot; operational files are excluded only by an exact
+protected policy allowlist, with their revisions/hashes retained as audit
+metadata. Acceptance fixtures, specs, prompts, source/build/gate registry are
+not excluded from the fingerprint. Documentation changes are checked separately,
+but a new status line alone does not require rebuilding a binary.
 
-## 8. Перезапуск и завершение
+## 8. Restart and completion
 
-Before compaction/turn end coordinator сохраняет active assignments, lane paths/baselines, worker session/process IDs, ready queue, last checks, review verdicts и next actions. Новый turn сначала проверяет живые процессы/актуальность hashes; не дублирует worker и не replay product mutation из artifacts.
+Before compaction/end of turn, coordinator saves active assignments, lane
+paths/baselines, worker session/process IDs, ready queue, last checks, review
+verdicts, and next actions. The new turn first checks live processes/current
+hashes; it does not duplicate workers or replay product mutations from artifacts.
 
-Если workers продолжают работу, coordinator мониторит их и интегрирует результаты в доступном turn, не объявляет завершение по факту spawn. По исчерпанию session limit оставляет исполнимый handoff; при внешнем blocker закрывает все независимые локальные задачи. Done — [working acceptance](working-product.md), а не «56 карточек упомянуты в отчёте».
+If workers continue, coordinator monitors and integrates their results during
+the available turn; it does not declare completion merely because it spawned
+them. On session-limit exhaustion, leave an actionable handoff; with an external
+blocker, complete all independent local tasks. Done means [working acceptance](working-product.md),
+not “56 cards were mentioned in the report.”

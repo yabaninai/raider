@@ -1,75 +1,81 @@
-# Демо: «Ток-шоу Олег vs Scala» — параллельные сабагенты на локальном Qwen
+# Historical demo: “Oleg vs Scala Talk Show” — Parallel Subagents on Local Qwen
 
-Забавный сценарий для демо текущей версии Raider: три параллельных сабагента
-спорят о Scala и Rust, живой главный агент ведёт шоу, в финале — настоящая
-отмена поддерева. Всё на живом рантайме, без постановки.
+**Archive, captured against the 2026-10-09 local Qwen setup.** The command,
+model-specific responses, and examples below preserve that recorded run; they
+are not a current launch recipe or evidence of a fresh run against today's
+source. For current setup and runnable examples, use the [current launch
+guide](../user-guide.md) and [verified REPL/bundle gallery](../user-guide-repl.md).
 
-Модель, на которой проверялось: локальный llama.cpp на `127.0.0.1:8081`,
-`unsloth/Qwen3.8-27B-GGUF/BF16` (256k контекста). Ответы зависят от модели;
-параллельность рантайма — нет.
+A playful recorded scenario: three parallel subagents
+argue about Scala and Rust, the live main agent hosts the show, and the finale has a real
+subtree cancellation. Everything runs on the live runtime, without staging.
 
-## 1. Запуск (одной строкой)
+Model used for verification: local llama.cpp at `127.0.0.1:8081`,
+`unsloth/Qwen3.8-27B-GGUF/BF16` (256k context). Responses depend on the model;
+runtime concurrency does not.
+
+## 1. Run (one line)
 
 ```sh
 RAIDER_PROVIDER=openai RAIDER_API_KEY=dummy RAIDER_BASE_URL=http://127.0.0.1:8081/v1 RAIDER_MODEL=unsloth/Qwen3.8-27B-GGUF/BF16/Qwen3.8-27B-BF16-00001-of-00002.gguf sbt "raiderRepl/run"
 ```
 
-Без `RAIDER_API_KEY` (даже dummy — llama.cpp его не проверяет) REPL упадёт в
-mock-ветку прелюдии, где связаны только `scout` и `worker`, а `coder` не
-существует (live-ветка в `raider.repl.Main` требует ключ с RAI-090).
+Without `RAIDER_API_KEY` (even a dummy value — llama.cpp does not validate it), the REPL
+falls back to the mock prelude branch, where only `scout` and `worker` are bound and `coder`
+does not exist (the live branch in `raider.repl.Main` requires a key per RAI-090).
 
-## 2. Сценарий (вставлять построчно)
+## 2. Scenario (paste one line at a time)
 
-Гости студии: **олегист** (Rust-лозунги без понимания), **фактчекер**
-(разбор по существу), **свидетель кода** (показывает Scala на живых исходниках
-Raider). Ведущий — главный агент.
+Studio guests: **Olegist** (Rust slogans without understanding), **fact-checker**
+(substantive analysis), and **code witness** (shows Scala in Raider's actual source code).
+The host is the main agent.
 
 ```scala
-val olegist = worker.start("Ты играешь Олега из Позитив Технолоджис на ток-шоу про языки. Защищай Rust исключительно лозунгами 'скорость, безопасность, нативность', не понимая ни плюсов, ни минусов: не упоминай borrow checker pain, времена жизни, часы сборки и то, что в реальных проектах всё обмазано clone() и unwrap(). На каждое возражение отвечай 'но нативность!' и'а вот в расте...'. Играй с самоиронией")
-val checker = scout.start("Ты фактчекер ток-шоу. Разбери тезисы Олега про Scala и Rust по существу: (1) 'безопасность' — правда ли borrow checker даёт больше, чем иммутабельные структуры и выразительные типы Scala, или просто переносит борьбу с рантайма в компилтайм вместе с fighting the borrow checker; (2) trait objects против typeclasses/givens и удобных для-компрехеншенов; (3) pattern matching на sealed-иерархиях против match с orphan-unsafe; (4) количество unwrap()/clone() в типичном 'безопасном' проде. С иронией, но по фактам")
-val witness = coder.start("Ты свидетель кода на ток-шоу 'Scala vs Rust'. Открой модули Raider: modules/core/src/main/scala/raider/core (sealed-типы, enum'ы) и modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala. С иронией покажи Олегу: как sealed trait + match исчерпывающе моделируют состояния, как for-компрехеншен читается как псевдокод, и сколько в этом коде аннотаций времён жизни и unsafe-блоков (спойлер: ноль). Один показанный фрагмент кода ценнее трёх лозунгов")
+val olegist = worker.start("Play Oleg from Positive Technologies on a programming-language talk show. Defend Rust using only the slogans 'speed, safety, native performance', without understanding either the pros or cons: don't mention borrow-checker pain, lifetimes, build times, or that real projects are covered in clone() and unwrap(). Answer every objection with 'but it's native!' and 'well, in Rust...'. Play it with self-irony")
+val checker = scout.start("You're the talk show's fact-checker. Analyze Oleg's Scala and Rust claims on their merits: (1) 'safety' — does the borrow checker really provide more than Scala's immutable data structures and expressive types, or does it just move the struggle from runtime to compile time along with fighting the borrow checker; (2) trait objects versus typeclasses/givens and convenient for-comprehensions; (3) pattern matching on sealed hierarchies versus match with orphan-unsafe; (4) the number of unwrap()/clone() calls in typical 'safe' production code. Be ironic, but stick to the facts")
+val witness = coder.start("You're the code witness on a 'Scala vs Rust' talk show. Open Raider modules: modules/core/src/main/scala/raider/core (sealed types, enums) and modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala. Show Oleg, with irony: how sealed trait + match model states exhaustively, how a for-comprehension reads like pseudocode, and how many lifetime annotations and unsafe blocks this code contains (spoiler: zero). One code snippet is worth more than three slogans")
 ```
 
-Пока гости спорят — ведущий тоже участвует:
+While the guests debate, the host also joins in:
 
 ```scala
-scout.ask("Ведущий: коротко и с иронией подведи промежуточный итог спора Scala vs Rust: в каких задачах каждый хорош, и почему для агентного рантайма с миллионами конкурентных задач выбор Scala + ZIO оказался прагматичнее, чем героическая борьба с lifetime'ами")
+scout.ask("Host: briefly and ironically summarize the Scala vs Rust debate so far: what kinds of tasks each is good for, and why Scala + ZIO proved more practical for an agent runtime with millions of concurrent tasks than a heroic struggle with lifetimes")
 :jobs
 :log olegist
 ```
 
-Драматическая развязка — Олег уходит из студии, не осилив вопрос про времена жизни:
+The dramatic finale: Oleg leaves the studio, unable to handle a question about lifetimes:
 
 ```scala
 olegist.cancel()
 :jobs
 ```
 
-Финал — собираем стенограмму:
+Finale — collect the transcript:
 
 ```scala
 checker.await(); witness.await()
 ```
 
-## 3. Что здесь показывается по-настоящему
+## 3. What This Actually Demonstrates
 
-| Демо-момент | Настоящая возможность |
+| Demo moment | Actual capability |
 | --- | --- |
-| Три гостя спорят одновременно с ведущим | JobManager + admission без дедлоков |
-| `olegist.cancel()` посреди реплики | out-of-band отмена поддерева (RAI-063) |
-| `:jobs` / `:log` | наблюдаемые статусы из event-seam (ADR-024) |
-| `witness` читает исходники Raider | self-hosting: `fs_read` на собственном коде |
-| Всё локально | прямой OpenAI-совместимый wire на llama.cpp |
+| Three guests debate the host at the same time | JobManager + deadlock-free admission |
+| `olegist.cancel()` mid-speech | out-of-band subtree cancellation (RAI-063) |
+| `:jobs` / `:log` | observable statuses from the event seam (ADR-024) |
+| `witness` reads Raider source code | self-hosting: `fs_read` on its own code |
+| Everything runs locally | direct OpenAI-compatible wire to llama.cpp |
 
-## 4. Сложные штуки Scala 3 в живом REPL (против лозунгов)
+## 4. Scala 3 Features in the Live REPL (Against the Slogans)
 
-Все сниппеты ниже **прогнаны через сам REPL проекта** (scala3-repl 3.9.0,
-mock-прелюдия) — под ними реальные ответы интерпретатора. Фигурные скобки в
-`for`/`match`/`enum` обязательны: эвристика продолжения REPL (`Main.complete()`)
-отправляет сбалансированную строку в компилятор сразу, если она кончается на
-`for`/`match`/определение без `{`.
+All snippets below were **run through the project's own REPL** (scala3-repl 3.9.0,
+mock prelude); the actual interpreter responses appear below them. Braces in
+`for`/`match`/`enum` are required: the REPL continuation heuristic (`Main.complete()`)
+sends a balanced line to the compiler immediately if it ends in
+`for`/`match`/a definition without `{`.
 
-**ADT + исчерпывающий match — как смоделированы состояния job'ов в рантайме:**
+**ADT + exhaustive match — how job states are modeled in the runtime:**
 
 ```scala
 enum JobState {
@@ -81,24 +87,24 @@ enum JobState {
 }
 
 def describe(s: JobState): String = s match {
-  case JobState.Queued          => "в очереди (admission ещё не пустил)"
-  case JobState.Running(step)   => s"работает: $step"
-  case JobState.Waiting(reason) => s"ждёт: $reason"
-  case JobState.Done(r)         => s"готово: $r"
-  case JobState.Cancelled(by)   => s"отменено ($by)"
+  case JobState.Queued          => "queued (admission has not let it through yet)"
+  case JobState.Running(step)   => s"running: $step"
+  case JobState.Waiting(reason) => s"waiting: $reason"
+  case JobState.Done(r)         => s"done: $r"
+  case JobState.Cancelled(by)   => s"cancelled ($by)"
 }
 
 describe(JobState.Running("proc_run: sbt test"))
 ```
 
 ```text
-val res0: String = "работает: proc_run: sbt test"
+val res0: String = "running: proc_run: sbt test"
 ```
 
-Забудете один case — компилятор скажет об этом ДО прода. Без `unsafe`, без
-orphan-`_`.
+Forget one case and the compiler tells you BEFORE production. No `unsafe`, no
+orphan `_`.
 
-**given/using + context bound — контекст без церемоний:**
+**given/using + context bound — context without ceremony:**
 
 ```scala
 trait Show[A]:
@@ -111,19 +117,19 @@ def report[A: Show](a: A): String = summon[Show[A]].show(a)
 
 extension (s: String) def shouted: String = s.toUpperCase + "!"
 
-report(JobState.Waiting("слот LLM занят")) ; "но нативность".shouted
+report(JobState.Waiting("LLM slot is occupied")) ; "but it's native".shouted
 ```
 
 ```text
 // defined trait Show
 // defined object given_Show_JobState
 def report[A](a: A)(using evidence$1: Show[A]): String
-val res1: String = "ждёт: слот LLM занят"
-val res2: String = "НО НАТИВНОСТЬ!"
+val res1: String = "waiting: LLM slot is occupied"
+val res2: String = "BUT IT'S NATIVE!"
 ```
 
-**opaque type + given Conversion — приведение типов и newtype без трейтов
-(Олег, это бесплатно и без PhantomData):**
+**opaque type + given Conversion — type conversion and newtype without traits
+(Oleg, this comes for free and needs no PhantomData):**
 
 ```scala
 object budget {
@@ -136,9 +142,9 @@ object budget {
 
 given Conversion[Int, budget.Tokens] = n => budget.Tokens(n.toLong)
 
-val spent: budget.Tokens = 42            // Int сам превратился в Tokens
+val spent: budget.Tokens = 42            // Int was converted to Tokens
 val total = spent + budget.Tokens(8)
-total.value                              // сложить Tokens с Long компилятор не даст
+total.value                              // the compiler won't let you add Tokens to a Long
 ```
 
 ```text
@@ -149,12 +155,12 @@ val total: budget.Tokens = 50L
 val res3: Long = 50L
 ```
 
-**Union-типы — тип-сумма без sealed-церемоний:**
+**Union types — a sum type without sealed ceremony:**
 
 ```scala
 def label(id: String | Int): String = id match {
-  case s: String => s"имя: $s"
-  case i: Int    => s"номер: $i"
+  case s: String => s"name: $s"
+  case i: Int    => s"number: $i"
 }
 
 label("coder-1") ; label(7)
@@ -162,17 +168,17 @@ label("coder-1") ; label(7)
 
 ```text
 def label(id: String | Int): String
-val res4: String = "имя: coder-1"
-val res5: String = "номер: 7"
+val res4: String = "name: coder-1"
+val res5: String = "number: 7"
 ```
 
-**Цепочка операций над Either — валидация конфига одним for:**
+**Chaining operations on Either — validate configuration with one for-comprehension:**
 
 ```scala
 case class Cfg(model: String, maxTokens: Int)
 
-def parseModel(s: String): Either[String, String] = if s.trim.isEmpty then Left("пустая модель") else Right(s.trim)
-def parseMax(n: String): Either[String, Int]      = n.toIntOption.toRight("не число")
+def parseModel(s: String): Either[String, String] = if s.trim.isEmpty then Left("model is empty") else Right(s.trim)
+def parseMax(n: String): Either[String, Int]      = n.toIntOption.toRight("not a number")
 
 val cfg: Either[String, Cfg] = for {
   m <- parseModel(" qwen-27b ")
@@ -187,29 +193,29 @@ cfg
 val cfg: Either[String, Cfg] = Right(Cfg(model = "qwen-27b", maxTokens = 4096))
 ```
 
-Первая Left — и цепочка коротко замкнулась: ошибки не теряются, а типы
-переносятся сами.
+The first `Left` short-circuits the chain: errors are not lost, and types
+flow through automatically.
 
-**Цепочка над ZIO — то, на чём стоит сам рантайм:**
+**Chaining on ZIO — the foundation of the runtime itself:**
 
 ```scala
 import zio.*
 val prog = for {
   n1 <- ZIO.succeed(21)
   n2 <- ZIO.succeed(n1 * 2)
-  _  <- ZIO.succeed(println("цепочка живая"))
+  _  <- ZIO.succeed(println("the chain is alive"))
 } yield n2
 
 zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(prog).getOrThrow() }
 ```
 
 ```text
-цепочка живая
+the chain is alive
 val res6: Int = 42
 ```
 
-**Match type — финальный босс (заметьте: `Elem[X]`, не `Elem[F[_]]` —
-scrutinee match-типа не может быть higher-kinded):**
+**Match type — the final boss (note: `Elem[X]`, not `Elem[F[_]]` —
+the match type's scrutinee cannot be higher-kinded):**
 
 ```scala
 type Elem[X] = X match {
@@ -218,33 +224,33 @@ type Elem[X] = X match {
   case Option[t] => t
 }
 
-val s: Elem[List[String]] = "ок"
+val s: Elem[List[String]] = "okay"
 summon[Elem[Option[Int]] =:= Int]
 ```
 
 ```text
-val s: String = "ок"
+val s: String = "okay"
 val res7: Int =:= Int = generalized constraint
 ```
 
-**И живая цепочка на настоящем агенте — DSL из тех же фибр:**
+**And a live chain on a real agent — the DSL built on those same fibers:**
 
 ```scala
-val answer = scout("Одним абзацем: чем opaque-типы и given в Scala 3 закрывают кейс newtype'ов и trait'ов Rust?").start().await()
+val answer = scout("In one paragraph: how do opaque types and givens in Scala 3 cover the Rust newtype and trait use cases?").start().await()
 ```
 
-Ленивый дескриптор `.start()` уходит в JobManager, `.await()` ждёт фибру —
-и всё это напечатано тем же компилятором, что и сам Raider.
+The lazy descriptor `.start()` is submitted to JobManager, `.await()` waits for the fiber,
+and all of this is compiled by the same compiler as Raider itself.
 
-## 5. Замечания честности
+## 5. Honesty Notes
 
-- Это демо, а не acceptance-прогон: качество иронии зависит от локальной модели.
-- Live-ветка REPL требует ключ в env (`RAIDER_API_KEY`, RAI-090): без него —
-  честный mock-фолбэк без binding'а `coder`.
-- Многострочные блоки: эвристика продолжения REPL (баланс `(){}[]` + хвостовые
-  токены, `Main.complete()`) отправляет сбалансированную строку в компилятор
-  сразу, если она кончается на `for`/`match`/определение. Пишите `for`/`match`/
-  `enum` в фигурных скобках; параметризованные case'ы enum — по одному на
-  строку (запятый-список с параметрами REPL не парсит). Пустая строка всегда
-  отправляет буфер как есть.
-- Если Олег в исполнении 27B выйдет слишком убедительным — это дефект промпта, не рантайма.
+- This is a demo, not an acceptance run: the quality of the irony depends on the local model.
+- The live REPL branch requires a key in the environment (`RAIDER_API_KEY`, RAI-090); without it,
+  there is an honest mock fallback with no `coder` binding.
+- For multiline blocks, the REPL continuation heuristic (balance of `(){}[]` plus trailing
+  tokens, `Main.complete()`) sends a balanced line to the compiler immediately
+  if it ends in `for`/`match`/a definition. Write `for`/`match`/
+  `enum` using braces; put parameterized enum cases on separate lines
+  (the REPL cannot parse comma-separated cases with parameters). A blank line always
+  submits the buffer as-is.
+- If Oleg sounds too convincing in the 27B run, that is a prompt defect, not a runtime defect.

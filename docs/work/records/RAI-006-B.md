@@ -2,38 +2,38 @@
 
 # RAI-006-B: work record (controllable primitives + deterministic cancel-mid-dispatch)
 
-Status: done. Date: 2026-10-03. Baseline: предыдущий last-passing gate
+Status: done. Date: 2026-10-03. Baseline: previous last-passing gate
 artifacts/quality/20261003-215025 (RAI-002-REMAINDER).
 
 ## Resulting behavior
 
-RAI-006.b slice (MOCK-03): управляемая детерминированность без реальных
-sleep'ов.
+RAI-006.b slice (MOCK-03): controllable determinism without real
+`sleep` calls.
 
-Testkit-примитивы (`raider.testkit.Controllable`), контракт record-then-park:
-наблюдение факта вызова (requests/started) ⇒ consumer-волокно находится в
-(или в одном микрошаге от) точки парковки → interrupt / открытие гейта /
-сдвиг виртуальных часов из тест-волокна — детерминированы:
+Testkit primitives (`raider.testkit.Controllable`), with the record-then-park
+contract: observing that a call occurred (requests/started) ⇒ the consumer
+fiber is at (or one microstep away from) the park point → interrupt / gate
+opening / virtual clock advancement from the test fiber are deterministic:
 
-- `GatedModelBackend(scripts*)` — k-й stream() записывает запрос и паркуется
-  на гейте k ВНУТРИ dispatch до `open(k)`; лишний вызов = typed
-  StreamProtocol; `openAll` для teardown;
-- `GatedTool` — invoke записывает аргументы и паркуется на гейте до `open`;
-  `started` — наблюдение факта вызова.
+- `GatedModelBackend(scripts*)` — the k-th `stream()` records the request and
+  parks on gate k INSIDE dispatch until `open(k)`; an extra call = typed
+  StreamProtocol; `openAll` for teardown;
+- `GatedTool` — invoke records arguments and parks on a gate until `open`;
+  `started` observes that the call occurred.
 
-Приёмка поверх цикла Phase A (`AgentLoopDeterminismSpec`, TestClock по
-умолчанию ZIO Test, `live{}` НЕ используется — ни одного реального sleep):
+Acceptance on top of the Phase A loop (`AgentLoopDeterminismSpec`, TestClock
+is ZIO Test's default, `live{}` is NOT used — not a single real sleep):
 
 1. cancel DURING model dispatch (Priced 400µ$) → uncertainTotal=400µ$, charge
-   kept; слот свободен; открытие гейта ПОСЛЕ смерти волокна не меняет usage
-   (позднее settlement не переписывает outcome);
-2. cancel DURING tool dispatch → раунд-1 модели settled, tool-free — ничего
-   не zeroed; оба слота свободны; поздний open не меняет usage;
-3. виртуальный дедлайн: tool timeout 1000ms срабатывает ровно по
-   `TestClock.adjust(1001ms)` → RA-DEADLINE, слот освобождён (часовой sleep
-   инструмента никогда не истекает сам);
-4. finish-vs-cancel: гейт открыт до interrupt → чистый успех, accounting
-   settled; interrupt завершённого волокна не фабрикует отмену.
+   kept; slot free; opening the gate AFTER the fiber dies does not change usage
+   (late settlement does not rewrite the outcome);
+2. cancel DURING tool dispatch → round-1 model settled, tool-free — nothing
+   zeroed; both slots free; late open does not change usage;
+3. virtual deadline: tool timeout 1000ms fires exactly on
+   `TestClock.adjust(1001ms)` → RA-DEADLINE, slot released (the tool's clock
+   sleep never expires on its own);
+4. finish-vs-cancel: gate opened before interrupt → clean success, accounting
+   settled; interrupting a completed fiber does not fabricate cancellation.
 
 ## Changed paths
 
@@ -43,15 +43,15 @@ Testkit-примитивы (`raider.testkit.Controllable`), контракт rec
 05bc7b40…  modules/runtime/src/test/scala/raider/runtime/loop/AgentLoopDeterminismSpec.scala
 ```
 
-Продуктовый код (main) НЕ менялся — только testkit и тесты.
+Product code (main) was NOT changed — only testkit and tests.
 
 ## Acceptance evidence
 
 | Criterion | Actual | Evidence |
 | --- | --- | --- |
-| MOCK-03-примитивы (gated backend/tool) | 7/7 testkit (5 прежних + 2 новых) | raiderTestkit/test |
-| Детерминированный cancel-mid-dispatch поверх loop ×3 | 4/4, exit 0 ×3 | /tmp/det-run-{1,2,3}.log |
-| Полный sbt test | 127 тестов, 0 failed, exit 0 | /tmp/full-test-D.log |
+| MOCK-03 primitives (gated backend/tool) | 7/7 testkit (5 existing + 2 new) | raiderTestkit/test |
+| Deterministic cancel-mid-dispatch on loop ×3 | 4/4, exit 0 ×3 | /tmp/det-run-{1,2,3}.log |
+| Full sbt test | 127 tests, 0 failed, exit 0 | /tmp/full-test-D.log |
 | Quality gates | 6/6 passed | artifacts/quality/20261003-215609/manifest.json |
 
 ## Commands
@@ -65,15 +65,15 @@ Testkit-примитивы (`raider.testkit.Controllable`), контракт rec
 
 ## Limitations / obligations
 
-- Виртуальный backoff: в кодовой базе НЕТ auto-retry/backoff-политики (loop
-  не ретраит mutational calls — по дизайну), тестировать нечего; появится с
-  retry-карточкой — тогда fixture добавляется на этот же примитив.
-- Admission-wait дедлайн на уровне loop недоступен (attempt передаёт None в
-  withSlot) — виртуальный дедлайн покрыт на tool-timeout поверхности и на
-  уровне Admission (BudgetAdmissionSpec, реальное время). Surface-параметр
-  дедлайна ожидания — отдельное решение (не добавлял без карточки).
+- Virtual backoff: the codebase has NO auto-retry/backoff policy (the loop
+  does not retry mutational calls — by design), so there is nothing to test;
+  when a retry card introduces it, add the fixture using this same primitive.
+- Admission-wait deadline at loop level is unavailable (`attempt` passes None
+  to `withSlot`) — the virtual deadline is covered at the tool-timeout surface
+  and at Admission level (BudgetAdmissionSpec, real time). The wait-deadline
+  surface parameter is a separate decision (not added without a card).
 
 ## Review and next task
 
-Независимый review не проводился (координаторская сессия). Следующая фаза:
+No independent review was conducted (coordinator session). Next phase:
 RAI-009.b — stress interrupt-takers, late-settlement/idempotence fixtures.

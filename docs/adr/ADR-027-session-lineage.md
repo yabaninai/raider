@@ -1,96 +1,96 @@
-# ADR-027: Session lineage — дерево вызовов как валидная Scala-программа
+# ADR-027: Session lineage — a call tree as a valid Scala program
 
-Status: **Accepted** (owner Q&A 2026-10-10, 16/16 ответов). Дата: 2026-10-10.
-Owner: владелец (интерактивный опрос). Приоритет: **вперед всего плана**
-(ревизия roadmap-12k: фаза P-LIN перед P0). Не меняет gate policy и
-runtime-contracts §14; расширяет их новым слоем.
+Status: **Accepted** (owner Q&A 2026-10-10, 16/16 answers). Date: 2026-10-10.
+Owner: project owner (interactive survey). Priority: **ahead of the entire plan**
+(roadmap-12k revision: P-LIN phase before P0). Does not change gate policy or
+runtime-contracts §14; extends them with a new layer.
 
-## 1. Решение
+## 1. Decision
 
-В рамках каждой сессии (chat, headless, ночная кампания) Raider строит
-**SessionGraph** — дерево вызовов, материализуемое как **валидная Scala
-программа** (lineage-программа) + data-ресурс. Запуск программы
-**воспроизводит цепочку**.
+For each session (chat, headless, night campaign), Raider builds a
+**SessionGraph** — a call tree materialized as a **valid Scala program**
+(lineage program) plus a data resource. Running the program
+**reproduces the chain**.
 
-## 2. Зафиксированные решения владельца (2026-10-10)
+## 2. Owner decisions on record (2026-10-10)
 
-| # | Решение |
+| # | Decision |
 | --- | --- |
-| Успех воспроизведения | **Тот же граф вызовов** (форма дерева: узлы/рёбра/типы); тексты LLM в live-режиме могут отличаться |
-| Режим по умолчанию | **Replay-recorded** (бесплатно, детерминировано) |
-| Основной режим | **Гибрид**: LLM-узлы из записи, детерминированные тулколлы пересчитываются (аналог Spark-lineage) |
-| Узлы | Тулколлы + LLM-раунды + делегации-поддеревья + **пользовательские фазы** (нарезка для компакции и частичного replay) |
-| Промпты | Включаются полностью — входные данные узлов, хранятся в data-ресурсе, не в коде |
-| Область | Chat-сессии + headless-раны + ночные кампании (каталог деревьев) |
-| Mutating-узлы при live re-run | Только в **изолированной копии workspace** (RecoveryClass = политика) |
-| Живая ветка при live re-run | Успех (граф «живой», отчёт расхождений); для replay-верификации — провал |
-| Генерация | **Лайв-инкрементально**, артефакт доступен через **отдельную вкладку TUI** |
-| Слой | **Новый SessionGraph-слой** (не только проекция Program DSL); node types расширяемы под будущие тулколы |
-| Хранение | Рядом с рансом: artifacts/<run>/lineage.scala + lineage-data.json; входит в evidence-fingerprint |
-| Смена окружения | Предупредить + попытаться; сверка pinned-версий (toolchain.json); diff-отчёт расхождений |
-| Частичный replay | Обязателен: replay именованной фазы/поддерева |
-| Вставка в план | Фаза **P-LIN перед P0** roadmap-12k (буквально вперёд всего) |
-| Текущая карточная кампания | Продолжается фоном (закрывает зависимости LIN: RAI-020/022) |
+| Replay success | **Same call graph** (tree shape: nodes/edges/types); LLM text may differ in live mode |
+| Default mode | **Replay-recorded** (free, deterministic) |
+| Primary mode | **Hybrid**: LLM nodes from the recording, deterministic tool calls are recomputed (similar to Spark lineage) |
+| Nodes | Tool calls + LLM rounds + delegation subtrees + **user-defined phases** (segmentation for compaction and partial replay) |
+| Prompts | Included in full — node inputs are stored in the data resource, not in code |
+| Scope | Chat sessions + headless runs + night campaigns (tree catalog) |
+| Mutating nodes during live re-run | Only in an **isolated workspace copy** (RecoveryClass = policy) |
+| Live branch during live re-run | Success ("live" graph, with a discrepancy report); failure for replay verification |
+| Generation | **Incremental live generation**, artifact available through a **separate TUI tab** |
+| Layer | **New SessionGraph layer** (not only a projection of Program DSL); node types are extensible for future tools |
+| Storage | Beside the run: artifacts/<run>/lineage.scala + lineage-data.json; included in the evidence-fingerprint |
+| Environment changes | Warn + attempt; compare pinned versions (toolchain.json); produce a discrepancy diff report |
+| Partial replay | Required: replay a named phase/subtree |
+| Plan placement | **P-LIN phase before P0** in roadmap-12k (literally ahead of everything) |
+| Current card campaign | Continues in the background (closes LIN dependencies: RAI-020/022) |
 
-## 3. Архитектура (слои)
+## 3. Architecture (layers)
 
-1. **SessionGraph** (модель): event-sourced граф, редуктор `events.jsonl →
-   граф`. Узлы: `ModelCall | ToolCall(kind, RecoveryClass) | Delegation(subtree)
-   | Phase(name)`; рёбра — dataflow + управление. Расширяемость: новые типы
-   тулколлов регистрируются как подтипы ToolCall-node без смены контракта.
-2. **Проекция**: `граф → валидная Scala` (композиции `Program`/`Task` RAI-017 —
-   цель компиляции, не модель). Инлайн-данных нет: все записи — lineage-data.json.
-3. **Лайв-поддержка**: инкрементальное достраивание графа и проекции в ходе
-   сессии; периодическая инкрементальная компиляция-валидация; артефакт всегда
-   доступен из TUI-вкладки Lineage (минимальный tab-host вытягивается из P2
-   вперёд, ограниченно).
-4. **Воспроизведение**: replay-recorded (default), гибрид (основной), live
-   re-run (opt-in, изолированная копия WS, бюджет, diff-отчёт «живой vs
-   записанный» граф). Компаратор графов — приёмка.
+1. **SessionGraph** (model): event-sourced graph, reducer `events.jsonl →
+   graph`. Nodes: `ModelCall | ToolCall(kind, RecoveryClass) | Delegation(subtree)
+   | Phase(name)`; edges represent dataflow + control flow. Extensibility: new
+   tool-call types are registered as ToolCall-node subtypes without changing the contract.
+2. **Projection**: `graph → valid Scala` (RAI-017 `Program`/`Task` compositions
+   are the compilation target, not the model). No inline data: all records are in lineage-data.json.
+3. **Live support**: incrementally extend the graph and projection during the
+   session; periodically compile/validate incrementally; the artifact is always
+   available in the TUI Lineage tab (a minimal tab host is pulled forward from P2,
+   with limited scope).
+4. **Replay**: replay-recorded (default), hybrid (primary), live
+   re-run (opt-in, isolated WS copy, budget, diff report of the “live vs
+   recorded” graph). A graph comparator is part of acceptance.
 
 ## 4. Consequences
 
-- Program DSL остаётся замороженным (RAI-017): он цель проекции, не источник.
-- События — единственный источник истины; lineage-программа — детерминированная
-  проекция (как `explain()` у Spark). Ручные правки проекции детектируются
-  компаратором.
-- Валидность программы проверяется компиляцией периодически и в CI (гейт LIN).
-- Длинные сессии: компакция узлов в фазы; data-ресурс отдельно от кода.
-- Бюджет roadmap-12k: +1 100 h (фаза P-LIN), накопительные суммы пересчитаны.
+- Program DSL remains frozen (RAI-017): it is the projection target, not the source.
+- Events are the single source of truth; the lineage program is a deterministic
+  projection (like Spark's `explain()`). Manual edits to the projection are detected
+  by the comparator.
+- Program validity is checked through compilation periodically and in CI (LIN gate).
+- Long sessions: compact nodes into phases; keep the data resource separate from code.
+- roadmap-12k budget: +1,100 h (P-LIN phase), cumulative totals recalculated.
 
-## 5. Addendum (2026-10-10, ночь): runtime и масштаб исполнения
+## 5. Addendum (2026-10-10, night): runtime and execution scale
 
-Владелец повысил срочность P-LIN: исполнение переводится на **OpenCode-агентов**
-(model `glm-5.3-flash` через публичный стенд yabanin.ai, ключ — child `yag_`),
-**до 10 параллельных lane-воркеров** (override лимита «до трёх» из
-parallel-development.md §1 — решение владельца; изоляция сохраняется:
-снапшот-копии без .git, манифесты, отдельные target). Ночная работа: циклы
-очереди с retry незакрытых карточек. sbt-гейты сериализуются глобальным lock
-(защита от 10 параллельных JVM). Attribution: по-прежнему child-ключ + labels
-там, где транспорт позволяет.
+The owner raised P-LIN urgency: execution moves to **OpenCode agents**
+(model `glm-5.3-flash` through the public yabanin.ai stand, child key `yag_`),
+with **up to 10 concurrent lane workers** (overriding the “up to three” limit in
+parallel-development.md §1 by owner decision; isolation is preserved:
+snapshot copies without .git, manifests, separate targets). Night work uses
+queue cycles with retries for unfinished cards. sbt gates are serialized by a
+global lock (to protect against 10 concurrent JVMs). Attribution remains the
+child key + labels where the transport supports them.
 
-## 6. Addendum (2026-10-10, ночь): contract gaps из независимого ревью L9
+## 6. Addendum (2026-10-10, night): contract gaps from independent L9 review
 
-Независимое ревью baseline (W6) подтвердило baseline-trust и выявило разрывы
-между §3 и текущим event-слоем (ADR-024, 13 frozen payload-кейсов):
+Independent baseline review (W6) confirmed baseline-trust and found gaps
+between §3 and the current event layer (ADR-024, 13 frozen payload cases):
 
-1. **Phase-маркеры**: у событий нет phase-кейса — узлы Phase пока строятся
-   только моделью графа; wire-расширение `PhaseMarked(name)` — отдельная
-   schema-card волны-2 с independent review (frozen seam: adding a case is a
+1. **Phase markers**: events have no phase case — Phase nodes are currently built
+   only by the graph model; the `PhaseMarked(name)` wire extension is a separate
+   wave-2 schema card with independent review (frozen seam: adding a case is a
    schema decision, events.scala).
-2. **RecoveryClass на wire**: тулколлы не несут recovery-класс; источник до
-   schema-card — статическая таксономия tool-name → RecoveryClass в lineage
-   слое (ReadOnly по умолчанию, Mutating для write/exec классов), расширяется
-   конфигом без смены frozen-событий.
-3. **Dataflow inputs/outputs**: `argsSummary ≤512 redacted` не полные данные;
-   полные данные — в lineage-data.json (data-ресурс), модель графа несёт
-   `inputs: Vector[NodeId]` как отдельные рёбра dataflow.
-4. **Multi-job export**: events.jsonl рана — один job; события делегированных
-   детей собираются в общий граф редуктором по rootId/jobId из journal-слоя;
-   единый multi-job export — владелец `cli/run/**`, волна-2, после freeze
-   read-API.
-5. **Recording store**: durable-хранилище для lineage-data.json — обязателен
-   до LIN-05 replay; иначе rework. slot-0 волны-2.
+2. **RecoveryClass on wire**: tool calls do not carry a recovery class; before the
+   schema card, the source is a static tool-name → RecoveryClass taxonomy in the lineage
+   layer (ReadOnly by default, Mutating for write/exec classes), extensible through
+   config without changing frozen events.
+3. **Dataflow inputs/outputs**: `argsSummary ≤512 redacted` is not the full data;
+   full data lives in lineage-data.json (the data resource), while the graph model
+   carries `inputs: Vector[NodeId]` as separate dataflow edges.
+4. **Multi-job export**: a run's events.jsonl contains one job; delegated child
+   events are collected into a shared graph by the journal layer's reducer keyed
+   by rootId/jobId; unified multi-job export belongs to `cli/run/**`, wave 2, after
+   the read API is frozen.
+5. **Recording store**: durable storage for lineage-data.json is required before
+   LIN-05 replay; otherwise rework is needed. Wave-2 slot 0.
 
-Эти пункты — обязательства, не новые решения; каждое wire-изменение проходит
-собственную schema-card + review.
+These are obligations, not new decisions; each wire change goes through its own
+schema card + review.

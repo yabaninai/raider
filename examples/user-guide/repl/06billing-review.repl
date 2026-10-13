@@ -1,0 +1,8 @@
+import zio.json.*
+val billingCode = "if subtotalCents > 10000 then 1000 else 0"
+val billingPolicy = "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
+val scoutAsk = scout(s"$billingPolicy Review this Scala expression: $billingCode. Identify the exact boundary defect and give one concrete input/output counterexample. Do not use tools. Reply concisely.").map(answer => ("boundary-review", answer))
+val testAsk = worker(s"$billingPolicy For this Scala expression: $billingCode, Specify the expected discounts required by the policy, not the outputs of the buggy code. Return ONLY a JSON array of [subtotalCents, expectedDiscountCents] pairs for 9999, 10000 and 10001 cents. No markdown or tools.").map(answer => ("test-plan", answer))
+val (review, plan) = all(scoutAsk, testAsk).run()
+locally { assert(review._1 == "boundary-review" && review._2.nonEmpty); assert(plan._1 == "test-plan" && plan._2.nonEmpty); if (sys.env.get("RAIDER_PROVIDER").contains("openai")) { assert(plan._2.fromJson[List[List[Int]]].toOption.map(_.sortBy(_.headOption.getOrElse(-1))).contains(List(List(9999, 0), List(10000, 1000), List(10001, 1000))), "test plan contradicts the stated billing policy") }; println("EXAMPLE-06 PASS (parallel billing review and checked boundary test plan)"); println(s"${review._1}: ${review._2}"); println(s"${plan._1}: ${plan._2}") }
+:quit

@@ -33,7 +33,7 @@ independent review.
 ## Rename handling (documented choice)
 
 A git rename (`R`) is expanded as `deleted(old) + added(new)` — the treatment
-§2 sanctions for manifests ("rename допускается как delete+add").
+§2 sanctions for manifests ("rename may be represented as delete+add").
 Classification takes the union of both locations, which is conservative:
 moving a file to a lower-risk directory does not drop the origin's profiles.
 

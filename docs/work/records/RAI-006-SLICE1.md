@@ -2,23 +2,24 @@
 
 # RAI-006 (slice 1): work record
 
-Status: done (review pending; карточка открыта — tools-scripting, virtual time,
-controllable barriers — следующие срезы). Date: 2026-10-03 (UTC).
+Status: done (review pending; the card remains open — tools-scripting, virtual time,
+controllable barriers are the next slices). Date: 2026-10-03 (UTC).
 
 ## Resulting behavior
 
-raider-testkit: первый продуктовый Scala-модуль поверх замороженных контрактов —
-`ScriptedModelBackend` (детерминированный, без LLM/сети/часов): точная
-последовательность нормализованных ModelEvents, запись всех запросов (Ref),
-первоклассный маркер `fixtureMode`, фабрика `failing(error)` для typed Failed.
-ZIO Test подключён (zio-test/zio-test-sbt 2.1.26, ZIOFramework). Spec: 3 теста
-(точная последовательность+запись запроса; детерминированность двух прогонов;
-typed Failed) — 3 passed / 0 failed.
+raider-testkit: first product Scala module on top of frozen contracts —
+`ScriptedModelBackend` (deterministic, no LLM/network/clock): exact sequence of
+normalized ModelEvents, recording of all requests (Ref), first-class
+`fixtureMode` marker, `failing(error)` factory for typed Failed. ZIO Test is
+connected (zio-test/zio-test-sbt 2.1.26, ZIOFramework). Spec: 3 tests (exact
+sequence+request recording; determinism across two runs; typed Failed) — 3
+passed / 0 failed.
 
-Quality: registry дополнен гейтом `sbt-test` (unit/fast); dotc-путь сужен до
-src/main + contract fixtures (test-гейты идут через sbt). Канонический прогон:
-`make quality-changed QUALITY_EXECUTE=1` → passed 6/6 (artifacts/quality/
-20261003-030546/), `verify --require fast` → fingerprint fresh OK.
+Quality: registry extended with the `sbt-test` gate (unit/fast); dotc path
+narrowed to src/main + contract fixtures (test gates run through sbt). Canonical
+run: `make quality-changed QUALITY_EXECUTE=1` → passed 6/6
+(artifacts/quality/20261003-030546/), `verify --require fast` → fingerprint
+fresh OK.
 
 ## Commands (actual)
 
@@ -30,12 +31,12 @@ src/main + contract fixtures (test-гейты идут через sbt). Кано
 
 ## Limitations
 
-- Виртуальное время (TestClock-гейты loop'а), scripted tools, promises/barriers —
-  следующие срезы RAI-006 вместе с RAI-010 loop.
-- ScriptedBackend не эмулирует streaming backpressure/частичные кадры — это
-  компетенция transport-свен RAI-011/012 fixtures.
+- Virtual time (loop TestClock gates), scripted tools, promises/barriers —
+  next RAI-006 slices along with RAI-010 loop.
+- ScriptedBackend does not emulate streaming backpressure/partial frames —
+  that belongs to transport suites RAI-011/012 fixtures.
 
 ## Review and next task
 
-Review: pending (вместе со Stage-B фикс-раундом — один diff). Next: RAI-007 job
-registry + atomic lifecycle (runtime, ZIO STM) на Task/Job контрактах.
+Review: pending (along with the Stage-B fixed-round — one diff). Next: RAI-007
+job registry + atomic lifecycle (runtime, ZIO STM) on Task/Job contracts.

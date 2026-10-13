@@ -8,6 +8,10 @@ compiles with `-Werror` (zero warnings) and scalafmt/scalafix must pass.
 
 ## 0. Setup and everyday commands
 
+For user setup and runnable examples, start with the [current launch guide](user-guide.md)
+and [verified REPL/bundle gallery](user-guide-repl.md). The commands here are
+developer checks; a command is not evidence that it was run on your checkout.
+
 ```sh
 make compile                 # sbt --batch compile  (-Werror)
 COURSIER_CACHE=/tmp/cc-master sbt --batch test          # full suite
