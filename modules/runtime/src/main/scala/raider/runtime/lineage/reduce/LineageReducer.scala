@@ -38,6 +38,16 @@ enum ReduceError:
     */
   case SchemaVersionUnsupported(found: Int)
 
+  /** A `schemaVersion: 1` envelope carries the v2-only correlation field
+    * `invocationId` (ADR-032 §2: a version-mixing anomaly, never silently
+    * ignored). Defence in depth for DIRECT envelope constructors — the RAI-144
+    * multi-job export builds [[LineageEnvelope]]s in code, bypassing
+    * [[raider.runtime.lineage.io.LineageWireReader]] (which refuses the same
+    * shape typed as `LineageWireError.InvocationIdOnV1`); the versioned entry
+    * points re-check so the guarantee is local to the returned `Either`.
+    */
+  case InvocationIdOnV1(job: String, seq: Long)
+
   /** Event of a job that is neither the campaign root job nor a job introduced
     * by an earlier `Delegated` event: the parent link of that job's subtree is
     * unknown.
@@ -137,14 +147,16 @@ final case class LineageReduction(
   *
   * Validation order, first violation wins:
   *   1. `schemaVersion` in the entry point's allowed set;
-  *   2. the envelope's job is the root or an introduced child;
-  *   3. a v2 envelope of a non-root job carries `invocationId`
+  *   2. a v1 envelope carries `invocationId` ([[ReduceError.InvocationIdOnV1]]
+  *      — defence in depth, ADR-032 §2);
+  *   3. the envelope's job is the root or an introduced child;
+  *   4. a v2 envelope of a non-root job carries `invocationId`
   *      ([[ReduceError.MissingCorrelation]]);
-  *   4. per-job `seq` runs 1,2,3,... (gap or duplicate ->
+  *   5. per-job `seq` runs 1,2,3,... (gap or duplicate ->
   *      [[ReduceError.SeqGap]]);
-  *   5. the job has not reached `Terminal` yet (any later event, including a
+  *   6. the job has not reached `Terminal` yet (any later event, including a
   *      second `Terminal` -> [[ReduceError.AfterTerminal]]);
-  *   6. payload-specific pairing (finish without open start ->
+  *   7. payload-specific pairing (finish without open start ->
   *      [[ReduceError.UnmatchedFinish]]; phase exit without an open phase of
   *      that name -> [[ReduceError.PhaseMismatch]]; a second provenance record
   *      -> [[ReduceError.DuplicateProvenance]]).
@@ -336,21 +348,25 @@ object LineageReducer:
       // (1) the entry point's allowed wire revisions
       if !allowedVersions.contains(e.schemaVersion) then
         failure = Some(ReduceError.SchemaVersionUnsupported(e.schemaVersion))
-      // (2) the job must be the campaign root or an introduced child
+      // (2) version mixing: v1 must not carry the v2-only correlation field
+      // (defence in depth, mirroring LineageWireReader — RAI-144)
+      else if e.schemaVersion == LineageWire.V1 && e.invocationId.isDefined
+      then failure = Some(ReduceError.InvocationIdOnV1(job, e.seq))
+      // (3) the job must be the campaign root or an introduced child
       else if job != rootJob && !introduced.contains(job) then
         failure = Some(ReduceError.UnknownParent(job, e.seq))
-      // (3) v2 correlation: required on non-root jobs (ADR-032 §1)
+      // (4) v2 correlation: required on non-root jobs (ADR-032 §1)
       else if e.schemaVersion == LineageWire.V2 && job != rootJob && e.invocationId.isEmpty
       then failure = Some(ReduceError.MissingCorrelation(job, e.seq))
       else
-        // (4) per-job seq runs 1,2,3,... — gap or duplicate both fail here
+        // (5) per-job seq runs 1,2,3,... — gap or duplicate both fail here
         val expected = nextSeq.getOrElse(job, 1L)
         if e.seq != expected then
           failure = Some(ReduceError.SeqGap(job, expected, e.seq))
         else
           if expected == 1L then jobOrder += job
           nextSeq(job) = expected + 1L
-          // (5) Terminal closes the job: exactly one, last (ADR-024 §5)
+          // (6) Terminal closes the job: exactly one, last (ADR-024 §5)
           if terminalJobs.contains(job) then
             failure = Some(ReduceError.AfterTerminal(job, e.seq))
           else

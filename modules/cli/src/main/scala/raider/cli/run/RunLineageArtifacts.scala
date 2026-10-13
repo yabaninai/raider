@@ -7,17 +7,15 @@ import raider.dsl.lineage.data.{
   LineageDataDocument,
   NodeData,
   NodeKind,
+  ProvenanceArtifact,
+  ProvenanceRecord,
   Usage
 }
 import raider.dsl.lineage.proj.LineageRenderer
 import raider.dsl.lineage.store.LineageDataStore
-import raider.runtime.events.{
-  EventEnvelope,
-  EventPayload,
-  ToolOutcome,
-  UsageSnapshot
-}
+import raider.runtime.events.{EventPayload, ToolOutcome, UsageSnapshot}
 import raider.runtime.lineage.model.{SessionGraph, SessionNode}
+import raider.runtime.lineage.wire.{LineageEnvelope, LineagePayload}
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, StandardCopyOption}
@@ -25,13 +23,14 @@ import scala.util.control.NonFatal
 
 /** LIN-09 (ADR-027 §2/§6.5, docs/lineage.md §9.2 "Writing artifacts to the run
   * directory"): writes the settled run's lineage artifacts NEXT TO the run's
-  * own events.jsonl/summary.md — `lineage-data.json` (the frozen
-  * schemaVersion-1 document, written through the accepted atomic store
-  * [[LineageDataStore]]) and `lineage.scala` (the deterministic
-  * [[SessionGraphView]] → [[LineageRenderer]] projection, written with the SAME
-  * atomic tmp+ATOMIC_MOVE pattern). The run directory is per-invocation
-  * (`work-<uuid>`), so parallel runs never share a target path — isolation is
-  * structural (LIN9-03), not locking.
+  * own events.jsonl/summary.md — `lineage-data.json` (written through the
+  * accepted atomic store [[LineageDataStore]]; schemaVersion 1 as frozen, or
+  * the ADR-032 v2 shape when the run exported joined child segments) and
+  * `lineage.scala` (the deterministic [[SessionGraphView]] →
+  * [[LineageRenderer]] projection, written with the SAME atomic tmp+ATOMIC_MOVE
+  * pattern). The run directory is per-invocation (`work-<uuid>`), so parallel
+  * runs never share a target path — isolation is structural (LIN9-03), not
+  * locking.
   *
   * Total by contract: every failure is a typed [[ArtifactError]], never an
   * exception, so a projection/store failure can never change the run's exit
@@ -71,11 +70,24 @@ object RunLineageArtifacts:
     * `// data:` refs resolve into it — a failed source write leaves the
     * persisted document in place for reconciliation (card compatibility note),
     * never the reverse.
+    *
+    * RAI-144: the input is the run's exported VERSIONED stream (the exact
+    * `events.jsonl` lines) and the cross-run provenance record the reduction
+    * returned. When the run joined child segments, the document is written as
+    * lineage-data SCHEMAVERSION 2 (ADR-032 §4) carrying the top-level
+    * `provenance` record; a delegation-free run stays byte-identical to the
+    * frozen schemaVersion-1 document. The wave-1 writer convention is kept:
+    * delegation nodes carry no `dataRef`, so they get no data entry — the
+    * per-segment `invocationId` correlation lives on the joined v2 envelopes of
+    * events.jsonl (its durable surface); run-written
+    * `delegationData.invocationId` entries would need a dataRef convention of
+    * their own and belong to the corpus card (RAI-146), not to this writer.
     */
   def write(
       workDir: Path,
       graph: SessionGraph,
-      envelopes: Vector[EventEnvelope]
+      wire: Vector[LineageEnvelope],
+      provenance: Option[LineagePayload.RunProvenance]
   ): Either[ArtifactError, Written] =
     try
       val source = workDir.resolve(SourceName)
@@ -97,38 +109,50 @@ object RunLineageArtifacts:
           .left
           .map(e => ArtifactError.Render(String.valueOf(e)))
         _ <- LineageDataStore
-          .write(data, documentOf(graph, envelopes))
+          .write(data, documentOf(graph, wire, provenance))
           .left
           .map(e => ArtifactError.Store(String.valueOf(e)))
         _ <- writeSourceAtomically(source, rendered)
       yield Written(source, data)
     catch case NonFatal(t) => Left(ArtifactError.Io(String.valueOf(t)))
 
-  /** The frozen schemaVersion-1 document of the settled campaign: nodes are the
-    * graph's own nodes in emission order (ids/parents/inputs/seq/atMs verbatim;
+  /** The lineage-data document of the settled campaign: nodes are the graph's
+    * own nodes in emission order (ids/parents/inputs/seq/atMs verbatim;
     * dataRefs as the reducer defined them), the data resource binds the
     * wire-exported summaries to those refs. The generator fields mirror the
     * pinned build (`ThisBuild / version`, `ThisBuild / scalaVersion` in
     * build.sbt; the schema const-checks scalaVersion == 3.9.0).
+    *
+    * RAI-144: the payload index scans the run's VERSIONED stream (the frozen
+    * cases inside the v2 envelopes included — the joined child segments bind
+    * their summaries exactly like the parent's). The document becomes
+    * schemaVersion 2 with the provenance record (ADR-032 §4) exactly when the
+    * record is present — a v1 document never carries a v2 field
+    * (validator-checked, never silently ignored).
     */
   private def documentOf(
       graph: SessionGraph,
-      envelopes: Vector[EventEnvelope]
+      wire: Vector[LineageEnvelope],
+      provenance: Option[LineagePayload.RunProvenance]
   ): LineageDataDocument =
-    // One pass over the run's own envelopes: the two payload summaries the
-    // wire actually exports (ToolStarted.argsSummary by (job, callId);
-    // ModelCallFinished usage by (job, round)).
+    // One pass over the run's own envelopes (frozen payloads, joined child
+    // segments included): the two payload summaries the wire actually exports
+    // (ToolStarted.argsSummary by (job, callId); ModelCallFinished usage by
+    // (job, round)).
     val args =
       scala.collection.mutable.HashMap.empty[(String, String), String]
     val usage =
       scala.collection.mutable.HashMap.empty[(String, Int), UsageSnapshot]
-    envelopes.foreach { e =>
-      e.payload match
-        case EventPayload.ToolStarted(callId, _, summary) =>
-          args((e.jobId.value, callId)) = summary
-        case EventPayload.ModelCallFinished(round, _, snapshot) =>
-          usage((e.jobId.value, round)) = snapshot
-        case _ => ()
+    wire.foreach { line =>
+      line.payload match
+        case LineagePayload.Frozen(p) =>
+          p match
+            case EventPayload.ToolStarted(callId, _, summary) =>
+              args((line.jobId.value, callId)) = summary
+            case EventPayload.ModelCallFinished(round, _, snapshot) =>
+              usage((line.jobId.value, round)) = snapshot
+            case _ => ()
+        case _ => () // v2 payloads carry no data-entry summaries
     }
     val nodes = Vector.newBuilder[DataNode]
     val data = scala.collection.mutable.HashMap.empty[String, NodeData]
@@ -204,7 +228,7 @@ object RunLineageArtifacts:
         )
     }
     LineageDataDocument(
-      schemaVersion = 1,
+      schemaVersion = if provenance.isDefined then 2 else 1,
       generator = GeneratorInfo(
         "raider",
         "0.1.0-SNAPSHOT",
@@ -213,7 +237,13 @@ object RunLineageArtifacts:
       ),
       runId = graph.rootId.value,
       nodes = nodes.result(),
-      data = data.toMap
+      data = data.toMap,
+      provenance = provenance.map(r =>
+        ProvenanceRecord(
+          r.parentRunId,
+          r.artifacts.map(a => ProvenanceArtifact(a.kind, a.path))
+        )
+      )
     )
 
   /** The reducer's node id convention `<job>:n<seq>` → the job part that keys

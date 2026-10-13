@@ -15,9 +15,10 @@ import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd, UsageReport}
 import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
 import raider.runtime.lineage.model.{GraphHash, SessionGraph}
 import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
-import raider.runtime.jobs.{JobManager, StatusLedger}
+import raider.runtime.lineage.wire.{LineageEnvelope, LineagePayload}
+import raider.runtime.jobs.{JobManager, OnTransition, StatusLedger}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
-import zio.{Promise, Ref, Scope, ZIO}
+import zio.{Promise, Ref, Scope, UIO, ZIO}
 import zio.json.EncoderOps
 
 import java.nio.charset.StandardCharsets.UTF_8
@@ -140,9 +141,22 @@ object HeadlessRunner:
         // invocation; the whole execute (preflight included) runs as one job,
         // so events.jsonl covers queued→running→terminal for every run.
         hub <- EventHub.make()
-        manager <- JobManager.make(
-          onTransition = Some(StatusLedger.onTransition(hub, root))
-        )
+        // RAI-144: the run's events sink opens BEFORE the job layer so the
+        // multi-job exporter is built over it; the sink and the exporter's
+        // capture fibers release at scope end.
+        writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
+        _ <- ZIO.addFinalizer(writer.close)
+        join <- MultiJobExport.make(hub, writer, workDir)
+        _ <- ZIO.addFinalizer(join.close)
+        ledger = StatusLedger.onTransition(hub, root)
+        // RAI-144: the manager has ONE transition listener — composed here.
+        // The exporter MUST register its per-job subscription BEFORE the
+        // ledger publishes the job's first envelope: the hook fires after the
+        // committed Queued→Running transition but BEFORE the job fiber is
+        // forked, so the capture is loss-window-free (from per-job seq 1).
+        listener: OnTransition = (jobId, from, to) =>
+          join.capture(jobId, from, to) *> ledger(jobId, from, to)
+        manager <- JobManager.make(onTransition = Some(listener))
         // RAI-086: captured out of the job body — the ci view parsed during
         // preflight and the REAL final ledger snapshot. Each stays None when
         // its stage was never reached (malformed context / preflight before
@@ -157,10 +171,12 @@ object HeadlessRunner:
           workDir,
           hub,
           manager,
+          writer,
+          join,
           ciRef,
           usageRef
         )
-        (outcome, eventsWritten, lineage, envelopes) = jobOutcome
+        (outcome, eventsWritten, lineage) = jobOutcome
         ciOpt <- ciRef.get
         usageOpt <- usageRef.get
         finishedAt <- ZIO.succeed(Instant.now())
@@ -189,8 +205,7 @@ object HeadlessRunner:
           eventsWritten,
           ciOpt,
           usageOpt,
-          lineage,
-          envelopes
+          lineage
         )
       yield Outcome(exitCode, workDir, Some(runResult))
 
@@ -227,20 +242,30 @@ object HeadlessRunner:
     * LIN-03B (live lineage, ADR-027): the SAME ordered envelopes — the exact
     * stream that lands in events.jsonl, snapshot prefix included — ALSO fold
     * into an in-memory vector on their way to the sink, and after the job
-    * settles the vector reduces through [[LineageReducer]] (the deterministic
+    * settles the vector reduces through the lineage reducer (the deterministic
     * campaign fold) into the run's [[SessionGraph]]. The fold shares the drain
     * discipline of the file: every envelope enters the vector BEFORE its append
     * can be observed by [[EventExport.awaitCaughtUp]], so when the settled wait
     * sees `written >= watermark` the vector provably holds the whole exported
     * prefix — no tail race between "caught up" and "folded". The outcome
     * travels to [[writeArtifacts]] as
-    * `Option[Either[ReduceError, SessionGraph]]`: `None` = no lineage line
+    * `Option[Either[ReduceError, LineageOutcome]]`: `None` = no lineage line
     * (preflight-failure families; a mid-run cancellation/defect never reaches
     * this point at all — no line, the events.jsonl checkpoint stays the honest
     * record), `Left` = a typed reduction error rendered as the honest
     * `unavailable` line, `Right` = hash + node count in summary.md. No new
     * artifact is created: the checkpoint IS events.jsonl, and run.json stays
     * frozen.
+    *
+    * RAI-144 (multi-job export): the sink appends through
+    * [[MultiJobExport.exportParent]] — the exporter serializes every line
+    * (campaign envelopes verbatim at export seq; the canonical parent-stream
+    * fork record and the run_provenance record interposed when delegate
+    * children join; see [[MultiJobExport]] for the interleave policy) and
+    * mirrors the file into the fold buffer, so the reduction input always
+    * equals the exported bytes. A campaign that cannot reach Terminal (a
+    * detached/torn child segment) falls back to the LIN5-03 partial entry and
+    * is reported as the honest PARTIAL outcome.
     */
   private def executeAsJob(
       args: CliArgs,
@@ -250,6 +275,8 @@ object HeadlessRunner:
       workDir: Path,
       hub: EventHub,
       manager: JobManager,
+      writer: EventsJsonlWriter,
+      join: MultiJobExport,
       ciOut: Ref[Option[CiContext]],
       usageOut: Ref[Option[UsageReport]]
   ): ZIO[
@@ -258,88 +285,147 @@ object HeadlessRunner:
     (
         Either[RaiderError, String],
         Long,
-        Option[Either[ReduceError, SessionGraph]],
-        Vector[EventEnvelope]
+        Option[Either[ReduceError, LineageOutcome]]
     )
   ] =
-    ZIO
-      .acquireReleaseWith(
-        EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
-      )(_.close) { writer =>
-        for
-          barrier <- Promise.make[Nothing, JobId]
-          droppedBefore <- hub.droppedDiagnostics
-          // LIN-03B: the live-fold input — exactly the ordered envelopes that
-          // reach the sink (fold BEFORE append, see the doc above).
-          lineageBuf <- Ref.make(Vector.empty[EventEnvelope])
-          job = Task(
-            barrier.await.flatMap { jobId =>
-              val le = LoopEvents(hub, jobId, root, StatusLedger.sessionId)
-              // The observed hub-level diagnostics drop count rides out as a REAL
-              // DiagnosticsCoalesced envelope BEFORE the job settles (so it is
-              // never after Terminal); the marker is best-effort (diagnostics
-              // class), the reliable path is never affected.
-              val emitMarker = hub.droppedDiagnostics.flatMap { dropped =>
-                val lost = dropped - droppedBefore
-                ZIO.when(lost > 0L)(
-                  le.emit(EventPayload.DiagnosticsCoalesced(lost))
-                )
-              }
-              ZIO
-                .scoped(
-                  execute(
-                    args,
-                    root,
-                    env,
-                    ciFlag,
-                    workDir,
-                    Some(le),
-                    ciOut,
-                    usageOut
-                  )
-                )
-                .foldZIO(
-                  err => emitMarker *> ZIO.fail(err),
-                  ok => emitMarker.as(ok)
-                )
-            }
-          )
-          handle <- manager.start(root, "headless", job)
-          subscribed <- hub.subscribe(handle.id)
-          (snapshot, stream) = subscribed
-          // The start transition is ALWAYS the file's first line: it lives in
-          // the snapshot before any stream envelope can exist (the job body
-          // is held on the barrier) and is appended before the release below.
-          _ <- ZIO.foreachDiscard(
-            EventExport.startTransition(snapshot).toVector
-          )(env => lineageBuf.update(_ :+ env) *> writer.append(env))
-          collector <- EventExport
-            .inOrder(snapshot.lastSeq)(stream)
-            .foreach(env => lineageBuf.update(_ :+ env) *> writer.append(env))
-            .forkDaemon
-          _ <- barrier.succeed(handle.id).unit
-          result <- manager
-            .await(handle)
-            .either
-            .ensuring(
-              EventExport
-                .awaitCaughtUp(hub, handle.id, writer.written)
-                .zipRight(collector.interrupt)
+    for
+      barrier <- Promise.make[Nothing, JobId]
+      droppedBefore <- hub.droppedDiagnostics
+      job = Task(
+        barrier.await.flatMap { jobId =>
+          val le = LoopEvents(hub, jobId, root, StatusLedger.sessionId)
+          // The observed hub-level diagnostics drop count rides out as a REAL
+          // DiagnosticsCoalesced envelope BEFORE the job settles (so it is
+          // never after Terminal); the marker is best-effort (diagnostics
+          // class), the reliable path is never affected.
+          val emitMarker = hub.droppedDiagnostics.flatMap { dropped =>
+            val lost = dropped - droppedBefore
+            ZIO.when(lost > 0L)(
+              le.emit(EventPayload.DiagnosticsCoalesced(lost))
             )
-          lines <- writer.written
-          buffered <- lineageBuf.get
-          // LIN-03B: settled — reduce the folded prefix. Preflight-failure
-          // families produce NO lineage line (the run never formed a
-          // campaign); anything else attempts the reduction and reports the
-          // typed outcome either way (never a crash of the run).
-          lineage = result.fold(
-            e =>
-              if isPreflightFailure(e) then None
-              else Some(LineageReducer.reduce(buffered)),
-            _ => Some(LineageReducer.reduce(buffered))
-          )
-        yield (result, lines, lineage, buffered)
-      }
+          }
+          ZIO
+            .scoped(
+              execute(
+                args,
+                root,
+                env,
+                ciFlag,
+                workDir,
+                Some(le),
+                ciOut,
+                usageOut
+              )
+            )
+            .foldZIO(
+              err => emitMarker *> ZIO.fail(err),
+              ok => emitMarker.as(ok)
+            )
+        }
+      )
+      handle <- manager.start(root, "headless", job)
+      // RAI-144: the campaign job id — the exporter refuses to join a fork
+      // before it is set (children are forked by the campaign's own loop, so
+      // this always precedes the first fork).
+      _ <- join.campaign(handle.id)
+      subscribed <- hub.subscribe(handle.id)
+      (snapshot, stream) = subscribed
+      // The start transition is ALWAYS the file's first line: it lives in
+      // the snapshot before any stream envelope can exist (the job body
+      // is held on the barrier) and is appended before the release below.
+      _ <- ZIO.foreachDiscard(
+        EventExport.startTransition(snapshot).toVector
+      )(env => join.exportParent(env))
+      collector <- EventExport
+        .inOrder(snapshot.lastSeq)(stream)
+        .foreach(env => join.exportParent(env))
+        .forkDaemon
+      _ <- barrier.succeed(handle.id).unit
+      result <- manager
+        .await(handle)
+        .either
+        .ensuring(
+          // RAI-144: drain the connected segments FIRST (bounded best-effort —
+          // a settled child's Terminal tail must land before the reduction;
+          // see [[MultiJobExport.drain]]), then wait for the CAMPAIGN
+          // watermark (the sink's raw line count is inflated by child lines
+          // and would satisfy before the campaign's own tail landed).
+          join
+            .drain()
+            .zipRight(
+              EventExport.awaitCaughtUp(hub, handle.id, join.campaignWritten)
+            )
+            .zipRight(collector.interrupt)
+        )
+      lines <- writer.written
+      // RAI-144: quiesce the exporter FIRST (capture fibers interrupted,
+      // segments closed) so the fold buffer is final before the reduction.
+      exported <- join.exportedWire
+      // LIN-03B + RAI-144: settled — reduce the folded prefix through the
+      // versioned entries. Preflight-failure families produce NO lineage line
+      // (the run never formed a campaign); anything else attempts the
+      // reduction and reports the typed outcome either way (never a crash of
+      // the run).
+      lineage <- result.fold(
+        e =>
+          if isPreflightFailure(e) then
+            ZIO.succeed(Option.empty[Either[ReduceError, LineageOutcome]])
+          else unifiedLineage(join, exported).map(Some(_)),
+        _ => unifiedLineage(join, exported).map(Some(_))
+      )
+    yield (result, lines, lineage)
+
+  /** RAI-144: the settled reduction of the exported stream — the strict
+    * versioned entry first; a campaign that cannot reach Terminal (a detached
+    * or torn child segment) falls back to the LIN5-03 partial entry and is
+    * reported as the honest PARTIAL outcome (never a silently complete graph).
+    * Any other strict violation stays a typed `Left` (a skip is not a pass).
+    */
+  private def unifiedLineage(
+      join: MultiJobExport,
+      wire: Vector[LineageEnvelope]
+  ): UIO[Either[ReduceError, LineageOutcome]] =
+    join.invocations.flatMap { invs =>
+      val reduced: Either[ReduceError, LineageOutcome] =
+        LineageReducer.reduceWire(wire) match
+          case Left(ReduceError.MissingTerminal(_)) =>
+            LineageReducer
+              .reducePartialWire(wire)
+              .map(red =>
+                LineageOutcome(
+                  red.graph,
+                  partial = true,
+                  red.provenance,
+                  invs,
+                  wire
+                )
+              )
+          case other =>
+            other.map(red =>
+              LineageOutcome(
+                red.graph,
+                partial = false,
+                red.provenance,
+                invs,
+                wire
+              )
+            )
+      ZIO.succeed(reduced)
+    }
+
+  /** RAI-144: the settled multi-job lineage outcome — the unified graph,
+    * whether it is a PARTIAL (LIN5-03) reduction of an incomplete campaign, the
+    * cross-run provenance record when the stream carried one, the joined
+    * segments' invocation ids, and the exact exported stream (the lineage
+    * artifacts bind their summaries to it).
+    */
+  final case class LineageOutcome(
+      graph: SessionGraph,
+      partial: Boolean,
+      provenance: Option[LineagePayload.RunProvenance],
+      invocations: Map[String, String],
+      wire: Vector[LineageEnvelope]
+  )
 
   /** Preflight families (args/manifest/load/entry) vs run-time failures. */
   private def isPreflightFailure(e: RaiderError): Boolean = e match
@@ -610,8 +696,7 @@ object HeadlessRunner:
       eventsWritten: Long,
       ci: Option[CiContext],
       usage: Option[UsageReport],
-      lineage: Option[Either[ReduceError, SessionGraph]],
-      envelopes: Vector[EventEnvelope]
+      lineage: Option[Either[ReduceError, LineageOutcome]]
   ): ZIO[Any, Nothing, Unit] =
     ZIO.attempt {
       Files.createDirectories(workDir)
@@ -679,27 +764,36 @@ object HeadlessRunner:
            |- trusted: ${c.trusted}
            |
            |""".stripMargin)
-      // LIN-03B: ONE lineage line on settled completion — the deterministic
-      // GraphHash of the graph reduced from the SAME ordered envelopes that
-      // were streamed to events.jsonl (the checkpoint), or the honest typed
-      // `unavailable` line when the checkpoint does not reduce. A reduction
-      // error is DATA the summary reports, never a crashed run.
+      // LIN-03B + RAI-144: ONE lineage line on settled completion — the
+      // deterministic GraphHash of the graph reduced from the SAME ordered
+      // stream that was written to events.jsonl (the checkpoint), the honest
+      // PARTIAL line when only the LIN5-03 tolerant entry could reduce it
+      // (incomplete campaign — a detached/torn child segment), or the honest
+      // typed `unavailable` line when the checkpoint does not reduce. A
+      // reduction error is DATA the summary reports, never a crashed run.
       val lineageLine = lineage.collect {
-        case Right(g) =>
-          s"- lineage: graph ${GraphHash(g)}, ${g.nodes.size} node(s) (checkpoint: events.jsonl)"
+        case Right(o) if o.partial =>
+          s"- lineage: partial graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (incomplete campaign; checkpoint: events.jsonl)"
+        case Right(o) =>
+          s"- lineage: graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (checkpoint: events.jsonl)"
         case Left(e) => s"- lineage: unavailable ($e)"
       }
-      // LIN-09: settled campaign → lineage.scala + lineage-data.json next to
-      // the run's own events.jsonl (atomic, per-run dir). BEST-EFFORT by
-      // contract: [[RunLineageArtifacts.write]] is total (every failure is
-      // typed), so this can never crash the run or move the exit code — the
-      // honest outcome is data in summary.md. Only a REDUCIBLE campaign
-      // attempts the write: preflight failures and non-reducible campaigns
-      // contribute no line (their lineage line above already reports why).
-      val artifactsLine = lineage.collect { case Right(g) =>
-        RunLineageArtifacts.write(workDir, g, envelopes) match
+      // LIN-09 + RAI-144: settled campaign → lineage.scala + lineage-data.json
+      // next to the run's own events.jsonl (atomic, per-run dir), built from
+      // the exported versioned stream and the provenance record — a run that
+      // joined child segments writes the lineage-data SCHEMAVERSION 2 document
+      // (ADR-032 §4), a delegation-free run stays byte-identical to the frozen
+      // v1 shape. BEST-EFFORT by contract: [[RunLineageArtifacts.write]] is
+      // total (every failure is typed), so this can never crash the run or
+      // move the exit code (LIN9-02). Preflight failures and non-reducible
+      // campaigns write no artifacts and add no line (their lineage line above
+      // already reports why).
+      val artifactsLine = lineage.collect { case Right(o) =>
+        RunLineageArtifacts.write(workDir, o.graph, o.wire, o.provenance) match
           case Right(written) =>
-            s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion 1)"
+            s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion ${
+                if o.provenance.isDefined then 2 else 1
+              })"
           case Left(e) => s"- lineage artifacts: unavailable ($e)"
       }
       val summary = s"""# raider run
