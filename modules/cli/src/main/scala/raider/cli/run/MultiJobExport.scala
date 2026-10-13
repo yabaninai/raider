@@ -1,14 +1,16 @@
 package raider.cli.run
 
-import raider.core.JobId
+import raider.core.{JobId, RootId, SessionId}
 import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
 import raider.runtime.jobs.{JobStatus, OnTransition}
+import raider.runtime.lineage.model.RecoveryClass
 import raider.runtime.lineage.wire.{
   ArtifactPointer,
   LineageEnvelope,
   LineagePayload,
   LineageWire
 }
+import raider.runtime.loop.LoopEvents
 import zio.{Fiber, Ref, Semaphore, UIO, ZIO}
 
 import java.nio.file.Path
@@ -404,6 +406,91 @@ final class MultiJobExport private (
         )
       )
     )
+
+  /** RAI-153 (ADR-032 §1/§6): the LIVE phase-emission sink of this run — the
+    * [[LoopEvents.PhaseSink]] the campaign loop emits `phase_started` /
+    * `phase_finished` records through at real phase boundaries. The v2 envelope
+    * is built here (campaign job id, export-canonical `nextSeq`,
+    * caller-supplied root/session/atMs verbatim) and appended to the run stream
+    * through the SAME locked sink as every other line, so the file order and
+    * the fold buffer stay one sequence. The ADR-024 seam is respected by
+    * construction: nothing enters the frozen hub or the 13-case payload family
+    * — ADR-032 already versioned the wire, this populates the v2 revision live.
+    *
+    * Ordering discipline (the [[LoopEvents.PhaseSink]] contract): BEFORE the
+    * locked append the sink settles the campaign's own hub stream (bounded
+    * best-effort [[EventExport.awaitCaughtUp]] over [[campaignWritten]]) —
+    * every campaign envelope published before the phase call is then already in
+    * the file, and any envelope published after the call can only be appended
+    * by the single collector fiber AFTER the phase line (the emitting fiber is
+    * blocked on this call). Phase lines do NOT count into [[campaignWritten]]
+    * (they are not hub envelopes), so the settle watermark stays exact. A phase
+    * requested before the campaign job is known is dropped, never invented;
+    * append failures absorb into `unit` at this seam (an unwritable environment
+    * still fails the run through the main export path, whose defects are not
+    * absorbed).
+    */
+  def phaseSink: LoopEvents.PhaseSink = new LoopEvents.PhaseSink:
+    def phaseStarted(
+        name: String,
+        recovery: RecoveryClass,
+        note: Option[String],
+        rootId: RootId,
+        sessionId: SessionId,
+        atMs: Long
+    ): UIO[Unit] =
+      exportPhase(
+        LineagePayload.PhaseStarted(name, recovery, note),
+        rootId,
+        sessionId,
+        atMs
+      )
+    def phaseFinished(
+        name: String,
+        rootId: RootId,
+        sessionId: SessionId,
+        atMs: Long
+    ): UIO[Unit] =
+      exportPhase(
+        LineagePayload.PhaseFinished(name),
+        rootId,
+        sessionId,
+        atMs
+      )
+
+  /** One live phase line: settle the campaign hub stream, then append the v2
+    * envelope under the export lock (file order == fold-buffer order).
+    */
+  private def exportPhase(
+      payload: LineagePayload,
+      rootId: RootId,
+      sessionId: SessionId,
+      atMs: Long
+  ): UIO[Unit] =
+    campaignRef.get.flatMap {
+      case None => ZIO.unit // no campaign job yet — nothing to attach to
+      case Some(camp) =>
+        EventExport.awaitCaughtUp(hub, camp, campaignWritten) *>
+          joinLock.withPermit {
+            val line = LineageEnvelope(
+              LineageWire.V2,
+              nextSeq(camp.value),
+              camp,
+              rootId,
+              sessionId,
+              atMs,
+              payload,
+              None
+            )
+            // The fold buffer mirrors the FILE: the line enters it only when
+            // the append actually landed; a defected (unwritable) sink absorbs
+            // here and records nothing (the run fails through the main path).
+            runWriter
+              .appendLineage(line)
+              .flatMap(_ => wire.update(_ :+ line))
+              .catchAllDefect(_ => ZIO.unit)
+          }
+    }
 
   /** childJobId -> invocationId for the joined segments (the lineage-data v2
     * `delegationData.invocationId` surface).

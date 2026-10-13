@@ -46,11 +46,7 @@ import raider.runtime.lineage.reduce.{
   LineageReducer,
   ReduceError
 }
-import raider.runtime.lineage.wire.{
-  LineageEnvelope,
-  LineagePayload,
-  LineageWire
-}
+import raider.runtime.lineage.wire.{LineageEnvelope, LineagePayload}
 import raider.runtime.loop.LoopEvents
 
 import java.io.File
@@ -71,19 +67,21 @@ import java.util.concurrent.{CopyOnWriteArrayList, TimeUnit}
   * published the DelegationEvents way (under the child's own id) and every
   * child settles through the real manager/hub/exporter path.
   *
-  * Phase stand-in (documented limitation, same category as RAI-144's unwired
-  * delegation tools): the product has NO live phase-emission path yet — the
-  * ADR-024 hub seam is frozen (13 payloads, no phase case) and `LoopEvents` has
-  * no phase surface. The fixture inserts the campaign's
-  * `phase_started`/`phase_finished` v2 envelopes at deterministic positions
-  * around the REAL machinery envelopes (before each stage's canonical fork
-  * record, after the stage's last joined child line) and re-derives the
-  * export-canonical per-job seq space (dense 1,2,3,… in file order — the
-  * exporter's own rule). The enriched stream is WRITTEN TO A FILE and read back
-  * through the versioned reader, so the reduction input is the file (replay
-  * discipline) and the artifact doubles as evidence. Delegation joins,
-  * correlation keys, canonical fork records and the provenance record remain
-  * REAL machinery output.
+  * Phase emission (RAI-153 — the RAI-145 stand-in is RETIRED): the campaign
+  * emits its five stage phases LIVE through the product surface — the
+  * campaign's `LoopEvents` carries the exporter's `phaseSink`
+  * ([[MultiJobExport.phaseSink]]) and calls `phaseStarted`/`phaseFinished` at
+  * the stage boundaries the scripted campaign genuinely tracks (enter before
+  * the stage's fork, exit after the stage's last child joined). The v2 phase
+  * envelopes are appended by the REAL exporter under its export lock with
+  * export-canonical per-job seqs — no post-hoc enrichment, no renumbering: the
+  * stream is written once, by the machinery, and read back from `events.jsonl`
+  * through the versioned reader (the reduction input is the FILE, replay
+  * discipline). The reduced graph, the projected report tree and the compiled
+  * artifact are byte-identical to the RAI-145 pins; the generator needed ZERO
+  * changes (emission-agnostic, ADR-032 §6). Delegation joins, correlation keys,
+  * canonical fork records and the provenance record remain REAL machinery
+  * output.
   *
   * Pinned semantics (card RAI-145):
   *   - '''UNI-01''' the representative multi-job fixture projects and executes
@@ -252,10 +250,10 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
 
   /** Waits until the child's Terminal is JOINED into the exported stream — the
     * stage-boundary discipline: a settled child's tail must be in the file
-    * before the next stage's fork record connects, or the enriched stream would
-    * open the next phase while the previous one is still open (the reducer
-    * parents constructs to the innermost open phase). Same settle-to-export
-    * honesty as `MultiJobExport.drain`, per stage.
+    * before the next stage's fork record connects, or the live-emitted stream
+    * would open the next phase while the previous one is still open (the
+    * reducer parents constructs to the innermost open phase). Same
+    * settle-to-export honesty as `MultiJobExport.drain`, per stage.
     */
   private def awaitChildJoined(join: MultiJobExport, child: JobId): UIO[Unit] =
     pollUntil(
@@ -269,16 +267,28 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
       )
     )
 
-  /** Waits until ANY envelope of the child joined (for a detached child, whose
-    * emitted lines must be in the stream before the campaign Terminal —
-    * otherwise the enriched stream would place a phase mark after the
-    * Terminal).
+  /** Waits until the child's LAST scripted line (its `ModelCallFinished`) is
+    * JOINED into the exported stream — used for the DETACHED boundary member,
+    * whose emitted lines must all be in the stream before the boundary phase
+    * closes (the member never reaches a Terminal; its final scripted line is
+    * the honest tail to wait for).
     */
-  private def awaitChildLinesJoined(
+  private def awaitChildLastLineJoined(
       join: MultiJobExport,
       child: JobId
   ): UIO[Unit] =
-    pollUntil(join.exportedWire.map(_.exists(_.jobId == child)))
+    pollUntil(
+      join.exportedWire.map(w =>
+        w.exists(e =>
+          e.jobId == child &&
+            (e.payload match
+              case LineagePayload
+                    .Frozen(EventPayload.ModelCallFinished(_, _, _)) =>
+                true
+              case _ => false)
+        )
+      )
+    )
 
   /** The stray's in-task subscribe hook: loss-window-free capture of the
     * child's own v1 stream (the snapshot's start transition + the post-snapshot
@@ -305,8 +315,9 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
 
   /** The full BillingCi-shape machinery run: five pipeline stages, every stage
     * a delegated child job (the BillingCi application pattern: each stage is
-    * its own native job). The campaign emits the phase STAND-INs only at the
-    * enrichment step (see the object scaladoc). The review pair and the
+    * its own native job). The campaign emits its five stage phases LIVE at the
+    * boundaries it tracks (RAI-153: the exporter's phase sink on the campaign's
+    * own LoopEvents — see the object scaladoc). The review pair and the
     * boundary trio are forked through the FROZEN batch verb
     * (`raider.dsl.composition.batch`, parallelism = group size) — the recorded
     * fan-out the projection carries. Introduction order is pinned by bounded
@@ -367,33 +378,54 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
         release <- Promise.make[Nothing, Unit]
         barrier <- Promise.make[Nothing, JobId]
         campaignJob = Task(
-          barrier.await.flatMap { _ =>
+          barrier.await.flatMap { campId =>
+            // RAI-153: the campaign emits its stage phases LIVE through the
+            // product surface — the exporter's phase sink on the campaign's
+            // own LoopEvents. Enter before the stage's fork, exit after the
+            // stage's last child joined: the v2 envelopes are appended by the
+            // REAL exporter (export-canonical seqs, export lock).
+            val campLe = LoopEvents(
+              hub,
+              campId,
+              rootId,
+              sessionId,
+              phases = Some(join.phaseSink)
+            )
+            def openStage(stage: String) =
+              campLe.phaseStarted(stage, stageRecovery(stage))
+            def closeStage(stage: String) = campLe.phaseFinished(stage)
             val stage1 =
               for
+                _ <- openStage(StageBaseline)
                 h <- forkChild(hub, manager, relB)(stageEvents(StageBaseline))
                 _ <- publishIntroduction(hub, h.id, stageAgent(StageBaseline))
                 _ <- pollUntil(join.segmentsView.map(_.size >= 1))
                 _ <- relB.succeed(()).unit
                 _ <- manager.await(h).either
                 _ <- awaitChildJoined(join, h.id)
+                _ <- closeStage(StageBaseline)
               yield h
             val stage2 =
               for
+                _ <- openStage(StageRepair)
                 h <- forkChild(hub, manager, relR)(stageEvents(StageRepair))
                 _ <- publishIntroduction(hub, h.id, stageAgent(StageRepair))
                 _ <- pollUntil(join.segmentsView.map(_.size >= 2))
                 _ <- relR.succeed(()).unit
                 _ <- manager.await(h).either
                 _ <- awaitChildJoined(join, h.id)
+                _ <- closeStage(StageRepair)
               yield h
             val stage3 =
               for
+                _ <- openStage(StageFinal)
                 h <- forkChild(hub, manager, relF)(stageEvents(StageFinal))
                 _ <- publishIntroduction(hub, h.id, stageAgent(StageFinal))
                 _ <- pollUntil(join.segmentsView.map(_.size >= 3))
                 _ <- relF.succeed(()).unit
                 _ <- manager.await(h).either
                 _ <- awaitChildJoined(join, h.id)
+                _ <- closeStage(StageFinal)
               yield h
             // reviews: the recorded loop fans the pair out with the frozen
             // batch verb, then introduces the members in pinned order.
@@ -408,6 +440,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                   )
                 )
                 handles <- Task.zio(batch(forks, 2)(fx => Task(fx)))
+                _ <- openStage(StageReviews)
                 _ <- publishIntroduction(
                   hub,
                   handles(0).id,
@@ -426,6 +459,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                 _ <- manager.await(handles(1)).either
                 _ <- awaitChildJoined(join, handles(0).id)
                 _ <- awaitChildJoined(join, handles(1).id)
+                _ <- closeStage(StageReviews)
               yield handles
             // boundary: the recorded batch of three.
             val stageBoundary =
@@ -438,6 +472,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                   )
                 )
                 handles <- Task.zio(batch(forks, 3)(fx => Task(fx)))
+                _ <- openStage(StageBoundary)
                 _ <- publishIntroduction(
                   hub,
                   handles(0).id,
@@ -466,8 +501,10 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                       awaitChildJoined(join, handles(0).id) *>
                       awaitChildJoined(join, handles(2).id) *>
                       // the detached member's emitted lines must still be
-                      // joined before the campaign Terminal (no Terminal ever)
-                      awaitChildLinesJoined(join, handles(1).id)
+                      // joined before the campaign Terminal (no Terminal ever);
+                      // the phase closes after its LAST scripted line landed
+                      awaitChildLastLineJoined(join, handles(1).id) *>
+                      closeStage(StageBoundary)
                   else
                     relB2.succeed(()).unit *>
                       manager.await(handles(0)).either *>
@@ -475,7 +512,8 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                       manager.await(handles(2)).either *>
                       awaitChildJoined(join, handles(0).id) *>
                       awaitChildJoined(join, handles(1).id) *>
-                      awaitChildJoined(join, handles(2).id)
+                      awaitChildJoined(join, handles(2).id) *>
+                      closeStage(StageBoundary)
               yield handles
             for
               _ <- stage1
@@ -540,112 +578,47 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
       )
     }
 
-  // ----- stage-phase enrichment (documented stand-in) + export-canonical seq --
+  // ----- replay read-back (RAI-153: no post-hoc enrichment) --------------------
 
-  private final case class Enriched(
+  private final case class ExportedFile(
       path: Path,
       readBack: ParsedWireEvents,
       campaign: String,
       jobs: Vector[String]
   )
 
-  /** Inserts the five stage phases around the REAL machinery envelopes and
-    * re-derives the export-canonical per-job seq space, writes the file and
-    * reads it back through the versioned reader (the reduction input is the
-    * FILE). The joined segment order is the connect order (pinned by the
-    * introduction polls) = stage order.
+  /** Reads back the REAL exported stream — `events.jsonl` exactly as the
+    * exporter wrote it (RAI-153: live phase envelopes included, export-
+    * canonical seqs assigned at append time; no post-processing) — through the
+    * versioned reader. The reduction input is the FILE (replay discipline). The
+    * file must round-trip to the exporter's fold buffer byte-for-byte and carry
+    * a clean tail.
     */
-  private def enrichAndWrite(
+  private def readExportedFile(
       dir: Path,
       run: MachineryRun
-  ): ZIO[Any, Nothing, Enriched] =
+  ): ZIO[Any, Nothing, ExportedFile] =
     ZIO.attempt {
-      val campaign = run.campaign.value
-      if run.segments.size != 8 then
-        throw new IllegalStateException(
-          "expected 8 joined segments, got " + run.segments.size
-        )
-      val segJobs = run.segments.map(_.childJobId)
-      val stageChildren: Vector[(String, Vector[JobId])] = Vector(
-        (StageBaseline, Vector(segJobs(0))),
-        (StageRepair, Vector(segJobs(1))),
-        (StageFinal, Vector(segJobs(2))),
-        (StageReviews, Vector(segJobs(3), segJobs(4))),
-        (StageBoundary, Vector(segJobs(5), segJobs(6), segJobs(7)))
-      )
-      def firstForkIdx(child: JobId): Int =
-        run.wire.indexWhere(e =>
-          e.jobId == run.campaign && e.schemaVersion == LineageWire.V1 &&
-            (e.payload match
-              case LineagePayload.Frozen(EventPayload.Delegated(c, _)) =>
-                c == child
-              case _ => false)
-        )
-      def lastChildIdx(child: JobId): Int =
-        run.wire.lastIndexWhere(_.jobId == child)
-      val marks = Vector.newBuilder[(Int, LineagePayload)]
-      stageChildren.foreach { (name, children) =>
-        marks += (
-          (
-            children.map(firstForkIdx).min,
-            LineagePayload.PhaseStarted(name, stageRecovery(name), None)
-          )
-        )
-        marks += ((
-          children.map(lastChildIdx).max + 1,
-          LineagePayload.PhaseFinished(name)
-        ))
-      }
-      val sorted =
-        marks.result().sortBy(_._1) // stable: stage order kept at ties
-      val out = Vector.newBuilder[LineageEnvelope]
-      var mi = 0
-      var wi = 0
-      while wi <= run.wire.length do
-        while mi < sorted.length && sorted(mi)._1 == wi do
-          val atMs =
-            if wi < run.wire.length then run.wire(wi).atMs
-            else run.wire.last.atMs
-          out += LineageEnvelope(
-            LineageWire.V2,
-            0L,
-            run.campaign,
-            rootId,
-            sessionId,
-            atMs,
-            sorted(mi)._2,
-            None
-          )
-          mi += 1
-        if wi < run.wire.length then out += run.wire(wi)
-        wi += 1
-      val merged = out.result()
-      // export-canonical per-job seq: dense 1,2,3,… in FILE order
-      val counts = scala.collection.mutable.HashMap.empty[String, Long]
-      val renumbered = merged.map { e =>
-        val job = e.jobId.value
-        val n = counts.getOrElse(job, 0L) + 1L
-        counts(job) = n
-        e.copy(seq = n)
-      }
-      val path = dir.resolve("unified-events.jsonl")
-      val text = renumbered.map(_.toJson).mkString("\n") + "\n"
-      Files.write(path, text.getBytes(UTF_8))
+      val path = dir.resolve("events.jsonl")
       val parsed = LineageWireReader.read(path) match
         case Right(p) => p
         case Left(err) =>
-          throw new IllegalStateException(
-            "unified-events.jsonl read refused: " + err
-          )
+          throw new IllegalStateException("events.jsonl read refused: " + err)
       if parsed.truncatedTail.isDefined then
         throw new IllegalStateException(
-          "unified-events.jsonl torn tail (fixture bug)"
+          "events.jsonl torn tail (fixture bug)"
         )
-      if parsed.envelopes != renumbered then
+      if parsed.envelopes != run.wire then
         throw new IllegalStateException(
-          "unified-events.jsonl round-trip mismatch (fixture bug)"
+          "events.jsonl round-trip mismatch vs exporter buffer (fixture bug)"
         )
-      Enriched(path, parsed, campaign, segJobs.map(_.value))
+      val campaign = run.campaign.value
+      val jobs = run.wire.map(_.jobId.value).distinct.filter(_ != campaign)
+      if jobs.size != 8 then
+        throw new IllegalStateException(
+          "expected 8 child jobs in the file, got " + jobs.size
+        )
+      ExportedFile(path, parsed, campaign, jobs)
     }.orDie
 
   // ----- unified pipeline: reduce -> view -> generate -------------------------
@@ -1156,14 +1129,14 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                 detachBoundaryMember = false,
                 withStray = false
               )
-              enriched <- enrichAndWrite(dir, run)
-              envs = enriched.readBack.envelopes
+              exported <- readExportedFile(dir, run)
+              envs = exported.readBack.envelopes
               // byte-deterministic pipeline: the SAME file through
               // reduce -> view -> generate twice
               proj1 <- ZIO.succeed(
                 projectUnified(
                   envs,
-                  enriched.campaign,
+                  exported.campaign,
                   provenanceOf(envs),
                   linkedSegments(run)
                 )
@@ -1171,7 +1144,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
               proj2 <- ZIO.succeed(
                 projectUnified(
                   envs,
-                  enriched.campaign,
+                  exported.campaign,
                   provenanceOf(envs),
                   linkedSegments(run)
                 )
@@ -1212,8 +1185,8 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
               )
             yield
               val expected = expectedBillingTree(envs)
-              val camp = enriched.campaign
-              val jr = enriched.jobs(1)
+              val camp = exported.campaign
+              val jr = exported.jobs(1)
               val dlRepair = forkId(envs, camp)(jr)
               val phRepair = phaseId(envs, camp)(StageRepair)
               val mdRepair1 = roundId(envs, jr)(1)
@@ -1309,8 +1282,8 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                 detachBoundaryMember = false,
                 withStray = true
               )
-              enriched <- enrichAndWrite(dir, run)
-              envs = enriched.readBack.envelopes
+              exported <- readExportedFile(dir, run)
+              envs = exported.readBack.envelopes
               strayPrefix = run.strayJobId
                 .map(_.value)
                 .getOrElse(throw new IllegalStateException("stray missing"))
@@ -1329,7 +1302,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
               proj <- ZIO.succeed(
                 projectUnified(
                   envs,
-                  enriched.campaign,
+                  exported.campaign,
                   provenanceOf(envs),
                   segmentsTyped
                 )
@@ -1378,13 +1351,13 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
               strayTree <- execute(strayLoaded.program)
               // UNI-03a: corrupted correlation — strip the repair child's key
               corrupted = envs.map { e =>
-                if e.jobId.value == enriched.jobs(1) then
+                if e.jobId.value == exported.jobs(1) then
                   e.copy(invocationId = None)
                 else e
               }
               refused = LineageReducer.reduceWire(corrupted)
               corruptedFirst = corrupted
-                .find(_.jobId.value == enriched.jobs(1))
+                .find(_.jobId.value == exported.jobs(1))
                 .get
                 .seq
             yield
@@ -1439,7 +1412,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                 // UNI-03a: corrupted correlation -> typed refusal naming the child
                 refused == Left(
                   ReduceError.MissingCorrelation(
-                    enriched.jobs(1),
+                    exported.jobs(1),
                     corruptedFirst
                   )
                 )
@@ -1459,9 +1432,9 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
                 detachBoundaryMember = true,
                 withStray = false
               )
-              enriched <- enrichAndWrite(dir, run)
-              envs = enriched.readBack.envelopes
-              detachedJob = enriched.jobs(
+              exported <- readExportedFile(dir, run)
+              envs = exported.readBack.envelopes
+              detachedJob = exported.jobs(
                 6
               ) // boundary member 2 (connect order)
               strict = LineageReducer.reduceWire(envs)
@@ -1485,7 +1458,7 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
               proj <- ZIO.succeed(
                 projectUnified(
                   envs,
-                  enriched.campaign,
+                  exported.campaign,
                   provenanceOf(envs),
                   segmentsTyped,
                   partial = true
