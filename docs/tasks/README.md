@@ -195,3 +195,12 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-135** [Registry: additive component-stage eval and perf profiles (gate policy change, coordinator-executed)](m1.md); dependencies: RAI-114; profiles: static, docs.
 - **RAI-136** [Load soak: PTY stability under storm + RAI-123 trigger probe (conditional product fix)](m2-p2.md); dependencies: RAI-119, RAI-123; profiles: static, unit, repl, runtime.
 - **RAI-137** [UX baseline harness gate semantics: measurable exit codes, then perf profile registration](m1.md); dependencies: RAI-135; profiles: static, docs.
+- **RAI-140** [ADR-031: lineage projection runtime contract — typed dry-run description (LIN-02 completion contract)](lineage.md); dependencies: LIN-02; profiles: static, unit, contracts, docs.
+- **RAI-141** [Renderer emits real Program/Task composition (LIN-02 implementation)](lineage.md); dependencies: RAI-140; profiles: static, unit, contracts.
+- **RAI-142** [LIN-02 acceptance: executed projection semantics (sequencing, inputs, delegation, phases, failures)](lineage.md); dependencies: RAI-141; profiles: static, unit, contracts, runtime.
+- **RAI-143** [Schema card: versioned phase/recovery events + cross-run provenance contract (wave-2 wire extension)](lineage.md); dependencies: LIN-05; profiles: static, unit, contracts.
+- **RAI-144** [Multi-job lineage export: delegate children join one events stream with provenance](lineage.md); dependencies: RAI-143; profiles: static, unit, contracts, ci.
+- **RAI-145** [Unified CI pipeline graph → DSL projection (BillingCi shape)](lineage.md); dependencies: RAI-142, RAI-144; profiles: static, unit, contracts, runtime.
+- **RAI-146** [Independent acceptance/verifier coverage for unified lineage (multi-root corpus + verifier)](lineage.md); dependencies: RAI-145; profiles: static, unit, contracts.
+- **RAI-147** [User guide + complete BillingCi example with actual generated lineage (unified)](lineage.md); dependencies: RAI-146; profiles: docs, static.
+- **RAI-148** [RecoveryClass taxonomy fix: fs_patch/proc_run are Mutating; single taxonomy source](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.

@@ -413,3 +413,219 @@ Status: ready. Milestone: LIN. Dependencies: LIN-15.
 **Compatibility/rollback.** Do not silently change frozen schemas/APIs or downstream fixtures; handle versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are retained for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, listed executable fixtures with actual IDs, updated relevant contract/example, actual work record using the template, and current evidence/log hashes. Real paid calls/publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
+
+## RAI-140: ADR-031: lineage projection runtime contract — typed dry-run description (LIN-02 completion contract)
+
+Status: ready. Milestone: LIN. Dependencies: LIN-02.
+
+**Scenario and contract.** LIN-02 audit finding: the renderer emits model/tool calls as COMMENTS and ()-bodies — compiling proves syntax, not the promised Program/Task composition. This contract card designs the missing public contract (ADR-031, independent review required): (1) a small projection runtime in dsl.lineage.proj.runtime — typed step constructors the GENERATED code references (model/tool step, inputs, dataRef) whose Task evaluates to a DRY structural report (Task.succeed/fail ONLY — no provider call, no tool dispatch at construction OR execution); (2) NodeView gains inputs: Vector[String] (graph dataflow edges) so dependencies are expressible; (3) explicit semantics table distinguishing: rendering vs typed description vs recorded replay (ReplayHarness, graph-based, existing) vs live rerun (IsolatedRerun, graph-based, existing) — the generated source is NOT a rerun entrypoint and must say so; (4) failure paths: a recorded-failed node projects to Task.fail(typed) so sequencing short-circuits honestly. Frozen API consumption only: Task (succeed/fail/map/flatMap), Program (fromFunction/andThen). No second execution semantics.
+
+**Context.** Owner directive 2026-10-13 (P1): compiling comment-only output does not implement LIN-02's promised projection. Requires a separate ADR + independent review because it adds a public contract.
+
+**Allowed paths.** `docs/adr/ADR-031-lineage-projection-runtime.md` `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: PRC-01: the runtime compiles; a hand-written sample projection builds a Program whose execution (Task.zio) returns the deterministic step report vector — order == declaration, zero provider/tool dispatch (assert via scripted probe backend absence).
+- Error/adversarial: PRC-02: a failed node short-circuits with the typed error; inputs flow as threaded values; delegation/phase nest as sub-Programs.
+- Cancellation/concurrency: PRC-03: concurrent construction/render of two projections is isolated (no shared mutable state); repeat execution is deterministic (identical reports).
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Provider/tool invocation from projected code, changing Task/Program frozen API, making the generated source a replay or rerun entrypoint, renderer rewrite (RAI-141), schema wire changes (RAI-143).
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-141: Renderer emits real Program/Task composition (LIN-02 implementation)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-140.
+
+**Scenario and contract.** Implementation against ADR-031 (RAI-140): the renderer emits, per node, REAL composition referencing the projection runtime — model/tool steps with dataRef keys and threaded inputs (sequencing = declaration order = graph child order; dependencies = NodeView.inputs threaded as values), delegations/phases as nested defs building sub-Programs, failure nodes as Task.fail. Payloads stay in lineage-data.json (dataRef keys only). Deterministic byte-identical output preserved (LIN2-C-01 discipline); unknown kind still typed-rejected (LIN2-02). Golden projections regenerated; the pinned-dotc compile gate (LIN2-01) now compiles EXECUTABLE projections; comment-only bodies disappear (a projection with zero executable statements is a renderer bug). Comparator and recorded interpreter (graph-based) must be verified unaffected.
+
+**Context.** Owner directive 2026-10-13 (P1); ADR-031 (RAI-140) defines the runtime; existing compile-gate evidence (compiles + byte-identical) is preserved and extended, not discarded.
+
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` `contracts/lineage/golden/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: REN-01: golden projections compile (pinned dotc 3.9.0) AND are executable Programs — repeated render byte-identical; compile gate extended to assert no comment-only bodies (at least one real statement per def body).
+- Error/adversarial: REN-02: unknown node kind → typed rejection (existing LIN2-02 stays green); malformed graph → typed render error.
+- Cancellation/concurrency: REN-03: concurrent renders isolated (existing LIN2-C-03 stays green); comparator suite green without changes; recorded-interpreter suite green (layers independent).
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Wire event changes, GraphHash/normalization changes, comparator changes, replay/rerun behavior, provider calls.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-142: LIN-02 acceptance: executed projection semantics (sequencing, inputs, delegation, phases, failures)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-141.
+
+**Scenario and contract.** Acceptance card: EXECUTE the generated projections (via Task.zio on the built Program) and pin MEANINGFUL semantics — model/tool sequencing equals graph order; input dependencies observable in the report (threaded values match NodeView.inputs); delegation nests (sub-program execution inside parent report tree); supported phases appear as named sub-programs; recorded-failure nodes short-circuit with the typed error; execution is deterministic (identical report vector on repeat); ZERO provider/tool dispatch during execution (scripted-backend probe asserts no calls — the projection is dry by construction). Fixture: a representative graph covering all node kinds + a failed node + a phase + a delegation, rendered, compiled (pinned dotc), executed.
+
+**Context.** Owner directive 2026-10-13 (P1): acceptance must demonstrate structure and semantics, not syntactically valid Scala with comments.
+
+**Allowed paths.** `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: PRJ-01: executed projection returns the exact expected step-report tree (order, kinds, dataRef keys, threaded inputs, nesting) for the representative graph.
+- Error/adversarial: PRJ-02: failed node → typed short-circuit error; the report prefix up to the failure is observable.
+- Cancellation/concurrency: PRJ-03: repeat execution identical ×3; scripted probe backend records ZERO calls during compile AND execute; pinned-dotc compile gate green on the fixture.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Provider calls, replay/rerun semantics, wire changes, comparator changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-143: Schema card: versioned phase/recovery events + cross-run provenance contract (wave-2 wire extension)
+
+Status: ready. Milestone: LIN. Dependencies: LIN-05.
+
+**Scenario and contract.** Owner-authorized schema card (2026-10-13, P2): extend the FROZEN 13-payload event wire with VERSIONED additions — (1) phase/recovery payloads (phase enter/exit with recovery metadata) so Phase nodes are wire-native instead of model-derived; (2) multi-job correlation fields (invocationId/jobId on envelopes or a header record) so delegate children can join one provenance tree; (3) cross-run provenance record (parent run id, native artifact pointers). Versioning: schemaVersion 2 documents additive fields; v1 documents decode unchanged (back-compat pinned); the reducer accepts both. GraphHash canonicalization: new fields enter the canonical form in a VERSIONED way (hash version bump, documented BREAKING-for-comparators note) or are excluded by contract — decide and pin. PROTECTED change: independent review required; hidden fixtures untouched.
+
+**Context.** Owner authorization 2026-10-13: the previously owner-gated phase/recovery schema work is authorized for the unified CI pipeline objective. Long-standing ADR-027 §6.2 obligation (phase/recovery schema-card, wave 2).
+
+**Allowed paths.** `docs/adr/ADR-032-phase-recovery-multijob.md` `contracts/lineage/lineage-data.schema.json` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/**` `modules/dsl/src/main/scala/raider/dsl/lineage/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: SCH-01: v2 wire fixtures decode; v1 fixtures decode UNCHANGED (back-compat pinned bit-for-bit); mixed streams typed.
+- Error/adversarial: SCH-02: reducer maps new payloads to graph nodes (Phase native, provenance record) with the documented hash-version policy; golden graphs updated under the pinned policy.
+- Cancellation/concurrency: SCH-03: malformed v2 payloads → typed reducer errors (no silent drops); unknown future version → typed, not guessed.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Second scheduler/runtime, live-wire, changing v1 historical fixtures silently, multi-job export implementation (RAI-144), renderer (RAI-141).
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-144: Multi-job lineage export: delegate children join one events stream with provenance
+
+Status: ready. Milestone: LIN. Dependencies: RAI-143.
+
+**Scenario and contract.** Runtime/export card on the RAI-143 contract: delegate CHILD jobs (DelegationToolset forks) emit their envelopes into the RUN's events.jsonl with the correlation fields (invocationId/jobId), so the reducer builds ONE tree with real parent-child edges — no invented edges between separate native roots. Preserve provenance: each child segment carries a pointer to its original per-job native artifacts (work dir, events.jsonl). Ordering: envelopes interleave by emission time with monotonic per-job seq; the reducer's canonical order remains deterministic (documented interleave policy). The application-owned index (BillingCi pattern) is NOT an edge source: separate native roots stay separate unless the correlation contract (RAI-143) links them.
+
+**Context.** Owner directive 2026-10-13 (P2): BillingCi today has six independent native roots linked by an application index — no native phase graph; multi-job export was owner-gated and is now authorized.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: MJE-01: a delegation run (scripted) exports one events.jsonl containing parent+child envelopes with correlation; the reducer builds one tree; child provenance pointers resolve to the real per-job artifacts.
+- Error/adversarial: MJE-02: per-job seq monotonic per job; interleave deterministic on replay; graph hash stable.
+- Cancellation/concurrency: MJE-03: a child failure is a typed node in the unified tree (no silent swallow); torn child tail → partial-graph semantics (LIN5-03 discipline).
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Second scheduler/runtime, changing per-run artifact layouts silently, cross-ROOT stitching without the RAI-143 contract, renderer.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-145: Unified CI pipeline graph → DSL projection (BillingCi shape)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-142, RAI-144.
+
+**Scenario and contract.** Projection card: the unified multi-job graph (repair → checks → reviews → boundary batch with REAL edges) projects through the ADR-031 runtime into an executable dry-run composition: phase defs (baseline/repair/final-check/reviews/boundary), delegation blocks where the contract links jobs, batch fan-out as the DSL batch/all composition the loop ACTUALLY used. The illustrative pipeline/parallel/batch syntax is NOT an approved API: the projection uses the existing frozen DSL verbs (andThen/all/batch + Task sequencing) or a reviewed contract addition — choose and pin in the card record. No invented parallelism: edges only from provenance/correlation.
+
+**Context.** Owner directive 2026-10-13 (P2, decomposition chosen after dependency inspection): depends on the schema (143) and export (144) cards plus the P1 projection runtime (140-142).
+
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: UNI-01: a representative multi-job fixture (scripted, covering repair+reviews+boundary shape) projects and executes to the expected report tree with real nesting and batch fan-out; compile gate green (pinned dotc).
+- Error/adversarial: UNI-02: no edge exists between roots the contract does not link — assert the report tree separates unlinked roots; provenance pointers preserved in reports.
+- Cancellation/concurrency: UNI-03: malformed/unlinked segments → typed report entries, not silent merges; repeat execution deterministic ×3.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Live model calls, presentation-only graph assertions, changing the BillingCi example (RAI-147), wire changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-146: Independent acceptance/verifier coverage for unified lineage (multi-root corpus + verifier)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-145.
+
+**Scenario and contract.** Independent acceptance card: a frozen multi-root corpus (golden unified graphs: billing-shape repair+reviews+boundary, delegation tree, unlinked-roots case) + a verifier that checks projected reports against the corpus (exact trees, hash pins, provenance resolution) and NEGATIVE controls (corrupted correlation → typed; invented edge → detected). Corpus is versioned; verifier is the protected acceptance surface for the unified lineage feature — future changes go through this card's review.
+
+**Context.** Owner directive 2026-10-13 (P2: independent acceptance/verifier coverage as its own card).
+
+**Allowed paths.** `contracts/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/runtime/src/test/scala/raider/runtime/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: VR-01: positive corpus cases pass the verifier (exact report trees + graph-hash pins + provenance resolution).
+- Error/adversarial: VR-02: negative controls fail typed (corrupted correlation, invented edge, torn segment) — negatives stay negatives.
+- Cancellation/concurrency: VR-03: verifier green ×3; concurrent verification isolated (unique temp dirs).
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Product code changes, renderer changes, live providers, modifying RAI-081 protected coding corpus.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-147: User guide + complete BillingCi example with actual generated lineage (unified)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-146.
+
+**Scenario and contract.** Documentation card: update user-guide-ci.md and the BillingCi example for the UNIFIED lineage — the guide shows the ACTUAL generated lineage artifacts (lineage.scala + lineage-data.json from a real recorded/scripted run) and the actual unified projection for the pipeline shape; every DSL syntax claim matches the shipped API (andThen/all/batch; NO pipeline/parallel/batch unless a reviewed contract added it — cite the exact card if so); honest limitations (live-wire gated, provenance of unlinked roots separate); lineage.md §cross-run section updated to the RAI-143 contract. Examples must compile (compile-fixtures gate) and quoted lineage outputs must be real (copied from executed runs, path-cited).
+
+**Context.** Owner directive 2026-10-13 (P2: documentation + complete CI example); the billing example currently documents six independent roots honestly; the unified shape arrives with RAI-143..146.
+
+**Allowed paths.** `docs/user-guide-ci.md` `docs/examples/ci-pipeline/**` `examples/user-guide/ci/**` `docs/lineage.md` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: DOC-14-01: every command/syntax claim verified against the shipped API; example compiles (compile-fixtures).
+- Error/adversarial: DOC-14-02: quoted lineage outputs are real artifacts of executed runs (record cites the producing run/manifest); no illustrative-invented lineage.
+- Cancellation/concurrency: DOC-14-03: docs profile green; links/anchors valid; English policy.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Product code, protected fixtures, live-wire claims, unrelated owner-gated items.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-148: RecoveryClass taxonomy fix: fs_patch/proc_run are Mutating; single taxonomy source
+
+Status: ready. Milestone: LIN. Dependencies: LIN-06.
+
+**Scenario and contract.** Owner-flagged defect (2026-10-13): the static taxonomy (LineageReducer private sets, duplicated in IsolatedRerun) misses `fs_patch` (a real mutating patch tool — captured repairs labeled ReadOnly despite modifying source) and `proc_run` (a real command-execution tool — labeled ReadOnly). Fix: (1) add fs_patch to WriteTools and proc_run to ExecTools in the CANONICAL source; (2) deduplicate: IsolatedRerun consumes the canonical taxonomy (one public source, e.g. RecoveryTaxonomy in runtime.lineage) instead of a private copy — the duplication was flagged by two reviews as a silent-drift hazard; (3) recorded fixtures containing fs_patch/proc_run tool calls re-verify (isolated-rerun guard now refuses mutating-without-isolation for these); (4) ADR-027 §6.2 doc updated. This is classification correctness, not a relabel.
+
+**Context.** Owner directive 2026-10-13: 'the captured repair currently labels fs_patch as ReadOnly despite modifying source... do not merely relabel the documentation or assume proc_run is harmless.' Reviews W22/LIN-15 flagged the duplicated taxonomy as a drift hazard.
+
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: TAX-01: fs_patch and proc_run classify Mutating (unit pins); the canonical source is the ONLY taxonomy (IsolatedRerun imports it — no second set literal).
+- Error/adversarial: TAX-02: a captured fs_patch repair fixture re-runs the isolation guard: mutating-without-isolation now refused typed (reproducer from the BillingCi captured run shape).
+- Cancellation/concurrency: TAX-03: unknown tools stay ReadOnly-by-default (ADR discipline unchanged); existing lineage suites green; GraphHash of OLD fixtures unchanged (classification is metadata on ToolCall — verify the hash policy: if the recovery class enters the hash, document the versioned policy).
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Config-driven taxonomy extension (reserved for the schema card), renaming frozen enum cases, wire changes, relabeling documentation only.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.

@@ -365,6 +365,48 @@ Night progress (2026-10-13):
 - Next in queue: RAI-131 (CI adapter batch) -> RAI-132 (steering) ->
   RAI-134 (guide refresh) -> RAI-136 (soak).
 
+## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
+
+Owner mandate (interactive session): (P1) the LIN-02 projection must be REAL
+Program/Task composition — compiling comment-only output does not implement
+the contract; (P2) unified CI pipeline projection — the previously owner-gated
+multi-job lineage export and phase/recovery schema work are AUTHORIZED for
+this objective (nothing else); (P3) continue dependency-ready roadmap cards.
+
+Audit findings recorded: renderer emits comments + () bodies; NodeView lacks
+inputs; fs_patch/proc_run missing from the static RecoveryClass taxonomy
+(ReadOnly despite mutating — the captured BillingCi repair case); taxonomy
+duplicated (reducer private + IsolatedRerun copy); BillingCi has six
+independent native roots joined by an application-owned index (no native
+phase graph); pipeline/parallel/batch syntax is illustrative, not an API.
+
+Registered decomposition (validate passed, 162 cards):
+
+- **P1**: RAI-140 (ADR-031 projection runtime contract — typed dry-run
+  description; NodeView inputs; semantics table render/description/replay/
+  rerun) -> RAI-141 (renderer emits real composition; goldens regenerated;
+  compile gate extended: no comment-only bodies) -> RAI-142 (executed
+  projection semantics acceptance; zero-dispatch probe).
+- **P2**: RAI-143 (schema card: versioned phase/recovery + cross-run
+  provenance; v1 back-compat pinned; hash-version policy; protected, review)
+  -> RAI-144 (multi-job export: delegate children join one events stream with
+  correlation + provenance pointers; no invented edges) -> RAI-145 (unified
+  graph -> DSL projection, BillingCi shape; frozen verbs only) -> RAI-146
+  (independent verifier corpus + negatives) -> RAI-147 (guide + complete
+  BillingCi example with REAL generated lineage).
+- **Taxonomy**: RAI-148 (fs_patch/proc_run -> Mutating; single canonical
+  source; isolation guard re-verified).
+- **Queue behind the mandate** (dependency-ready, unchanged): RAI-132
+  (steering surface), RAI-134 (guide refresh), RAI-136 (soak), RAI-137 (perf
+  harness), RAI-123 (conditional), 129.b/c (after RAI-143), LIN-03/04 (live
+  projection + TUI) after the projection runtime lands.
+
+Execution: visible spawn workers/reviewers where the permission config allows;
+fallback 1b(1) (sequential coordinator-as-worker + explore verification) is
+the recorded default since the mid-session restriction. One card = one
+reviewable outcome. RAI-131 was accepted this session before the mandate
+(trust preflight + checks.junit.xml; EXECUTE 10/10 + profiles 9/9 on d01ac04).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
