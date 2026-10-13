@@ -27,7 +27,7 @@ import java.nio.file.{Files, Path}
 /** LIN-01C acceptance tests (docs/tasks/lineage.md, packet L11, ADR-027):
   * [[LineageReducer.reduce]] over the frozen 13-case `EventPayload` stream.
   *
-  * Corpus linkage (packet L11: "минимальная связь с corpus"):
+  * Corpus linkage (packet L11: "minimal link to the corpus"):
   *   - LIN1-C-01 reduces `LineageCorpus.campaign(seed)` twice — identical
   *     graphs and identical [[GraphHash]];
   *   - LIN1-C-02 feeds the corpus adversarial variants to the reducer:

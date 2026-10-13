@@ -22,7 +22,7 @@ import scala.jdk.CollectionConverters.*
 import scala.util.Using
 
 /** LIN-14 acceptance (LIN2-03 remainder, docs/tasks/lineage.md; docs/lineage.md
-  * §9.2 "конкурентное чтение проекции (LIN2-03) покрыто частично").
+  * §9.2 "concurrent reading of the projection (LIN2-03) is partially covered").
   *
   * Property: while a single writer atomically replaces a lineage-data document
   * (tmp + ATOMIC_MOVE) with an alternating whole document, CONCURRENT readers

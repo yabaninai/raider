@@ -5,21 +5,21 @@ import zio.test.*
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
-/** LIN-08D acceptance (packet R5, ADR-027 §2 «Смена окружения», docs/lineage.md
-  * §6): сверка pinned-окружения из `toolchain.json` с фактическим окружением
-  * кода — ДО исполнения воспроизведения:
-  *   - PIN-01: равные окружения → [[EnvPinning.PinVerdict.Matching]],
-  *     `annotate` возвращает отчёт без изменений;
-  *   - PIN-02: подмена scala в pinned → Divergent с полем `scala` (field,
-  *     expected, actual) + честный заголовок «reproduced in a different
-  *     environment: ...» в `annotate`;
-  *   - PIN-03: битый `toolchain.json` → типизированный Malformed с ограниченным
-  *     detail; отсутствующий файл — типизированный Missing;
-  *   - повтор всех проверок — байт-идентичен (детерминизм: без часов, сети,
-  *     процессов и heap-order обходов).
+/** LIN-08D acceptance (packet R5, ADR-027 §2 "Environment change", docs/lineage.md
+  * §6): compare the pinned environment in `toolchain.json` with the code's
+  * actual environment BEFORE replay execution:
+  *   - PIN-01: equal environments → [[EnvPinning.PinVerdict.Matching]], and
+  *     `annotate` returns the report unchanged;
+  *   - PIN-02: changing scala in the pinned data → Divergent with the `scala`
+  *     field (field, expected, actual) plus the truthful header "reproduced in
+  *     a different environment: ..." in `annotate`;
+  *   - PIN-03: malformed `toolchain.json` → typed Malformed with bounded
+  *     detail; a missing file → typed Missing;
+  *   - repeating all checks produces byte-identical results (deterministic:
+  *     no clocks, network, processes, or heap-order traversals).
   *
-  * Фикстуры пишутся во временный каталог через java.nio — прод-путь
-  * `readPinned` читает только переданный файл, ничего больше.
+  * Fixtures are written to a temporary directory through java.nio — the
+  * production path `readPinned` reads only the supplied file, nothing else.
   */
 object EnvPinningSpec extends ZIOSpecDefault:
 

@@ -395,7 +395,7 @@ object PhaseReplaySpec extends ZIOSpecDefault:
       assertTrue(
         verdicts == Vector(expectedP1, expectedP2),
         // the second verdict is fully Resolved DESPITE the first phase's
-        // unresolved dataRef — LIN7 «частичный» independence
+        // unresolved dataRef — LIN7 "partial" independence
         verdicts(1).subtree == SubtreeVerdict.Resolved(1, Vector.empty),
         // independence: replaying p2 ALONE equals its replayAll row
         PhaseReplay.replayPhase(graph, NodeId("p2"), source) ==

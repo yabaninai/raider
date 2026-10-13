@@ -6,8 +6,8 @@ import zio.{Scope, ZIO}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
-/** LIN-06C acceptance (packet L52, ADR-027 §2 «live re-run: изолированная копия
-  * workspace, бюджет, diff-отчёт»): the workspace isolation mechanics are
+/** LIN-06C acceptance (packet L52, ADR-027 §2 "live re-run: isolated workspace
+  * copy, budget, diff report"): the workspace isolation mechanics are
   * pinned end-to-end on real temp-dir fixtures — no mocks, no network:
   *   - LIN6-C-01 (MAIN): `isolate` copies the workspace byte-for-byte into a
   *     unique target under the parent; mutations INJECTED INTO THE COPY

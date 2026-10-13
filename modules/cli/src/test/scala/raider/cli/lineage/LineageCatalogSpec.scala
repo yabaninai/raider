@@ -27,7 +27,7 @@ import java.nio.file.{
 import java.nio.file.attribute.FileTime
 
 /** LIN-08B acceptance for the lineage-tree catalog (packet L43, ADR-027 §5,
-  * docs/lineage.md §5 "каталог деревьев"):
+  * docs/lineage.md §5 "tree catalog"):
   *   - LIN8-B-01: two runs under `work-*` directories — both cataloged, each
   *     hash EQUALS the canonical [[GraphHash]] of the graph reduced from the
   *     same envelopes, ordering is mtime desc (path tie-break), and a repeat
