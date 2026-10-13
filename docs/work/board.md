@@ -415,10 +415,23 @@ Night progress (2026-10-13):
   final candidate: EXECUTE 10/10 (20261013-150935) + profiles 10/10; two
   integrated-gate catches fixed en route (scalameta =-bindings in the new
   spec).
-- **Next ready: RAI-146** (independent verifier corpus + negatives — carried
-  findings feed its design) **-> RAI-147** (docs + BillingCi). Queue behind:
-  RAI-132/134/136/137, RAI-123 (conditional), 129.b/c (RAI-143 ✓),
-  LIN-03/04 (live projection + TUI), phase-emission wiring card candidate.
+- **RAI-146 DONE** (review APPROVE): frozen unified corpus (20 files:
+  billing shape, delegation tree with the f2 non-def-parent case, unlinked+
+  stray, pure-fan-out roots f1 reproducer; 4 typed negatives with byte-verified
+  construction) + 948-line verifier (VR-01..03, ×3); TWO packet-authorized
+  generator fixes landed with corpus reproducers (f1 single-element fan
+  flatten; f2 member-presence scope matching); honest red trail (2
+  pre-existing unrelated full-suite flakes -> RAI-152 registered); erratum:
+  corpus README case-1 prose arithmetic (23 = 5+8+9+1 tool), expectations
+  correct. **RAI-147 DONE** (review APPROVE): user guide + lineage.md §5.2
+  unified section + REAL regenerated lineage artifact (sha == corpus pin;
+  verifier 10/10 on the doc fingerprint) + honest shipped-vs-demonstrated
+  framing. **P2 mandate chain COMPLETE.**
+- **Follow-ups registered from reviews**: RAI-153 (live phase emission —
+  replaces stand-ins), RAI-154 (headless coder delegation wiring +
+  per-level fork anchoring + unified lineage-data writer), RAI-152
+  (full-suite load flakes). Queue behind: RAI-132/134/136/137,
+  RAI-123 (conditional), 129.b/c, LIN-03/04 (live projection + TUI).
 
 ## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
 

@@ -677,3 +677,51 @@ Status: ready. Milestone: LIN. Dependencies: RAI-141.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-153: Live phase emission: wire v2 phase payloads from the loop (replaces corpus stand-ins)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-143, RAI-144.
+
+**Scenario and contract.** The ADR-032 v2 wire carries phase payloads, but no live emitter exists — RAI-145's fixture inserts campaign stage phases as stand-ins (disclosed). Card: add a phase-emission surface to the loop (LoopEvents phase hooks or the ADR-024 seam per the ADR-032 contract), emit PhaseStarted/phase payloads with recovery metadata at real phase boundaries (plan phases per RAI-107 semantics; pipeline stages where the runtime knows them), wire through HeadlessRunner's export (RAI-144), and update the RAI-146 corpus/verifier ONLY where stand-in positions are replaced by live emission (corpus review lineage). Generator needs zero changes (RAI-145 pinned emission-agnostic).
+
+**Context.** RAI-145/147 limitations: phase stand-ins disclosed; the wiring card candidate was registered promptly per the RAI-147 review risk 2 so 'shipped' becomes 'producible'.
+
+**Allowed paths.** `docs/adr/ADR-024-events.md` `modules/runtime/src/main/scala/raider/runtime/events/**` `modules/runtime/src/main/scala/raider/runtime/loop/**` `modules/runtime/src/test/scala/raider/runtime/**` `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: PHE-01: a scripted run with known phase boundaries emits v2 phase payloads; the unified projection executes the same report tree WITHOUT generator changes (RAI-145 fixture flipped from stand-ins to live emission, green).
+- Error/adversarial: PHE-02: v1 consumers unchanged (frozen seam discipline; v1-only readers see no new cases).
+- Cancellation/concurrency: PHE-03: corpus/verifier updates route through the RAI-146 review lineage; x3 deterministic.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Second scheduler, inventing phase semantics the runtime does not know, changing frozen v1 payloads, renderer changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-154: Headless coder-agent delegation wiring + per-level fork anchoring + unified lineage-data writer
+
+Status: ready. Milestone: LIN. Dependencies: RAI-144.
+
+**Scenario and contract.** Three carried gaps from RAI-144/145/146/147 reviews, one card: (1) headless coder-agent delegation wiring — the export path is proven via DelegationToolset fixtures but `raider run --agent coder` cannot delegate yet (agent-policy surface); wire delegation tools per the agent policy with tests; (2) per-level fork anchoring — MultiJobExport anchors fork records in the campaign (root) stream; nested delegation chains need per-level anchoring before grandchild edges are correct (typed reproducer first); (3) unified lineage-data writer — RunLineageArtifacts refuses phase-bearing graphs typed; extend to write the unified lineage-data (v2) beside the run when phases/correlation exist, keeping v1 output for delegation-free runs byte-identical.
+
+**Context.** RAI-144 limitation (headless delegation not wired), RAI-144 review risk 1 (root-anchored fork records), RAI-147 limitation (RunLineageArtifacts refuses phase-bearing graphs). Registered promptly per the RAI-147 review risk 2.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/dsl/src/main/scala/raider/dsl/lineage/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: WIR-01: `raider run --agent coder` with a delegation-capable scripted policy exports the unified tree end-to-end (RAI-144 MJE-01 semantics through the product entry).
+- Error/adversarial: WIR-02: nested delegation chain — per-level anchoring reproducer (root-to-grandchild wrong-edge reproducer typed/red first), then correct per-level edges pinned.
+- Cancellation/concurrency: WIR-03: delegation-free runs — lineage-data.json byte-identical to v1 output (regression pin); phase-bearing runs write v2 with provenance; refusals stay typed.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Second scheduler/runtime, live providers, plan-mode semantics changes, renderer changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.

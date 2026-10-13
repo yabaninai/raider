@@ -208,3 +208,5 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-149** [Tool-level RecoveryClass correctness: CodingToolset stamps mutating tools ReadOnly (plan-mode enforcement inherits the defect)](m1.md); dependencies: RAI-148; profiles: static, unit, contracts, runtime.
 - **RAI-151** [Projection literal escaping: \uXXXX for C0 controls inside generated string literals + hostile-literal compile negative](lineage.md); dependencies: RAI-141; profiles: static, unit, contracts.
 - **RAI-152** [Full-suite load flakes: ReplayProductCliSpec LIN13-01 + SessionRegistrySpec TAB focus (flake-hunt + determinism fix)](m2-p2.md); dependencies: RAI-119; profiles: static, unit, ci, repl.
+- **RAI-153** [Live phase emission: wire v2 phase payloads from the loop (replaces corpus stand-ins)](lineage.md); dependencies: RAI-143, RAI-144; profiles: static, unit, contracts, runtime, ci.
+- **RAI-154** [Headless coder-agent delegation wiring + per-level fork anchoring + unified lineage-data writer](lineage.md); dependencies: RAI-144; profiles: static, unit, contracts, ci.

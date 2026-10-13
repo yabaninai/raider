@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 163,
+  "raider_count": 165,
   "companion_count": 3,
   "cards": [
     {
@@ -4705,6 +4705,70 @@
       },
       "non_goals": "Assertion weakening, timeout inflation, product code changes (unless a reproducer proves a product race — then typed reproducer + scoped fix), unrelated suites.",
       "context": "RAI-146 honest red trail (2026-10-13): two red EXECUTE manifests retained; both suites green isolated; same class as RAI-119/RAI-136."
+    },
+    {
+      "id": "RAI-153",
+      "title": "Live phase emission: wire v2 phase payloads from the loop (replaces corpus stand-ins)",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-143",
+        "RAI-144"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/adr/ADR-024-events.md",
+        "modules/runtime/src/main/scala/raider/runtime/events/**",
+        "modules/runtime/src/main/scala/raider/runtime/loop/**",
+        "modules/runtime/src/test/scala/raider/runtime/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
+      "behavior": "The ADR-032 v2 wire carries phase payloads, but no live emitter exists — RAI-145's fixture inserts campaign stage phases as stand-ins (disclosed). Card: add a phase-emission surface to the loop (LoopEvents phase hooks or the ADR-024 seam per the ADR-032 contract), emit PhaseStarted/phase payloads with recovery metadata at real phase boundaries (plan phases per RAI-107 semantics; pipeline stages where the runtime knows them), wire through HeadlessRunner's export (RAI-144), and update the RAI-146 corpus/verifier ONLY where stand-in positions are replaced by live emission (corpus review lineage). Generator needs zero changes (RAI-145 pinned emission-agnostic).",
+      "acceptance": {
+        "normal": "PHE-01: a scripted run with known phase boundaries emits v2 phase payloads; the unified projection executes the same report tree WITHOUT generator changes (RAI-145 fixture flipped from stand-ins to live emission, green).",
+        "error": "PHE-02: v1 consumers unchanged (frozen seam discipline; v1-only readers see no new cases).",
+        "concurrency": "PHE-03: corpus/verifier updates route through the RAI-146 review lineage; x3 deterministic."
+      },
+      "non_goals": "Second scheduler, inventing phase semantics the runtime does not know, changing frozen v1 payloads, renderer changes.",
+      "context": "RAI-145/147 limitations: phase stand-ins disclosed; the wiring card candidate was registered promptly per the RAI-147 review risk 2 so 'shipped' becomes 'producible'."
+    },
+    {
+      "id": "RAI-154",
+      "title": "Headless coder-agent delegation wiring + per-level fork anchoring + unified lineage-data writer",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-144"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**",
+        "modules/dsl/src/main/scala/raider/dsl/lineage/**",
+        "modules/dsl/src/test/scala/raider/dsl/lineage/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "Three carried gaps from RAI-144/145/146/147 reviews, one card: (1) headless coder-agent delegation wiring — the export path is proven via DelegationToolset fixtures but `raider run --agent coder` cannot delegate yet (agent-policy surface); wire delegation tools per the agent policy with tests; (2) per-level fork anchoring — MultiJobExport anchors fork records in the campaign (root) stream; nested delegation chains need per-level anchoring before grandchild edges are correct (typed reproducer first); (3) unified lineage-data writer — RunLineageArtifacts refuses phase-bearing graphs typed; extend to write the unified lineage-data (v2) beside the run when phases/correlation exist, keeping v1 output for delegation-free runs byte-identical.",
+      "acceptance": {
+        "normal": "WIR-01: `raider run --agent coder` with a delegation-capable scripted policy exports the unified tree end-to-end (RAI-144 MJE-01 semantics through the product entry).",
+        "error": "WIR-02: nested delegation chain — per-level anchoring reproducer (root-to-grandchild wrong-edge reproducer typed/red first), then correct per-level edges pinned.",
+        "concurrency": "WIR-03: delegation-free runs — lineage-data.json byte-identical to v1 output (regression pin); phase-bearing runs write v2 with provenance; refusals stay typed."
+      },
+      "non_goals": "Second scheduler/runtime, live providers, plan-mode semantics changes, renderer changes.",
+      "context": "RAI-144 limitation (headless delegation not wired), RAI-144 review risk 1 (root-anchored fork records), RAI-147 limitation (RunLineageArtifacts refuses phase-bearing graphs). Registered promptly per the RAI-147 review risk 2."
     }
   ]
 }
