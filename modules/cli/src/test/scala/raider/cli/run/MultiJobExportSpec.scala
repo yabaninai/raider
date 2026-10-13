@@ -1008,7 +1008,16 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             grandDelegation.exists(d =>
               d.id.value.startsWith(childSeg.childJobId.value)
             ),
-            grandDelegation.flatMap(_.parent) == childDelegation.map(_.id),
+            // The reducer's parent rule (shipped, single-level parity): a
+            // Delegation node parents under the carrying stream's current
+            // model round, else its innermost phase, else its base edge. The
+            // PER-LEVEL pin is therefore: the grandchild's record is anchored
+            // in the CHILD's stream AND its parent edge resolves into the
+            // CHILD's stream — never into the campaign's (the wrong
+            // root-to-grandchild edge this card fixes).
+            grandDelegation.flatMap(_.parent).exists(p =>
+              p.value.startsWith(childSeg.childJobId.value)
+            ),
             grandTool.exists(t =>
               t.parent.isDefined && t.parent.get == grandDelegation.map(_.id)
                 .getOrElse(NodeId("<none>"))

@@ -46,7 +46,10 @@ import scala.jdk.CollectionConverters.*
   *     the segment into the run stream as `schemaVersion: 2` envelopes with
   *     `invocationId` set;
   *   - ''canonicalizes the fork record'': the joined stream represents the
-  *     introduction ONCE, in the PARENT's stream — a frozen v1
+  *     introduction ONCE, in the FORKING job's stream (RAI-154 per-level
+  *     anchoring: the job registered for the child via
+  *     [[anchorForkUnder]]; unregistered children anchor in the CAMPAIGN
+  *     (root) stream exactly as before) — a frozen v1
   *     `Delegated(childJobId, agent)` envelope appended at the moment the
   *     child's fork record was observed (the reducer's parent control edge,
   *     ADR-032 §1: "the parent control edge still comes only from the parent's
@@ -221,10 +224,23 @@ final class MultiJobExport private (
         }
 
   /** Connects a captured job as a child segment: invocation id, native segment
-    * artifacts, the canonical parent-stream fork record, and the v2 copies of
-    * the held prefix. Runs under the export lock with the file appends, so the
-    * joined file order places the fork record BEFORE every joined envelope of
-    * the child.
+    * artifacts, the canonical fork record, and the v2 copies of the held
+    * prefix. Runs under the export lock with the file appends, so the joined
+    * file order places the fork record BEFORE every joined envelope of the
+    * child.
+    *
+    * RAI-154 (WIR-02) per-level anchoring: the canonical fork record is
+    * anchored in the FORKING job's stream — the child registered for this
+    * child via [[anchorForkUnder]] when one exists, else the campaign (root)
+    * stream, which keeps every unregistered (single-level) introduction
+    * byte-identical to the pre-RAI-154 layout (MJE-01 pin). A registration
+    * naming a job that has not connected is a loud defect, never a silent
+    * wrong-shape export (the per-level wiring discipline: the forking job's
+    * own introduction connects before it forks). Post-terminal honesty
+    * applies PER LEVEL: a fork observed after the anchoring job's Terminal
+    * was exported connects as a NATIVE-ONLY segment (nothing joins — an
+    * interposed introduction would be `ReduceError.AfterTerminal` or an
+    * invented edge).
     */
   private def connect(
       jobId: JobId,
@@ -248,13 +264,36 @@ final class MultiJobExport private (
             segComplete <- Ref.make(false)
             rootDone <- rootTerminalExported.get
             campaignJob <- campaignRef.get
+            // RAI-154: the registered FORKING job (the campaign registration
+            // is the absence of one — the single-level default).
+            owner <- forkOwners.get.map(
+              _.get(jobId.value).filterNot(cid => campaignJob.contains(cid))
+            )
+            ownerSeg <- owner match
+              case None => ZIO.none
+              case Some(cid) =>
+                segmentOf(cid).flatMap {
+                  case Some(seg) => ZIO.some(seg)
+                  case None =>
+                    ZIO.die(
+                      new IllegalStateException(
+                        s"MultiJobExport: per-level fork anchor for " +
+                          s"${jobId.value} names ${cid.value}, which has not " +
+                          "connected (wiring discipline: the forking job's " +
+                          "own introduction must connect before it forks)"
+                      )
+                    )
+                }
+            ownerComplete <- ownerSeg match
+              case Some(seg) => seg.isComplete
+              case None      => ZIO.succeed(false)
             seg = MultiJobExport.Segment(
               jobId,
               inv,
               dir,
               dir.resolve("events.jsonl"),
               native,
-              joinedToRun = !rootDone,
+              joinedToRun = !rootDone && !ownerComplete,
               segComplete
             )
             _ <- segmentsRef.update(_ :+ seg)
@@ -262,7 +301,7 @@ final class MultiJobExport private (
               if !seg.joinedToRun then
                 ZIO.succeed(Vector.empty[LineageEnvelope])
               else
-                campaignJob match
+                ownerSeg.map(_.childJobId).orElse(campaignJob) match
                   case None =>
                     // Unreachable by contract: the runner sets the campaign
                     // job before its loop can fork anything. Loud, never a
@@ -273,10 +312,10 @@ final class MultiJobExport private (
                       )
                     )
                   case Some(parent) =>
-                    // The canonical fork record in the PARENT's stream: the
-                    // frozen v1 Delegated payload, export seq, the fork's own
-                    // timestamp. Nothing is invented: childJobId and agent are
-                    // verbatim from the child's fork record.
+                    // The canonical fork record in the FORKING job's stream:
+                    // the frozen v1 Delegated payload, export seq, the fork's
+                    // own timestamp. Nothing is invented: childJobId and agent
+                    // are verbatim from the child's fork record.
                     val forkRec = LineageEnvelope(
                       LineageWire.V1,
                       nextSeq(parent.value),
