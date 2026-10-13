@@ -13,6 +13,7 @@ import raider.runtime.events.{
 }
 import raider.runtime.journal.JobJournal
 import raider.runtime.jobs.JobStatus
+import raider.runtime.lineage.model.RecoveryClass
 import zio.json.{DeriveJsonEncoder, EncoderOps, JsonEncoder}
 import zio.{UIO, ZIO}
 
@@ -83,7 +84,11 @@ final case class LoopEvents(
     rootId: RootId,
     sessionId: SessionId,
     journal: Option[JobJournal] = None,
-    journalSeq: AtomicLong = new AtomicLong(0L)
+    journalSeq: AtomicLong = new AtomicLong(0L),
+    // RAI-153 (ADR-032 §1): the live phase-emission seam; None (default) =
+    // zero overhead — the phase surface below degrades to `unit` and no
+    // lineage sink is referenced.
+    phases: Option[LoopEvents.PhaseSink] = None
 ):
 
   /** Failure-absorbing publish + optional journal append (RAI-093): any
@@ -239,6 +244,56 @@ final case class LoopEvents(
       )
     )
 
+  /** RAI-153 (ADR-032 §1): phase ENTER at a real phase boundary — a
+    * `phase_started` v2 envelope on the LINEAGE wire, never on the frozen hub
+    * (the ADR-024 seam keeps its 13 frozen cases; the v2 envelope is a
+    * lineage-layer type per ADR-032 §1, so this channel deliberately has no
+    * `hub.publish` path). `recovery` is the closed lineage taxonomy (`ReadOnly |
+    * Idempotent | Mutating` — the lineage-layer [[RecoveryClass]], not the
+    * `raider.core` tool-axis enum).
+    *
+    * Failure-absorbing like every emission: with `phases = None` (the default)
+    * this is `unit`; an empty `name` is dropped at this seam (the wire refuses
+    * empty names at decode — never producing an undecodable stream beats
+    * emitting one), and every sink failure is absorbed (see [[PhaseSink]]). The
+    * name travels verbatim (no truncation): `phase_finished` closes the
+    * innermost open phase BY NAME, so a truncated name would lie about which
+    * phase ended.
+    */
+  def phaseStarted(
+      name: String,
+      recovery: RecoveryClass,
+      note: Option[String] = None
+  ): UIO[Unit] =
+    phases match
+      case Some(sink) if name.nonEmpty =>
+        sink.phaseStarted(
+          name,
+          recovery,
+          note,
+          rootId,
+          sessionId,
+          java.lang.System.currentTimeMillis()
+        )
+      case _ => ZIO.unit
+
+  /** RAI-153 (ADR-032 §1): phase EXIT for the innermost open phase with this
+    * name (LIFO per job, reducer-checked). Same channel, same absorbing
+    * discipline as [[phaseStarted]]. An open phase at the job's `Terminal`
+    * stays legal (ADR-032 §2: its node stands) — callers that know the phase
+    * ended emit here on every exit, including typed failures and cancellation.
+    */
+  def phaseFinished(name: String): UIO[Unit] =
+    phases match
+      case Some(sink) if name.nonEmpty =>
+        sink.phaseFinished(
+          name,
+          rootId,
+          sessionId,
+          java.lang.System.currentTimeMillis()
+        )
+      case _ => ZIO.unit
+
 object LoopEvents:
 
   /** `EventPayload.ToolStarted.argsSummary` bound (ADR-024 §5). */
@@ -274,6 +329,45 @@ object LoopEvents:
     * this revision"; the hub keeps the same value privately).
     */
   private[loop] val schemaVersion: Int = 1
+
+  /** RAI-153 (ADR-032 §1): the receiver of LIVE phase envelopes — the
+    * lineage-layer counterpart of the hub for the v2 payload cases. The ADR-024
+    * seam rule is respected by construction: `raider.runtime.events.**` gains
+    * nothing (the frozen 13-case payload family and its readers are untouched),
+    * because ADR-032 already versioned the wire — this sink receives
+    * `schemaVersion: 2` [[raider.runtime.lineage.wire.LineagePayload]] phase
+    * records that the v1-only consumers never see.
+    *
+    * Implementations own envelope identity (job/root/session binding is passed
+    * in verbatim from the context), the export-canonical per-job `seq`
+    * assignment, file placement and ordering. Both methods are `UIO`:
+    *   - a sink must never break the run — every failure (including a dead
+    *     artifact environment) is the SINK's absorbing obligation, mirroring
+    *     [[LoopEvents.emit]];
+    *   - a sink must place a `phase_started` AFTER every campaign envelope
+    *     published before the call and BEFORE every envelope published after it
+    *     returns (the settle-to-export discipline of the exporter
+    *     implementation), so the reduced graph shape reflects emission order.
+    */
+  trait PhaseSink:
+
+    def phaseStarted(
+        name: String,
+        recovery: RecoveryClass,
+        note: Option[String],
+        rootId: RootId,
+        sessionId: SessionId,
+        atMs: Long
+    ): UIO[Unit]
+
+    def phaseFinished(
+        name: String,
+        rootId: RootId,
+        sessionId: SessionId,
+        atMs: Long
+    ): UIO[Unit]
+
+  end PhaseSink
 
   /** Checkpoint document written after a journaled Terminal (RAI-093, JW-02).
     * Wire shape is NOT part of the frozen event schema — it is a recovery aid
