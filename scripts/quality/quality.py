@@ -31,7 +31,7 @@ passed. Evidence binds to the source fingerprint taken at execute time.
 
  RAI-054 round 2 (2026-10-06, per independent reviewer findings): the
  manifest-mode diff now also compares symlink targets (quality-gates.md 2:
- "add/modify/delete, mode и symlink target") and is self-tested on a temp
+ "add/modify/delete, mode and symlink target") and is self-tested on a temp
  tree without git; run ids are `<YYYYmmdd-HHMMSS>-<pid>-<seq>` (per-process
  monotonic seq + pid) so parallel executes no longer share one run dir;
  git status output is parsed as bytes (NUL-split, utf-8/surrogateescape)
@@ -220,7 +220,7 @@ def _manifest_diff(base: dict[str, dict], current: dict[str, dict]) -> list[dict
     """Diff a current inventory against an immutable base manifest.
 
     added/modified/deleted, where modified = sha256, mode OR symlink target
-    changed (quality-gates.md 2: "Diff учитывает add/modify/delete, mode и
+    changed (quality-gates.md 2: "Diff accounts for add/modify/delete, mode and
     symlink target"). Deterministically sorted by (path, kind).
     """
     changes: list[dict] = []

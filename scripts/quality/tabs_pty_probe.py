@@ -70,13 +70,13 @@ HISTORY_CAP = 200      # SessionRegistry.HistoryCap
 
 TAB_LABELS = ["tab1", "tab2", "tab3", "tab4", "tab5"]
 # Distinct Unicode drafts per tab: (part typed on the first tour, part on the
-# second). Cyrillic + emoji + CJK throughout.
+# second). The draft set includes accented Latin, emoji, and CJK.
 DRAFTS = {
-    "tab1": ("привет😀", "漢字 мир"),
-    "tab2": ("表_plan🏁", "хвост done"),
+    "tab1": ("résumé😀", "漢字 sun"),
+    "tab2": ("表_plan🏁", "trail done"),
     "tab3": ("スパイク", "漢字テスト😀"),
-    "tab4": ("ёлка🌲", "снег 漢 снег"),
-    "tab5": ("данные📊", "финал 終"),
+    "tab4": ("pine🌲", "snow 漢 snow"),
+    "tab5": ("values📊", "final 終"),
 }
 
 ANSI = re.compile(
@@ -440,8 +440,8 @@ def pty01(cp: str) -> tuple[bool, dict]:
 
 
 def pty02(cp: str) -> tuple[bool, dict, int, int]:
-    base = "хвост😀漢мир"
-    paste = ["l1привет", "l2 мир", "l3😀漢"]
+    base = "trail😀漢sun"
+    paste = ["l1résumé", "l2 sun", "l3😀漢"]
     full_after_paste = base + "".join(paste)
     # JLine 4.0.14 default keymap with ISIG off consumes a raw \x03 without
     # aborting the line (measured 2026-10-09, transcript-pty02-xterm): "pre"
@@ -462,14 +462,14 @@ def pty02(cp: str) -> tuple[bool, dict, int, int]:
             ok_new = s.wait_for("tab created: d1", 15)
             if term == "dumb":
                 # Plain fallback: work + no crash, no event storm needed.
-                s.send("смайл😀漢\r")
-                ok_body = (s.wait_for("echo: смайл😀漢", 25)
-                           and s.wait_for("draft [d1]: смайл😀漢", 25))
+                s.send("smile😀漢\r")
+                ok_body = (s.wait_for("echo: smile😀漢", 25)
+                           and s.wait_for("draft [d1]: smile😀漢", 25))
                 ok_report = wait_report(
                     report,
                     lambda rp: rp.get("allFeedsDone") is True and any(
                         t.get("label") == "d1"
-                        and t.get("draft") == "смайл😀漢"
+                        and t.get("draft") == "smile😀漢"
                         for t in rp.get("tabs", [])),
                     60) is not None
                 s.send(":quit\r")
@@ -482,11 +482,11 @@ def pty02(cp: str) -> tuple[bool, dict, int, int]:
             ok_new &= s.wait_for("tab created: d2", 15)
             s.send(":switch 1\r")
             s.pump(0.3)
-            s.send("хвост😀漢")
+            s.send("trail😀漢")
             s.pump(0.5)
             s.resize(24, 60)
             s.pump(0.8)
-            s.send("мир\r")
+            s.send("sun\r")
             ok_resize = (s.wait_for(f"echo: {base}", 25)
                          and s.wait_for(f"draft [d1]: {base}", 25))
             # Fast multi-line paste: ONE write, three submits.

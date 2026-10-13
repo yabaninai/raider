@@ -565,7 +565,7 @@ def main() -> int:
     transcripts = out.parent / (out.stem + "-transcripts")
     transcripts.mkdir(parents=True, exist_ok=True)
     if cp is None:
-        skip = ("skipped: no classpath (documented skip, не passed); "
+        skip = ("skipped: no classpath (documented skip, not passed); "
                 "reason: " + cp_info.get("reason", "unknown"))
         measurements["ux03_event_visible_latency"] = {
             "status": "skipped", "skip_reason": skip}

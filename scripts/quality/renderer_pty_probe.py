@@ -10,15 +10,15 @@ the user home.
 
 Tests:
   RENDER-01  xterm-256color: `:burst 200` streams 200 background printAbove
-                writes while the user types a mixed Cyrillic/emoji/CJK draft in
+                writes while the user types a mixed accented-Latin/emoji/CJK draft in
                 two parts; the final ACCEPTED line must equal the full draft and
                 every `ev N payload ...` line must be atomic (untorn).
   RENDER-02  parse the baseline report: events==200, dropped==0, record
                 p50/p95/max (BASELINE — no threshold claims).
   RENDER-03  TERM=dumb plain fallback: must still work (no crash, ACCEPTED
                 intact); the probe records the observable difference.
-  RENDER-04  THREE back-to-back overlapping `:burst 67` (card: "три
-                параллельных фоновых источника"): 201 events total, lines still
+  RENDER-04  THREE back-to-back overlapping `:burst 67` (card: "three
+                parallel background sources"): 201 events total, lines still
                 atomic, draft intact; the per-burst reports <base>.b<N>.json are
                 aggregated by this probe and total dropped must be 0.
 
@@ -72,8 +72,8 @@ COURSIER_CACHE = "/var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/opencode/cour
 
 PROMPT = "spike> "
 PAYLOAD = "x" * 32
-PARTIAL = "привет😀Х "   # Cyrillic + emoji + CJK, no Enter
-REST = "мир"               # rest of the draft (Cyrillic)
+PARTIAL = "résumé😀漢 "   # accented Latin + emoji + CJK, no Enter
+REST = "sun"                # rest of the draft
 DRAFT = PARTIAL + REST      # full typed draft
 
 # ANSI/VT10x strip. The CSI alternative is `ESC [ <params> <interm> <final>`:
@@ -382,7 +382,7 @@ def main() -> int:
         ok_prompt4 = s.wait_for(PROMPT, 60)
         # Three back-to-back bursts: the bytes queue in the PTY and the main
         # loop spawns all three threads within milliseconds -> true overlap
-        # (card: "три параллельных фоновых источника").
+        # (card: "three parallel background sources").
         s.send(":burst 67\r")
         s.pump(0.05)
         s.send(":burst 67\r")

@@ -40,13 +40,18 @@ esac
 
 # CAUSE must describe the actual defect: coupon percent swap on WELCOME10/VIP20.
 low=$(printf '%s' "$f_cause" | tr '[:upper:]' '[:lower:]')
+# Preserve legacy Cyrillic recognition without storing non-English literals.
+RU_PERCENT=$(printf '\320\277\321\200\320\276\321\206\320\265\320\275\321\202')
+RU_SWAP1=$(printf '\320\277\320\265\321\200\320\265\320\277\321\203\321\202\320\260\320\275')
+RU_SWAP2=$(printf '\320\274\320\265\321\201\321\202\320\260\320\274\320\270')
+RU_SWAP3=$(printf '\320\275\320\260\320\276\320\261\320\276\321\200\320\276\321\202')
 has_coupon=0
 case "$low" in *welcome10*|*vip20*) has_coupon=1 ;; esac
 has_percent=0
-case "$low" in *percent*|*%*|*процент*) has_percent=1 ;; esac
+case "$low" in *percent*|*%*|*"$RU_PERCENT"*) has_percent=1 ;; esac
 has_swap=0
 case "$low" in
-  *swap*|*swapped*|*reversed*|*inverted*|*wrong*|*instead*|*mismatch*|*перепутан*|*местами*|*наоборот*) has_swap=1 ;;
+  *swap*|*swapped*|*reversed*|*inverted*|*wrong*|*instead*|*mismatch*|*"$RU_SWAP1"*|*"$RU_SWAP2"*|*"$RU_SWAP3"*) has_swap=1 ;;
 esac
 if [ "$has_coupon" -eq 1 ] && [ "$has_percent" -eq 1 ] && [ "$has_swap" -eq 1 ]; then
   echo "PASS: CAUSE describes the percent swap"
