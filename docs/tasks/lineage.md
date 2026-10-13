@@ -893,3 +893,27 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.e.
 **Compatibility/rollback.** Preserve frozen bundle/projection contracts; public changes require the reviewed contract card first. Retain old source/captures; reverting code does not undo external effects.
 
 **Deliverables.** Commit only the assigned paths, provide actual case results and source identity, independent review, and a work record. Register any further decomposition before implementation; the parent is accepted only after all children and the complete user flow pass.
+
+## RAI-156: ReplayHarness.eventuallyTerminal: drain to hub watermark before Terminal-truncation (product-side relay-race fix)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-152.
+
+**Scenario and contract.** RAI-152 mechanism analysis (review-approved): the replay child's event capture terminates on Terminal PRESENCE in the sink, but the hub relays reliable vs diagnostics envelopes via two independent forwarder fibers with unspecified relative order (hub.scala:235-245, :50-53). Under CPU starvation the diagnostics-class tail (seq < Terminal) is still in flight -> sink misses seqs -> typed SeqGap -> exit 20. Discriminator: a diagnostics drop consumes no sequence, so gap + droppedDiagnostics==0 is the relay race by construction (typed reproducer exists: dropped=0 envelopes=9 Left(SeqGap(j_1,8,10)), missing seqs exactly the diagnostics tail). Fix the PRODUCT: drain to the hub watermark (committed-vs-consumed) before deciding truncation — diagnostics quiescence — not Terminal presence. Test-side retry wrappers (RAI-152) stay as defense; the product raider replay becomes load-robust itself.
+
+**Context.** RAI-152 review (approve) required coordinator registration: the product race family is open in `raider replay` under load until this lands; RAI-152's test-side masks are instrumented at three call sites only.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: RT-01: the typed reproducer (dropped=0 + diagnostics-tail gap) is green WITHOUT the test retry wrapper under a documented load storm (the product no longer truncates mid-stream).
+- Error/adversarial: RT-02: truncation semantics unchanged for genuinely torn streams (real torn tail still typed TruncatedTail); existing replay suites green x3.
+- Cancellation/concurrency: RT-03: ReplayProductCliSpec/ReplayChainE2E retry wrappers may remain but their retry counters stay zero in the storm run (product fixed, not masked); full sbt test x1 green.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Hub forwarding-order semantics changes (the unspecified-order contract stays; we drain, not reorder), event wire changes, renderer/comparator changes, masking via test retries only.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.

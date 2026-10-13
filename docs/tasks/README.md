@@ -217,3 +217,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-155.d** [Compile edited chat workflows and launch them locally and in generic CI](lineage.md); dependencies: RAI-155.c; profiles: static, unit, contracts, runtime, ci.
 - **RAI-155.e** [Independent end-to-end verifier for chat to edited Scala to CI](lineage.md); dependencies: RAI-155.b, RAI-155.c, RAI-155.d; profiles: static, unit, contracts, runtime, ci.
 - **RAI-155.f** [User walkthrough: chat, export Scala, edit, and run in CI](lineage.md); dependencies: RAI-155.e; profiles: static, docs.
+- **RAI-156** [ReplayHarness.eventuallyTerminal: drain to hub watermark before Terminal-truncation (product-side relay-race fix)](lineage.md); dependencies: RAI-152; profiles: static, unit, contracts, ci.
