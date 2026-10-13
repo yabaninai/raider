@@ -330,11 +330,17 @@ Registered night cards (validate passed, 152 cards):
 - **RAI-136** — Load soak of the PTY family + RAI-123 trigger probe
   (conditional product fix only with a captured reproducer).
 
-Wave N1: RAI-131/132/133/134/136 as visible worker lanes; RAI-135 executed by
-the coordinator in the root checkout (shared files) while lanes run. Wave N2:
-independent reviews, sequential integration, full integrated gates, board and
-records. Owner-gated items remain untouched (live-wire, multi-job export,
-phase/recovery schema-card, F-14 sign-off).
+Wave N1 execution fallback (recorded 2026-10-13): mid-wave the environment
+permission config restricted task-tool spawns to read-only explore agents only
+(worker/reviewer spawns denied). Per parallel-development §1b fallback (1):
+night cards execute SEQUENTIALLY in the primary coordinator session
+(coordinator-as-worker, wave-3 precedent); each completed card gets an
+independent read-only verification pass (explore agent) before merge — no
+self-acceptance. Execution order by value density: RAI-135 (coordinator-owned
+registry change) -> RAI-133 (W05 completion) -> RAI-131 (CI adapter batch) ->
+RAI-132 (steering) -> RAI-134 (guide refresh) -> RAI-136 (soak). Owner-gated
+items remain untouched (live-wire, multi-job export, phase/recovery
+schema-card, F-14 sign-off).
 
 ## Module Status
 
