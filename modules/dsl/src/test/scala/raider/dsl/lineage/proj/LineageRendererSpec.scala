@@ -676,9 +676,12 @@ object LineageRendererSpec extends ZIOSpecDefault:
     ) {
       // Pre-fix escape handled only `\` and `"`, so a raw newline inside a
       // model/tool/recovery name split the generated artifact into broken
-      // lines. The fixed discipline neutralizes \n, \r, \t and other C0
-      // controls exactly like the runtime GraphHash esc — now inside the
-      // generated string literals too.
+      // lines. The discipline neutralizes \n, \r, \t and other C0 controls —
+      // inside `//` comments exactly like the runtime GraphHash esc, and
+      // inside string literals as \uXXXX (RAI-151): pinned dotc 3.9.0 rejects
+      // \xHH in a string literal ("invalid escape character" — this fixture
+      // originally pinned that non-compiling shape), so the literal discipline
+      // is the compiling \uXXXX form, pinned lowercase.
       val view = viewOf(
         "run-hostile",
         Vector(
@@ -703,7 +706,7 @@ object LineageRendererSpec extends ZIOSpecDefault:
         prelude("lineage_run_hostile") +
           "  val program: Program[Unit, Vector[StepReport]] =\n" +
           "    Program.fromFunction(\"lineage_run_hostile\") { _ =>\n" +
-          "      LineageStep.model(\"m1\", \"gpt\\n5\\r-x\\x01\", 1, None, Vector.empty, nesting = 0)\n" +
+          "      LineageStep.model(\"m1\", \"gpt\\n5\\r-x\\u0001\", 1, None, Vector.empty, nesting = 0)\n" +
           "        .flatMap { n_m1 =>\n" +
           "          LineageStep.tool(\"t1\", \"tool\\tname\\n2\", \"line\\rbreak\", None, Vector.empty, nesting = 0)\n" +
           "            .map { n_t1 =>\n" +
@@ -740,6 +743,38 @@ object LineageRendererSpec extends ZIOSpecDefault:
           "  val program: Program[Unit, Vector[StepReport]] =\n" +
           "    Program.fromFunction(\"lineage_run_ref\") { _ =>\n" +
           "      phase_verify(()) // data: d\\nref\n" +
+          "    }\n"
+      assertTrue(LineageRenderer.render(view) == Right(expected))
+    },
+    test(
+      "RAI-151 ESC-02: a dataRef with C0/DEL controls keeps the comment discipline \\xHH while the same payload in the string literal is \\uXXXX"
+    ) {
+      // The same U+0001 and DEL code points occur twice per emitted line: once
+      // inside the Some(...) string literal (compiling \uXXXX form — pinned
+      // lowercase), once inside the trailing `// data:` comment (canonical
+      // \xHH form, lexically inert, unchanged from the W9F4-01 discipline).
+      val view = viewOf(
+        "run-esc",
+        Vector(
+          NodeView(
+            "p1",
+            NodeKind.Phase("verify"),
+            None,
+            Vector.empty,
+            Some("d\u0001ref\u007f")
+          )
+        )
+      )
+      val expected =
+        prelude("lineage_run_esc") +
+          "  val phase_verify: Program[Unit, Vector[StepReport]] =\n" +
+          "    Program.fromFunction(\"phase_verify\") { _ =>\n" +
+          "      LineageStep.phase(\"p1\", \"verify\", Some(\"d\\u0001ref\\u007f\"), Vector.empty, nesting = 1) // data: d\\x01ref\\x7f\n" +
+          "    }\n" +
+          "\n" +
+          "  val program: Program[Unit, Vector[StepReport]] =\n" +
+          "    Program.fromFunction(\"lineage_run_esc\") { _ =>\n" +
+          "      phase_verify(()) // data: d\\x01ref\\x7f\n" +
           "    }\n"
       assertTrue(LineageRenderer.render(view) == Right(expected))
     }

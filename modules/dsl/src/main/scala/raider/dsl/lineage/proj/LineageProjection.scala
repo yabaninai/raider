@@ -131,7 +131,10 @@ object LineageRenderer:
         // escape discipline as quoted literals (W9 review F4).
         n.dataRef.fold("")(ref => " // data: " + escape(ref))
 
-      def strLit(raw: String): String = "\"" + escape(raw) + "\""
+      // RAI-151: string literals carry the \uXXXX literal discipline — the
+      // canonical \xHH form would make the artifact fail to compile under the
+      // pinned dotc (see [[escapeLiteral]]).
+      def strLit(raw: String): String = "\"" + escapeLiteral(raw) + "\""
 
       def refLit(dataRef: Option[String]): String =
         dataRef.fold("None")(ref => "Some(" + strLit(ref) + ")")
@@ -435,18 +438,26 @@ object LineageRenderer:
     val cleaned = raw.map(c => if c.isLetterOrDigit || c == '_' then c else '_')
     if cleaned.isEmpty || cleaned.head.isDigit then "_" + cleaned else cleaned
 
-  /** Escape discipline for free text entering the generated source (W9 review
-    * F4): besides the Scala-literal escapes `\` and `"`, control characters are
-    * neutralized exactly like the canonical-form esc of the runtime GraphHash —
-    * `\n`, `\r`, `\t` become the two-character sequences `\n`/`\r`/`\t`, and
-    * every other C0 control (U+0000–U+001F) or DEL (U+007F) becomes `\xHH` (two
-    * lowercase hex digits of the code point). A model/tool/recovery name or
-    * data ref carrying raw newlines can therefore no longer split a `//`
-    * comment or a string literal: every emitted line stays single-line, so the
-    * generated artifact keeps its line structure regardless of hostile node
-    * payloads. Deterministic and injective by construction: each `\` in the
-    * output opens exactly one of the listed sequences, and no escaped text
-    * contains a raw newline, quote or control character.
+  /** Escape discipline for free text entering a `//` COMMENT of the generated
+    * source (W9 review F4; RAI-151 narrowed this to the comment/canonical
+    * context): besides the Scala-literal escapes `\` and `"`, control
+    * characters are neutralized exactly like the canonical-form esc of the
+    * runtime GraphHash — `\n`, `\r`, `\t` become the two-character sequences
+    * `\n`/`\r`/`\t`, and every other C0 control (U+0000–U+001F) or DEL (U+007F)
+    * becomes `\xHH` (two lowercase hex digits of the code point). `\xHH` is
+    * lexically inert inside a `//` comment (no escape processing there), and
+    * the error-detail strings of [[RenderError]] are never compiled — those are
+    * exactly the contexts this function feeds (data-ref comments and
+    * unknown-outcome details). STRING LITERALS must go through
+    * [[escapeLiteral]] instead: the pinned dotc 3.9.0 rejects `\xHH` inside a
+    * string literal ("invalid escape character"), so the canonical form must
+    * never enter a generated literal. A model/tool/recovery name or data ref
+    * carrying raw newlines can therefore no longer split a `//` comment or a
+    * string literal: every emitted line stays single-line, so the generated
+    * artifact keeps its line structure regardless of hostile node payloads.
+    * Deterministic and injective by construction: each `\` in the output opens
+    * exactly one of the listed sequences, and no escaped text contains a raw
+    * newline, quote or control character.
     */
   private def escape(raw: String): String =
     val out = new StringBuilder(raw.length + 8)
@@ -457,6 +468,37 @@ object LineageRenderer:
       case '\r'                          => out.append("\\r")
       case '\t'                          => out.append("\\t")
       case c if c < ' ' || c == '\u007f' => out.append(f"\\x${c.toInt}%02x")
+      case c                             => out.append(c)
+    }
+    out.result()
+
+  /** Escape discipline for free text entering a generated STRING literal
+    * (RAI-151): `\` and `"` are escaped classically, `\n`/`\r`/`\t` keep their
+    * single-character escape sequences, and every other C0 control
+    * (U+0000–U+001F) or DEL (U+007F) becomes `\uXXXX` — backslash, `u`, then
+    * exactly four LOWERCASE hex digits (the pinned canonical form). Rationale:
+    * the pinned compiler (dotc 3.9.0) rejects `\xHH` inside string literals
+    * ("invalid escape character" — before this card a hostile payload such as a
+    * U+0001 model name produced a NON-compiling artifact), while `\uXXXX`
+    * compiles across the whole C0+DEL range (verified against dotc 3.9.0 for
+    * `\u0000`, `\u0001`, `\u007f`). Deterministic and injective by
+    * construction, same as [[escape]]: each `\` in the output opens exactly one
+    * of the listed sequences, and no escaped text contains a raw newline, quote
+    * or control character. The quote and backslash branches run first, so
+    * `\u0022` and `\u005c` are never emitted and `\n`/`\r` never take the
+    * `\uXXXX` form — under both possible lexer behaviors (escapes processed
+    * within the literal scan or pre-tokenization) every emitted sequence stays
+    * a plain character escape that cannot merge or terminate the literal.
+    */
+  private def escapeLiteral(raw: String): String =
+    val out = new StringBuilder(raw.length + 8)
+    raw.foreach {
+      case '\\'                          => out.append("\\\\")
+      case '"'                           => out.append("\\\"")
+      case '\n'                          => out.append("\\n")
+      case '\r'                          => out.append("\\r")
+      case '\t'                          => out.append("\\t")
+      case c if c < ' ' || c == '\u007f' => out.append(f"\\u${c.toInt}%04x")
       case c                             => out.append(c)
     }
     out.result()
