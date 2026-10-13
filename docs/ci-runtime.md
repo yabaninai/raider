@@ -177,3 +177,31 @@ The Yabanin accounting report does not replace the Raider task verdict. `yb ci r
 12. Real template jobs are checked on a clean runner; the presence of YAML alone does not count as acceptance.
 
 M0 proves all contracts with the local/mock suite; actual hosted template readiness requires a separate run by the owner/on a stand and evidence. Ordinary development gates do not require a paid provider.
+
+## 12. Chat-exported launcher artifacts (ADR-033 — designed, not implemented)
+
+[ADR-033](adr/ADR-033-chat-workflow-export.md) (card RAI-155.a; proposal — no
+export/compile/run command exists today) refines §3 for the RAI-155 chain:
+the non-TTY launcher for a chat-exported workflow is the **launcher artifact
+itself** (Option L) — an ordinary compiled Scala `main` that constructs the
+ADR-029 §3.1 launch capability explicitly — not a v1 bundle entry
+(`BundleLoader`/v1 SPI stay frozen and untouched; a v1 program cannot host
+agent work). Consequently, when RAI-155.d implements it, the §3 sketches
+`raider compile ... --output pipelines.jar` and `--bundle` execution are
+refined as follows, and exact syntax is fixed by the implementing card:
+
+- Same discipline as §3: pinned-toolchain compile, preflight order
+  (arguments → context/input schema → trust/policy → output-dir probe →
+  provider credentials → root creation/dispatch), required `--out`,
+  explicit input file (`--input-json` semantics, versioned validated JSON
+  decoded inside the program), mock determinism for free previews.
+- One root/admission/ledger per invocation (runtime-contracts §16/§17);
+  current credentials/policy bound at execution — never inherited from the
+  chat session; policy-ask in non-TTY mode is a typed NeedsApproval
+  refusal (exit 25).
+- Artifacts and exit codes are exactly §7/§8 (unchanged); `run.json` also
+  records source+input digests so a manual edit invalidates earlier result
+  claims. Cost fields report unpriced/unknown until usage settlement is
+  corrected (runtime-contracts §16) — never zero presented as observed.
+- SIGTERM/SIGINT own and terminate launched work with bounded grace;
+  incomplete outcomes are truthful (§6).
