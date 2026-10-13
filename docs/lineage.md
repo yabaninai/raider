@@ -135,9 +135,95 @@ Catalog requirements:
 
 A run's `events.jsonl` contains events from **one job**. Events from delegated
 children are assembled into a combined graph **by the reducer, using rootId/jobId
-from the journal layer**. A unified multi-job export belongs to the `cli/run/**`
-owner in wave-2, after the read API freeze (ADR-027 §6.4). Until then, the catalog
-operates on per-job/per-run trees assembled by the reducer.
+from the journal layer**. Since RAI-144 the unified multi-job export is
+shipped for delegate children of one run — see
+[§5.2](#52-unified-multi-job-lineage-wire-v2-adr-032). Until a run actually
+delegates, the catalog operates on per-job/per-run trees assembled by the
+reducer.
+
+### 5.2 Unified multi-job lineage (wire v2, ADR-032)
+
+The lineage wire gains **schemaVersion 2** (ADR-032, card RAI-143; the frozen
+ADR-024 runtime→UI seam is NOT modified):
+
+- **Phase payloads.** `phase_started` (enter, with recovery metadata) and
+  `phase_finished` (exit) create/close `SessionNode.Phase` in the graph
+  (LIFO per job; a phase still open at `Terminal` stands).
+- **Multi-job correlation.** Optional envelope field `invocationId` — the
+  delegation invocation a job's envelopes belong to. Required on v2 envelopes
+  of every non-root job (typed `ReduceError.MissingCorrelation`); a v1
+  envelope carrying it is refused typed (`InvocationIdOnV1`). A correlation
+  key alone never invents an edge: the parent control edge comes only from
+  the parent's frozen `Delegated` payload.
+- **Cross-run provenance.** `run_provenance` — at most one per stream —
+  carries `parentRunId` (absent = root run, never guessed) and `{kind, path}`
+  artifact pointers; returned as `LineageReduction(graph, provenance)` from
+  the versioned entries.
+- **Versioning policy.** v1 documents decode bit-for-bit unchanged; the
+  frozen single-version reader/reducer keep refusing v2; mixed v1/v2 streams
+  are legal input to the versioned entries (`LineageWireReader`,
+  `reduceWire`/`reducePartialWire`); any other version is a typed refusal.
+- **GraphHash is unchanged (ADR-032 §3).** v2 metadata (phase recovery,
+  `invocationId`, provenance) is excluded from the canonical form by
+  contract: v1 hashes remain valid and comparable; provenance equality is
+  asserted by the RAI-146 verifier, not by GraphHash.
+
+What ships on top (cards RAI-144/145/146, all integrated at `619fe25`):
+
+- **Multi-job export** — `raider.cli.run.MultiJobExport`
+  (`modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala`): a run's
+  delegate children join the run's single `events.jsonl`; one canonical
+  `Delegated` fork record in the parent's stream; per-job `seq` dense in file
+  order (export-canonical); the stream's file order is the reduction order and
+  `GraphHash` is invariant under the cross-job interleave; exactly one
+  `run_provenance` record before the campaign `Terminal`; honesty rules for
+  post-terminal forks (native-only segment) and detached children (typed
+  partial under LIN5-03). Delegation-free runs stay byte-identical to the v1
+  layout. The run artifact writer emits `lineage-data.json` schemaVersion 2
+  (top-level `provenance`) exactly when the record is present
+  (`RunLineageArtifacts`).
+- **Unified projection** — `raider.dsl.lineage.proj.UnifiedProjection`
+  (`modules/dsl/src/main/scala/raider/dsl/lineage/proj/UnifiedProjection.scala`):
+  the unified tree projects to the ADR-031 executable dry-run description —
+  phase defs per wire-native phase, delegation defs per correlation-linked
+  child, recorded fan-out groups composed with the frozen
+  `raider.dsl.composition.batch` verb (validated against the graph; parallelism
+  is never inferred), typed segment entries (`Linked`/`Incomplete`/`Unlinked`),
+  and the provenance/segments carried as data vals. A real rendered artifact
+  for the billing pipeline shape is checked in at
+  `docs/examples/ci-pipeline/unified-lineage/lineage.scala` with its
+  provenance README.
+- **Acceptance corpus + verifier** — `contracts/lineage/unified/`
+  (frozen, sha256-manifested; card RAI-146) +
+  `raider.cli.lineage.UnifiedCorpusVerifierSpec`
+  (`modules/cli/src/test/scala/raider/cli/lineage/UnifiedCorpusVerifierSpec.scala`):
+  four golden unified streams (including the BillingCi shape) and four typed
+  negative controls (corrupted correlation, invented edge, byte-torn tail,
+  detached prefix); the verifier re-hashes the manifest, checks exact executed
+  report trees (×3), graph-hash pins, provenance resolution, pinned-dotc
+  compile, and generated-source byte pins; every compile runs in a unique
+  temp directory (VR-03).
+
+Limitations today (reported accurately):
+
+- the headless product path does not yet wire delegation into the `coder`
+  agent (the export is fully wired in the runner and exercised by fixtures;
+  a wiring card is the follow-up);
+- the product cannot emit v2 phase envelopes yet (the frozen hub seam has no
+  phase surface) — corpus phases are frozen wire payloads authored through the
+  real codecs, and the RAI-145 machinery fixture inserts them as a documented
+  stand-in; real phase emission is a wiring card candidate;
+- `raider replay` reads the frozen v1 format (LIN-10/RAI-109); a mixed v1/v2
+  export replayed through it is refused typed
+  (`SchemaVersionUnsupported`) — unified-graph replay is not a shipped
+  command surface;
+- `RunLineageArtifacts` refuses phase-bearing graphs typed, so a unified
+  `lineage.scala`/`lineage-data.json` pair is not yet written beside a run's
+  `events.jsonl`; unified artifacts are produced through the
+  projection/verifier path;
+- fork records are root-anchored in the export; per-level anchoring is a
+  precondition for nested delegation chains (the corpus's
+  `case-2-delegation-tree` pins the projection semantics for deeper nesting).
 
 ## 6. Environment pinning
 
@@ -190,7 +276,10 @@ As of the 2026-10-12 snapshot, P-LIN waves W7–W21 are integrated and committed
 (“P-LIN session lineage waves W7-W21”). Evidence is in
 `docs/work/records/W7-INTEGRATION.md` and
 `docs/work/records/W8-W9-INTEGRATION.md` (with W10–W21 addenda). Each item below
-can be checked against the indicated file.
+can be checked against the indicated file. The unified multi-job lineage
+additions of 2026-10-13 (wire v2, export, projection, corpus — RAI-143…146)
+are recorded in [§5.2](#52-unified-multi-job-lineage-wire-v2-adr-032) and
+[§9.1](#91-implemented-by-adr-027-3-layer-with-file-references).
 
 ### 9.1 Implemented (by ADR-027 §3 layer, with file references)
 
@@ -277,14 +366,36 @@ can be checked against the indicated file.
 Every layer is covered by behavioral specs alongside the code
 (`modules/*/src/test/scala/**/lineage/**`).
 
+**Unified multi-job lineage (wire v2) — RAI-143/144/145/146** (see
+[§5.2](#52-unified-multi-job-lineage-wire-v2-adr-032)):
+
+- Versioned wire + reducer entries (`LineageWireReader`, `reduceWire` /
+  `reducePartialWire`, v2 payload cases, provenance record, typed refusals) —
+  `modules/runtime/src/main/scala/raider/runtime/lineage/io/LineageWireReader.scala`,
+  `modules/runtime/src/main/scala/raider/runtime/lineage/wire/LineageWire.scala`,
+  `modules/runtime/src/main/scala/raider/runtime/lineage/reduce/LineageReducer.scala`;
+  lineage-data schema v2 — `contracts/lineage/lineage-data.schema.json`
+- Multi-job export (join, canonical fork record, provenance, interleave
+  policy) —
+  `modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala` (+ runner
+  integration in `HeadlessRunner.scala`, artifacts in `RunLineageArtifacts.scala`)
+- Unified projection (phase/delegation defs, validated recorded fan-outs as
+  `batch`, typed segments) —
+  `modules/dsl/src/main/scala/raider/dsl/lineage/proj/UnifiedProjection.scala`
+- Frozen acceptance corpus + independent verifier —
+  `contracts/lineage/unified/**`,
+  `modules/cli/src/test/scala/raider/cli/lineage/UnifiedCorpusVerifierSpec.scala`;
+  a real rendered unified artifact —
+  `docs/examples/ci-pipeline/unified-lineage/lineage.scala`
+
 ### 9.2 Still missing
 
 | Missing item | Fact (evidence checked against baseline `4b46dc7`) |
 | --- | --- |
 | LIN-06 live re-run with a live model and budget | The mechanics are ready (`WorkspaceIsolation` isolation—`modules/cli/src/main/scala/raider/cli/lineage/WorkspaceIsolation.scala`, `Admission.make` budget in `ReplayHarness`—`modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala:298`, `RunDiffReport.scala` diff report), but there is no live provider behind the replay runner: `ReplayModelBackend` plays recordings only (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`). The open card is LIN-06 (`docs/tasks/lineage.md`, “LIN-06: Live re-run”) |
 | Live-wire verification | An owner obligation (owner's endpoint/budget); it has not been performed. Verifiable fact: the code has no live provider behind the replay runner—the only backend plays recordings (`modules/cli/src/main/scala/raider/cli/lineage/ReplayModelBackend.scala:75`) |
-| Multi-job export | `events.jsonl` contains one job's events (`modules/cli/src/main/scala/raider/cli/run/EventExport.scala:21`—per-job stream); delegated children are not assembled into a unified export (owner `cli/run/**`, wave-2, ADR-027 §6.4); the reducer and catalog operate on per-job/per-run trees |
-| Phase/recovery schema card | Wire events are frozen (13 cases—`modules/runtime/src/main/scala/raider/runtime/events/events.scala:26`, ADR-024 §5): the model/reducer builds Phase nodes; RecoveryClass uses a static tool-name→class taxonomy; the wire extension requires a schema card with independent review, which has not started |
+| ~~Multi-job export~~—shipped (RAI-144, ADR-032) | Delegate children of one run now join the run's single `events.jsonl` as schemaVersion 2 envelopes with `invocationId`, one canonical `Delegated` fork record, and one `run_provenance` record (`MultiJobExport`—`modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala`; runner integration + `RunLineageArtifacts` v2 gating; `docs/work/records/RAI-144.md`). Open follow-ups: the headless product path does not yet wire delegation into the `coder` agent (agent-registry policy surface), and phase payloads have no live emitter (next row); see [§5.2](#52-unified-multi-job-lineage-wire-v2-adr-032) |
+| ~~Phase/recovery schema card~~—shipped (RAI-143, ADR-032) | The wire extension is shipped: `phase_started`/`phase_finished` (recovery metadata), `invocationId` correlation, `run_provenance`, versioned reader/reducer entries, GraphHash exclusion policy (ADR-032 §3); lineage-data schema v2 (`contracts/lineage/lineage-data.schema.json`); `docs/work/records/RAI-143.md`. Still open: the product runtime emits no v2 phase envelopes yet (the frozen ADR-024 hub seam is unchanged; `LoopEvents` has no phase surface) — real phase emission is a wiring card candidate; RecoveryClass on the wire for tools remains taxonomy-based (RAI-148 fixes the taxonomy source) |
 | ~~TabShell wiring in the product REPL~~—closed (RAI-108) | The product entry point's `--tabs` flag starts TabShell: explicit flag and `runTabs` dispatcher in `main` (`modules/repl/src/main/scala/raider/repl/Main.scala:230-242`), `TabShellHost.wiring`/`TabShellHost.run` (`Main.scala:280-288`, `modules/repl/src/main/scala/raider/repl/TabShellHost.scala:31`); the legacy loop without the flag is unchanged; PTY acceptance P2E-01..03—`docs/work/records/RAI-108.md` |
 | ~~Writing artifacts to the run directory~~—closed (LIN-09) | A settled run writes `lineage.scala` + `lineage-data.json` to its run directory alongside `events.jsonl`/`summary.md` (`modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala:665-677`; writer `RunLineageArtifacts`—`modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala:52-55`); a write failure produces a typed `unavailable` line in summary.md without changing the exit code. `docs/work/records/LIN-09.md` |
 | Other items, reported accurately | Catalog persistence is closed (LIN-12): `CatalogStore` uses atomic tmp+move, an append queue under a per-path lock, upsert by run-dir, and typed Corrupt with the entry name (`modules/cli/src/main/scala/raider/cli/lineage/CatalogStore.scala`; `docs/work/records/LIN-12.md`). LIN2-03 is covered by a property spec: 4 reader fibers vs a writer, 0 partial reads, ×3 flake=0 (`modules/dsl/src/test/scala/raider/dsl/lineage/store/LineageSnapshotRaceSpec.scala`; `docs/work/records/LIN-14.md`). LIN-06 scripted acceptance is closed (LIN-15: LIN6-01/02/03(sc), typed fixes to IsolatedRerun/ReplayHarness; `docs/work/records/LIN-15.md`; open follow-up: canonical-path guard before the live-rerun CLI). The replay command is integrated into the product: `raider replay` → `ReplayCommand` → `ReplayCli.exec` (`modules/cli/src/main/scala/raider/cli/run/ReplayCommand.scala:37`; `docs/work/records/RAI-109.md`, §10); the standalone `ReplayCliMain` entry point remains a transitional direct invocation of the same chain |

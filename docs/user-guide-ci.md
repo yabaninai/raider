@@ -24,7 +24,7 @@ flowchart TD
   I --> J[One directory of linked artifacts]
 ```
 
-The graph describes orchestration and file ownership in the example. It does not claim that Raider's native lineage format contains a unified phase graph for these stages. The application index links separate headless run directories; it is an application-owned document, not native lineage or a shared accounting ledger.
+The graph describes orchestration and file ownership in the example. It does not claim that this application's own runs share a native graph: each of its headless invocations is an independent native root. What Raider's lineage layer assembles when the same stages run as delegate children of ONE run — the unified phase graph with real delegation edges — is documented below in [Unified lineage for this pipeline shape](#unified-lineage-for-this-pipeline-shape), with the actual generated artifacts from the RAI-146 acceptance corpus. The application index links separate headless run directories; it is an application-owned document, not native lineage or a shared accounting ledger.
 
 The two reviewer prompts request analysis of the inline source and forbid tools. The application rejects a reviewer result if it observes a tool call or any file in that review's workspace. The current `coder` agent still has the full registered tool set and process permissions; these prompt and postcondition checks do not enforce a read-only capability boundary or sandbox arbitrary process effects.
 
@@ -144,7 +144,189 @@ flowchart LR
 
 The index is `pipeline-index.json`; the typed release result is also written to `decision.json`. Use the emitted index to find each native run; do not guess run IDs. Each run's `events.jsonl` is the checkpoint for its own native graph. The index `budgetNote` records the independent per-run attempt limit and the lack of a shared pipeline budget.
 
+## Unified lineage for this pipeline shape
+
+Raider's lineage layer can render this exact pipeline shape — repair, checks,
+reviews, boundary batch — as ONE unified graph with real delegation edges.
+This section separates what the shipped product does today from what the
+acceptance corpus demonstrates.
+
+### What the shipped product does today
+
+Within a single headless run, delegate children join the run's one
+`events.jsonl` (`MultiJobExport`, card RAI-144, ADR-032): child segments are
+exported as `schemaVersion: 2` envelopes carrying an `invocationId`
+correlation key, the introduction is represented once as a canonical frozen
+`Delegated` fork record in the parent's stream, and exactly one
+`run_provenance` record (`parentRunId` plus per-child `work_dir`/`events`
+artifact pointers) is appended before the campaign's `Terminal`. The versioned
+reducer (`reduceWire`/`reducePartialWire`) builds one graph from that stream.
+A run with no delegation keeps the byte-identical frozen v1 layout.
+
+This application does not use that path: it launches six independent headless
+invocations, so each stage remains its own native root with its own stream,
+graph, and budget. The index links the roots; it creates no native edges. Two
+further wiring facts, reported accurately: the headless product path does not
+yet wire delegation into the `coder` agent (the join is fully wired in the
+runner and exercised end to end by fixtures; a wiring card is a follow-up),
+and the product runtime cannot emit v2 phase envelopes yet — see the
+limitations at the end of this section.
+
+### The unified shape the corpus demonstrates
+
+The frozen acceptance corpus at
+[`contracts/lineage/unified/`](../contracts/lineage/unified/README.md)
+(card RAI-146; the protected acceptance surface of unified lineage) contains
+this pipeline shape as ONE multi-job stream: five wire-native phases
+(`baseline-check` / `repair` / `final-check` / `reviews` / `boundary`), eight
+correlation-linked child segments, one mutating `bash` tool call in the repair
+child, two recorded fan-out groups (reviews pair at parallelism 2, boundary
+trio at parallelism 3), and a cross-run provenance record — 48 envelopes
+total. A phase marker, a correlated child envelope, and the provenance record
+from the frozen stream
+([`cases/case-1-billing.jsonl`](../contracts/lineage/unified/cases/case-1-billing.jsonl)):
+
+```json
+{"schemaVersion":2,"seq":4,"jobId":"camp-billing","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":35,"payload":{"type":"phase_started","name":"repair","recovery":"Mutating"}}
+{"schemaVersion":2,"seq":1,"jobId":"j-repair","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":45,"payload":{"type":"ModelCallStarted","round":1,"model":"repair-model"},"invocationId":"inv-repair"}
+{"schemaVersion":2,"seq":19,"jobId":"camp-billing","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":235,"payload":{"type":"run_provenance","parentRunId":"run-upstream-2026-10-12-a","artifacts":[{"kind":"work_dir","path":"runs/upstream-a/jobs/j-baseline"},{"kind":"events","path":"runs/upstream-a/jobs/j-baseline/events.jsonl"}]}}
+```
+
+(The last line is abbreviated; the frozen record carries sixteen
+`work_dir`/`events` pointer pairs, one per joined segment.)
+
+The versioned reader/reducer reduce that joined stream — eight linked child
+segments — into one graph whose
+SHA-256 is pinned in the corpus expectations
+([`cases/case-1-billing.expected.json`](../contracts/lineage/unified/cases/case-1-billing.expected.json)):
+`8febe295b01e5bc7da743dfd170c601d42e6a27bba1896a9eedb101d274c3d5b`. The pinned
+executed report tree is 23 reports: five phase nodes at nesting 1, eight
+delegation nodes and nine child-segment nodes at nesting 2. Its first entries:
+
+```json
+{ "id": "camp-billing:n1", "kind": "phase:baseline-check", "dataRef": null, "inputs": [], "nesting": 1 },
+{ "id": "camp-billing:n2", "kind": "delegation:ci-baseline", "dataRef": null, "inputs": ["camp-billing:n1"], "nesting": 2 },
+{ "id": "j-baseline:n1", "kind": "model:check-model:1", "dataRef": "j-baseline/round-1", "inputs": ["camp-billing:n2"], "nesting": 2 },
+{ "id": "j-repair:n3", "kind": "tool:bash:Mutating", "dataRef": "j-repair/call-c1", "inputs": ["j-repair:n1"], "nesting": 2 }
+```
+
+The rendered program for that graph is checked in, real, and byte-pinned:
+[`examples/ci-pipeline/unified-lineage/lineage.scala`](examples/ci-pipeline/unified-lineage/lineage.scala)
+(SHA-256 `77339a8b649e4d7731db79536dcde6de70331f2f1668b41c7dfc0fc0801120cc`,
+equal to the corpus `generatedSourceSha256` pin that the verifier
+[`UnifiedCorpusVerifierSpec`](../modules/cli/src/test/scala/raider/cli/lineage/UnifiedCorpusVerifierSpec.scala)
+re-derives from the frozen stream on every run). Phase defs per pipeline
+stage, delegation blocks per linked child, and the recorded fan-outs composed
+with the shipped `batch` verb, from that artifact:
+
+```scala
+val phase_reviews: Program[Unit, Vector[StepReport]] =
+  Program.fromFunction("phase_reviews") { _ =>
+    LineageStep.phase("camp-billing:n10", "reviews", None, Vector.empty, nesting = 1)
+      .flatMap { n_camp_billing_n10 =>
+        batch(List(delegation_ci_review, delegation_ci_review_2), 2)(p => p(()))
+          .map { n_camp_billing_n11_batch =>
+            n_camp_billing_n10 ++ n_camp_billing_n11_batch.flatten
+          }
+      }
+  }
+
+val delegation_ci_repair: Program[Unit, Vector[StepReport]] =
+  Program.fromFunction("delegation_ci_repair") { _ =>
+    LineageStep.delegation("camp-billing:n5", "ci-repair", None, Vector("camp-billing:n4"), nesting = 2)
+      .flatMap { n_camp_billing_n5 =>
+        LineageStep.model("j-repair:n1", "repair-model", 1, Some("j-repair/round-1"), Vector(n_camp_billing_n5.head.id), nesting = 2) // data: j-repair/round-1
+          .flatMap { n_j_repair_n1 =>
+            LineageStep.tool("j-repair:n3", "bash", "Mutating", Some("j-repair/call-c1"), Vector(n_j_repair_n1.head.id), nesting = 2) // data: j-repair/call-c1
+              .flatMap { n_j_repair_n3 =>
+                LineageStep.model("j-repair:n5", "repair-model", 2, Some("j-repair/round-2"), Vector(n_j_repair_n3.head.id), nesting = 2) // data: j-repair/round-2
+                  .map { n_j_repair_n5 =>
+                    n_camp_billing_n5 ++ n_j_repair_n1 ++ n_j_repair_n3 ++ n_j_repair_n5
+                  }
+              }
+          }
+      }
+  }
+
+val phase_boundary: Program[Unit, Vector[StepReport]] =
+  Program.fromFunction("phase_boundary") { _ =>
+    LineageStep.phase("camp-billing:n14", "boundary", None, Vector.empty, nesting = 1)
+      .flatMap { n_camp_billing_n14 =>
+        batch(List(delegation_ci_boundary, delegation_ci_boundary_2, delegation_ci_boundary_3), 3)(p => p(()))
+          .map { n_camp_billing_n15_batch =>
+            n_camp_billing_n14 ++ n_camp_billing_n15_batch.flatten
+          }
+      }
+  }
+```
+
+The five phase defs chain in pre-order in the generated `program` value, and
+the artifact also carries the recorded data as values:
+
+```scala
+val runProvenance: Vector[(String, String)] =
+  Vector(("work_dir", "runs/upstream-a/jobs/j-baseline"), ("events", "runs/upstream-a/jobs/j-baseline/events.jsonl"), /* … 16 pointers total */)
+val segments: Vector[(String, String, String)] =
+  Vector(("j-baseline", "inv-baseline", "linked"), ("j-repair", "inv-repair", "linked"), /* … 8 linked segments */)
+```
+
+### The executed projection is a dry-run description
+
+Executing the generated program (via `Task.zio` on its `Program` — the only
+observation boundary) evaluates pure `LineageStep` constructors and returns
+`StepReport` values: order equals declaration order equals graph child order,
+inputs are threaded as values, and nothing is dispatched — no model call, no
+tool call, no I/O (ADR-031). A recorded-failed node short-circuits the chain
+with a typed `RaiderError.OutputValidation` whose cause is the structured
+`LineageStepFailure`. The generated file is NOT a rerun or replay entrypoint;
+its header says so. Replay (`raider replay`) reads the frozen v1 format and
+refuses a mixed v1/v2 stream with a typed error, so the unified export is not
+a replay input on the current product command surface.
+
+The unified graph shape is distinct from the composition you write with the
+shipped DSL verbs — `andThen`, `all`, and `batch` plus `Task` sequencing, as
+used by this example. The projection emits `batch(...)` lines only where the
+corpus stream records a real fan-out group; it invents no `pipeline` or
+`parallel` composition, and neither exists in the shipped API.
+
+### Exit codes and claims are unchanged
+
+This section documents lineage artifacts; it adds no commands, flags, or exit
+codes. The application exits and native `RunResult` semantics described above
+are unchanged. A unified lineage export or its projection is never a reason a
+pipeline succeeds: the decision still comes from actual process exits and the
+application's own checks.
+
+### Honest limitations
+
+- **Live-wire gated.** The unified acceptance evidence is offline and
+  deterministic (corpus + verifier). No live provider run through the unified
+  path has been performed; live claims remain gated behind the owner's
+  live-wire obligation.
+- **Phase stand-ins.** The product runtime cannot emit v2 phase envelopes yet
+  (the frozen ADR-024 hub seam has no phase surface). In the RAI-145
+  machinery fixture the campaign phases are inserted at deterministic
+  positions around real machinery envelopes; in the RAI-146 corpus the phases
+  are frozen wire payloads authored through the real codecs. Real phase
+  emission is a wiring card candidate.
+- **Per-level anchoring before nested delegation ships.** Fork records are
+  root-anchored in the export; nested delegation chains (worker → subworker)
+  need per-level anchoring as a precondition. The corpus's
+  `case-2-delegation-tree` pins the projection semantics for deeper nesting;
+  the export-side anchoring is not shipped.
+- **No unified lineage-data writer yet.** The run artifact writer
+  (`RunLineageArtifacts`) refuses phase-bearing graphs typed, so a unified
+  program like the one quoted above is produced through the
+  projection/verifier path — not yet written beside a run's `events.jsonl`.
+  For a real delegation join without phases, the writer emits
+  `lineage-data.json` schemaVersion 2 with the top-level `provenance` record
+  (RAI-144).
+
 ## Captured CI run and lineage
+
+Everything in this section is the six-root shape: each native graph below is
+one run's single-root lineage, exactly what this application produces today.
+For the unified shape, see the previous section.
 
 The [successful captured pipeline](examples/ci-pipeline/successful-run.json)
 ran through the Yabanin coding-plan gateway with requested model
