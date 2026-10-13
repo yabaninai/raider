@@ -722,7 +722,8 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
     val loader =
       new URLClassLoader(Array(outDir.toUri.toURL), getClass.getClassLoader)
     val cls = Class.forName("lineage_esc_hostile$", true, loader)
-    val module = cls.getField("MODULE$").get(null)
+    val module =
+      cls.getField("MODULE$").get(null) // scalafix:ok DisableSyntax.null
     val invoked = cls.getMethod("program").invoke(module)
     if !invoked.isInstanceOf[Program[?, ?]] then
       throw new IllegalStateException(

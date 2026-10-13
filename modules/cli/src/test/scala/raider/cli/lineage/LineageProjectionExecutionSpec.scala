@@ -729,7 +729,7 @@ object LineageProjectionExecutionSpec extends ZIOSpecDefault:
             "load " + objName + " from " + outDir + ": " + t
           )
     val module =
-      try cls.getField("MODULE$").get(null)
+      try cls.getField("MODULE$").get(null) // scalafix:ok DisableSyntax.null
       catch
         case t: Throwable =>
           throw new IllegalStateException(
