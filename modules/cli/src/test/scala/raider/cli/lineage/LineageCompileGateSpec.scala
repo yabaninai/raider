@@ -3,7 +3,8 @@ package raider.cli.lineage
 import zio.json.*
 import zio.test.*
 
-import raider.core.{JobId, RootId, SessionId}
+import raider.core.{JobId, Program, RootId, SessionId, Task}
+import raider.dsl.lineage.proj.runtime.StepReport
 import raider.dsl.lineage.proj.{
   LineageRenderer,
   LineageView,
@@ -20,6 +21,7 @@ import raider.runtime.lineage.model.{
 }
 
 import java.io.File
+import java.net.URLClassLoader
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.util.concurrent.TimeUnit
@@ -42,7 +44,13 @@ import java.util.concurrent.TimeUnit
   * the repeat artifact re-compiles (exit 0); LIN2-01-C an artificially
   * truncated projection (object header torn) honestly does NOT compile (exit !=
   * 0 — a compile timeout or an IO failure is never counted as non-compilation
-  * evidence).
+  * evidence). ESC-01/ESC-03 (RAI-151): a hostile-payload view built in code
+  * (U+0001 model name — the exact RAI-141 review repro) renders identically
+  * twice, compiles under the pinned dotc (exit 0), carries `\uXXXX` escapes in
+  * string literals and the lexically inert `\xHH` form only inside `//`
+  * comments, and the compiled artifact EXECUTES deterministically through a
+  * child classloader — the hostile fixture is part of this suite, so every gate
+  * run exercises it.
   *
   * Classpath (RAI-141): the generated projection is no longer self-contained —
   * it references `raider.core.Program`, `raider.dsl.lineage.proj.runtime.*` and
@@ -637,6 +645,92 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
         )
       case Left(err) => throw new IllegalStateException(what + ": " + err)
 
+  // ----- RAI-151 hostile-literal fixture (ESC-01/ESC-03) -----------------------
+
+  /** A hostile-payload view built IN CODE: the frozen golden documents stay
+    * untouched (data-resource format changes are a non-goal), so the hostility
+    * lives here. The model name carries U+0001 — the exact RAI-141 review repro
+    * that dotc 3.9.0 rejects as `\x01` inside a string literal — the tool name
+    * carries U+0002, and the dataRef key carries U+0001 + DEL (U+007F), so one
+    * render exercises the literal discipline and the `// data:` comment
+    * discipline on the same line.
+    */
+  private val hostileView: LineageView = new LineageView:
+    def runId: String = "esc-hostile"
+    def roots: Vector[NodeView] = Vector(
+      NodeView(
+        "m1",
+        NodeKind.ModelCall("gpt\u0001-hostile", 1),
+        None,
+        Vector(
+          NodeView(
+            "t1",
+            NodeKind.ToolCall("tool\u0002-name", "ReadOnly"),
+            Some("m1"),
+            Vector.empty,
+            Some("d\u0001ref\u007f")
+          )
+        ),
+        None
+      )
+    )
+
+  /** The deterministic dry-run report vector of [[hostileView]]: pure data
+    * derived from the view (nesting 0 for both atomic root-scope steps).
+    */
+  private val hostileExpectedReports: Vector[StepReport] = Vector(
+    StepReport(
+      "m1",
+      NodeKind.ModelCall("gpt\u0001-hostile", 1),
+      None,
+      Vector.empty,
+      0
+    ),
+    StepReport(
+      "t1",
+      NodeKind.ToolCall("tool\u0002-name", "ReadOnly"),
+      Some("d\u0001ref\u007f"),
+      Vector.empty,
+      0
+    )
+  )
+
+  /** RAI-151 (ESC-02): `\xHH` is allowed ONLY where lexically inert — inside a
+    * `//` comment. Every `\x` occurrence in a generated source must sit after
+    * the `//` of its line. Returns human-readable violations.
+    */
+  private def commentOnlyEscapeViolations(src: String): Vector[String] =
+    src.linesIterator.zipWithIndex.flatMap { (line, i) =>
+      if !line.contains("\\x") then None
+      else
+        val escapeIdx = line.indexOf("\\x")
+        val commentIdx = line.indexOf("//")
+        if commentIdx < 0 || escapeIdx < commentIdx then
+          Some("line " + (i + 1) + ": \\x escape outside a // comment: " + line)
+        else None
+    }.toVector
+
+  /** Loads the freshly compiled projection object from `outDir` through a child
+    * classloader (parent = this test JVM, so every `raider.*`/zio class
+    * resolves from the same product classes the compiler ran against; only the
+    * generated object comes from the compile output) and returns its
+    * `val program` as a real Program value.
+    */
+  private def loadCompiledProgram(
+      outDir: Path
+  ): Program[Unit, Vector[StepReport]] =
+    val loader =
+      new URLClassLoader(Array(outDir.toUri.toURL), getClass.getClassLoader)
+    val cls = Class.forName("lineage_esc_hostile$", true, loader)
+    val module = cls.getField("MODULE$").get(null)
+    val invoked = cls.getMethod("program").invoke(module)
+    if !invoked.isInstanceOf[Program[?, ?]] then
+      throw new IllegalStateException(
+        "compiled projection program has unexpected type: " +
+          Option(invoked).fold("null")(_.getClass.getName)
+      )
+    invoked.asInstanceOf[Program[Unit, Vector[StepReport]]]
+
   // ----- expectations for the golden renders (derived from the frozen payloads)
 
   private val tinyExpectedNames = Vector(
@@ -793,5 +887,49 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
       }
       violations.foreach(v => throw new IllegalStateException(v))
       assertTrue(violations.isEmpty)
+    },
+    test(
+      "ESC-01/ESC-03: hostile-payload graph (U+0001 model name) renders identically twice, compiles with pinned dotc (exit 0) and executes deterministically"
+    ) {
+      val first = LineageRenderer.render(hostileView)
+      val second = LineageRenderer.render(hostileView)
+      val src = requireRight(
+        first.left.map("render: " + _),
+        "hostile render"
+      )
+      requireRight(second.left.map("render: " + _), "hostile render repeat")
+      assertExecutable(src, "hostile render")
+      val path = requireRight(
+        writeRender("esc-hostile", src),
+        "write hostile render"
+      )
+      requireExit0(
+        dotc("esc-hostile", path, "out-esc-hostile"),
+        "hostile compile"
+      )
+      val escapeViolations = commentOnlyEscapeViolations(src)
+      escapeViolations.foreach(v =>
+        throw new IllegalStateException("hostile render: " + v)
+      )
+      // Execute the compiled artifact: two runs of the loaded Program through
+      // the single Task interpreter — deterministic report vector, zero
+      // dispatch (the runtime is a pure dry-run description, ADR-031).
+      val outDir = compileDir.resolve("out-esc-hostile")
+      val program = loadCompiledProgram(outDir)
+      for
+        run1 <- Task.zio(program(()))
+        run2 <- Task.zio(program(()))
+      yield assertTrue(
+        first == second,
+        src.getBytes(StandardCharsets.UTF_8).toSeq ==
+          second.fold(_ => "", identity).getBytes(StandardCharsets.UTF_8).toSeq,
+        src.contains("\\u0001-hostile"),
+        src.contains("Some(\"d\\u0001ref\\u007f\")"),
+        src.contains("// data: d\\x01ref\\x7f"),
+        escapeViolations.isEmpty,
+        run1 == hostileExpectedReports,
+        run2 == hostileExpectedReports,
+        run1 == run2
+      )
     }
   )
