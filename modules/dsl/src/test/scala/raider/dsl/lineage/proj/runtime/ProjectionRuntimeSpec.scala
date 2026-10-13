@@ -301,10 +301,14 @@ object ProjectionRuntimeSpec extends ZIOSpecDefault:
         "concurrent construction and execution of two projections is isolated"
       ) {
         for
-          // Construction happens INSIDE the fibers: no shared mutable state,
-          // each fiber sees only its own projection's reports.
-          f1 <- Task.zio(sampleProgram(())).fork
-          f2 <- Task.zio(otherProgram(())).fork
+          // Construction happens BEFORE the fork (RAI-140 review minor m2):
+          // the built Program is an immutable value, so the fibers below only
+          // EXECUTE their own projection's Task chain — no shared mutable
+          // state, each fiber sees only its own projection's reports.
+          built1 = sampleProgram(())
+          built2 = otherProgram(())
+          f1 <- Task.zio(built1).fork
+          f2 <- Task.zio(built2).fork
           r1 <- f1.join
           r2 <- f2.join
         yield assertTrue(r1 == expectedSample, r2 == expectedOther)
