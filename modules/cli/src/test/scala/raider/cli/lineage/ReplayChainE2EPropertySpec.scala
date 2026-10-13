@@ -1,5 +1,6 @@
 package raider.cli.lineage
 
+import raider.core.RaiderError
 import raider.runtime.lineage.replay.GraphComparator
 import zio.test.*
 import zio.{Scope, ZIO}
@@ -66,6 +67,40 @@ object ReplayChainE2EPropertySpec extends ZIOSpecDefault:
         throw new IllegalStateException("recorded self-compare failed")
       )
 
+  /** RAI-152 determinism fix (precedent 91a6575 fresh-render retry, same race
+    * family as the LIN13 process smoke): under machine-level load the hub
+    * relays reliable and diagnostics envelopes through TWO INDEPENDENT
+    * forwarder fibers (relative arrival order unspecified by contract), so the
+    * diagnostics-class tail of the replayed stream can still be in flight when
+    * the harness's Terminal-presence termination (`eventuallyTerminal`) fires —
+    * the sink misses diagnostics seqs and the reducer refuses the stream typed:
+    * `comparison = None`, envelopes < 14, `dropped = 0` (a hub-level drop never
+    * consumes a sequence, so a gap is the relay race by construction; observed
+    * in a full-suite storm run as `envelopes=14/13, dropped=0/0`). A
+    * did-NOT-reduce replay is retried with a FRESH harness (fresh hub/forwarder
+    * fibers — the resource the race consumed), bounded at 3 attempts; any real
+    * verdict (`comparison` defined, including a genuine mismatch diff) NEVER
+    * retries. The assertions below are UNCHANGED — the final pair must still be
+    * two normalized Matches with the same hash, 14 envelopes each and zero
+    * drops.
+    */
+  private def replayDense(
+      workspace: Path
+  ): ZIO[Scope, RaiderError, ReplayHarness.ReplayRun] =
+    def attempt(
+        n: Int
+    ): ZIO[Scope, RaiderError, ReplayHarness.ReplayRun] =
+      ReplayHarness.replay(workspace).flatMap { run =>
+        if n < 3 && run.comparison.isEmpty then
+          zio.Console
+            .printLine(
+              s"[rai-152] PROP-01 replay did not reduce (relay-race signature, attempt $n/3, retrying with a FRESH harness): envelopes=${run.envelopeCount} dropped=${run.droppedDiagnostics} graph=${run.graph}"
+            )
+            .orDie *> attempt(n + 1)
+        else ZIO.succeed(run)
+      }
+    attempt(1)
+
   /** SEQUENTIAL on purpose: in one observed cold-start full-suite run, 2 of the
     * 12 seed tests flaked when the real loop/hub/toolset replays ran
     * concurrently under first-run JIT/zinc load in the same JVM. Sequencing the
@@ -85,9 +120,9 @@ object ReplayChainE2EPropertySpec extends ZIOSpecDefault:
           ZIO.scoped {
             for
               ws1 <- freshWorkspace
-              run1 <- ReplayHarness.replay(ws1)
+              run1 <- replayDense(ws1)
               ws2 <- freshWorkspace
-              run2 <- ReplayHarness.replay(ws2)
+              run2 <- replayDense(ws2)
             yield (run1.comparison, run2.comparison) match
               case (Some(Right(h1)), Some(Right(h2))) =>
                 assertTrue(

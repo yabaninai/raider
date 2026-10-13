@@ -329,9 +329,23 @@ object SessionRegistrySpec extends ZIOSpecDefault:
                 sb <- hub.snapshot(jobB)
               yield sa.exists(_.lastSeq == 1L) && sb.exists(_.lastSeq == 1L)
             }
-            _ <- eventually(Duration.fromSeconds(15))(
-              reg.snapshot(a).map(_.lastSeq == 1L)
-            )
+            // RAI-152 determinism fix (precedent 71d0aa3 quiescence / the
+            // await-condition discipline): the registry folds each tab on its
+            // OWN consumer fiber, so the baseline capture below must be
+            // quiescence-gated for BOTH tabs — gating tab A only left tab B's
+            // local fold free to lag (`lastSeq=0`) at the `localBefore`
+            // capture and catch up before `localAfter`, failing
+            // `localBefore == localAfter` under load (RAI-146 manifest
+            // 20261013-163417-80442-0001; lane probe reproduced the exact
+            // window). The hub side was already delivered (the gate above);
+            // both consumer fibers are forward progress, so this condition is
+            // logically guaranteed. The assertions themselves are unchanged.
+            _ <- eventually(Duration.fromSeconds(15)) {
+              for
+                sa <- reg.snapshot(a)
+                sb <- reg.snapshot(b)
+              yield sa.lastSeq == 1L && sb.lastSeq == 1L
+            }
             before <- hubState(hub, jobA, jobB)
             localBefore <- reg.tabs.map(_.map(t => (t.id, t.lastSeq, t.status)))
             // 10 ONE-call switches: odd = next+prev (net zero), even = focus(a)
