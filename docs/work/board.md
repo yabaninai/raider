@@ -404,13 +404,21 @@ Night progress (2026-10-13):
   (20261013-132823) + profiles 10/10 (20261013-133341); two integrated-gate
   catches fixed en route (scalameta =-binding, scalafix DisableSyntax.null
   on reflective MODULE$ reads — lane gate sets lacked these checks).
-- **In flight: RAI-145** (unified projection; deps RAI-142+144 met). Carried
-  packet risks: fork records are ROOT-anchored (nested delegation needs
-  per-level anchoring before it ships); replay reads v1 only (RAI-145 must
-  not replay the unified export from disk); unlinked-segment adversarial
-  fixture → RAI-146 VR-02. Then RAI-146 (verifier corpus) -> RAI-147 (docs +
-  BillingCi). Queue behind: RAI-132/134/136/137, RAI-123 (conditional),
-  129.b/c (RAI-143 ✓), LIN-03/04 (live projection + TUI).
+- **RAI-145 DONE** (review APPROVE): unified CI pipeline projection — billing
+  shape (5 stages, 8 delegated children) through ADR-031 runtime + frozen
+  batch; exact 23-report tree pinned, dotc-compiled, executed; UNI-02
+  unlinked roots separated/typed; UNI-03 corrupted correlation → typed no-
+  codegen, detached child → LIN5-03 partial with typed Incomplete; phase
+  stand-ins disclosed (generator emission-agnostic); two minor latent
+  findings carried to RAI-146 verifier design (single-element fan scope
+  flatten; non-def parent group emitted sequential). Integrated gates on the
+  final candidate: EXECUTE 10/10 (20261013-150935) + profiles 10/10; two
+  integrated-gate catches fixed en route (scalameta =-bindings in the new
+  spec).
+- **Next ready: RAI-146** (independent verifier corpus + negatives — carried
+  findings feed its design) **-> RAI-147** (docs + BillingCi). Queue behind:
+  RAI-132/134/136/137, RAI-123 (conditional), 129.b/c (RAI-143 ✓),
+  LIN-03/04 (live projection + TUI), phase-emission wiring card candidate.
 
 ## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
 
