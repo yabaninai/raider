@@ -1,4 +1,6 @@
-Implement RAI-155: chat -> editable Scala workflow -> local and generic CI.
+Prioritize RAI-155: chat -> editable Scala workflow -> local and generic CI.
+Then continue the remaining approved Raider roadmap cards without stopping at
+RAI-155 completion or asking for routine permission to start the next card.
 
 Read AGENTS.md, docs/working-product.md, docs/parallel-development.md,
 docs/PLAN.md, docs/roadmap-12k.md section 6d, docs/work/board.md, and the
@@ -73,3 +75,42 @@ changes into current main without overwriting concurrent work, and push normally
 the runbook. Report commit, remote status, concrete user commands, exact checks,
 remaining limitations and the next available card. Do not stop at a projection
 example: finish the chat-to-edited-executable-workflow user path.
+
+
+Continuation after RAI-155
+
+Treat completion of RAI-155 as a checkpoint in the existing roadmap, not the end
+of this assignment. After each accepted card or integration wave, re-read the
+current board, canonical backlog, roadmap dependencies and work records; inspect
+main to distinguish implemented, accepted, active and genuinely unfinished work.
+Do not reopen accepted cards solely because historical metadata is stale. Resolve
+status discrepancies with source and acceptance records before selecting work.
+
+Select the next unblocked approved cards in roadmap priority order. Preserve
+active owners and the ongoing lineage/TUI lanes. Consider remaining RAI-153/154,
+P1/P2/P3 work and the RAI-116/117 SDK/SDLC sequence according to their actual
+status and prerequisites; these are candidates, not a fixed list to repeat.
+Continue into subsequent approved phases as their dependencies become accepted.
+When a phase requires decomposition, the coordinator registers bounded cards,
+allowed paths, contract/verifier dependencies and estimates before coding.
+Do not invent adjacent scope or bypass an unresolved owner decision.
+
+Maintain visible worker/reviewer lanes for independent ready work, with isolated
+worktrees and one integration owner. For every card, implement within its scope,
+run its applicable checks, obtain independent review, update practical English
+user documentation and work records, integrate accepted changes into main and
+push normally. Give concise progress updates, then immediately continue with the
+next ready card; a completion report is not a request for permission to proceed.
+
+If a card is blocked, record the concrete dependency, failure or missing decision
+and continue other unblocked approved work. Ask only for information or decisions
+that cannot be inferred and are actually needed. Do not treat waiting for one
+provider, forge selection or external service as a reason to stop independent
+work. Existing authorization does not expand to paid calls, external publication,
+deployment or neighboring-repository changes beyond their explicit scope.
+
+Continue until the remaining approved roadmap scope is accepted, the owner asks
+to stop, or no authorized unblocked work remains. At a genuine stopping point,
+report accepted cards, main/remote commits, checks, remaining blockers and exact
+next actions. Never label the whole roadmap complete from RAI-155 acceptance or
+from a partial/blocked/skipped gate result.
