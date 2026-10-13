@@ -792,7 +792,9 @@ object HeadlessRunner:
         RunLineageArtifacts.write(workDir, o.graph, o.wire, o.provenance) match
           case Right(written) =>
             s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion ${
-                if o.provenance.isDefined then 2 else 1
+                // RAI-154: ONE source of the v1/v2 decision (joined provenance
+                // OR wire-native phases) — the writer's own rule.
+                RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)
               })"
           case Left(e) => s"- lineage artifacts: unavailable ($e)"
       }

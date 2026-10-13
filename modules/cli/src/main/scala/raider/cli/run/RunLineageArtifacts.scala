@@ -25,12 +25,13 @@ import scala.util.control.NonFatal
   * directory"): writes the settled run's lineage artifacts NEXT TO the run's
   * own events.jsonl/summary.md — `lineage-data.json` (written through the
   * accepted atomic store [[LineageDataStore]]; schemaVersion 1 as frozen, or
-  * the ADR-032 v2 shape when the run exported joined child segments) and
-  * `lineage.scala` (the deterministic [[SessionGraphView]] →
-  * [[LineageRenderer]] projection, written with the SAME atomic tmp+ATOMIC_MOVE
-  * pattern). The run directory is per-invocation (`work-<uuid>`), so parallel
-  * runs never share a target path — isolation is structural (LIN9-03), not
-  * locking.
+  * the ADR-032 v2 shape when the run exported joined child segments OR the
+  * reduced graph carries wire-native phase nodes — RAI-154, see
+  * [[schemaVersionOf]]) and `lineage.scala` (the deterministic
+  * [[SessionGraphView]] → [[LineageRenderer]] projection, written with the
+  * SAME atomic tmp+ATOMIC_MOVE pattern). The run directory is per-invocation
+  * (`work-<uuid>`), so parallel runs never share a target path — isolation is
+  * structural (LIN9-03), not locking.
   *
   * Total by contract: every failure is a typed [[ArtifactError]], never an
   * exception, so a projection/store failure can never change the run's exit
@@ -82,6 +83,14 @@ object RunLineageArtifacts:
     * events.jsonl (its durable surface); run-written
     * `delegationData.invocationId` entries would need a dataRef convention of
     * their own and belong to the corpus card (RAI-146), not to this writer.
+    *
+    * RAI-154 (WIR-03) unified writer: a PHASE-BEARING graph is no longer
+    * refused — the wire-native `SessionNode.Phase` nodes (v2 `phase_started`,
+    * ADR-032) are written as real `phase` nodes with their name/note bound as
+    * `PhaseData` entries (the reducer's node id convention keys the
+    * `<job>/phase-<seq>` dataRef), and the document is schemaVersion 2. Every
+    * other failure stays a typed [[ArtifactError]] (view/render/store/io) —
+    * a refusal is data for the summary line, never a crashed run (LIN9-02).
     */
   def write(
       workDir: Path,
@@ -93,13 +102,6 @@ object RunLineageArtifacts:
       val source = workDir.resolve(SourceName)
       val data = workDir.resolve(DataName)
       for
-        _ <- Either.cond(
-          !graph.nodes.exists(_.isInstanceOf[SessionNode.Phase]),
-          (),
-          ArtifactError.View(
-            "phase-bearing graph: the wave-1 SessionNode.Phase carries no atMs and the headless reducer never emits Phase nodes"
-          )
-        )
         view <- SessionGraphView
           .toView(graph)
           .left
@@ -116,6 +118,24 @@ object RunLineageArtifacts:
       yield Written(source, data)
     catch case NonFatal(t) => Left(ArtifactError.Io(String.valueOf(t)))
 
+  /** The lineage-data schemaVersion of a settled run's document (ADR-032 §4
+    * gating, RAI-154): 2 exactly when the run exported the provenance record
+    * (joined child segments) OR the reduced graph carries wire-native phase
+    * nodes; 1 otherwise — the frozen revision, byte-identical to the
+    * pre-RAI-154 document. The summary artifacts line reports THIS value (the
+    * single source of the v1/v2 decision).
+    */
+  def schemaVersionOf(
+      graph: SessionGraph,
+      provenance: Option[LineagePayload.RunProvenance]
+  ): Int =
+    if provenance.isDefined || graph.nodes.exists {
+        case _: SessionNode.Phase => true
+        case _                    => false
+      }
+    then 2
+    else 1
+
   /** The lineage-data document of the settled campaign: nodes are the graph's
     * own nodes in emission order (ids/parents/inputs/seq/atMs verbatim;
     * dataRefs as the reducer defined them), the data resource binds the
@@ -125,9 +145,12 @@ object RunLineageArtifacts:
     *
     * RAI-144: the payload index scans the run's VERSIONED stream (the frozen
     * cases inside the v2 envelopes included — the joined child segments bind
-    * their summaries exactly like the parent's). The document becomes
-    * schemaVersion 2 with the provenance record (ADR-032 §4) exactly when the
-    * record is present — a v1 document never carries a v2 field
+    * their summaries exactly like the parent's). RAI-154: phase nodes carry a
+    * `<job>/phase-<seq>` dataRef whose `PhaseData(name, note)` entry is the
+    * graph's own verbatim phase data (the wave-1 model carries no phase
+    * recovery and no phase timestamp — `recovery` stays absent and `atMs`
+    * records the schema's not-captured 0); the document is schemaVersion 2
+    * exactly per [[schemaVersionOf]] — a v1 document never carries a v2 field
     * (validator-checked, never silently ignored).
     */
   private def documentOf(
@@ -213,10 +236,14 @@ object RunLineageArtifacts:
           dataRef = None
         )
       case p: SessionNode.Phase =>
-        // Unreachable through write(): phase-bearing graphs are refused above
-        // (no atMs in the wave-1 model, and the headless reducer never emits
-        // Phase). Kept for exhaustiveness — structurally complete, never a
-        // silent drop.
+        // RAI-154 (WIR-03): wire-native phases are first-class in the unified
+        // document. The wave-1 graph node carries the name/note but no
+        // recovery and no timestamp: the dataRef keys the PhaseData entry
+        // (`<job>/phase-<seq>` — the reducer's node-id convention; seq is
+        // unique per job, so the ref is collision-free), `recovery` stays
+        // ABSENT (optional non-null v2 field — nothing invented), and `atMs`
+        // records the schema's not-captured 0.
+        val ref = s"${jobOf(p.id.value)}/phase-${p.seq}"
         nodes += DataNode(
           p.id.value,
           NodeKind.Phase,
@@ -224,11 +251,12 @@ object RunLineageArtifacts:
           p.seq,
           0L,
           p.inputs.map(_.value),
-          dataRef = None
+          Some(ref)
         )
+        data(ref) = NodeData.PhaseData(p.name, p.note, recovery = None)
     }
     LineageDataDocument(
-      schemaVersion = if provenance.isDefined then 2 else 1,
+      schemaVersion = schemaVersionOf(graph, provenance),
       generator = GeneratorInfo(
         "raider",
         "0.1.0-SNAPSHOT",
