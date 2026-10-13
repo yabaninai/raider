@@ -1,179 +1,140 @@
 # Raider user handbook
 
-This handbook walks through four useful tasks from the current checkout: fix a
-Scala billing defect, write an audit finding, compose typed Scala requests, and
-inspect a run's lineage. Commands and code below are drawn from
-`examples/user-guide/` and the current CLI implementation.
+Use this guide to choose a working example, run it from this checkout, and
+inspect what its result proves. Raider is a Scala 3 and ZIO coding workflow
+under active development, not a published SDK. Examples below use the current
+source checkout and pinned local fixtures.
 
-## 1. Prepare the examples
+## Choose a case
 
-From the repository root, use JDK 21, sbt 1.11.4, Python 3, and a populated
-Coursier cache (or network access to resolve the pinned dependencies). Build
-the example classpath and release bundle, then run the offline verifier:
+| If you want to… | Start here | What the result demonstrates |
+| --- | --- | --- |
+| Repair a real source defect offline | [Billing repair](#repair-a-billing-boundary-offline) | Native tools change a disposable Scala project; independent compile and tests pass |
+| Record an audit finding offline | [Payment audit](#audit-payment-configuration-offline) | The report cites a source line and the input config remains unchanged |
+| Compose parallel typed requests | [Parallel asks](#compose-parallel-asks-in-scala) | Scala types and labels survive two concurrent requests |
+| Gate a release from supplied check results | [Typed release bundle](#check-release-readiness-with-a-typed-bundle) | A Scala workflow returns `READY` or `BLOCKED`; it does not run the checks |
+| See a successful local CI execution | [Captured live CI](#inspect-the-recorded-live-ci-success) | A recorded OpenAI-compatible gateway run repaired, checked, reviewed, and returned `READY` |
+| Follow model and tool calls | [Lineage](#follow-lineage-and-read-the-evidence) | Projection references resolve to data and run records |
+
+## Prepare once
+
+From the repository root, install JDK 21 and sbt 1.11.4. The example build
+resolves the pinned Scala and ZIO dependencies (or uses the available Coursier
+cache), compiles the examples, and prepares the CLI classpath and release
+bundle:
 
 ```sh
 sh scripts/build/user-examples.sh
-python3 scripts/quality/user_examples.py
-```
-
-The verifier runs the real Scala compiler, compiler-backed REPL, bundle loader,
-CLI, workspace tools, and subprocess tool. It writes a report, command output,
-and hashes under `artifacts/user-examples/verification-*/`. To run one scenario,
-use `--only coding`, `--only audit`, `--only repl-review`, or `--only bundle`.
-
-To use the REPL directly, load the generated classpath and feed it one of the
-checked-in Scala scripts:
-
-```sh
 RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
-RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
-  < examples/user-guide/repl/01compiler.repl
 ```
 
-That script compiles a value, case class, typed function, and multiline
-definition. Its assertion precedes the `EXAMPLE-01 PASS` marker. More REPL
-examples, including sessions, background jobs, and typed parallel asks, are in
-the [REPL guide](user-guide-repl.md).
+The build creates `artifacts/user-examples/task-summary.jar`. The verifier
+below runs the actual compiler, CLI, workspace tools, and local scripted
+provider stands. It writes a fresh report and command logs under
+`artifacts/user-examples/verification-*/`. Example selectors are `coding`,
+`audit`, `repl-review`, `bundle`, `artifacts`, and the individual REPL cases.
 
-## 2. Repair the billing boundary
+## Repair a billing boundary offline
 
-The fixture defines a flat 1,000-cent discount for purchases of at least
-10,000 cents. Its implementation has a strict comparison:
+The fixture's policy gives a 1,000-cent discount for purchases of at least
+10,000 cents. Its bug is a strict comparison:
 
 ```scala
-package billing
-
-object Discount:
-  def discountCents(s: Int): Int = if s > 10000 then 1000 else 0
+def discountCents(s: Int): Int = if s > 10000 then 1000 else 0
 ```
 
-The test checks the value below, at, and above the threshold:
-
-```scala
-val results = List(
-  check(Discount.discountCents(9999), 0, "below-threshold"),
-  check(Discount.discountCents(10000), 1000, "exact-threshold"),
-  check(Discount.discountCents(10001), 1000, "above-threshold")
-)
-```
-
-Run the offline coding scenario:
+Run the offline case:
 
 ```sh
 python3 scripts/quality/user_examples.py --only coding
 ```
 
-It copies the fixture to a disposable workspace and connects the real `coder`
-agent and native workspace tools to a local, fixed OpenAI-compatible script.
-The input asks: “Fix the billing discount boundary at exactly 100 dollars.
-Compile and run the boundary tests before and after the edit.” The scripted
-sequence reads `Discount.scala`, searches for `s > 10000`, compiles, runs the
-tests, edits the source with its recorded SHA-256 as a precondition, then
-compiles and tests again.
+This case copies the Scala fixture to a temporary workspace and connects the
+real `coder` agent, workspace tools, compiler, and test process to a local
+scripted OpenAI-compatible stand. The stand supplies a predetermined sequence
+of requests; it does not reason about the repository. The sequence reads and
+searches the source, compiles and tests before editing, applies a SHA-guarded
+edit from `>` to `>=`, then compiles and tests again.
 
-The observable test results are:
+Expected observable result, checked by the verifier:
 
 ```text
-before edit: FAIL exact-threshold       (test process exit 1)
-after edit:  DiscountSpec: PASS 3 boundaries (test process exit 0)
+before edit: FAIL exact-threshold       (test exit 1)
+after edit:  DiscountSpec: PASS 3 boundaries (test exit 0)
 ```
 
-The resulting function uses `s >= 10000`. The verifier checks the tool order,
-compile/test exits, before-and-after hashes, final source, and that the checked-in
-fixture is unchanged. `summary.md` carries `[scripted-billing]` to identify the
-fixed response source.
+The final function uses `s >= 10000`. The verifier checks request/tool order,
+process exits, hashes, the final source, and that the checked-in fixture was
+not changed. The generated summary marks the run `[scripted-billing]`. To
+inspect the report and logs for that invocation, list the newest report path
+printed by the verifier or run:
 
-## 3. Audit configuration and save evidence
-
-The audit fixture contains this setting in `config/payments.conf`:
-
-```hocon
-allow_plaintext_fallback = true
-retry_limit = 3
+```sh
+find artifacts/user-examples/verification-* -path '*/coding/work-*' -type d -print
 ```
 
-Run its offline audit scenario:
+The report's `codingWorkDir` identifies the disposable workspace and native
+run directory. This is an offline scripted case, not a live model evaluation.
+
+## Audit payment configuration offline
+
+The fixture contains `allow_plaintext_fallback = true` at line 2. Run:
 
 ```sh
 python3 scripts/quality/user_examples.py --only audit
 ```
 
-The agent receives the task to inspect the payment configuration, search for
-plaintext fallback, and create `AUDIT.json` without editing the configuration.
-The checked-in local script drives `fs_tree`, `fs_read`, `fs_search`, and
-`fs_edit` in a disposable copy. The report follows this shape:
+The local stand directs the agent through tree, read, search, and edit tools in
+a disposable copy. The expected `AUDIT.json` finding includes the path
+`config/payments.conf`, line `2`, matched setting, impact, and remediation. The
+verifier checks the report fields against the source, confirms the fixture
+configuration is byte-identical, and confirms the report was created. This
+case tests the audit workflow and report contract; the scripted model response
+does not independently discover the risk.
 
-```json
-{
-  "schemaVersion": 1,
-  "status": "action_required",
-  "findings": [{
-    "id": "PAY-001",
-    "severity": "high",
-    "evidence": {
-      "path": "config/payments.conf",
-      "line": 2,
-      "matched": "allow_plaintext_fallback = true"
-    },
-    "impact": "Payment requests may use plaintext transport when the primary route is unavailable.",
-    "action": "Set allow_plaintext_fallback = false and verify the production transport policy before deployment."
-  }]
-}
-```
+## Compose parallel asks in Scala
 
-The verifier checks the finding fields against the file, confirms that the
-configuration bytes did not change, and confirms that `AUDIT.json` was created.
-The run directory contains `summary.md` and `transcript.json`; the report itself
-is in the disposable workspace. The summary includes `[scripted-audit]` for the
-offline scenario.
-
-## 4. Compose Scala requests with typed results
-
-The billing review example builds two lazy asks, labels each answer with a
-tuple, then executes both together:
+Calling `scout(prompt)` or `worker(prompt)` constructs a lazy typed ask. `map`
+labels its eventual response, and `all(...).run()` executes both requests and
+returns a tuple:
 
 ```scala
-val billingCode = "if subtotalCents > 10000 then 1000 else 0"
-val billingPolicy =
-  "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
+val code = "if subtotalCents > 10000 then 1000 else 0"
+val policy = "A flat 1000-cent discount applies at 10000 cents and above."
 
-val scoutAsk = scout(
-  s"$billingPolicy Review this Scala expression: $billingCode. " +
-    "Identify the exact boundary defect and give one concrete input/output counterexample. Do not use tools."
+val reviewAsk = scout(
+  s"$policy Review this expression: $code. Give one boundary counterexample. Do not use tools."
 ).map(answer => ("boundary-review", answer))
 
-val testAsk = worker(
-  s"$billingPolicy For this Scala expression: $billingCode, " +
-    "specify the expected discounts for 9999, 10000 and 10001 cents. " +
-    "Return only a JSON array of [subtotalCents, expectedDiscountCents] pairs. No tools."
+val testsAsk = worker(
+  s"$policy Return only JSON pairs [subtotalCents, expectedDiscountCents] " +
+    "for 9999, 10000, and 10001. Do not use tools."
 ).map(answer => ("test-plan", answer))
 
-val (review, plan) = all(scoutAsk, testAsk).run()
+val (review, plan) = all(reviewAsk, testsAsk).run()
 ```
 
-The checked-in version asserts the labels and non-empty replies. In an
-OpenAI-compatible live run, its verifier also checks that the returned JSON
-contains `[[9999,0],[10000,1000],[10001,1000]]` after sorting. Run the compiled
-REPL example with the deterministic provider using:
+The expected policy values are `[[9999,0],[10000,1000],[10001,1000]]`. Run the
+checked-in fixture with the deterministic backend:
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/06billing-review.repl
 ```
 
-It prints `EXAMPLE-06 PASS`. The fixed mock replies demonstrate compilation,
-composition, and tuple labels; they do not perform the requested analysis.
-See [Scala REPL and typed workflow examples](user-guide-repl.md) for `map`,
-`batch`, `openSession`, and bundle workflows.
+Expected marker: `EXAMPLE-06 PASS`. In mock mode, fixed fixture replies only
+demonstrate Scala compilation, ask composition, and result labels. The
+verifier's opt-in live review is a separate scope: it checks the response
+against the stated policy, forbids tool requests, and rejects fallback to a
+scripted fixture. See [the REPL gallery](user-guide-repl.md) for type queries,
+ordered batches, jobs, and sessions.
 
-## 5. Check release readiness from typed inputs
+## Check release readiness with a typed bundle
 
-The example bundle implements a `BundleWorkflow` named `task-summary`. Its
-program parses comma-separated `name=status` entries, then validates the
-required `tests`, `migration`, and `rollback` checks. Statuses are `pass` and
-`pending`; missing, duplicate, unknown, or malformed checks fail validation.
-
-Run it with one pending check:
+`TaskSummary.scala` accepts three named check results (`tests`, `migration`,
+and `rollback`), validates them, and produces JSON. Its `Program` stages are
+typed and composed with `andThen`; the bundle makes no provider request and
+does not run the checks itself.
 
 ```sh
 java -cp "$RAIDER_CP" raider.cli.Main run \
@@ -184,71 +145,107 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
   --mock
 ```
 
-The workflow makes no model call. The generated `summary.md` contains a
-structured decision with these fields:
+Expected result in `summary.md`:
 
 ```json
 {"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
 ```
 
-When all required checks pass, the decision is `READY`, `pending` is empty, and
-the action is `No follow-up required.` Missing required checks or an invalid
-status return CLI exit 21. Treat `READY` as the result of these three supplied
-checks; the workflow does not run the checks itself.
+Changing `rollback=pending` to `rollback=pass` produces a successful `READY`
+decision with no pending checks. That only means the three supplied statuses
+passed validation. Missing, duplicate, unknown, or malformed checks fail input
+validation (CLI exit 21). The full executable bundle is
+[`TaskSummary.scala`](../examples/user-guide/bundle/TaskSummary.scala).
 
-## 6. Inspect run artifacts and lineage
+## Inspect the recorded live CI success
 
-Headless runs write a per-invocation directory below the path supplied to
-`--out`. A settled run includes `run.json`, `summary.md`, `events.jsonl`,
-`transcript.json`, `lineage.scala`, and `lineage-data.json`. The lineage Scala
-file is a deterministic projection of the session graph; its data references
-resolve through the JSON resource. Together these files let you inspect the
-graph, event sequence, run summary, and recorded node data.
+The source tree includes a sanitized capture of an actual local CI application
+run. It records a successful OpenAI-compatible coding-plan gateway execution:
+process exit 0, pipeline `SUCCEEDED`, decision `READY`, 70.87 seconds, an
+independent compile, three passing boundary assertions, two accepted general
+reviews, and three accepted boundary reviews. The capture records six
+independent native roots (repair plus five reviews); the application index
+links them but does not create graph edges or a shared budget.
 
-The coding scenario above also creates a settled headless run. Its verification
-report records the `codingWorkDir`. Find the recorded run directory with:
+Open the [captured result](examples/ci-pipeline/successful-run.json) and
+[capture notes](examples/ci-pipeline/README.md). They preserve the original
+execution identity and six native graph records. This is historical recorded
+evidence, not a run performed by this guide. For a fresh local CI invocation,
+the separate [CI walkthrough](user-guide-ci.md) documents the application,
+build, required provider configuration, and output paths. Its execution can
+make paid provider calls and requires explicit endpoint, model, account, and
+budget selection.
+
+## Follow lineage and read the evidence
+
+For an offline coding run, the verifier report points to its disposable
+workspace and native run directory. Find a run directory from the generated
+report, then inspect its files:
 
 ```sh
-python3 scripts/quality/user_examples.py --only coding
-find artifacts/user-examples/verification-* -path '*/coding/work-*' -type d -print
-```
-
-Set `RUN_DIR` to the `work-<uuid>` directory printed above, then inspect its
-files:
-
-```sh
+RUN_DIR=$(find artifacts/user-examples/verification-* -type d -path '*/coding/work-*' | head -n 1)
 find "$RUN_DIR" -maxdepth 1 -type f -print
 cat "$RUN_DIR/run.json"
 cat "$RUN_DIR/summary.md"
+cat "$RUN_DIR/lineage.scala"
 ```
 
-Replay the recorded run against the original workspace:
+`run.json` records run status and exit information; `summary.md` is the human
+readable result; `events.jsonl` is the event stream; `transcript.json` records
+the model/tool exchange. When reduction succeeds, `lineage.scala` projects
+the call graph and `lineage-data.json` holds the referenced node data. In the
+offline repair, follow a `data:` reference in the projection into the matching
+`lineage-data.json` entry, then compare its tool identity with the transcript
+and process output. `summary.md` and the native run say what happened; the
+application-level verifier report says which conditions it accepted.
 
-```sh
-raider replay "$RUN_DIR" --workspace examples/user-guide/fixture
-```
+The recorded successful CI capture has six historic native root records. The
+sanitized JSON contains each root's full `scalaProjection` plus its node and
+data records. Use
+[the CI capture walkthrough](user-guide-ci.md#captured-ci-run-and-lineage)
+for context and the [six-root capture](examples/ci-pipeline/successful-run.json)
+to inspect each complete projection.
+These are separate roots, not the unified lineage program. The complete
+generated unified DSL artifact has a different evidence scope: it is derived
+from the frozen acceptance corpus, not from the captured live CI run. See the
+[artifact provenance and wiring limits](examples/ci-pipeline/unified-lineage/README.md),
+the [complete generated program](examples/ci-pipeline/unified-lineage/lineage.scala),
+and the [unified lineage section](user-guide-ci.md#unified-lineage-for-this-pipeline-shape).
 
-A matching replay prints `verdict: match` with a normalized graph hash and exits
-0. A graph mismatch prints the first divergent node and both hashes, then exits
-10. A missing or corrupt `lineage-data.json` is a typed error and exits 21.
-Recorded replay makes no model calls. See the [lineage guide](user-guide-lineage.md)
-for reading the projection and replay reports.
+The product `raider replay <run-dir> --workspace <path>` compares graph
+structure from recorded lineage with a replayed graph and reports a match or
+the first divergence. It is not a general playback of recorded mutating tool
+effects. The current `ReplayHarness` executable fixture uses a recorded model
+response and a read-only `fs_read` operation; it does not establish that a
+recorded file repair can be automatically replayed. A mutating rerun must be
+treated as real execution in an isolated workspace, with the current guard
+and its typed refusal behavior. Do not use a replay result as evidence that an
+external mutation happened exactly once or was rolled back.
 
-## 7. Compose a CI pipeline in Scala
+For detailed graph/data links, replay modes, and current limits, read the
+[lineage walkthrough](user-guide-lineage.md) and [lineage contract guide](lineage.md).
 
-[`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala) describes a local CI workflow that repairs the billing example, runs independent Scala checks, asks two reviewers in parallel, and runs three bounded boundary reviews before producing a typed CI decision. An application-owned index links each stage to its run artifacts.
+## Common troubleshooting
 
-The six agent invocations (one repair, two parallel reviews, and three boundary reviews) each have their own native run root and lineage artifacts. The pipeline index connects those per-stage records; it is not a unified native graph, shared accounting root, or durable recovery mechanism. The example does not automatically create or merge a pull request. SDK support for that workflow is future work.
+- **The classpath file is missing or empty:** rerun `sh scripts/build/user-examples.sh` and inspect `artifacts/user-examples/build.log`.
+- **The build rejects Java:** use JDK 21 and check `JAVA_HOME`.
+- **The REPL prints `[scripted-fixture]`:** it is using the deterministic fixture provider. That is expected in the mock example; it is not a live answer.
+- **A live verifier refuses to start:** `--live` requires `RAIDER_LIVE_APPROVED=1`, `RAIDER_PROVIDER=openai`, `RAIDER_BASE_URL`, and `RAIDER_MODEL`, plus credentials from the approved environment/helper. Select an account and spend budget before opt-in.
+- **`--bundle` or `--workflow` is rejected:** pass both together, or use `--agent`; do not combine the two invocation forms.
+- **The bundle says `BLOCKED`:** inspect `pending` and complete the listed upstream check before supplying `pass`. The bundle validates supplied values; it does not run tests or migrations.
+- **Lineage files are absent:** some failed or unsettled runs may not yield a reducible graph. Check `run.json`, `summary.md`, and `events.jsonl`; lineage writing is best-effort.
+- **The captured six-root run is mistaken for unified lineage:** the stage index links separate graphs. Unified lineage is currently demonstrated by the corpus-derived artifact; the runtime phase and `coder` delegation wiring follow-ups remain (RAI-153/154).
 
-See the [CI pipeline guide](user-guide-ci.md) for the stage inputs, outputs, and artifact references. This section describes the example's design and makes no claim that it has been built or run.
+## Scope and safety
 
-## Limits of these examples
+Offline coding and audit examples use local scripted responses and real Scala
+tools in disposable copies; they verify wiring, tool order, reports, and
+process outcomes, not model reasoning. The successful CI capture is recorded
+live evidence with the scope stated above. The unified lineage program is
+corpus-derived evidence with its own provenance. These are different kinds of
+evidence and must not be merged into one claim.
 
-The offline coding and audit examples use deterministic local scripts that
-select tool calls from observed results. They verify the CLI, Scala checks,
-workspace operations, artifact contents, and report contracts. They do not
-measure model reasoning. The mock REPL returns fixed responses. Live provider
-examples require a deliberately selected endpoint, model, and spend budget;
-this handbook does not report new live verification. Repository commands and
-Scala programs run with the process user's permissions, so use disposable
-workspaces for tasks that can change files.
+Scala code, bundles, and process tools run with the current process user's
+permissions. Tool policy does not sandbox arbitrary Scala. Use trusted
+workspaces and bundles, keep credentials outside source/arguments/reports, and
+do not make paid calls without a selected account, endpoint, model, and budget.
