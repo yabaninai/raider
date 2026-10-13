@@ -362,8 +362,35 @@ Night progress (2026-10-13):
   ci/contracts/docs/repl/runtime/security/static/transport/unit 9/9
   (20261013-053643). The W05 tool round is now complete on both wires at the
   definitions+results level.
-- Next in queue: RAI-131 (CI adapter batch) -> RAI-132 (steering) ->
-  RAI-134 (guide refresh) -> RAI-136 (soak).
+- **RAI-131 DONE** (merges d01ac04 + fixes): trust preflight
+  (--require-provenance, typed refusal before spend, ledger-discriminator
+  proof), checks.junit.xml artifact contract, CI-ADP-01..03; review round 1
+  CHANGES-REQUIRED (vacuous zero-dispatch assert; an incomplete empty-file
+  fix caught by verification) -> fixed -> explore re-review APPROVE.
+- **Mandate execution** (owner directive section above): RAI-140 DONE (ADR-031
+  + projection runtime; review APPROVE) -> RAI-141 DONE (renderer emits REAL
+  LineageStep composition — sequencing/inputs-threading/nesting/
+  failed-nodes; assertExecutable gate kills comment-only bodies; review
+  APPROVE; escape follow-up -> RAI-151) -> RAI-150 DONE (view adapter
+  populates inputs/outcome; product adapter == gate adapter; two-half lane,
+  outcome half unblocked by the 141 merge). RAI-148 DONE (fs_patch/proc_run
+  Mutating; canonical RecoveryTaxonomy — THREE drifted copies deduped;
+  review APPROVE; ADR-027 §6.2 updated at merge). RAI-143 DONE (ADR-032
+  lineage wire v2: phase/recovery payloads, invocationId correlation,
+  run_provenance; v1 pinned bit-for-bit; hash-exclusion policy; review
+  APPROVE; merge resolved a scaladoc conflict with 148). RAI-149 DONE
+  (CodingToolset stamped ALL tools ReadOnly — plan-phase enforcement REALLY
+  applied fs_patch and ran proc_run pre-fix; corrected stamps + real
+  reproducer; review APPROVE). Registered follow-ups: RAI-151 (literal
+  escaping), RAI-150/149 registered as executed. Integrated gates on
+  268dd5a: EXECUTE 10/10 (20261013-112146) + profiles ci/contracts/docs/
+  eval/repl/runtime/security/static/transport/unit 10/10 (20261013-112709)
+  — first aggregate run with the RAI-135 eval profile.
+- In flight: RAI-142 (executed projection acceptance), RAI-151 (escaping),
+  RAI-144 (multi-job export) — then RAI-145 (unified projection) ->
+  RAI-146 (verifier corpus) -> RAI-147 (docs + BillingCi). Queue behind:
+  RAI-132/134/136/137, RAI-123 (conditional), 129.b/c (needs RAI-143 ✓),
+  LIN-03/04 (live projection + TUI).
 
 ## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
 
