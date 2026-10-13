@@ -2,8 +2,11 @@
 
 Owner request: 2026-10-13. Add a substantial generic local CI example using the
 current Scala/ZIO runtime and show its actual resulting lineage. The owner
-authorized building and executing only this example once; general tests and
-quality gates remain outside this follow-up. Existing paid-call authorization
+initially authorized one build/run and then, on 2026-10-13,
+authorized fresh executions and targeted fixes until this example succeeds.
+General tests and quality gates remain outside this follow-up. Each new
+execution uses a fresh fixture copy and preserves earlier failed artifacts.
+Existing paid-call authorization
 is coding-plan-only Yabanin, requested model `glm-5.3-flash`; secrets stay private.
 
 ## Scope

@@ -194,9 +194,12 @@ roots, or create a shared global budget. `all` and bounded `batch` can run
 application work concurrently, but that composition does not add those native
 lineage relationships or accounting.
 
-Start with the captured [pipeline artifacts](examples/ci-pipeline/), open
-`pipeline-index.json`, and follow each entry to its native headless work
-directory. In every work directory, inspect `lineage-data.json` alongside
+The [successful captured pipeline](examples/ci-pipeline/successful-run.json)
+contains `pipelineIndex` and six `nativeRuns`: 24 nodes total, with 19 in the
+repair root and one in each review root. Its decision is `READY`, and the
+process exited 0. In the original output, open `pipeline-index.json` and follow
+each entry to its native headless work directory. In the sanitized capture,
+follow the matching `nativeRootId` and `nativeRuns[].runId` instead. In every work directory, inspect `lineage-data.json` alongside
 `lineage.scala` and `events.jsonl`. The data file describes that run's actual
 model-call and tool-call nodes; use its references and parent/input links to
 understand the graph, then consult the event log or transcript for detailed

@@ -85,6 +85,10 @@ reviews, and `batch.collect` to retain individual review failures. Model success
 and CI approval are separate results: a completed model call can still return a
 blocking review, and the deterministic boundary tests must pass before approval.
 
+The [recorded run](docs/examples/ci-pipeline/successful-run.json) reached `READY`
+with both reviews and all three boundary cases accepted: six native roots,
+24 lineage nodes, process exit 0.
+
 [The CI walkthrough](docs/user-guide-ci.md) includes the full Scala composition,
 local runner commands, output files, and the captured lineage. No forge-specific
 configuration is needed.
@@ -172,7 +176,7 @@ tree and the model/tool calls inside it.
 
 Scala code, workflow bundles, plugins, and repository commands run with your
 process permissions. Use workspaces and bundles you trust. Current live tool
-examples use OpenAI-compatible providers. Anthropic tool definitions are
-implemented; structured tool-result content mapping remains a separate W05 obligation. Credentials belong in an environment variable or helper, outside Git.
+examples use OpenAI-compatible providers. Anthropic tool definitions and text-block tool results are
+implemented, with local stand and cross-wire verification. Credentials belong in an environment variable or helper, outside Git.
 
 MIT — see [LICENSE](LICENSE).

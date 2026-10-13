@@ -356,8 +356,10 @@ logs.
 - `AnthropicMessagesBackend` maps Anthropic Messages responses, `tool_use`,
   `tool_result`, and cumulative usage. Tool definitions are encoded with
   `name`, `description`, and `input_schema` from `parametersJsonSchema`
-  (RAI-127). Schemas must be JSON objects. Tool results currently use string
-  content; structured content-block mapping remains a separate W05 obligation.
+  (RAI-127). Schemas must be JSON objects. Tool results use a
+  `tool_result.content` array with a `text` block containing the rendered JSON
+  payload (RAI-133). Local stands and cross-wire agent-loop checks exercise this
+  mapping; the documented live examples use the OpenAI-compatible path.
 - HTTP 401/403 map to `ProviderAuth`, 429 to `ProviderRateLimit`, 5xx to
   `ProviderUnavailable`, and other unexpected responses to `StreamProtocol`.
 

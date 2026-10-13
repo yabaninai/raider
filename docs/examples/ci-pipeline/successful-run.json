@@ -1,0 +1,670 @@
+{
+  "schemaVersion": 1,
+  "kind": "sanitized documentation excerpt; not a replay input",
+  "execution": {
+    "head": "255e78d533a2921535c3848c4bead1967d8ea2ce",
+    "appSha256": "4d604012ef6c816e8d8eacc76fae351f4f8eecf23d5612e8ff69ab01c35d40ff",
+    "status": "passed",
+    "buildLog": "artifacts/ci-example/build-success-candidate.log",
+    "requestedModel": "glm-5.3-flash",
+    "routeProvider": "zai-coding",
+    "liveLaunchCount": 1,
+    "exitCode": 0,
+    "seconds": 70.87,
+    "pipelineStatus": "SUCCEEDED",
+    "secretLeakPaths": []
+  },
+  "pipelineIndex": {
+    "schemaVersion": 1,
+    "status": "SUCCEEDED",
+    "startedAt": "2026-10-13T02:40:35.995946Z",
+    "updatedAt": "2026-10-13T02:41:46.228759Z",
+    "stages": [
+      {
+        "name": "baseline-check",
+        "status": "Succeeded",
+        "nativeExitCode": 1,
+        "lineageFiles": [],
+        "verdict": "expected exact-threshold failure",
+        "answerFile": "stages/baseline-check/answer.txt"
+      },
+      {
+        "name": "repair",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/repair/native/work-6e3d53d6",
+        "nativeRootId": "cli_a4ffa6ad",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/repair/native/work-6e3d53d6/summary.md",
+        "lineageFiles": [
+          "stages/repair/native/work-6e3d53d6/lineage.scala",
+          "stages/repair/native/work-6e3d53d6/lineage-data.json"
+        ],
+        "verdict": "source changed; native run succeeded",
+        "answerFile": "stages/repair/answer.txt"
+      },
+      {
+        "name": "final-check",
+        "status": "Succeeded",
+        "nativeExitCode": 0,
+        "lineageFiles": [],
+        "verdict": "DiscountSpec: PASS 3 boundaries",
+        "answerFile": "stages/final-check/answer.txt"
+      },
+      {
+        "name": "independent-review-a",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/independent-review-a/native/work-c47920b4",
+        "nativeRootId": "cli_0aead7f1",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/independent-review-a/native/work-c47920b4/summary.md",
+        "lineageFiles": [
+          "stages/independent-review-a/native/work-c47920b4/lineage.scala",
+          "stages/independent-review-a/native/work-c47920b4/lineage-data.json"
+        ],
+        "verdict": "The condition s >= 10000 correctly applies the flat 1000-cent discount inclusively at the 10000-cent threshold and above, matching the policy.",
+        "answerFile": "stages/independent-review-a/answer.txt"
+      },
+      {
+        "name": "independent-review-b",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/independent-review-b/native/work-442f0aff",
+        "nativeRootId": "cli_72884010",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/independent-review-b/native/work-442f0aff/summary.md",
+        "lineageFiles": [
+          "stages/independent-review-b/native/work-442f0aff/lineage.scala",
+          "stages/independent-review-b/native/work-442f0aff/lineage-data.json"
+        ],
+        "verdict": "The implementation correctly applies a flat 1000-cent discount for subtotals >= 10000 cents without arithmetic overflow issues.",
+        "answerFile": "stages/independent-review-b/answer.txt"
+      },
+      {
+        "name": "boundary-9999",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/boundary-9999/native/work-819ef85c",
+        "nativeRootId": "cli_af1f40f3",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/boundary-9999/native/work-819ef85c/summary.md",
+        "lineageFiles": [
+          "stages/boundary-9999/native/work-819ef85c/lineage.scala",
+          "stages/boundary-9999/native/work-819ef85c/lineage-data.json"
+        ],
+        "verdict": "PASS: With s=9999 < 10000, the policy requires 0 and the inline function returns 0, so observed matches expected.",
+        "answerFile": "stages/boundary-9999/answer.txt"
+      },
+      {
+        "name": "boundary-10000",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/boundary-10000/native/work-802487cb",
+        "nativeRootId": "cli_8a7ab048",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/boundary-10000/native/work-802487cb/summary.md",
+        "lineageFiles": [
+          "stages/boundary-10000/native/work-802487cb/lineage.scala",
+          "stages/boundary-10000/native/work-802487cb/lineage-data.json"
+        ],
+        "verdict": "PASS: Policy grants 1000 when subtotal >= 10000; subtotal is 10000, and the inline function returns 1000 for s >= 10000.",
+        "answerFile": "stages/boundary-10000/answer.txt"
+      },
+      {
+        "name": "boundary-10001",
+        "status": "Succeeded",
+        "nativeWorkDir": "stages/boundary-10001/native/work-222f4c8b",
+        "nativeRootId": "cli_7dde7e7d",
+        "nativeExitCode": 0,
+        "lineageSummary": "stages/boundary-10001/native/work-222f4c8b/summary.md",
+        "lineageFiles": [
+          "stages/boundary-10001/native/work-222f4c8b/lineage.scala",
+          "stages/boundary-10001/native/work-222f4c8b/lineage-data.json"
+        ],
+        "verdict": "PASS: The discountCents function correctly returns 1000 when subtotalCents >= 10000",
+        "answerFile": "stages/boundary-10001/answer.txt"
+      }
+    ],
+    "decision": {
+      "verdict": "READY",
+      "repairCheckExit": 0,
+      "sourceChanged": true,
+      "reviewPasses": 2,
+      "boundaryPasses": 3,
+      "requiredBoundaryCases": [
+        9999,
+        10000,
+        10001
+      ],
+      "detail": "Independent compile and all three expected-discount reviews passed."
+    },
+    "budgetNote": "Each native invocation has its own default maxAttempts=400; there is no shared pipeline budget."
+  },
+  "decision": {
+    "verdict": "READY",
+    "repairCheckExit": 0,
+    "sourceChanged": true,
+    "reviewPasses": 2,
+    "boundaryPasses": 3,
+    "requiredBoundaryCases": [
+      9999,
+      10000,
+      10001
+    ],
+    "detail": "Independent compile and all three expected-discount reviews passed."
+  },
+  "nativeRuns": [
+    {
+      "stage": "boundary-10000",
+      "runId": "cli_8a7ab048",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/boundary-10000/native/work-802487cb",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859291998,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        }
+      ],
+      "data": {
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_8a7ab048:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n  ()\n"
+    },
+    {
+      "stage": "boundary-10001",
+      "runId": "cli_7dde7e7d",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/boundary-10001/native/work-222f4c8b",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859297685,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        }
+      ],
+      "data": {
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_7dde7e7d:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n  ()\n"
+    },
+    {
+      "stage": "boundary-9999",
+      "runId": "cli_af1f40f3",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/boundary-9999/native/work-819ef85c",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859291998,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        }
+      ],
+      "data": {
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_af1f40f3:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n  ()\n"
+    },
+    {
+      "stage": "independent-review-a",
+      "runId": "cli_0aead7f1",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/independent-review-a/native/work-c47920b4",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859286412,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        }
+      ],
+      "data": {
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_0aead7f1:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n  ()\n"
+    },
+    {
+      "stage": "independent-review-b",
+      "runId": "cli_72884010",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/independent-review-b/native/work-442f0aff",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859286413,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        }
+      ],
+      "data": {
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_72884010:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n  ()\n"
+    },
+    {
+      "stage": "repair",
+      "runId": "cli_a4ffa6ad",
+      "nativeStatus": "Succeeded",
+      "nativeExitCode": 0,
+      "nativeWorkDir": "stages/repair/native/work-6e3d53d6",
+      "nodes": [
+        {
+          "id": "j_1:n4",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 4,
+          "atMs": 1791859238032,
+          "inputs": [],
+          "dataRef": "j_1/round-1"
+        },
+        {
+          "id": "j_1:n7",
+          "kind": "tool_call",
+          "parentId": "j_1:n4",
+          "seq": 7,
+          "atMs": 1791859243513,
+          "inputs": [
+            "j_1:n4"
+          ],
+          "dataRef": "j_1/call-call_-7179458467181095833"
+        },
+        {
+          "id": "j_1:n11",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 11,
+          "atMs": 1791859243523,
+          "inputs": [
+            "j_1:n7"
+          ],
+          "dataRef": "j_1/round-2"
+        },
+        {
+          "id": "j_1:n14",
+          "kind": "tool_call",
+          "parentId": "j_1:n11",
+          "seq": 14,
+          "atMs": 1791859246097,
+          "inputs": [
+            "j_1:n11"
+          ],
+          "dataRef": "j_1/call-call_-7184283021124561003"
+        },
+        {
+          "id": "j_1:n18",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 18,
+          "atMs": 1791859246100,
+          "inputs": [
+            "j_1:n14"
+          ],
+          "dataRef": "j_1/round-3"
+        },
+        {
+          "id": "j_1:n21",
+          "kind": "tool_call",
+          "parentId": "j_1:n18",
+          "seq": 21,
+          "atMs": 1791859251736,
+          "inputs": [
+            "j_1:n18"
+          ],
+          "dataRef": "j_1/call-call_-7179353773058293699"
+        },
+        {
+          "id": "j_1:n24",
+          "kind": "tool_call",
+          "parentId": "j_1:n18",
+          "seq": 24,
+          "atMs": 1791859251740,
+          "inputs": [
+            "j_1:n21"
+          ],
+          "dataRef": "j_1/call-call_-7179353773058293698"
+        },
+        {
+          "id": "j_1:n28",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 28,
+          "atMs": 1791859251745,
+          "inputs": [
+            "j_1:n24"
+          ],
+          "dataRef": "j_1/round-4"
+        },
+        {
+          "id": "j_1:n31",
+          "kind": "tool_call",
+          "parentId": "j_1:n28",
+          "seq": 31,
+          "atMs": 1791859257157,
+          "inputs": [
+            "j_1:n28"
+          ],
+          "dataRef": "j_1/call-call_-7179495025942721100"
+        },
+        {
+          "id": "j_1:n34",
+          "kind": "tool_call",
+          "parentId": "j_1:n28",
+          "seq": 34,
+          "atMs": 1791859257165,
+          "inputs": [
+            "j_1:n31"
+          ],
+          "dataRef": "j_1/call-call_-7179495025942721099"
+        },
+        {
+          "id": "j_1:n38",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 38,
+          "atMs": 1791859257171,
+          "inputs": [
+            "j_1:n34"
+          ],
+          "dataRef": "j_1/round-5"
+        },
+        {
+          "id": "j_1:n41",
+          "kind": "tool_call",
+          "parentId": "j_1:n38",
+          "seq": 41,
+          "atMs": 1791859259064,
+          "inputs": [
+            "j_1:n38"
+          ],
+          "dataRef": "j_1/call-call_-7184280993900000662"
+        },
+        {
+          "id": "j_1:n45",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 45,
+          "atMs": 1791859259066,
+          "inputs": [
+            "j_1:n41"
+          ],
+          "dataRef": "j_1/round-6"
+        },
+        {
+          "id": "j_1:n48",
+          "kind": "tool_call",
+          "parentId": "j_1:n45",
+          "seq": 48,
+          "atMs": 1791859265956,
+          "inputs": [
+            "j_1:n45"
+          ],
+          "dataRef": "j_1/call-call_-7179480113816265903"
+        },
+        {
+          "id": "j_1:n52",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 52,
+          "atMs": 1791859267419,
+          "inputs": [
+            "j_1:n48"
+          ],
+          "dataRef": "j_1/round-7"
+        },
+        {
+          "id": "j_1:n55",
+          "kind": "tool_call",
+          "parentId": "j_1:n52",
+          "seq": 55,
+          "atMs": 1791859274752,
+          "inputs": [
+            "j_1:n52"
+          ],
+          "dataRef": "j_1/call-call_-7179486264209438884"
+        },
+        {
+          "id": "j_1:n59",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 59,
+          "atMs": 1791859274770,
+          "inputs": [
+            "j_1:n55"
+          ],
+          "dataRef": "j_1/round-8"
+        },
+        {
+          "id": "j_1:n62",
+          "kind": "tool_call",
+          "parentId": "j_1:n59",
+          "seq": 62,
+          "atMs": 1791859276681,
+          "inputs": [
+            "j_1:n59"
+          ],
+          "dataRef": "j_1/call-call_-7184280547223400121"
+        },
+        {
+          "id": "j_1:n66",
+          "kind": "model_call",
+          "parentId": null,
+          "seq": 66,
+          "atMs": 1791859278132,
+          "inputs": [
+            "j_1:n62"
+          ],
+          "dataRef": "j_1/round-9"
+        }
+      ],
+      "data": {
+        "j_1/call-call_-7179353773058293698": {
+          "tool": "fs_read",
+          "callId": "call_-7179353773058293698",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179353773058293699": {
+          "tool": "fs_read",
+          "callId": "call_-7179353773058293699",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179458467181095833": {
+          "tool": "fs_read",
+          "callId": "call_-7179458467181095833",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179480113816265903": {
+          "tool": "proc_run",
+          "callId": "call_-7179480113816265903",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179486264209438884": {
+          "tool": "fs_patch",
+          "callId": "call_-7179486264209438884",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179495025942721099": {
+          "tool": "fs_tree",
+          "callId": "call_-7179495025942721099",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7179495025942721100": {
+          "tool": "fs_search",
+          "callId": "call_-7179495025942721100",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7184280547223400121": {
+          "tool": "proc_run",
+          "callId": "call_-7184280547223400121",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7184280993900000662": {
+          "tool": "fs_read",
+          "callId": "call_-7184280993900000662",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/call-call_-7184283021124561003": {
+          "tool": "fs_read",
+          "callId": "call_-7184283021124561003",
+          "recovery": "ReadOnly",
+          "outcome": "Succeeded"
+        },
+        "j_1/round-1": {
+          "model": "glm-5.3-flash",
+          "round": 1,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-2": {
+          "model": "glm-5.3-flash",
+          "round": 2,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-3": {
+          "model": "glm-5.3-flash",
+          "round": 3,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-4": {
+          "model": "glm-5.3-flash",
+          "round": 4,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-5": {
+          "model": "glm-5.3-flash",
+          "round": 5,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-6": {
+          "model": "glm-5.3-flash",
+          "round": 6,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-7": {
+          "model": "glm-5.3-flash",
+          "round": 7,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-8": {
+          "model": "glm-5.3-flash",
+          "round": 8,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        },
+        "j_1/round-9": {
+          "model": "glm-5.3-flash",
+          "round": 9,
+          "usage": {
+            "reservedMicroUsd": 0,
+            "observedMicroUsd": 0,
+            "unknown": true
+          }
+        }
+      },
+      "scalaProjection": "// Generated by Raider lineage projection (ADR-027). Do not edit \u2014 comparator detects edits.\nobject lineage_cli_a4ffa6ad:\n  // model(\"glm-5.3-flash\", round = 1) // data: j_1/round-1\n    // tool(\"fs_read\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179458467181095833\n  // model(\"glm-5.3-flash\", round = 2) // data: j_1/round-2\n    // tool(\"fs_read\", recovery = \"ReadOnly\") // data: j_1/call-call_-7184283021124561003\n  // model(\"glm-5.3-flash\", round = 3) // data: j_1/round-3\n    // tool(\"fs_read\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179353773058293699\n    // tool(\"fs_read\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179353773058293698\n  // model(\"glm-5.3-flash\", round = 4) // data: j_1/round-4\n    // tool(\"fs_search\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179495025942721100\n    // tool(\"fs_tree\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179495025942721099\n  // model(\"glm-5.3-flash\", round = 5) // data: j_1/round-5\n    // tool(\"fs_read\", recovery = \"ReadOnly\") // data: j_1/call-call_-7184280993900000662\n  // model(\"glm-5.3-flash\", round = 6) // data: j_1/round-6\n    // tool(\"proc_run\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179480113816265903\n  // model(\"glm-5.3-flash\", round = 7) // data: j_1/round-7\n    // tool(\"fs_patch\", recovery = \"ReadOnly\") // data: j_1/call-call_-7179486264209438884\n  // model(\"glm-5.3-flash\", round = 8) // data: j_1/round-8\n    // tool(\"proc_run\", recovery = \"ReadOnly\") // data: j_1/call-call_-7184280547223400121\n  // model(\"glm-5.3-flash\", round = 9) // data: j_1/round-9\n  ()\n"
+    }
+  ],
+  "omitted": [
+    "tool argsSummary (may contain private paths and classpaths)",
+    "prompts and model responses",
+    "complete event logs, transcripts and tool output"
+  ],
+  "sourceArtifacts": "Original complete artifacts remain in the ignored run directory."
+}

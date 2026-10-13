@@ -123,7 +123,7 @@ Optional event bindings mean a loop can run without a hub. Emission failures are
 
 The REPL embeds the pinned Scala 3 compiler in-process. Its engine uses a classloader boundary: interpreter-world classes load self-first, and the prelude builds backend, tools, and session objects within that interpreter world. The facade exposes `scout`, `worker`, `ask`, `start`, `all`, and related operations over the common runtime. Interactive streaming output is optional. The REPL can select the OpenAI-compatible or Anthropic-compatible provider when configured.
 
-The live REPL wiring creates the coding tool registry for both providers. Anthropic request encoding now includes tool definitions (RAI-127); structured tool-result content mapping remains a separate W05 obligation. See [`Main.scala`](../modules/repl/src/main/scala/raider/repl/Main.scala), [`DottyReplEngine.scala`](../modules/repl-engine/src/main/scala/raider/repl/engine/DottyReplEngine.scala), and [`LiveCredentials.scala`](../modules/repl/src/main/scala/raider/repl/LiveCredentials.scala).
+The live REPL wiring creates the coding tool registry for both providers. Anthropic request encoding includes tool definitions (RAI-127) and maps each rendered JSON tool-result payload to a text block in `tool_result.content` (RAI-133). Local stands and cross-wire agent-loop checks cover this mapping; the documented live examples use the OpenAI-compatible path. See [`Main.scala`](../modules/repl/src/main/scala/raider/repl/Main.scala), [`DottyReplEngine.scala`](../modules/repl-engine/src/main/scala/raider/repl/engine/DottyReplEngine.scala), and [`LiveCredentials.scala`](../modules/repl/src/main/scala/raider/repl/LiveCredentials.scala).
 
 ### CLI
 

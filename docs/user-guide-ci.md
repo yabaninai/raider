@@ -146,28 +146,60 @@ The index is `pipeline-index.json`; the typed release result is also written to 
 
 ## Captured CI run and lineage
 
-The [first captured pipeline](examples/ci-pipeline/README.md) ran through the
-coding-plan gateway with requested model `glm-5.3-flash`. The repair changed the
-Scala comparison, and the independent compiler and three boundary assertions
-passed. The application still returned a `BLOCKED` decision because several
-model answers wrapped their JSON in Markdown and failed the original decoder.
+The [successful captured pipeline](examples/ci-pipeline/successful-run.json)
+ran through the Yabanin coding-plan gateway with requested model
+`glm-5.3-flash`. It completed in 70.87 seconds with process exit 0 and pipeline
+status `SUCCEEDED`. The Scala repair changed the threshold comparison; the
+independent compiler and all three boundary assertions passed. Both general
+reviews and all three boundary reviews passed their typed result checks.
 
 ```json
-{"verdict":"BLOCKED","repairCheckExit":0,"sourceChanged":true,"reviewPasses":1,"boundaryPasses":1,"requiredBoundaryCases":[9999,10000,10001],"detail":"One or more model review stages did not satisfy the exact typed contract."}
+{"verdict":"READY","repairCheckExit":0,"sourceChanged":true,"reviewPasses":2,"boundaryPasses":3,"requiredBoundaryCases":[9999,10000,10001],"detail":"Independent compile and all three expected-discount reviews passed."}
 ```
 
-All six native runs had exit code 0. This makes the distinction visible: successful
-model execution is one input to the CI decision, while the application validates
-the actual result fields before accepting the stage. The [captured graphs](examples/ci-pipeline/first-blocked-run.json)
-contain 18 nodes for repair and one model node for each of the five inline review
-requests. Native tool calls appear only in the repair graph.
+The application that ran has SHA-256
+`4d604012ef6c816e8d8eacc76fae351f4f8eecf23d5612e8ff69ab01c35d40ff`.
+The capture records its source revision, decision, stage index, and all six
+native graphs. All six native invocations exited 0. Repair has 19 nodes:
+nine model rounds and ten tool calls. Each of the five inline reviews has
+one model node, for 24 nodes across the pipeline. The six agent invocations contain multiple model calls; accounting remains
+independent for each native root.
 
-The first application also hung during process exit and required a coordinator
-stop; its original failed receipt is retained. The current example moves process
-exit after the managed ZIO effect, isolates each parallel context file, and
-preserves native artifact references when a semantic check fails. Its JSON parser
-accepts a single complete code fence, then applies the full decoder and exact
-policy checks. A new execution of that revision must have its own capture.
+The repair graph records reads and searches, a process call, a patch, a second
+process call, and the final model round. This shortened excerpt uses the actual
+rounds and data references from its generated `lineage.scala`:
+
+```scala
+// model("glm-5.3-flash", round = 6) // data: j_1/round-6
+  // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-call_-7179480113816265903
+// model("glm-5.3-flash", round = 7) // data: j_1/round-7
+  // tool("fs_patch", recovery = "ReadOnly") // data: j_1/call-call_-7179486264209438884
+// model("glm-5.3-flash", round = 8) // data: j_1/round-8
+  // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-call_-7184280547223400121
+// model("glm-5.3-flash", round = 9) // data: j_1/round-9
+```
+
+The current native exporter labels even this `fs_patch` node `ReadOnly`.
+That is the recorded recovery annotation, not evidence that patching is
+read-only or safe to replay. The source did change. Use the tool identity and
+original execution evidence to understand the effect; this sanitized capture
+is not replay input.
+
+### Earlier blocked attempt
+
+The [first captured attempt](examples/ci-pipeline/first-blocked-run.json)
+repaired the bug and passed the independent checks, but its original decoder
+rejected fenced JSON replies. Its decision was `BLOCKED`, with one accepted
+general review and one accepted boundary review. The first application also
+hung after settling its decision and was stopped by the coordinator with
+SIGKILL (actual subprocess exit -9). That failed capture remains unchanged.
+
+The successful revision moves process exit after the managed ZIO effect,
+isolates each parallel context file, and preserves native artifact references
+when a semantic check fails. Its parser accepts a single complete JSON code
+fence, then applies the full decoder and exact policy checks. Native success
+alone does not approve a stage: the application still checks the returned
+values and the deterministic tests before accepting `READY`.
 
 ### Inspect a stage
 

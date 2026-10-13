@@ -27,7 +27,8 @@ English-language rule for a newly integrated comment; executable code is unchang
 
 ## Commands and observed results
 
-Only building and executing this example were authorized. No general tests or
+Building and executing this example were authorized; the owner subsequently
+authorized fresh runs and targeted fixes until success. No general tests or
 quality gates ran in this task.
 
 | Command | Result | Evidence in the integration checkout |
@@ -62,9 +63,9 @@ policy checks remain intact. General review prompts have different focuses.
 
 Corrected application SHA-256:
 `4d604012ef6c816e8d8eacc76fae351f4f8eecf23d5612e8ff69ab01c35d40ff`.
-It was built successfully and independently reviewed. A fresh execution of this
-revision awaits the owner's response to the additional one-run request. The
-first failed execution is not proof of the corrected revision's runtime behavior.
+It was built successfully and independently reviewed. The owner then authorized
+fresh runs until success; the next execution succeeded as recorded below. The
+first failed execution remains evidence only for the earlier revision.
 
 Independent read-only records: `artifacts/ci-example/source-review.json` and
 `capture-review.json`. The API audit records current limitations, including the
@@ -93,3 +94,48 @@ These edits claim no additional provider verification or quality-gate execution.
 Final static review approved the reconciled documentation. A tracked-file
 inventory covered 643 files and found no Cyrillic text. `git diff --check` exited
 0. These are source/document checks, not execution of the runtime gates.
+
+## Successful execution after renewed authorization
+
+The owner explicitly requested executions until success and publication to main.
+The next execution used a new output directory and a fresh fixture copy; no
+mutating native call from the first attempt was retried in its old workspace.
+Main `91b0b49` (RAI-133) was merged into isolated integration head
+`255e78d533a2921535c3848c4bead1967d8ea2ce` before rebuilding and running.
+The application source SHA-256 remained the corrected value above.
+
+| Command | Actual result | Evidence in the integration checkout |
+| --- | --- | --- |
+| `JAVA_HOME=<JDK21> sh scripts/build/user-ci.sh` | exit 0 | `artifacts/ci-example/build-success-candidate.log` |
+| `java -cp <example-classpath> demo.BillingCi <runtime-classpath> <fresh-out> <fixture>` | exit 0; 70.87 seconds; `SUCCEEDED`, `READY` | `artifacts/ci-example/receipt-fixed.json`, `run-fixed.log` |
+| Pinned baseline checker inside the example | expected exit 1, `FAIL exact-threshold` | `artifacts/user-ci/run-fixed/baseline-check.log` |
+| Pinned final checker inside the example | exit 0, `DiscountSpec: PASS 3 boundaries` | `artifacts/user-ci/run-fixed/final-independent-check.log` |
+| Credential-value scan of new run outputs | no leaked key values found | `artifacts/ci-example/receipt-fixed.json` |
+
+Both general reviews and all three boundary reviews passed the exact typed
+contracts. Six native runs exited 0 and retained their links in the stage index.
+The repair graph has nine model and ten tool nodes; each review has one model
+node, for 24 total. This is one additional live pipeline launch containing multiple model
+calls; the graph node count is not an HTTP request-count receipt. The authenticated registry again identified `glm-5.3-flash` on
+`zai-coding`. No fallback or additional live launch followed success.
+
+`docs/examples/ci-pipeline/successful-run.json` is a separate sanitized excerpt;
+`first-blocked-run.json` remains byte-for-byte unchanged. The successful native
+projection labels `fs_patch` as `ReadOnly`; documentation preserves that actual
+annotation and explicitly states that the operation changed source and that
+the annotation is not replay/safety evidence. No runtime exporter fix is claimed.
+
+RAI-133 also made earlier provider prose stale. Documentation now describes
+Anthropic tool results as a text-block array containing the rendered JSON
+payload. That provider's evidence belongs to the existing RAI-133 local stands;
+this example exercised only the OpenAI-compatible gateway transport.
+
+General quality gates remain unexecuted, as requested. Independent reviewers
+inspect the new sanitized capture and prose; their records are
+`artifacts/ci-example/capture-success-review.json` and
+`artifacts/ci-example/docs-success-review.json`.
+
+Final source/document inventory: 647 files, no Cyrillic text; existing private
+credential values were absent from tracked files and the new capture.
+`git diff --check` exited 0. The application fingerprint and earlier failed
+capture remained unchanged.
