@@ -64,6 +64,31 @@ includes assertions for the labels and, with the live provider, the policy value
 [The Scala tutorial](docs/user-guide-repl.md) explains lazy asks, ordered batches,
 background jobs, sessions, and typed programs with code you can follow.
 
+## Run a Scala pipeline in local CI
+
+The [billing CI application](examples/user-guide/ci/BillingCi.scala) combines
+repository changes, deterministic checks, parallel reviews, and bounded review
+batches. It runs through the headless runtime and writes a CI decision with
+links to every agent run.
+
+```mermaid
+flowchart LR
+  Repair["Repair the Scala bug"] --> Tests["Compile and test independently"]
+  Tests --> Reviews["Parallel boundary + arithmetic reviews"]
+  Reviews --> Cases["Three boundary reviews · concurrency 2"]
+  Cases --> Gate["Typed CI decision"]
+  Gate --> Evidence["Stage index + native lineage per run"]
+```
+
+The example uses `Program.andThen` for stage types, `all` for independent
+reviews, and `batch.collect` to retain individual review failures. Model success
+and CI approval are separate results: a completed model call can still return a
+blocking review, and the deterministic boundary tests must pass before approval.
+
+[The CI walkthrough](docs/user-guide-ci.md) includes the full Scala composition,
+local runner commands, output files, and the captured lineage. No forge-specific
+configuration is needed.
+
 ## Let the agent change a repository
 
 The billing repair example works in a disposable copy of a small Scala project.
@@ -140,13 +165,14 @@ tree and the model/tool calls inside it.
 - [Setup and first run](docs/onboarding.md)
 - [Coding and audit handbook](docs/user-guide.md)
 - [Scala workflow tutorial](docs/user-guide-repl.md)
+- [Local CI pipeline](docs/user-guide-ci.md)
 - [Run lineage walkthrough](docs/user-guide-lineage.md)
 - [API reference](docs/api.md) and [architecture](docs/architecture.md)
 - [Contributing](docs/contributing.md), [execution board](docs/work/board.md), and [roadmap](docs/roadmap-12k.md)
 
 Scala code, workflow bundles, plugins, and repository commands run with your
 process permissions. Use workspaces and bundles you trust. Current live tool
-examples use OpenAI-compatible providers; Anthropic tool definitions are tracked
-by RAI-127. Credentials belong in an environment variable or helper, outside Git.
+examples use OpenAI-compatible providers. Anthropic tool definitions are
+implemented; structured tool-result content mapping remains a separate W05 obligation. Credentials belong in an environment variable or helper, outside Git.
 
 MIT — see [LICENSE](LICENSE).

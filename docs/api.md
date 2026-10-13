@@ -354,9 +354,10 @@ logs.
 - `OpenAIChatStreamingBackend` uses SSE with bounded frames and an idle timeout
   based on `callTimeoutMs`.
 - `AnthropicMessagesBackend` maps Anthropic Messages responses, `tool_use`,
-  `tool_result`, and cumulative usage. Current request encoding does not send
-  tool definitions; RAI-127 tracks this wire-contract gap. Tool-call parity
-  with OpenAI-compatible Chat is therefore not available in this transport.
+  `tool_result`, and cumulative usage. Tool definitions are encoded with
+  `name`, `description`, and `input_schema` from `parametersJsonSchema`
+  (RAI-127). Schemas must be JSON objects. Tool results currently use string
+  content; structured content-block mapping remains a separate W05 obligation.
 - HTTP 401/403 map to `ProviderAuth`, 429 to `ProviderRateLimit`, 5xx to
   `ProviderUnavailable`, and other unexpected responses to `StreamProtocol`.
 

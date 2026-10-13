@@ -221,6 +221,25 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 
 For this input, the report is `BLOCKED`, lists `rollback` as pending, and asks for that check to be completed. `--mock` selects the CLI backend configuration; this workflow itself has no model stage. The bundle is marked `trusted-local`. Run only bundles you trust: Scala workflow code executes with the process's permissions, and the trust label is not a sandbox.
 
+## Move the composition into local CI
+
+The REPL prelude installs `scout`, `worker`, and a `ReplSession` for interactive exploration. A compiled local CI application has no such preloaded names: it imports the core types and composition functions, defines its own typed inputs and outputs, and decides when to invoke Raider's native runner. The example imports `raider.core.{Program, Task}` and `raider.dsl.composition.{all, batch}`. See [`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala) and the [local CI guide](user-guide-ci.md) for the complete billing example and its invocation.
+
+In `BillingCi`, an agent stage is represented as `Program[AgentInput, AgentOutput]`. The program calls `Task(invokeAgent(input))`; `invokeAgent` builds real `CliArgs` and calls `HeadlessRunner.run(cliArgs, env, Some("generic"))`. That call supplies the generic CI context to the native headless runner. The app writes an untrusted `CiContext` per stage; it does not depend on a `--ci` command-line flag.
+
+The flow first records the fixture's expected exact-threshold failure, runs a native coder invocation to repair the billing expression, then compiles and checks the repaired fixture independently. It runs two independent inline reviews together and runs three boundary cases (9999, 10000, and 10001 cents) with bounded parallelism. The earlier `TaskSummary` example shows `andThen` joining a `Program[String, List[(String, String)]]` parser to a `Program[List[(String, String)], String]` evaluator. In the CI app, `all` combines the two review `Task`s into a tuple; `batch.collect` keeps each boundary case's domain result visible:
+
+```scala
+val reviews = all(reviewProgram(reviewA), reviewProgram(reviewB))
+val boundaryOutcomes = batch.collect(boundaryInputs, parallelism = 2) { input =>
+  boundaryProgram(input)
+}
+```
+
+`all` is fail-fast and interrupts its sibling if a task fails. `batch.collect` represents typed domain failures as `BatchOutcome.Failed`; external interruption and defects still propagate. The app validates its own review and boundary contracts before it can write a `READY` decision. A successful native invocation is not itself a successful pipeline verdict: the baseline's expected test failure is preserved, and the repaired source must pass the separate pinned checks.
+
+Every coder invocation has its own native run directory, event stream, and run artifacts. Settled runs with reducible events also receive lineage exports. `BillingCi` writes an application-owned index that points to those directories and records stage outcomes. The index does not combine them into native phase lineage, a shared runtime budget, or durable recovery. Use the [lineage guide](user-guide-lineage.md) to inspect each run's own trace and lineage artifacts.
+
 ## REPL commands and boundaries
 
 Use `:help` for the commands available in the current console. The relevant ones are `:type <expression>`, `:jobs`, `:cancel <id>`, `:log <id>`, `:reset`, and `:quit`. Everything else is compiled as Scala. `:type` compiles without evaluating the expression. `:reset` clears interpreter bindings and installs a fresh prelude; it does not provide persistence for those bindings.

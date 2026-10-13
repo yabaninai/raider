@@ -234,6 +234,14 @@ A matching replay prints `verdict: match` with a normalized graph hash and exits
 Recorded replay makes no model calls. See the [lineage guide](user-guide-lineage.md)
 for reading the projection and replay reports.
 
+## 7. Compose a CI pipeline in Scala
+
+[`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala) describes a local CI workflow that repairs the billing example, runs independent Scala checks, asks two reviewers in parallel, and runs three bounded boundary reviews before producing a typed CI decision. An application-owned index links each stage to its run artifacts.
+
+The six agent invocations (one repair, two parallel reviews, and three boundary reviews) each have their own native run root and lineage artifacts. The pipeline index connects those per-stage records; it is not a unified native graph, shared accounting root, or durable recovery mechanism. The example does not automatically create or merge a pull request. SDK support for that workflow is future work.
+
+See the [CI pipeline guide](user-guide-ci.md) for the stage inputs, outputs, and artifact references. This section describes the example's design and makes no claim that it has been built or run.
+
 ## Limits of these examples
 
 The offline coding and audit examples use deterministic local scripts that

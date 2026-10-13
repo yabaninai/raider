@@ -183,6 +183,34 @@ does not write the CLI run directory shown above. The generated Scala projection
 records observed structure through comments and `dataRef`s; the authored workflow
 remains in your source file.
 
+## Read lineage from a multi-stage CI example
+
+The [CI pipeline guide](user-guide-ci.md) describes a multi-stage example whose
+application-owned `pipeline-index.json` points to six native headless runs. Each
+entry represents a separate root run with its own model/tool graph and native
+artifacts. The index is a convenient map across the application stages; it does
+not join those roots into one native phase graph, add model-to-model edges across
+roots, or create a shared global budget. `all` and bounded `batch` can run
+application work concurrently, but that composition does not add those native
+lineage relationships or accounting.
+
+Start with the captured [pipeline artifacts](examples/ci-pipeline/), open
+`pipeline-index.json`, and follow each entry to its native headless work
+directory. In every work directory, inspect `lineage-data.json` alongside
+`lineage.scala` and `events.jsonl`. The data file describes that run's actual
+model-call and tool-call nodes; use its references and parent/input links to
+understand the graph, then consult the event log or transcript for detailed
+inputs and outputs. Repeat this for each indexed run instead of treating the
+application index as a native combined graph.
+
+In the repair stage, the initial tool invocation that runs compiler/tests can
+have outcome `Succeeded` while the tests themselves fail: `Succeeded` records
+that the tool invocation returned a result. The process result carries the
+nonzero exit code that reports the unpatched defect. Read that result before
+interpreting the next repair step; a successful tool call is not the same as a
+passing test suite. The captured files under `docs/examples/ci-pipeline/` are
+the evidence for the actual stage paths and outcomes.
+
 For a nested structure, the checked-in [delegation fixture](../contracts/lineage/golden/deep-tree/lineage-data.json)
 contains the following parent chain:
 

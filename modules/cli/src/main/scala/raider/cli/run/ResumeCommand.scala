@@ -129,7 +129,7 @@ object ResumeCommand:
   )
 
   /** The recovered observable state of a past run — pure data, named fields
-    * (REC-01's "состояние восстановлено (named-поля)").
+    * (REC-01's "state recovered (named fields)").
     *
     *   - `graph` — the deterministic
     *     [[raider.runtime.lineage.model.SessionGraph]] re-folded from the

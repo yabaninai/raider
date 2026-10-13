@@ -74,7 +74,7 @@ The mock `coder` uses fixed model responses; it is not a general offline coding 
 
 ## Configure a provider
 
-For one-shot `run`, choose the provider with `--provider openai` or `--provider anthropic`, and set `--base-url` and `--model` for the selected endpoint. For REPL startup, set `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, and `RAIDER_MODEL`. The supported provider values are `mock`, `openai`, and `anthropic`. OpenAI-compatible and Anthropic Messages transports exist; the current Anthropic backend does not send tool definitions, so this guide does not recommend it for tool-using coding runs.
+For one-shot `run`, choose the provider with `--provider openai` or `--provider anthropic`, and set `--base-url` and `--model` for the selected endpoint. For REPL startup, set `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, and `RAIDER_MODEL`. The supported provider values are `mock`, `openai`, and `anthropic`. Both transports encode tool definitions. The examples in this guide were exercised through the OpenAI-compatible path; structured Anthropic tool-result content mapping remains a separate W05 obligation.
 
 Supply credentials by environment variable or helper reference. Never put a credential value in an argument, URL, repository file, or report. For example, provision the credential in your secret manager, then export the environment variable in your shell session:
 
@@ -131,7 +131,7 @@ artifacts/first-run/work-<id>/
 - **`unknown --provider`** — use `mock`, `openai`, or `anthropic`.
 - **`--out` required / missing input** — pass `--out <directory>` and exactly one of `--input` or `--input-json`.
 - **Bundle/agent argument conflict** — use `--agent <name>` alone, or provide both `--bundle <jar>` and `--workflow <name>`.
-- **A tool-using Anthropic run makes no tool progress** — Anthropic Messages is wired, but tool-definition request parity is not implemented yet. Use the OpenAI-compatible tool path for these examples.
+- **Provider-specific tool behavior differs** — Anthropic tool definitions are implemented; structured tool-result content mapping remains incomplete. The documented CI example uses the OpenAI-compatible path.
 - **The REPL shows `[scripted-fixture]` or a mock notice** — the session is using the deterministic fixture backend. Check `RAIDER_PROVIDER`, endpoint/model settings, and credential resolution before interpreting a response as live output.
 
 For typed exit codes, CLI artifacts, and trust boundaries, see [ci-runtime.md](ci-runtime.md). Scala scripts, bundles, plugins, and repository commands run with the process user’s permissions; workspace checks do not sandbox trusted Scala code. Use disposable workspaces for experiments.
