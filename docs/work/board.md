@@ -386,11 +386,31 @@ Night progress (2026-10-13):
   268dd5a: EXECUTE 10/10 (20261013-112146) + profiles ci/contracts/docs/
   eval/repl/runtime/security/static/transport/unit 10/10 (20261013-112709)
   — first aggregate run with the RAI-135 eval profile.
-- In flight: RAI-142 (executed projection acceptance), RAI-151 (escaping),
-  RAI-144 (multi-job export) — then RAI-145 (unified projection) ->
-  RAI-146 (verifier corpus) -> RAI-147 (docs + BillingCi). Queue behind:
-  RAI-132/134/136/137, RAI-123 (conditional), 129.b/c (needs RAI-143 ✓),
-  LIN-03/04 (live projection + TUI).
+- **RAI-142 DONE** (review APPROVE): executed projection acceptance — render
+  → pinned-dotc subprocess → URLClassLoader → Task.zio on the REAL generated
+  vals (no mirrored composition); exact report trees, RA-OUT short-circuit
+  with prefix observability, zero-dispatch probe; minors: dead asserts in
+  test 6 (enforced elsewhere — ride-along fix with the next acceptance
+  card), "same pipeline as gate" wording. **RAI-151 DONE** (review APPROVE):
+  \uXXXX literal escaping (dotc-verified \xHH rejection reproduced);
+  hostile fixture renders+compiles+executes; W9F4-01 to compiling shape.
+  **RAI-144 DONE** (review APPROVE): multi-job export — one serialized sink,
+  export-canonical dense per-job seq, GraphHash interleave-invariance tested,
+  fork record once in parent stream, run_provenance pointers resolve to real
+  child artifacts, InvocationIdOnV1 defense-in-depth landed; honest
+  fixture-found fixes (.interruptible, campaign watermark) documented;
+  minors: unlinked-segment named fixture → RAI-146 VR-02; v2 write path pin
+  → RAI-146. Integrated gates on the merged candidate: EXECUTE 10/10
+  (20261013-132823) + profiles 10/10 (20261013-133341); two integrated-gate
+  catches fixed en route (scalameta =-binding, scalafix DisableSyntax.null
+  on reflective MODULE$ reads — lane gate sets lacked these checks).
+- **In flight: RAI-145** (unified projection; deps RAI-142+144 met). Carried
+  packet risks: fork records are ROOT-anchored (nested delegation needs
+  per-level anchoring before it ships); replay reads v1 only (RAI-145 must
+  not replay the unified export from disk); unlinked-segment adversarial
+  fixture → RAI-146 VR-02. Then RAI-146 (verifier corpus) -> RAI-147 (docs +
+  BillingCi). Queue behind: RAI-132/134/136/137, RAI-123 (conditional),
+  129.b/c (RAI-143 ✓), LIN-03/04 (live projection + TUI).
 
 ## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
 
