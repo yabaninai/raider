@@ -653,3 +653,27 @@ Status: ready. Milestone: LIN. Dependencies: RAI-141.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-151: Projection literal escaping: \uXXXX for C0 controls inside generated string literals + hostile-literal compile negative
+
+Status: ready. Milestone: LIN. Dependencies: RAI-141.
+
+**Scenario and contract.** RAI-141 review minor finding: the escape discipline renders C0 controls (other than \n/\r/\t) and DEL as \xHH inside generated STRING literals — pinned dotc 3.9.0 rejects \xHH escapes in string literals (reproduced: model name with U+0001 → compile failure). Pre-RAI-141 the payload landed in a // comment (lexically inert) so it compiled; the W9F4-01 fixture pins this non-compiling shape but never compile-checks it. Fix: emit \uXXXX for control characters inside string literals (\xHH stays only where lexically inert, e.g. comments); add a hostile-literal compile NEGATIVE-to-POSITIVE: a graph with a U+0001 model name must render AND compile (pinned dotc) AND execute; update the W9F4-01 pin to the compiling shape.
+
+**Context.** RAI-141 review finding 1 (minor, non-blocking): fails closed today, but the spec enshrines the non-compiling shape as expected; goldens are clean so nothing blocks integration.
+
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/lineage/proj/**` `modules/dsl/src/test/scala/raider/dsl/lineage/**` `modules/cli/src/test/scala/raider/cli/lineage/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: ESC-01: a hostile-payload graph (C0 control in model/tool name) renders and COMPILES under pinned dotc; execution deterministic.
+- Error/adversarial: ESC-02: comment-only discipline unchanged where lexically inert; LIN2-C-01/02/03 stay green.
+- Cancellation/concurrency: ESC-03: compile gate runs the hostile fixture as part of the suite; ×3 green.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** GraphHash/normalization changes, comparator changes, wire changes, data-resource format changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
