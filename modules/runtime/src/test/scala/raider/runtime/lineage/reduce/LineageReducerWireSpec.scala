@@ -387,6 +387,53 @@ object LineageReducerWireSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "MJE defense in depth (RAI-144 review): a v1 envelope carrying invocationId is refused typed by the versioned entries"
+    ) {
+      // Direct-constructor discipline: the multi-job export builds envelopes
+      // in code (bypassing LineageWireReader), so reduceWire re-checks the
+      // version-mixing rule the reader enforces on file input.
+      val stream = Vector(
+        frozen(1L, EventPayload.Delegated(child, "worker-2")),
+        env(
+          1L,
+          LineagePayload.Frozen(EventPayload.ModelCallStarted(1, "m", None)),
+          job = child,
+          schemaVersion = 1,
+          invocationId = Some("call-9")
+        )
+      )
+      assertTrue(
+        LineageReducer.reduceWire(stream) ==
+          Left(ReduceError.InvocationIdOnV1("job-1-child", 1L)),
+        LineageReducer.reducePartialWire(stream) ==
+          Left(ReduceError.InvocationIdOnV1("job-1-child", 1L))
+      )
+    },
+    test(
+      "MJE defense in depth (RAI-144 review): invocationId-on-v1 wins the first-violation order over a following seq gap"
+    ) {
+      val stream = Vector(
+        frozen(1L, EventPayload.Delegated(child, "worker-2")),
+        env(
+          1L,
+          LineagePayload.Frozen(EventPayload.ModelCallStarted(1, "m", None)),
+          job = child,
+          schemaVersion = 1,
+          invocationId = Some("call-9")
+        ),
+        env(
+          9L,
+          LineagePayload.Frozen(EventPayload.Terminal(JobStatus.Succeeded)),
+          job = child,
+          invocationId = Some("call-9")
+        )
+      )
+      assertTrue(
+        LineageReducer.reduceWire(stream) ==
+          Left(ReduceError.InvocationIdOnV1("job-1-child", 1L))
+      )
+    },
+    test(
       "SCH-03 v1 pin: the frozen reduce entries still refuse schemaVersion 2 envelopes"
     ) {
       val v2Tagged = EventEnvelope(

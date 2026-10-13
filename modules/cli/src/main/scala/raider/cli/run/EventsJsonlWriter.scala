@@ -2,6 +2,7 @@ package raider.cli.run
 
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.events.EventEnvelope
+import raider.runtime.lineage.wire.LineageEnvelope
 import zio.json.EncoderOps
 import zio.{Ref, Semaphore, UIO, ZIO}
 
@@ -51,6 +52,31 @@ final class EventsJsonlWriter private (
           ZIO.die(
             new IllegalStateException(
               s"EventsJsonlWriter.append after close: $path"
+            )
+          )
+        case Some(w) =>
+          ZIO.attempt {
+            w.write(env.toJson + "\n")
+            w.flush() // no fsync contract: page cache only
+            ()
+          }.orDie *> lines.updateAndGet(_ + 1L)
+      }
+    }
+
+  /** RAI-144: appends one VERSIONED [[LineageEnvelope]] line — the exact sink
+    * discipline of [[append]] (single locked whole-line write + flush, no
+    * fsync, append-after-close is a defect), for the versioned ADR-032 wire. A
+    * v1 envelope encodes here byte-identically to [[append]]'s frozen codec
+    * (the pinned `LineageEnvelope` v1 form, ADR-032 §1), so a mixed
+    * parent/child export is still one JSONL file of self-describing lines.
+    */
+  def appendLineage(env: LineageEnvelope): UIO[Long] =
+    lock.withPermit {
+      out.get.flatMap {
+        case None =>
+          ZIO.die(
+            new IllegalStateException(
+              s"EventsJsonlWriter.appendLineage after close: $path"
             )
           )
         case Some(w) =>

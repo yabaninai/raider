@@ -380,7 +380,12 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           work <- ZIO.attempt(tempDir()).orDie
           written <- ZIO
             .attempt(
-              RunLineageArtifacts.write(work, delegationGraph, Vector.empty)
+              RunLineageArtifacts.write(
+                work,
+                delegationGraph,
+                Vector.empty,
+                None
+              )
             )
             .orDie
           exit <- ZIO.attempt {
