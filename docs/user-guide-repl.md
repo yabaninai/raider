@@ -20,9 +20,9 @@ val checks = List(Check("compile", true), Check("tests", false))
 checks.filterNot(_.passed).map(_.name)
 ```
 
-The final expression evaluates to `List("tests")`. To try a real provider, follow [provider setup](onboarding.md#optional-provider-configuration) and configure its endpoint, model, and credential in your private environment before starting the REPL.
+The final expression evaluates to `List("tests")`. To try a real provider, follow [provider setup](onboarding.md#connect-a-model) and configure its endpoint, model, and credential in your private environment before starting the REPL.
 
-To have Raider change and check code in a disposable project, follow the [offline billing repair](user-guide.md#repair-a-billing-boundary-offline). It uses a scripted stand and independent Scala compile/test commands; the short mock REPL request above does not modify files.
+To have Raider change and check code in a disposable project, follow the [offline billing repair](user-guide.md#see-the-same-bug-case-without-a-live-model). It uses a scripted stand and independent Scala compile/test commands; the short mock REPL request above does not modify files.
 
 ## Make one request
 
@@ -138,4 +138,4 @@ In the REPL, `:help` lists commands. The current console supports `:type <expres
 
 Agent and tool code runs with the permissions of the Raider process. Tool policy applies to calls through the agent runtime; it is not a sandbox for arbitrary Scala entered in the REPL.
 
-The DSL examples here are live REPL operations. A generated lineage projection is a description of recorded structure, not a replay; see the [lineage walkthrough](user-guide-lineage.md) for the distinction between live CI roots and the separately generated unified projection.
+The DSL examples here run through the REPL. A generated lineage projection is a description of recorded structure, not a replay; see the [lineage walkthrough](user-guide-lineage.md) for the distinction between live CI roots and the separately generated unified projection.

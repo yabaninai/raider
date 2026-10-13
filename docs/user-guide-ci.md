@@ -11,13 +11,14 @@ agent to repair the bug, runs an independent compiler and test check, gathers tw
 source reviews and three boundary reviews, and writes `READY` or `BLOCKED`.
 
 The checks use 9,999, 10,000, and 10,001 cents to cover both sides of the threshold
-and the exact boundary. The agent's description is not accepted as test evidence:
-the app reads process exit codes and output, then validates the review answers
-before it writes `READY`.
+and the exact boundary. The app checks compiler/test exit codes and output, then validates the review
+answers before it writes `READY`.
 
 ## Set up and run
 
-You need JDK 21, `sbt`, and a configured OpenAI-compatible provider. The example
+You need JDK 21, `sbt`, and a configured OpenAI-compatible provider. Install
+`jq` for the result-inspection commands below; see [setup](onboarding.md) if you
+have not built Raider before. The example
 requires model `glm-5.3-flash`. Configure `RAIDER_BASE_URL` and either
 `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD` using your private environment or
 credential helper. Do not put credentials in source files or command arguments.
@@ -46,13 +47,11 @@ java -cp "$(cat artifacts/user-ci/classpath.txt)" demo.BillingCi \
   examples/user-guide/fixture
 ```
 
-The arguments are the runtime classpath for child runs, the output directory, and
-the fixture directory. The app changes only the copy at `$RUN_DIR/workspace`. Its CI
-context is set internally to generic and untrusted; this example does not take a
-`--ci` command-line option.
+The arguments are the runtime classpath used by the Scala checker, the output
+directory, and the fixture directory. The copied project is at `$RUN_DIR/workspace`.
 
 The build creates `artifacts/user-ci/classpath.txt` for the example and
-`artifacts/user-ci/runtime-classpath.txt` for the child CLI processes. Keep those
+`artifacts/user-ci/runtime-classpath.txt` for the compiler and test processes. Keep those
 files in place between build and launch. The output directory is separate, so a
 later run gets a new index, logs, workspace, and native run directories.
 
@@ -65,6 +64,8 @@ The coding agent runs with the process permissions and tool registry configured 
 Raider. The review prompts ask for no tools, and the app checks for tool calls
 afterward; those checks are not a sandbox. Run this only with a workspace and
 provider configuration you trust.
+
+<a id="captured-ci-run-and-lineage"></a>
 
 ## Understand the result
 
@@ -160,11 +161,12 @@ boundaryOutcomes <- Task.zio(batch.collect(boundaryInputs, parallelism = 2) { in
 
 The first composition checks the actual repair attempt before passing its verified
 result onward. `all` runs the two reviews together. `batch.collect` processes the
-three boundary inputs in order with at most two active at once. The application
+three boundary inputs with at most two active at once and returns their results
+in input order. The application
 validates the results and creates the decision only after those checks.
 
 The full application also defines the input/output data for each stage, writes
-prompts and stage records, and maps exceptions into a blocked run. The excerpt shows
+prompts and stage records, and records failures. The excerpt shows
 the main composition only; use the linked Scala source for the complete runnable
 program.
 
@@ -190,18 +192,16 @@ If a native run has a `summary.md` but no lineage files, use its summary and eve
 stream first; the lineage files are available only when the run settled and its
 events could be reduced.
 
+<a id="unified-lineage-for-this-pipeline-shape"></a>
+
 ## Native lineage and the unified view
 
 This live application launches six independent agent runs: one repair, two reviews,
 and three boundary reviews. Each writes its own native root and graph;
 `pipeline-index.json` links those roots. A separate [unified Scala
 projection](examples/ci-pipeline/unified-lineage/lineage.scala) describes the same
-kind of pipeline as one delegation graph, but it comes from offline recorded
-evidence, not from this live run. It is a dry-run description: it dispatches no
+kind of pipeline as one delegation graph. It was generated from an offline
+example; it is not the output of this live application. It is a dry-run description: it dispatches no
 models or tools and is not a replay command. The full current unified projection is
 available in that linked file; full historical projections from the six live roots
 are linked above.
-
-<a id="captured-ci-run-and-lineage"></a>
-
-<a id="unified-lineage-for-this-pipeline-shape"></a>

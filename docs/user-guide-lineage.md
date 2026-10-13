@@ -1,7 +1,7 @@
 # Read a coding run's lineage
 
 Lineage helps answer three questions: what ran, what failed, and what files
-changed. A run directory contains a summary, event log, transcript, and—when
+changed. Use `jq` for the JSON commands below. A run directory contains a summary, event log, transcript, and—when
 the event stream can be reduced—two lineage files. The lineage files organize
 the run; the event log and transcript provide the detail behind each step.
 
@@ -27,9 +27,8 @@ cat "$RUN_DIR/run.json"
 | `lineage.scala` | See the Scala projection of the recorded graph. |
 | `lineage-data.json` | Look up node details using their `dataRef` keys. |
 
-The saved billing example used below lives in an ignored local artifact
-directory, so it may not exist in a fresh checkout. For a checked-in example,
-use the [sanitized CI capture](examples/ci-pipeline/README.md).
+For an example you can read without running Raider, open the
+[saved CI result](examples/ci-pipeline/successful-run.json).
 
 ## What ran?
 
@@ -47,11 +46,6 @@ jq '.nodes[] | {seq, id, kind, parentId, inputs, dataRef}' \
 jq '.data | to_entries[] | {ref: .key, detail: .value}' \
   "$RUN_DIR/lineage-data.json"
 ```
-
-The offline billing walkthrough records eight model rounds and seven tool
-calls: source read, boundary search, compile and test before the edit, edit,
-then compile and test after it. The recorded order comes from `seq`; tool
-parent links and input links describe different relationships.
 
 For a multi-stage CI capture, `successful-run.json` contains an application
 index and six separate native runs. Inspect the stage list and the native
@@ -80,22 +74,20 @@ later edit and passing checks are separate steps. Read `summary.md` and
 
 ## What files changed?
 
-Look for recorded mutating operations, then inspect the actual source diff in
-the project working copy used for the run. For example, find `fs_patch` tool
-entries in a captured pipeline and review the corresponding source file:
+Inspect the workspace used for the run. For the [CI example](user-guide-ci.md),
+compare its copied source with the original fixture. Replace the output path
+with the one you chose when launching it:
 
 ```sh
-jq '.nativeRuns[].data | to_entries[] | select(.value.tool == "fs_patch")' \
-  docs/examples/ci-pipeline/successful-run.json
-SOURCE_FILE='path-from-the-recorded-patch'
-git diff -- "$SOURCE_FILE"
+PIPELINE_DIR='artifacts/user-ci/run-<your-timestamp>'
+diff -u examples/user-guide/fixture/src/main/scala/billing/Discount.scala \
+  "$PIPELINE_DIR/workspace/src/main/scala/billing/Discount.scala"
 ```
 
-The diff command must run from the relevant project working copy. Tool
-arguments show what change was requested or recorded; the workspace diff
-shows what actually changed. In the CI capture, the `fs_patch` recovery label
-is `ReadOnly` even though the patch mutated source. That label is not a
-permission or replay guarantee. See the [capture notes](examples/ci-pipeline/README.md).
+A successful repair changes `>` to `>=`. `diff` exits 1 when it finds a change;
+that is expected here. For a task in a Git project, run `git diff` from that
+project's working copy. Check the actual diff and test output before accepting
+what the agent changed.
 
 ## The Scala projection
 
@@ -117,21 +109,19 @@ val phase_baseline_check: Program[Unit, Vector[StepReport]] =
 
 The phase and child steps return structural reports: node kind and ID,
 `dataRef`, inputs, and nesting. Payloads stay in `lineage-data.json`. The
-projection is a **dry-run description**: constructing or executing its
+projection is a **dry-run description**: executing its
 program reports recorded call-graph structure; it performs no model call, tool
 call, or I/O. It is not replay or live rerun.
 
 Read the [complete unified lineage Scala artifact](examples/ci-pipeline/unified-lineage/lineage.scala)
-with its [provenance and evidence notes](examples/ci-pipeline/unified-lineage/README.md).
+with its [how this example was generated](examples/ci-pipeline/unified-lineage/README.md).
 For the separate six-root CI capture, see the [historical captured native
 projections](examples/ci-pipeline/native-projections.md); those saved
 comments-only projections predate the current renderer.
 
 ## Replay limits
 
-Replay consumes recorded responses and supports only operations handled by the
-replay harness. The saved billing export lacks model responses, and the checked
-replay fixture demonstrates a read-only `fs_read` sequence. This guide does
-not claim that mutating repair replay works or provide a repair recipe. Replay
-uses an isolated workspace copy; live rerun is a separate, guarded path. See
-[Session lineage](lineage.md) for current status and limitations.
+Replay has limited support for recorded responses and read-only operations.
+It cannot replay the saved billing repair shown here. Running a generated
+Scala projection only describes the graph; it does not rerun the agent or
+repeat its changes. See the [replay reference](lineage.md) for supported inputs.

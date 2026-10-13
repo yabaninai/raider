@@ -12,7 +12,7 @@ export PATH="$JAVA_HOME/bin:$PATH"
 java -version
 ```
 
-The version output should identify Java 21. The project pins sbt 1.11.4 and Scala 3.9.0. Build the runtime classpath and example bundle once:
+The version output should identify Java 21. Install sbt and Python 3 as well; the project pins sbt 1.11.4 and Scala 3.9.0. Build the runtime classpath and example bundle once:
 
 ```sh
 sh scripts/build/user-examples.sh
@@ -70,6 +70,8 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 
 The command prints a result line with the work directory. Look there for `run.json` and `summary.md`; when produced, `transcript.json` contains the run trace. The built-in `coder` has file and process tools. Use a disposable workspace for tasks that may edit files.
 
+<a id="connect-a-model"></a>
+
 ## 3. Configure a live model
 
 Live calls send your prompt and task context to the endpoint you configure, and may incur charges. The source supports OpenAI-compatible and Anthropic-compatible providers. Configure the provider, endpoint, model, and credential in your private shell environment. For example, set non-secret values for your chosen service:
@@ -98,27 +100,12 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 
 The REPL reads `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, `RAIDER_MODEL`, and the credential from its environment. A `[scripted-fixture]` marker means the response is mock content; do not treat it as model output.
 
-## 4. Give the coder a real task
+## 4. Try a coding task
 
-After configuring a live provider, try a bounded task in a disposable copy of a project. For example, ask it to inspect a small bug, make a focused edit, and run the relevant test. Set `RAIDER_WORKSPACE` to the absolute path of that copy:
-
-```sh
-export RAIDER_WORKSPACE="/path/to/disposable/project"
-```
-
-Then run:
-
-```sh
-java -cp "$RAIDER_CP" raider.cli.Main run \
-  --agent coder --provider "$RAIDER_PROVIDER" \
-  --base-url "$RAIDER_BASE_URL" --model "$RAIDER_MODEL" \
-  --input "Find and fix the boundary bug in the discount calculation, then run its focused test." \
-  --workspace "$RAIDER_WORKSPACE" --out artifacts/bug-fix
-```
-
-`RAIDER_WORKSPACE` is the path of the disposable project copy; define it before running the command. Review the diff and test output in that workspace, and inspect `run.json`, `summary.md`, and `transcript.json` in the printed work directory. A successful call shows what this configured model did on this task; it does not guarantee the same result on another project.
-
-For more runnable scenarios, see the [examples guide](user-guide.md). To run the local CI example, see the [CI guide](user-guide-ci.md); for run history and lineage, see the [lineage guide](user-guide-lineage.md).
+Continue with [fixing a Scala bug](user-guide.md#fix-a-scala-bug-with-a-model).
+The example supplies the buggy project and its tests, runs the agent in a
+copy, and checks the result. You can then use the [CLI on your own project](user-guide.md#work-on-your-own-project)
+or build a [local CI workflow](user-guide-ci.md).
 
 ## Common setup problems
 

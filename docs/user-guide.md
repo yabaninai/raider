@@ -16,7 +16,7 @@ under development.
 
 ## Prepare the checkout
 
-From the repository root, install JDK 21 and sbt 1.11.4. Build the example
+Install JDK 21, sbt 1.11.4, and Python 3. From the repository root, build the example
 classpath and bundle:
 
 ```sh
@@ -34,82 +34,56 @@ This example copies a small Scala billing project into a temporary directory.
 The policy is “discount 1,000 cents when the subtotal is at least 10,000
 cents”; the fixture has a strict `>` comparison, so the exact boundary fails.
 
-### 1. Configure a provider and make a disposable workspace
-
-Set the OpenAI-compatible endpoint and model for your account. Make the
-credential available to the process through your private environment or
-`RAIDER_API_KEY_CMD` helper; do not put the key in a command argument, URL, or
-project file. For a key already provisioned in the environment, the CLI reads
-`RAIDER_API_KEY`.
+Follow [model setup](onboarding.md#connect-a-model) first. This case uses an
+OpenAI-compatible endpoint. The helper creates the disposable workspace, gives
+the coder a compile/test command, and checks the resulting source and tests.
 
 ```sh
 : "${RAIDER_BASE_URL:?Set your OpenAI-compatible endpoint URL}"
 : "${RAIDER_MODEL:?Set the model name for that endpoint}"
-WORKSPACE=$(mktemp -d)
-cp -R examples/user-guide/fixture/. "$WORKSPACE/"
-RUN_OUT="$PWD/artifacts/my-billing-run"
-mkdir -p "$RUN_OUT"
+RAIDER_PROVIDER=openai RAIDER_LIVE_APPROVED=1 \
+  python3 scripts/quality/user_examples.py --only coding --live
 ```
 
-`WORKSPACE` is the copy the agent may change. Keep your original project
-outside it while learning the workflow. Check your provider, endpoint, model,
-and spend limit before making a live request.
+This makes live model calls using your configured credentials. The expected
+change is `s > 10000` to `s >= 10000`, with these test results:
 
-### 2. Give the agent the task
-
-Create a checker in that copy. It compiles the fixture's source and test, then
-runs the three boundary assertions. The classpath comes from the setup step.
-
-```sh
-cat > "$WORKSPACE/check.sh" <<EOF
-#!/bin/sh
-set -eu
-mkdir -p "$WORKSPACE/build/classes"
-java -cp "$RAIDER_CP" dotty.tools.dotc.Main \
-  -classpath "$RAIDER_CP" -Werror -d "$WORKSPACE/build/classes" \
-  "$WORKSPACE/src/main/scala/billing/Discount.scala" \
-  "$WORKSPACE/src/test/scala/billing/DiscountSpec.scala"
-java -cp "$WORKSPACE/build/classes:$RAIDER_CP" billing.DiscountSpec
-EOF
-chmod +x "$WORKSPACE/check.sh"
+```text
+Before the edit: FAIL exact-threshold
+After the edit:  DiscountSpec: PASS 3 boundaries
 ```
 
-The check before the edit should compile and then exit 1 with
-`FAIL exact-threshold`. The same check should exit 0 after the fix and print
-`DiscountSpec: PASS 3 boundaries`.
+The command prints the run-artifact directory. The copied project is under
+`artifacts/user-examples/verification-<id>/workspace/`, and its result report is
+`artifacts/user-examples/verification-<id>/report.json`. Check the final source
+and test results there. The original fixture stays unchanged.
 
-Run the built-in coding agent with an explicit provider, endpoint, model, and
-workspace:
+## Work on your own project
+
+Use `coder` to give a model access to a project you choose. Work on a branch or
+disposable copy, and replace the path and task below with your own. Include the
+command that checks the change so the agent knows how to finish.
 
 ```sh
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
+WORKSPACE='/absolute/path/to/your/project-copy'
 java -cp "$RAIDER_CP" raider.cli.Main run \
-  --agent coder --provider openai \
+  --agent coder --provider "$RAIDER_PROVIDER" \
   --base-url "$RAIDER_BASE_URL" --model "$RAIDER_MODEL" \
   --workspace "$WORKSPACE" \
-  --input "Read the source and tests. Run ./check.sh before editing and observe the expected exact-threshold failure. Fix only Discount.scala so the discount applies at 10000 cents. Run ./check.sh again and report its result." \
-  --out "$RUN_OUT"
+  --input "Fix the discount boundary bug. Keep public signatures unchanged. Run sbt test and report the changed files and test result." \
+  --out artifacts/project-task
 ```
 
-This sends a live model request and lets the built-in `coder` use workspace
-read/search/edit and process tools. The model's explanation is not proof that
-the repair works; the compiler and test output are.
+Replace `sbt test` if your project uses a different check command. The CLI uses
+the provider flags above; set them through [model setup](onboarding.md#connect-a-model).
+Unlike the fixture helper, this command works directly in `WORKSPACE`. It can
+change files and run processes with your permissions.
 
-### 3. Check the result yourself
-
-Run the checker again outside the agent, inspect the changed source, and read
-the CLI's run summary. The CLI prints the generated work directory in its
-result line; `--out` is the parent directory for that run.
-
-```sh
-"$WORKSPACE/check.sh"
-cat "$WORKSPACE/src/main/scala/billing/Discount.scala"
-find "$RUN_OUT" -maxdepth 2 -type f -print
-```
-
-Look for `run.json`, `summary.md`, `transcript.json`, and `events.jsonl` under
-the printed `work-<id>` directory. Confirm the final process exit and the
-`DiscountSpec: PASS 3 boundaries` output yourself. The workspace and commands
-run with your process permissions; use a disposable copy for this example.
+Raider prints a `work-<id>` path beneath `artifacts/project-task`. Read its
+`summary.md` for the result and `transcript.json` for tool output. In your
+project copy, review `git diff` and run the relevant checks yourself before
+accepting the change. See [reading a run](user-guide-lineage.md).
 
 ## See the same bug case without a live model
 
@@ -120,7 +94,7 @@ python3 scripts/quality/user_examples.py --only coding
 ```
 
 It drives the real Scala tools through the billing repair sequence, but its
-predetermined responses demonstrate wiring and checks, not model reasoning.
+responses follow a fixed script; the file edits and Scala checks still run.
 
 ## Create an audit report
 
@@ -133,8 +107,7 @@ python3 scripts/quality/user_examples.py --only audit
 
 The expected `AUDIT.json` identifies the file and line, quotes the setting,
 and gives an impact and remediation. The example works in a disposable copy;
-the source configuration stays unchanged. Its local scripted response does
-not establish that a model independently found the issue.
+the source configuration stays unchanged. The report content comes from the scripted demo.
 
 <a id="2-typed-release-readiness-workflow"></a>
 
@@ -152,7 +125,7 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
   --out artifacts/user-examples/readiness --mock
 ```
 
-Expected `summary.md` result:
+Expected workflow output, included in `summary.md`:
 
 ```json
 {"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
@@ -169,17 +142,10 @@ parallel typed requests.
 
 The [Billing CI example](user-guide-ci.md) repairs the billing fixture, checks
 it independently, runs parallel reviews, and writes a typed decision plus an
-index of its run artifacts. It uses live provider calls when launched in live
-mode. Read its provider and budget requirements before running it.
+index of its run artifacts. It makes live provider calls. Read its provider and budget requirements before running it.
 
-The checked-in [successful capture](examples/ci-pipeline/successful-run.json)
-contains six independent native run roots. The application index links those
-roots; it does not make them one native graph. A separately generated unified
-lineage program comes from an offline acceptance corpus. The [complete six
-historical projections](examples/ci-pipeline/native-projections.md) and
-[unified program](examples/ci-pipeline/unified-lineage/lineage.scala) show the
-two structures side by side. A lineage projection describes recorded calls;
-it is not a command to repeat them.
+The walkthrough includes a successful run and links to the complete Scala
+projections, so you can compare a result with the workflow that produced it.
 
 ## Read a run's trace
 
@@ -190,35 +156,6 @@ follow each `data:` reference into `lineage-data.json`. `transcript.json` and
 files explain what ran; compare them with the actual changed source and check
 output before you decide the task is done. For a guided example, see the
 [lineage walkthrough](user-guide-lineage.md).
-
-Recorded lineage can also be compared with a replayed graph by the `replay`
-command. The comparison is not playback of a recorded mutating repair: a
-projection does not execute its calls. In particular, do not treat a graph
-match as proof that a source edit was repeated or rolled back.
-
-## Start in the REPL or tab shell
-
-The REPL is useful when you want to define Scala values and compose requests.
-Start it with the classpath from setup:
-
-```sh
-RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main
-```
-
-The mock provider returns fixed `[scripted-fixture]` responses. The REPL
-evaluates ordinary Scala; its tutorial covers live provider configuration,
-typed asks, and jobs.
-
-To open the separate tab shell, use `--tabs`:
-
-```sh
-RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main --tabs
-```
-
-Tab shell text is saved as a draft. It does not evaluate Scala or turn draft
-text into an agent request. See the [tab shell guide](user-guide-tui.md) for
-its commands and current behavior, and the [Scala REPL guide](user-guide-repl.md)
-when you want compiled Scala interaction.
 
 ## Common setup problems
 
