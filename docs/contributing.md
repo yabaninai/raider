@@ -1,190 +1,126 @@
 # Contributor Guide
 
-How to extend Raider without breaking its guarantees. Read
-`AGENTS.md` (rules of engagement) and `docs/architecture.md` (how the pieces
-compose) first. Product code is **Scala 3 + ZIO only** (`modules/**`,
-`contracts/**`, `examples/**`); Python lives only in `scripts/` glue. All code
-compiles with `-Werror` (zero warnings) and scalafmt/scalafix must pass.
+This guide describes how to make a small, reviewable change to Raider and report
+what the evidence supports. Read [AGENTS.md](../AGENTS.md), the assigned task
+card, and the relevant contracts before editing. The [architecture guide](architecture.md)
+shows how the modules fit together. The current implementation and board are
+the source of status; plans and old records are not proof that a feature exists.
 
-## 0. Setup and everyday commands
+## Contributor workflow
 
-For user setup and runnable examples, start with the [current launch guide](user-guide.md)
-and [verified REPL/bundle gallery](user-guide-repl.md). The commands here are
-developer checks; a command is not evidence that it was run on your checkout.
+### 1. Read the assignment and establish the lane
 
-```sh
-make compile                 # sbt --batch compile  (-Werror)
-COURSIER_CACHE=/tmp/cc-master sbt --batch test          # full suite
-make quality-changed                    # classify changes → profiles
-COURSIER_CACHE=/tmp/cc-master make quality-changed QUALITY_EXECUTE=1   # run gates
-make quality-profile PROFILES="repl,ci" # semantic profiles for your slice
-sh scripts/quality/repl_smoke.sh        # REPL non-TTY smoke
-sh scripts/quality/cli_smoke.sh         # headless CLI smoke (needs raiderCli/test first)
-make raider-jar                         # fat JAR: modules/cli/target/scala-3.9.0/raider-cli.jar
-```
+Work on one card and its stated acceptance, allowed paths, dependencies, and
+non-goals. Start in the assigned absolute worktree path. Check `git status
+--short`, the branch, and the baseline commit before editing. Keep generated
+outputs, compiler state, and reports inside that lane. Do not edit shared
+contracts, `build.sbt`, gate policy, or the board unless the assignment names
+you as their owner. Follow [parallel-development.md](parallel-development.md)
+for isolation and integration.
 
-Before you finish a task: `make quality-changed QUALITY_EXECUTE=1` must pass,
-plus the semantic profiles your slice touches. A timeout or a skipped check is
-NEVER a pass. After real execution, write a work record under
-`docs/work/records/` (template: `docs/templates/work-record.md`) and update
-`docs/work/board.md`.
+### 2. Trace the behavior to current code
 
-## 1. How to add a new tool
+Read the relevant implementation, tests, contracts, and user-facing docs. Check
+actual signatures and current behavior before writing an example or proposing
+a change. If the card conflicts with the code or a frozen contract, report the
+small discrepancy and a reproducer; do not silently invent a new API. Product
+code in `modules/**`, `contracts/**`, and `examples/**` uses Scala 3 and ZIO.
 
-Tools live in `modules/tools` under `raider.tools`. Walk through an existing
-one (`files/edit/PatchTool.scala` is the most complete example).
+### 3. Make one verifiable change
 
-1. **Implement the tool** as a class over `Workspace`:
+Keep the diff within the card. Add or update a behavioral fixture for the
+accepted behavior, including relevant failure and cancellation cases. Preserve
+trust boundaries: workspace policy does not sandbox arbitrary Scala or plugin
+code; tests use mock/replay or an explicitly configured local stand. Do not
+place credentials in source, argv, examples, logs, or reports. Do not make paid
+provider calls without an explicit endpoint and budget.
 
-   ```scala
-   final class MyTool(workspace: Workspace):
-     def apply(args...): ZIO[Any, RaiderError, MyResult] = ...
-   ```
+For a public contract change, use the separate ADR process and update affected
+consumers and examples. Do not add adjacent features, dependencies, or
+abstraction layers as part of an unrelated card.
 
-   Rules:
-   - Containment: resolve paths against `workspace.root`, normalize, refuse
-     anything that escapes (realpath check — see `EditTool.resolveSafe`).
-   - Preconditions: expected-SHA (`fs_edit`/`fs_patch` pattern) for mutations.
-   - Atomicity: temp file + `ATOMIC_MOVE` rename for writes.
-   - Bounds: refuse oversized inputs/outputs with typed
-     `RaiderError.InputValidation`.
-   - Return typed `RaiderError`s for crashes; policy denials (bounds/escape)
-     may surface as feedback to the model.
+### 4. Run the checks required by the card
 
-2. **Register it in `CodingToolset`**:
-   - add a private `...Invoke` that decodes args with a zio-json case class and
-     returns single-line JSON;
-   - add the JSON-schema string and `toolOf(name, description, schema, invoke)`;
-   - add the tool to `registry`'s list;
-   - construct it in `CodingToolset.make`.
-
-3. **Name it in the prompts** if agents should use it (`ChatLoop` sysPrompt,
-   `HeadlessRunner.CoderSystemPrompt`, `FacadeOps.ReplSystemPrompt`).
-
-4. **Write fixtures FIRST** (`modules/tools/src/test/...`): the happy path,
-   the containment denial, the precondition denial, and the bounds. ZIO Test
-   only; no sleeps where a TestClock/ref will do; never touch the real
-   network or `$HOME`.
-
-5. **Verify**: `sbt --batch raiderTools/test`, then
-   `make quality-changed QUALITY_EXECUTE=1`. Update `docs/api.md` (tool table)
-   if the surface changed.
-
-## 2. How to add a new provider
-
-Providers are isolated modules (`modules/provider-chat`,
-`modules/provider-anthropic` are the references).
-
-1. Create `modules/provider-<name>` depending on `raiderCore` only (+ zio-streams);
-   register it in `build.sbt` (a coordinator-owned file — keep the edit
-   minimal and mirrored in this guide).
-2. Implement `ModelBackend`:
-
-   ```scala
-   final class XBackend private (cfg: Config, client: HttpClient) extends ModelBackend:
-     def capabilities = ModelCapabilities(streaming = ..., tools = ..., cancellationAck = ...)
-     def stream(input: ModelRequest): ZStream[Scope, RaiderError, ModelEvent] = ...
-   ```
-
-   Transport rules (uniform): 401/403 → `ProviderAuth`, 429 →
-   `ProviderRateLimit`, 5xx → `ProviderUnavailable`, anything else →
-   `StreamProtocol`. Close the response body on EVERY exit path
-   (acquire/release in the caller's scope). Bound frames (SSE) and idle time.
-   NO hidden retries: 429 backoff is the caller's `RateLimitRetries` decorator,
-   nothing else retries.
-3. Emit only normalized `ModelEvent`s; tool requests MUST end as
-   `ToolCallReady` (deltas are fragments, never executable).
-4. For SSE reuse the shared framer from provider-chat
-   (`provider-protocols.md` sanctions reusable framing; keep the semantic
-   layer wire-specific).
-5. Fixtures first: a local HTTP stand (see `OpenAIChatStandSpec`) — wrong key,
-   500, unparsable body, chunk-boundary partition property, cancel mid-stream.
-   NEVER call a real/paid endpoint from tests.
-6. Verify: `make quality-profile PROFILES="transport"` plus full gates.
-
-## 3. How to run the quality gates
-
-The runner is `scripts/quality/quality.py`; the policy is
-`scripts/quality-policy/registry.json` (gates + profiles + path mapping).
+Use the current [quality-gate catalog](quality-gates.md) and the assigned
+card's profiles. When the runner is available, the standard changed-file flow
+is:
 
 ```sh
-make quality-changed                          # classify only (no execution)
-COURSIER_CACHE=/tmp/cc-master make quality-changed QUALITY_EXECUTE=1   # execute (fast minimum)
-make quality-profile PROFILES="static,unit"   # execute specific profiles
-make quality-profile PROFILES="tools,transport,repl,ci"
-python3 scripts/quality/quality.py verify artifacts/quality/<run>/manifest.json --require fast
-make quality-full                             # everything local (test+fmt+scan+gates+smokes)
+make quality-changed
+make quality-changed QUALITY_EXECUTE=1
 ```
 
-**Change detection (RAI-054).** Two baseline sources, same
-classifier/evidence contract — never a second, weaker runner:
+Then run the card's required semantic profiles. `quality-changed` without
+`QUALITY_EXECUTE=1` classifies work; it does not run gates. A skipped, timed
+out, errored, or unavailable check is pending or failed, never passing. A
+successful command is evidence only for the source and gate configuration it
+actually checked. After source changes, rerun the affected checks. Do not edit
+thresholds, fixtures, or verifiers to make a result green.
 
-- **Git mode** (default): `git status --porcelain -z --untracked-files=all` in
-  the repo root — staged, unstaged, untracked and deleted paths; renames
-  expand as delete+add so the origin keeps its profiles. Git-ignored files are
-  invisible here.
-- **Manifest mode** (snapshot lanes without `.git`): `--base-manifest P` or
-  `QUALITY_BASE_MANIFEST=P` diffs against an immutable inventory manifest
-  (created once with `python3 scripts/quality/quality.py inventory --out P`).
-  The diff covers added/modified/deleted paths, mode and symlink target; a
-  missing or corrupt baseline is a hard error. Record
-  `Git unavailable: isolated snapshot` in your report and never fall back to
-  running checks in a shared root checkout.
-- A clean tree (either mode) selects the minimum `fast` profile; no git AND no
-  manifest is a hard error, never a silent fast run.
-- Evidence run ids are `<YYYYmmdd-HHMMSS>-<pid>-<seq>` — parallel executes get
-  distinct run directories.
+Commands in this guide are instructions, not evidence that they were run.
+Record exact commands and exit codes only after execution. If the task
+explicitly forbids checks or an external dependency prevents them, state that
+clearly; do not create a work record with fabricated results.
 
-**Profile classification.** The classifier maps each changed file through
-`path_profiles` in the registry to a per-file profile list
-(`{path: [profiles]}`): `modules/|contracts/` → static+unit+contracts,
-`docs/|README|AGENTS.md` → docs, `scripts/` → self+static, build files →
-static+contracts, and so on. A changed path matching NO pattern is a hard
-`__unmapped__` refusal — extend the registry, don't bypass it. The executed
-plan is the union over changed files; `make quality-changed` (no
-`QUALITY_EXECUTE`) prints the plan without running anything.
+### 5. Review and hand off with result lineage
 
-**Parallel lanes.** Isolated workers work in separate worktrees or snapshot
-copies with their own baseline; shared contracts, `build.sbt`, the gate
-registry and the board each have a single owner. Full rules and the
-assignment template: `docs/parallel-development.md`.
+After actual execution, create a record from
+[the work-record template](templates/work-record.md). Report:
 
-Profiles: `fast` (9-gate minimum), `static`, `unit`, `contracts`, `docs`,
-`runtime`, `tools`, `transport` (provider stands), `repl` (tests + REPL
-smoke), `ci` (tests + CLI smoke). Evidence binds to the source fingerprint —
-if you change sources after a run, rerun the affected gates. A gate that times
-out, errors or is skipped is a FAILURE, not a pass. Do not lower thresholds or
-disable checks to get green.
+- the card, lane branch, baseline commit, and resulting commit;
+- changed paths and the behavior they implement;
+- each executed command and exit code, with its log, manifest, or artifact path;
+- the source fingerprint and gate configuration for the evidence, where available;
+- checks that remain pending or failed, risks, and the next available card.
 
-## 4. How to write tests
+Evidence belongs to the exact lane snapshot that produced it. A lane report
+does not establish that an integrated candidate passed. The coordinator must
+review the merge and run the affected checks on the integrated source. Keep
+historical evidence values intact when documenting later changes.
 
-- Framework: **ZIO Test** (`zio.test.*`), fixtures-first: write the behavioral
-  spec before the implementation (repo convention; see any `*Spec.scala`).
-- Backends are scripted: implement a tiny `ModelBackend` in the spec (see
-  `TurnBackend` in `AgentLoopDelegationSpec`, `Flaky` in
-  `RateLimitRetriesSpec`, `Scripted` in `StreamingDisplaySpec`).
-- Determinism: route scripted turns by request CONTENT, never by arrival
-  order (parent/child dispatch is concurrent); prefer `TestClock`/refs over
-  sleeps; if real time is unavoidable, mark the test `@@ TestAspect.withLiveClock`.
-- Concurrency/runtime changes need cancellation, ownership and budget
-  fixtures (`Admission`, `JobManager`, `AgentLoop` specs are the pattern).
-- REPL changes need the REAL engine path (`raiderRepl` suite) and, for
-  console behavior, `scripts/quality/repl_smoke.sh` — a mock interpreter is
-  not sufficient evidence.
-- File-system fixtures use `Files.createTempDirectory` with a release
-  finalizer; beware lazy zio-test assertions — read files eagerly in the
-  effect chain (see `PatchToolSpec`'s "eager read" comment).
-- Never call a live model from product tests. Mock/replay only; live stands
-  are local, explicit and opt-in.
+## Writing and maintaining documentation
 
-## 5. Conventions worth keeping
+- Write repository prose in English, including comments, prompts, task text,
+  historical records, and work records. Preserve identifiers, paths, API names,
+  and immutable evidence values.
+- Use direct, specific language. Remove filler and AI clichés such as “delve,”
+  “leverage,” “foster,” “it's worth noting,” “importantly,” and “genuinely.”
+  Describe the action, observed behavior, evidence, and limitation plainly.
+- Back Scala snippets and API claims with current source. Prefer linking to a
+  checked-in example or implementation file. For example, the lazy `scout`
+  expression in [`02lazy-map.repl`](../examples/user-guide/repl/02lazy-map.repl)
+  is exercised by the command and expected marker in the
+  [REPL examples guide](user-guide-repl.md#2-lazy-ask-and-map). Do not present a
+  planned signature as implemented. Label fragments that are illustrative and
+  commands that have not been executed.
+- For runnable commands, give the working directory, required configuration,
+  expected observable result, and where output is written when relevant. Say
+  whether a result comes from a scripted fixture or a live model. Never imply
+  that a mock response demonstrates model quality.
+- Update navigation links and adjacent docs when a change makes them stale.
+  Do not rewrite roadmap status or historical results as part of an unrelated
+  change.
 
-- `-Werror` clean; scalafmt (`sbt scalafmtAll` before you commit) and scalafix
-  (`DisableSyntax` bans nulls — use `Option`; Java-interop nullables are
-  wrapped, e.g. `Option(System.getenv(...))`).
-- Money is `MicroUsd` (Long); Double money arithmetic is gate-blocked.
-- Errors are typed `RaiderError`s with stable codes; surface policy denials as
-  model feedback, crashes as typed failures.
-- Public API changes are additive and defaulted where possible (see
-  `ReplSession.model/echoStream`); frozen core contracts need an ADR.
-- Documentation in English; work records only AFTER real execution.
+## Documentation map
+
+- [README](../README.md): project status, current runnable examples, and entry
+  points.
+- [Onboarding](onboarding.md): setup and first REPL and CLI runs.
+- [REPL and typed workflow examples](user-guide-repl.md): checked Scala and
+  bundle examples with their inputs and expected results.
+- [Session lineage](lineage.md): lineage artifacts, replay behavior, and
+  limitations.
+- [API reference](api.md): current module and API contracts.
+- [Architecture](architecture.md): modules, runtime flow, and resource control.
+- [Working product acceptance](working-product.md) and
+  [development plan](PLAN.md): target behavior and roadmap; read alongside the
+  current code and board.
+
+## Trust and execution boundaries
+
+Scala programs, bundles, plugins, and repository commands run with the
+invoking process's permissions. Workspace tools are not a sandbox. Use
+disposable workspaces for untrusted repositories or code. Supply credentials
+through approved environment or helper references, and never expose their
+values in Git, argv, examples, artifacts, or output. Do not retry a mutating
+operation after an ambiguous result unless its contract permits it.
