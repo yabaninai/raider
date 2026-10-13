@@ -70,6 +70,16 @@ Snapshot lanes may not contain `.git`. RAI-004 implements a second baseline sour
 
 `fast = self + static + scoped unit + minimal contracts`; `full = self/static/unit/contracts/runtime/transport/ci/repl/tools/docs/security/eval + compatibility for enabled adapters + performance smoke`. `release` adds integration for declared supported capabilities. Real LLMs are separate, never implicit in full.
 
+Component-stage registration status (2026-10-13, RAI-135): `eval` is registered
+in the component-stage registry and runs the deterministic plan-mode corpus
+(`raider.runtime.loop.corpus.PlanScenarioCorpusSpec`, RAI-114) as the
+`eval-corpus` gate. The full protected task-corpus eval (RAI-081 fixtures,
+hidden verifiers) remains a working-product stage obligation and is NOT
+claimed by the component profile. `performance`/`perf` is NOT yet registered:
+the UX baseline harness currently exits 0 even when measurements are recorded
+as skipped, which would violate the skip-is-never-passed gate discipline;
+registration follows a harness exit-semantics hardening card first.
+
 ## 4. Tools and Versions
 
 RAI-003 pins sbt, Scala, JDK major/build policy, ZIO, and test library versions. Exact formatter/linter/scanner versions and tool downloads are separate from gate execution. `make bootstrap` installs the agreed toolchain; a gate does not hide package installation in the middle of a check.

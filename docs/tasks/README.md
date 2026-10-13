@@ -194,3 +194,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-134** [User guide refresh: new product surfaces in onboarding/api (English documentation policy)](m1.md); dependencies: RAI-129, RAI-124, RAI-113, RAI-110; profiles: docs.
 - **RAI-135** [Registry: additive component-stage eval and perf profiles (gate policy change, coordinator-executed)](m1.md); dependencies: RAI-114; profiles: static, docs.
 - **RAI-136** [Load soak: PTY stability under storm + RAI-123 trigger probe (conditional product fix)](m2-p2.md); dependencies: RAI-119, RAI-123; profiles: static, unit, repl, runtime.
+- **RAI-137** [UX baseline harness gate semantics: measurable exit codes, then perf profile registration](m1.md); dependencies: RAI-135; profiles: static, docs.

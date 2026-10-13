@@ -90,6 +90,12 @@
    "gates": [
     "security-secrets-scan"
    ]
+  },
+  "eval": {
+   "stage": "component",
+   "gates": [
+    "eval-corpus"
+   ]
   }
  },
  "gates": {
@@ -193,6 +199,14 @@
     "scripts/quality/security_checks.py"
    ],
    "timeout_s": 120
+  },
+  "eval-corpus": {
+   "argv": [
+    "sbt",
+    "--batch",
+    "raiderRuntime/testOnly raider.runtime.loop.corpus.PlanScenarioCorpusSpec"
+   ],
+   "timeout_s": 600
   }
  },
  "path_profiles": {

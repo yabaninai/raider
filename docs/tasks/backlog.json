@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 149,
+  "raider_count": 150,
   "companion_count": 3,
   "cards": [
     {
@@ -4314,6 +4314,33 @@
       },
       "non_goals": "Assertion weakening, timeout inflation as medicine, unrelated product refactors, RAI-123 execution without a captured reproducer.",
       "context": "Owner decision 2026-10-13 (overnight): idle night capacity used for stability evidence; RAI-123 is registered conditional on recurrence; RAI-119 fixed the family preventively (reviewer risk: real mechanism may be approve2 not reaching startExecution)."
+    },
+    {
+      "id": "RAI-137",
+      "title": "UX baseline harness gate semantics: measurable exit codes, then perf profile registration",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-135"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/ux_baseline.py",
+        "scripts/quality-policy/registry.json",
+        "docs/quality-gates.md",
+        "scripts/quality/quality.py"
+      ],
+      "profiles": [
+        "static",
+        "docs"
+      ],
+      "behavior": "Follow-up to RAI-135 (deferred perf half): scripts/quality/ux_baseline.py currently exits 0 whenever the report is written, even when measurements are recorded as 'skipped: no classpath' — registering it as a gate would violate the skip-is-never-passed discipline. Card: (1) harden harness exit semantics — exit 0 only when at least the latency and start measurements both completed (no skip); a documented skip becomes a distinct non-zero exit with the reason in stderr and still writes the report; --allow-skip flag restores informational runs; (2) then register the additive component-stage 'perf' profile running the hardened harness (baseline artifact, no thresholds); (3) document both in docs/quality-gates.md. Protected-adjacent change: independent review required.",
+      "acceptance": {
+        "normal": "PERF-01: full run (classpath available) — exit 0, baseline artifact written with measurements; make quality-profile PROFILES=\"perf\" green.",
+        "error": "PERF-02: classpath unavailable — non-zero exit with reason on stderr, report still written; --allow-skip exits 0 and marks informational; unknown profile still typed error.",
+        "concurrency": "PERF-03: perf profile green x3 without flakes; existing profiles byte-identical (additive diff); full EXECUTE unchanged."
+      },
+      "non_goals": "UX01-08 thresholds (working-product stage), changing existing gates/profiles, machine-independent performance claims.",
+      "context": "RAI-135 record (2026-10-13): perf deferred because harness exit 0 on skipped measurements conflicts with gate discipline; docs/quality-gates.md now documents the dependency."
     }
   ]
 }
