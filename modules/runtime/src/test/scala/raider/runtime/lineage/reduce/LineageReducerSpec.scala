@@ -527,6 +527,67 @@ object LineageReducerSpec extends ZIOSpecDefault:
         )
       },
       test(
+        "TAX-01 (RAI-148): fs_patch/proc_run reduce to Mutating tool nodes; unknown fs_read stays ReadOnly"
+      ) {
+        val job = JobId("job-tax")
+        val events = Vector(
+          env(1, job, EventPayload.ModelCallStarted(1, "m", None)),
+          env(2, job, EventPayload.ModelCallFinished(1, 5L, usage)),
+          env(
+            3,
+            job,
+            EventPayload.ToolStarted("call-fp", "fs_patch", "path=App.scala")
+          ),
+          env(
+            4,
+            job,
+            EventPayload.ToolFinished(
+              "call-fp",
+              "fs_patch",
+              ToolOutcome.Succeeded
+            )
+          ),
+          env(
+            5,
+            job,
+            EventPayload.ToolStarted("call-pr", "proc_run", "argv=make")
+          ),
+          env(
+            6,
+            job,
+            EventPayload.ToolFinished(
+              "call-pr",
+              "proc_run",
+              ToolOutcome.Succeeded
+            )
+          ),
+          env(
+            7,
+            job,
+            EventPayload.ToolStarted("call-rd", "fs_read", "path=App.scala")
+          ),
+          env(
+            8,
+            job,
+            EventPayload.ToolFinished(
+              "call-rd",
+              "fs_read",
+              ToolOutcome.Succeeded
+            )
+          ),
+          env(9, job, EventPayload.Terminal(JobStatus.Succeeded))
+        )
+        val graph = rightOf(LineageReducer.reduce(events))
+        val recovery = graph.nodes.collect { case t: SessionNode.ToolCall =>
+          t.tool -> t.recovery
+        }.toMap
+        assertTrue(
+          recovery("fs_patch") == RecoveryClass.Mutating,
+          recovery("proc_run") == RecoveryClass.Mutating,
+          recovery("fs_read") == RecoveryClass.ReadOnly
+        )
+      },
+      test(
         "delegated child attaches under its delegation node (control + dataflow)"
       ) {
         val graph = rightOf(LineageReducer.reduce(withChild))

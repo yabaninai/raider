@@ -5,7 +5,7 @@ import raider.runtime.events.{EventEnvelope, EventPayload, ToolOutcome}
 import raider.runtime.lineage.model.{
   DataRef,
   NodeId,
-  RecoveryClass,
+  RecoveryTaxonomy,
   SessionGraph,
   SessionNode
 }
@@ -382,7 +382,7 @@ object LiveGraphBuilder:
       open.atMs,
       open.callId,
       open.tool,
-      recovery(open.tool),
+      RecoveryTaxonomy.classify(open.tool),
       outcome,
       open.inputs,
       Some(DataRef(s"$job/call-${open.callId}"))
@@ -397,26 +397,9 @@ object LiveGraphBuilder:
     val flushed = open.foldLeft(s)((acc, t) => appendTool(acc, job, t, None))
     flushed.copy(openTools = flushed.openTools.updated(job, Vector.empty))
 
-  // Static tool taxonomy replicated from the batch reducer (ADR-027 §6.2);
-  // the LIN3-A-01 equivalence tests guard against drift.
-  private val ExecTools = Set("bash", "sh", "process", "python")
-
-  private val WriteTools = Set(
-    "edit",
-    "fs_edit",
-    "write",
-    "fs_write",
-    "apply_patch",
-    "patch",
-    "mv",
-    "rm",
-    "mkdir",
-    "touch"
-  )
-
-  private def recovery(tool: String): RecoveryClass =
-    if ExecTools.contains(tool) || WriteTools.contains(tool) then
-      RecoveryClass.Mutating
-    else RecoveryClass.ReadOnly
+  // Static tool taxonomy consumed from the CANONICAL single source
+  // (raider.runtime.lineage.model.RecoveryTaxonomy, ADR-027 §6.2); RAI-148
+  // deduplicated the batch-reducer copy that used to live here — the
+  // LIN3-A-01 equivalence tests still guard live==batch classification.
 
 end LiveGraphBuilder
