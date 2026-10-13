@@ -1,16 +1,22 @@
 package raider.cli.run
 
 import raider.core.{JobId, RootId, SessionId}
-import raider.dsl.lineage.data.{LineageDataDocument, LineageDataFile}
+import raider.dsl.lineage.data.{
+  LineageDataDocument,
+  LineageDataFile,
+  NodeData,
+  NodeKind
+}
 import raider.dsl.lineage.proj.{LineageRenderer}
 import raider.dsl.lineage.store.LineageDataStore
 import raider.cli.lineage.SessionGraphView
-import raider.runtime.events.{EventEnvelope, EventCodecs}
+import raider.runtime.events.{EventEnvelope, EventCodecs, ToolOutcome}
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.lineage.model.{DataRef, NodeId, SessionGraph, SessionNode}
 import raider.runtime.lineage.reduce.LineageReducer
+import raider.runtime.lineage.wire.{ArtifactPointer, LineagePayload}
 import zio.ZIO
-import zio.json.{DecoderOps, JsonDecoder}
+import zio.json.{DecoderOps, EncoderOps, JsonDecoder}
 import zio.json.ast.Json
 import zio.test._
 
@@ -287,6 +293,68 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
     ).validated
       .fold(e => throw new IllegalStateException(s"fixture: $e"), identity)
 
+  // ----- RAI-154 (WIR-03) fixtures -------------------------------------------
+
+  /** A phase-bearing campaign graph: a model round, a wire-native phase under
+    * it, and a completed tool call under the phase — the unified shape the
+    * reducer builds for v2 `phase_started` streams (ADR-032).
+    */
+  private def phaseGraph: SessionGraph =
+    SessionGraph(
+      RootId("cli_rai154"),
+      SessionId("sess_rai154"),
+      Vector(
+        SessionNode.ModelCall(
+          NodeId("j_1:n1"),
+          None,
+          1L,
+          1000L,
+          1,
+          "mock-model",
+          Vector.empty,
+          DataRef("j_1/round-1")
+        ),
+        SessionNode.Phase(
+          NodeId("j_1:n2"),
+          Some(NodeId("j_1:n1")),
+          2L,
+          "implement",
+          Some("the build step")
+        ),
+        SessionNode.ToolCall(
+          NodeId("j_1:n3"),
+          Some(NodeId("j_1:n2")),
+          3L,
+          2000L,
+          "c1",
+          "bash",
+          raider.runtime.lineage.model.RecoveryClass.Mutating,
+          Some(ToolOutcome.Succeeded),
+          Vector(NodeId("j_1:n1")),
+          Some(DataRef("j_1/call-c1"))
+        )
+      )
+    ).validated
+      .fold(e => throw new IllegalStateException(s"fixture: $e"), identity)
+
+  /** The ADR-032 cross-run provenance record the exporter emits for a run with
+    * joined child segments (root run — `parentRunId` absent, never guessed).
+    */
+  private val provenanceRecord: LineagePayload.RunProvenance =
+    LineagePayload.RunProvenance(
+      None,
+      Vector(
+        ArtifactPointer("work_dir", "/tmp/raider-unified-seg"),
+        ArtifactPointer("events", "/tmp/raider-unified-seg/events.jsonl")
+      )
+    )
+
+  /** The raw lineage-data.json bytes of a run dir (fixture-level loudness: a
+    * missing file is a test error, never a silent pass).
+    */
+  private def rawDocument(work: Path): String =
+    Files.readString(work.resolve("lineage-data.json"), UTF_8)
+
   // ----- spec ----------------------------------------------------------------
 
   def spec = suite("run lineage artifacts (LIN-09)")(
@@ -502,6 +570,196 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           !summary.contains("lineage:"),
           !Files.exists(outcome.workDir.resolve("lineage.scala")),
           !Files.exists(outcome.workDir.resolve("lineage-data.json"))
+        )
+      }
+    },
+    // ----- RAI-154 / WIR-03: the unified lineage-data writer -------------------
+    test(
+      "WIR-03: a phase-bearing graph writes lineage-data v2 with real phase entries (name/note bound as PhaseData, no invented recovery), a v2 document without the provenance record carries no v2-only fields, and the projection compiles with the pinned dotc"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          written <- ZIO
+            .attempt(
+              RunLineageArtifacts.write(work, phaseGraph, Vector.empty, None)
+            )
+            .orDie
+          checked <- ZIO.attempt {
+            written match
+              case Right(w) =>
+                val doc = validatedDocumentOf(work) match
+                  case Right(d) => d
+                  case Left(e)  => throw new IllegalStateException(e)
+                (w, doc, rawDocument(work), sourceOf(work))
+              case Left(e) => throw new IllegalStateException(s"refused: $e")
+          }.orDie
+          (w, doc, raw, src) = checked
+          phaseNode = doc.nodes.find(_.kind == NodeKind.Phase)
+          phaseEntry = phaseNode.flatMap(_.dataRef).flatMap(doc.data.get)
+          compileExit <- ZIO.attempt(dotcCompile(w.source)).orDie
+        yield assertTrue(
+          Files.isRegularFile(w.source) && Files.isRegularFile(w.data),
+          doc.schemaVersion == 2,
+          doc.provenance.isEmpty,
+          // the phase is a REAL node: reducer id convention, parent, notated
+          phaseNode.isDefined,
+          phaseNode.map(_.id) == Some("j_1:n2"),
+          phaseNode.flatMap(_.parentId) == Some("j_1:n1"),
+          phaseNode.flatMap(_.dataRef) == Some("j_1/phase-2"),
+          phaseNode.map(_.atMs) == Some(0L), // no timestamp in the wave-1 model
+          phaseEntry == Some(
+            NodeData.PhaseData(
+              "implement",
+              Some("the build step"),
+              recovery = None
+            )
+          ),
+          // byte-stability: the stored bytes are exactly the codec's
+          // canonical form of the document
+          raw == doc.toJson,
+          // a v2 document without the record carries NO v2-only fields: no
+          // top-level provenance, and the phase entry carries NO recovery key
+          // (the tool entry's v1 recovery vocabulary is unaffected)
+          !raw.contains("\"provenance\""),
+          !raw.contains("\"invocationId\""),
+          !raw.contains(
+            "\"j_1/phase-2\":{\"name\":\"implement\",\"note\":\"the build step\",\"recovery\""
+          ),
+          // the rendered projection is produced verbatim and compiles
+          src.contains("phase_implement"),
+          compileExit == Right(0)
+        )
+      }
+    },
+    test(
+      "WIR-03: a phase-bearing run with the exported provenance record writes schemaVersion 2 WITH the record and validates through the frozen reader"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          written <- ZIO
+            .attempt(
+              RunLineageArtifacts.write(
+                work,
+                phaseGraph,
+                Vector.empty,
+                Some(provenanceRecord)
+              )
+            )
+            .orDie
+          checked <- ZIO.attempt {
+            written match
+              case Right(_) =>
+                val doc = validatedDocumentOf(work) match
+                  case Right(d) => d
+                  case Left(e)  => throw new IllegalStateException(e)
+                val raw = rawDocument(work)
+                (doc, raw)
+              case Left(e) => throw new IllegalStateException(s"refused: $e")
+          }.orDie
+          (doc, raw) = checked
+        yield assertTrue(
+          doc.schemaVersion == 2,
+          doc.provenance.isDefined,
+          doc.provenance
+            .flatMap(_.parentRunId)
+            .isEmpty, // root run, not guessed
+          doc.provenance.map(_.artifacts.size) == Some(2),
+          raw.contains("\"provenance\""),
+          doc.nodes.exists(_.kind == NodeKind.Phase),
+          doc.data.values.exists {
+            case NodeData.PhaseData("implement", _, _) => true
+            case _                                     => false
+          }
+        )
+      }
+    },
+    test(
+      "WIR-03 regression pin: delegation-free, phase-free documents stay frozen v1 byte-for-byte"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          written <- ZIO
+            .attempt(
+              RunLineageArtifacts.write(
+                work,
+                delegationGraph,
+                Vector.empty,
+                None
+              )
+            )
+            .orDie
+          checked <- ZIO.attempt {
+            written match
+              case Right(_) =>
+                val doc = validatedDocumentOf(work) match
+                  case Right(d) => d
+                  case Left(e)  => throw new IllegalStateException(e)
+                (doc, rawDocument(work))
+              case Left(e) => throw new IllegalStateException(s"refused: $e")
+          }.orDie
+          (doc, raw) = checked
+        yield assertTrue(
+          doc.schemaVersion == 1,
+          raw.startsWith("{\"schemaVersion\":1"),
+          raw == doc.toJson,
+          !raw.contains("\"provenance\""),
+          !raw.contains("phase"),
+          !raw.contains("invocationId")
+        )
+      }
+    },
+    test(
+      "WIR-03: refusals stay typed — a structurally inconsistent graph refuses with ArtifactError.View and invents no files"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          // Raw construction: duplicate ids pass the constructor, fail the
+          // view's structural validation (data, never a crash)
+          broken = SessionGraph(
+            RootId("cli_rai154_broken"),
+            SessionId("sess_rai154_broken"),
+            Vector(
+              SessionNode.ModelCall(
+                NodeId("j_1:n1"),
+                None,
+                1L,
+                1000L,
+                1,
+                "mock-model",
+                Vector.empty,
+                DataRef("j_1/round-1")
+              ),
+              SessionNode.ModelCall(
+                NodeId("j_1:n1"),
+                None,
+                2L,
+                2000L,
+                2,
+                "mock-model",
+                Vector.empty,
+                DataRef("j_1/round-2")
+              )
+            )
+          )
+          refused <- ZIO
+            .attempt(
+              RunLineageArtifacts.write(work, broken, Vector.empty, None)
+            )
+            .orDie
+        yield assertTrue(
+          refused.fold(
+            {
+              case _: RunLineageArtifacts.ArtifactError.View => true
+              case _                                         => false
+            },
+            _ => false
+          ),
+          !Files.exists(work.resolve("lineage.scala")),
+          !Files.exists(work.resolve("lineage-data.json"))
         )
       }
     }
