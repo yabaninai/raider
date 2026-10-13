@@ -629,3 +629,27 @@ Status: ready. Milestone: LIN. Dependencies: LIN-06.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-150: LIN-02.b: populate SessionGraphView inputs/outcome for product export
+
+Status: ready. Milestone: LIN. Dependencies: RAI-141.
+
+**Scenario and contract.** RAI-141 flagged: the product CLI view adapter (SessionGraphView) renders empty `inputs` and no failed markers until this one-file card — the compile-gate test adapter already pins the populated contract. Populate NodeView.inputs from SessionGraph dataflow edges and NodeView.outcome from the recorded ToolCall outcome class; keep the view pure (no IO); deterministic ordering; SessionGraphViewSpec updated to pin populated fields for a representative graph (model/tool sequencing, a failed tool, cross-node inputs).
+
+**Context.** RAI-141 record limitation 1: product CLI export currently renders empty inputs/no failed markers; the gate adapter pins the populated contract.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/SessionGraphView.scala` `modules/cli/src/test/scala/raider/cli/lineage/SessionGraphViewSpec.scala` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: SGB-01: the adapter populates inputs/outcome for a representative graph; the rendered projection threads real dependency values (compile gate green on the populated view).
+- Error/adversarial: SGB-02: empty/absent edges degrade honestly (empty inputs vector, outcome None) — no invented values.
+- Cancellation/concurrency: SGB-03: adapter stays pure/deterministic; existing view+gate suites green ×3.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Renderer changes (RAI-141 accepted), wire changes, product CLI command surface, graph model changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 159,
+  "raider_count": 161,
   "companion_count": 3,
   "cards": [
     {
@@ -4595,6 +4595,61 @@
       },
       "non_goals": "Config-driven taxonomy extension (reserved for the schema card), renaming frozen enum cases, wire changes, relabeling documentation only.",
       "context": "Owner directive 2026-10-13: 'the captured repair currently labels fs_patch as ReadOnly despite modifying source... do not merely relabel the documentation or assume proc_run is harmless.' Reviews W22/LIN-15 flagged the duplicated taxonomy as a drift hazard."
+    },
+    {
+      "id": "RAI-150",
+      "title": "LIN-02.b: populate SessionGraphView inputs/outcome for product export",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-141"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/lineage/SessionGraphView.scala",
+        "modules/cli/src/test/scala/raider/cli/lineage/SessionGraphViewSpec.scala"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "RAI-141 flagged: the product CLI view adapter (SessionGraphView) renders empty `inputs` and no failed markers until this one-file card — the compile-gate test adapter already pins the populated contract. Populate NodeView.inputs from SessionGraph dataflow edges and NodeView.outcome from the recorded ToolCall outcome class; keep the view pure (no IO); deterministic ordering; SessionGraphViewSpec updated to pin populated fields for a representative graph (model/tool sequencing, a failed tool, cross-node inputs).",
+      "acceptance": {
+        "normal": "SGB-01: the adapter populates inputs/outcome for a representative graph; the rendered projection threads real dependency values (compile gate green on the populated view).",
+        "error": "SGB-02: empty/absent edges degrade honestly (empty inputs vector, outcome None) — no invented values.",
+        "concurrency": "SGB-03: adapter stays pure/deterministic; existing view+gate suites green ×3."
+      },
+      "non_goals": "Renderer changes (RAI-141 accepted), wire changes, product CLI command surface, graph model changes.",
+      "context": "RAI-141 record limitation 1: product CLI export currently renders empty inputs/no failed markers; the gate adapter pins the populated contract."
+    },
+    {
+      "id": "RAI-149",
+      "title": "Tool-level RecoveryClass correctness: CodingToolset stamps mutating tools ReadOnly (plan-mode enforcement inherits the defect)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-148"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/tools/src/main/scala/raider/tools/**",
+        "modules/tools/src/test/scala/**",
+        "modules/runtime/src/main/scala/raider/runtime/**",
+        "modules/runtime/src/test/scala/raider/runtime/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "Independent-review escalation on RAI-148: CodingToolset.toolOf (modules/tools/.../CodingToolset.scala:172) stamps EVERY tool — including fs_patch, proc_run, rm, mv — RecoveryClass.ReadOnly. PlanMode.readOnlyTools filter (PlanMode.scala:212) and AgentLoop enforceReadOnly (AgentLoop.scala:576) consume that field, so plan-mode read-only enforcement inherits the identical mislabel: a Mutating tool stamped ReadOnly is permitted inside a plan phase. Fix: stamp each CodingToolset tool with its correct frozen RecoveryClass (consistent with the canonical RecoveryTaxonomy membership: fs_patch/proc_run/rm/mv/write-family → Mutating; pure reads → ReadOnly), add unit pins per tool, and add a plan-mode acceptance: in a plan phase, invoking fs_patch/proc_run → typed policy-denial (mirrors PLAN-01 but for the previously mislabeled tools). Verify AgentLoop.enforceReadOnly and PlanMode consumers need no signature changes.",
+      "acceptance": {
+        "normal": "TOOLRC-01: every CodingToolset tool carries its correct RecoveryClass (per-tool pins, consistent with RecoveryTaxonomy membership).",
+        "error": "TOOLRC-02: plan-phase invocation of fs_patch and proc_run → typed policy-denial; read-only tools still permitted (PLAN-01 suite green).",
+        "concurrency": "TOOLRC-03: existing tools/runtime suites green ×3; no behavior change for genuinely read-only tools."
+      },
+      "non_goals": "RecoveryClass enum changes, wire changes, config-driven taxonomy, sandbox claims beyond tool policy, ADR-028 semantic changes.",
+      "context": "RAI-148 review, integration risk 2: the same ReadOnly mislabel persists in the sibling tools layer; plan/read-only enforcement (PlanMode.scala:212, AgentLoop.scala:576) consumes the field. Pre-existing at baseline 2510a36."
     }
   ]
 }

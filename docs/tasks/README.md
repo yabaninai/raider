@@ -204,3 +204,5 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-146** [Independent acceptance/verifier coverage for unified lineage (multi-root corpus + verifier)](lineage.md); dependencies: RAI-145; profiles: static, unit, contracts.
 - **RAI-147** [User guide + complete BillingCi example with actual generated lineage (unified)](lineage.md); dependencies: RAI-146; profiles: docs, static.
 - **RAI-148** [RecoveryClass taxonomy fix: fs_patch/proc_run are Mutating; single taxonomy source](lineage.md); dependencies: LIN-06; profiles: static, unit, contracts, runtime.
+- **RAI-150** [LIN-02.b: populate SessionGraphView inputs/outcome for product export](lineage.md); dependencies: RAI-141; profiles: static, unit, contracts.
+- **RAI-149** [Tool-level RecoveryClass correctness: CodingToolset stamps mutating tools ReadOnly (plan-mode enforcement inherits the defect)](m1.md); dependencies: RAI-148; profiles: static, unit, contracts, runtime.
