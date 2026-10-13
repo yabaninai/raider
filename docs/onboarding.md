@@ -40,6 +40,14 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 
 Expected behavior: the CLI reports a `BLOCKED` result, with `tests` and `migration` passed and `rollback` pending. The exact `work-<id>` directory name is generated per invocation. Find its `run.json` and `summary.md` beneath `artifacts/user-examples/readiness/work-<id>/`. `run.json` contains the structured result; the summary is for people. A complete check set such as `tests=pass,migration=pass,rollback=pass` produces `READY`. Unknown, duplicate, missing, or invalid checks are rejected. The typed parser/evaluator composition is in [TaskSummary.scala](../examples/user-guide/bundle/TaskSummary.scala).
 
+The expected workflow payload is:
+
+```json
+{"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
+```
+
+`BLOCKED` is a valid workflow result and exits 0; it is the report that tells you a supplied check is pending.
+
 This demonstrates an executable typed workflow and observable artifacts. It does not establish provider quality, readiness of a real release, or the status of external checks.
 
 ## Optional: start the Scala REPL
@@ -72,16 +80,17 @@ python3 scripts/quality/user_examples.py --only audit
 
 These commands build examples unless `--skip-build` is supplied. The coding case expects the scripted stand to observe the billing boundary failure, apply a hash-guarded source edit, and pass the boundary checks afterward. The audit case expects a report file with a finding and remediation. They make no paid provider calls and preserve checked-in fixtures. Each invocation writes a `report.json`, captured stdout/stderr, and input hashes under a generated `artifacts/user-examples/verification-*/` directory. That report ties this run to its recorded input hashes; it is evidence for the scripted example only, not a general product readiness claim.
 
-See the [examples guide](user-guide.md) for the full case set, [CI guide](user-guide-ci.md) for the local CI example, and [lineage guide](lineage.md) for run trace files.
+See the [examples guide](user-guide.md) for the full case set, [CI guide](user-guide-ci.md) for the local CI example, and [lineage walkthrough](user-guide-lineage.md) for run trace files. The [lineage reference](lineage.md) covers schemas and contracts.
 
 ## Optional provider configuration
 
 Direct OpenAI-compatible and Anthropic-compatible transports are available in the source. Provider setup requires an endpoint, model, and credential. Live usage is opt-in and may incur charges; select the account, model, mode, and spend limit deliberately before sending a request. The examples in this onboarding guide use mock or scripted backends. Existing live example evidence uses the OpenAI-compatible path; do not infer live verification of every provider from it.
 
-For a CLI invocation, choose `--provider openai` or `--provider anthropic` and supply `--base-url` and `--model`. For REPL startup, use `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, and `RAIDER_MODEL`. Supply the secret through a private environment or helper reference; never put its value in argv, a URL, a repository file, or a report. The following example assumes those four variables are already set by your private environment, and that `make raider-jar` has built the CLI jar:
+For a CLI invocation, choose `--provider openai` or `--provider anthropic` and supply `--base-url` and `--model`. For REPL startup, use `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, and `RAIDER_MODEL`. Supply the secret through a private environment or helper reference; never put its value in argv, a URL, a repository file, or a report. Set `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, `RAIDER_MODEL`, and `RAIDER_API_KEY` in your private environment (or use the credential helper below). After building the examples, the checkout classpath can launch the CLI directly:
 
 ```sh
-java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run \
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
+java -cp "$RAIDER_CP" raider.cli.Main run \
   --agent coder --provider "$RAIDER_PROVIDER" \
   --base-url "$RAIDER_BASE_URL" --model "$RAIDER_MODEL" \
   --input "Read README.md and summarize this project" \

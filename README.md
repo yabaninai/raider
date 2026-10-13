@@ -12,7 +12,7 @@ Scala workflows for coding agents and CI
 
 Raider runs coding agents from Scala. Ask an agent to work on a repository,
 compose requests with typed Scala code, or run the same runtime in a local CI
-job. Runs record model calls, tool calls, and results so you can inspect what
+job. Headless runs record model calls, tool calls, and results so you can inspect what
 happened after the process exits.
 
 The project is open source and in development. These guides describe the
@@ -120,7 +120,7 @@ structural reports without calling models or tools.
 There are two complete examples to read:
 
 - [Six native projections from the live CI run](docs/examples/ci-pipeline/native-projections.md): the exact historical output, including its original comment-based format and data references.
-- [Current unified Scala DSL projection](docs/examples/ci-pipeline/unified-lineage/lineage.scala): generated from the offline acceptance corpus, with [provenance and current wiring limits](docs/examples/ci-pipeline/unified-lineage/README.md).
+- [Current unified Scala DSL projection](docs/examples/ci-pipeline/unified-lineage/lineage.scala): generated at revision `619fe25` from the offline acceptance corpus, with [provenance and current wiring limits](docs/examples/ci-pipeline/unified-lineage/README.md).
 
 The live CI application still launches six independent roots. The unified
 example demonstrates one graph with linked child runs; the remaining live

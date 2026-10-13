@@ -1,4 +1,4 @@
-# DOCS-HANDBOOK: practical user handbook
+# DOCS-HANDBOOK-REFRESH: practical user handbook
 
 Owner request: 2026-10-13. Make the English user documentation easier to follow,
 with concrete cases, Scala composition, observable results, and full generated
@@ -15,7 +15,7 @@ separate headless roots already use the unified exporter.
 
 Allowed paths: README.md, docs/onboarding.md, docs/user-guide*.md,
 docs/examples/ci-pipeline/README.md, docs/examples/ci-pipeline/native-projections.md,
-this card, docs/work/records/DOCS-HANDBOOK.md. Preserve recorded captures and
+this card, docs/work/records/DOCS-HANDBOOK-REFRESH.md. Preserve recorded captures and
 protected unified artifacts byte-for-byte. New APIs or fabricated outputs are
 not authorized.
 

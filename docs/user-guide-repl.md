@@ -30,6 +30,8 @@ assert(total(pair) == 43)
 
 Multiline definitions are submitted when you enter a blank line. The REPL keeps bindings across submissions until `:reset`.
 
+<a id="2-lazy-ask-and-map"></a>
+
 ## Build a lazy ask and inspect its type
 
 Calling `scout(prompt)` constructs an `AgentAsk[String]`. It does not dispatch a model request. Run it in the foreground with `.run()` (or `.ask()`), transform the eventual answer with `.map`, and run the transformed descriptor when you are ready. The result type changes with the mapping function.
@@ -231,6 +233,7 @@ Here the final `Program` has type `Program[String, String]`: it accepts the CLI 
 The bundle declares the workflow name `task-summary`. With the user-example artifacts built, run the compiled bundle through the CLI:
 
 ```sh
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 java -cp "$RAIDER_CP" raider.cli.Main run \
   --bundle artifacts/user-examples/task-summary.jar \
   --workflow task-summary \

@@ -15,6 +15,12 @@ then compiles and tests again. The saved `summary.md` reports a successful run
 and exit code 0, and says all three boundary checks pass. Treat the stand's fixed
 responses as deterministic fixture behavior, not evidence of model reasoning.
 
+Start with `summary.md` and `run.json` for the outcome. Use `lineage.scala`
+for the sequence of calls, then follow a node into `lineage-data.json` and the
+transcript when you need its inputs or output. The walkthrough below follows
+one saved run; its local ignored artifact directory is not included in a fresh
+clone. The [CI capture](examples/ci-pipeline/README.md) is available in Git.
+
 ## Find the run artifacts
 
 Each settled run has its own `work-<id>` directory below the `--out` directory.

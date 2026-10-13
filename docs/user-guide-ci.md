@@ -35,7 +35,7 @@ Use the index to locate a stage instead of guessing runtime-assigned run IDs:
 
 ```sh
 RAIDER_PIPELINE=artifacts/user-ci/run
-jq '.status, .decision, .stages[] | .' "$RAIDER_PIPELINE/pipeline-index.json"
+jq '{status, decision, stages}' "$RAIDER_PIPELINE/pipeline-index.json"
 RAIDER_STAGE=$(jq -r '.stages[] | select(.name == "repair") | .nativeWorkDir' \
   "$RAIDER_PIPELINE/pipeline-index.json")
 jq '.nodes, .data' "$RAIDER_PIPELINE/$RAIDER_STAGE/lineage-data.json"
@@ -45,10 +45,6 @@ cat "$RAIDER_PIPELINE/$RAIDER_STAGE/lineage.scala"
 The index is an application-owned list of six independent native roots. Its links are useful for finding evidence, but they do not join the roots, provide a shared budget, or make the workflow resumable.
 
 The [complete historical native projections](examples/ci-pipeline/native-projections.md) show the actual six graphs from the recorded run and explain their provenance. The [lineage walkthrough](user-guide-lineage.md) explains node links and artifact limits.
-
-## What the workflow does
-
-The order is deliberate: establish the expected baseline failure; repair; independently compile and test; run two reviews in parallel; check three discount boundaries with concurrency two; validate the structured answers; then write the decision and artifact index. Review stages receive source inline and are checked for tool calls and workspace changes. Those checks detect unwanted behavior after execution; they do not restrict the agent's registered tools or sandbox its process permissions.
 
 ## What the application does
 

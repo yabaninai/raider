@@ -1,8 +1,8 @@
 # Raider user handbook
 
 Use this guide to choose a working example, run it from this checkout, and
-inspect what its result proves. Raider is a Scala 3 and ZIO coding workflow
-under active development, not a published SDK. Examples below use the current
+inspect what its result proves. Raider is a Scala 3 and ZIO runtime for coding workflows.
+It is under active development; the guides use a source checkout. Examples below use the current
 source checkout and pinned local fixtures.
 
 ## Choose a case
@@ -18,7 +18,7 @@ source checkout and pinned local fixtures.
 
 ## Prepare once
 
-From the repository root, install JDK 21 and sbt 1.11.4. The example build
+Install JDK 21, sbt 1.11.4, and Python 3, then work from the repository root. The example build
 resolves the pinned Scala and ZIO dependencies (or uses the available Coursier
 cache), compiles the examples, and prepares the CLI classpath and release
 bundle:
@@ -30,7 +30,7 @@ RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 
 The build creates `artifacts/user-examples/task-summary.jar`. The verifier
 below runs the actual compiler, CLI, workspace tools, and local scripted
-provider stands. It writes a fresh report and command logs under
+provider stands (small servers that return scripted model responses). It writes a fresh report and command logs under
 `artifacts/user-examples/verification-*/`. Example selectors are `coding`,
 `audit`, `repl-review`, `bundle`, `artifacts`, and the individual REPL cases.
 
@@ -73,8 +73,8 @@ printed by the verifier or run:
 find artifacts/user-examples/verification-* -path '*/coding/work-*' -type d -print
 ```
 
-The report's `codingWorkDir` identifies the disposable workspace and native
-run directory. This is an offline scripted case, not a live model evaluation.
+The report's `codingWorkDir` identifies the native run directory. The
+disposable Scala project is in `workspace/` beside that report. This is an offline scripted case, not a live model evaluation.
 
 ## Audit payment configuration offline
 
@@ -90,7 +90,26 @@ a disposable copy. The expected `AUDIT.json` finding includes the path
 verifier checks the report fields against the source, confirms the fixture
 configuration is byte-identical, and confirms the report was created. This
 case tests the audit workflow and report contract; the scripted model response
-does not independently discover the risk.
+does not independently discover the risk. Open `audit-workspace/AUDIT.json`
+beside that invocation's `report.json`. Its expected finding includes:
+
+```json
+{
+  "id": "PAY-001",
+  "severity": "high",
+  "evidence": {
+    "path": "config/payments.conf",
+    "line": 2,
+    "matched": "allow_plaintext_fallback = true"
+  },
+  "impact": "Payment requests may use plaintext transport when the primary route is unavailable.",
+  "action": "Set allow_plaintext_fallback = false and verify the production transport policy before deployment."
+}
+```
+
+This is one finding inside the report's `findings` array. The complete report
+also has `schemaVersion: 1` and `status: "action_required"`. The example writes
+the report; applying its recommendation is a separate change.
 
 ## Compose parallel asks in Scala
 
@@ -129,6 +148,8 @@ against the stated policy, forbids tool requests, and rejects fallback to a
 scripted fixture. See [the REPL gallery](user-guide-repl.md) for type queries,
 ordered batches, jobs, and sessions.
 
+<a id="2-typed-release-readiness-workflow"></a>
+
 ## Check release readiness with a typed bundle
 
 `TaskSummary.scala` accepts three named check results (`tests`, `migration`,
@@ -137,6 +158,7 @@ typed and composed with `andThen`; the bundle makes no provider request and
 does not run the checks itself.
 
 ```sh
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 java -cp "$RAIDER_CP" raider.cli.Main run \
   --bundle artifacts/user-examples/task-summary.jar \
   --workflow task-summary \
@@ -145,7 +167,8 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
   --mock
 ```
 
-Expected result in `summary.md`:
+Expected workflow payload (shown after `SUCCEEDED — output:` in `summary.md`
+and inside the output record in `run.json`):
 
 ```json
 {"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
@@ -183,7 +206,9 @@ workspace and native run directory. Find a run directory from the generated
 report, then inspect its files:
 
 ```sh
-RUN_DIR=$(find artifacts/user-examples/verification-* -type d -path '*/coding/work-*' | head -n 1)
+# Replace <id> with the directory printed by the coding verifier.
+REPORT='artifacts/user-examples/verification-<id>/report.json'
+RUN_DIR=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["codingWorkDir"])' "$REPORT")
 find "$RUN_DIR" -maxdepth 1 -type f -print
 cat "$RUN_DIR/run.json"
 cat "$RUN_DIR/summary.md"
@@ -204,7 +229,7 @@ sanitized JSON contains each root's full `scalaProjection` plus its node and
 data records. Use
 [the CI capture walkthrough](user-guide-ci.md#captured-ci-run-and-lineage)
 for context and the [six-root capture](examples/ci-pipeline/successful-run.json)
-to inspect each complete projection.
+to inspect each complete projection, or read the [six full Scala blocks](examples/ci-pipeline/native-projections.md).
 These are separate roots, not the unified lineage program. The complete
 generated unified DSL artifact has a different evidence scope: it is derived
 from the frozen acceptance corpus, not from the captured live CI run. See the
@@ -212,7 +237,7 @@ from the frozen acceptance corpus, not from the captured live CI run. See the
 the [complete generated program](examples/ci-pipeline/unified-lineage/lineage.scala),
 and the [unified lineage section](user-guide-ci.md#unified-lineage-for-this-pipeline-shape).
 
-The product `raider replay <run-dir> --workspace <path>` compares graph
+The CLI replay command compares graph
 structure from recorded lineage with a replayed graph and reports a match or
 the first divergence. It is not a general playback of recorded mutating tool
 effects. The current `ReplayHarness` executable fixture uses a recorded model
