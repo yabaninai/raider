@@ -1,14 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "Raider lineage-data (schemaVersion 1, FROZEN)",
-  "description": "Data resource of a Raider session lineage run (ADR-027, card LIN-02A). The generated lineage program carries no inline data: every node payload lives in `data` and is referenced by `dataRef`. This revision is frozen: any shape change is a new schemaVersion, never a silent change.",
+  "title": "Raider lineage-data (versioned: schemaVersion 1 frozen, 2 = ADR-032 additive extension)",
+  "description": "Data resource of a Raider session lineage run (ADR-027, card LIN-02A; v2 extension ADR-032, card RAI-143). The generated lineage program carries no inline data: every node payload lives in `data` and is referenced by `dataRef`. schemaVersion 1 is frozen and pinned: a v1 document is exactly the historical shape (the if/then below forbids v2-only fields on v1). schemaVersion 2 adds OPTIONAL provenance, phaseData.recovery and delegationData.invocationId fields; nothing else changes. Any further shape change is a new schemaVersion, never a silent change.",
   "type": "object",
   "additionalProperties": false,
   "required": ["schemaVersion", "generator", "runId", "nodes", "data"],
   "properties": {
     "schemaVersion": {
-      "const": 1,
-      "description": "Frozen wire revision of this document; the only allowed value in this revision."
+      "enum": [1, 2],
+      "description": "Wire revision of this document. 1 = frozen LIN-02A revision (v2-only fields forbidden). 2 = ADR-032 additive extension (optional provenance/phaseData.recovery/delegationData.invocationId)."
     },
     "generator": {
       "type": "object",
@@ -57,8 +57,30 @@
       "additionalProperties": {
         "$ref": "#/definitions/nodeData"
       }
+    },
+    "provenance": {
+      "$ref": "#/definitions/provenanceRecord",
+      "description": "Cross-run provenance record (ADR-032): parent run id and native artifact pointers. Optional; absent = no cross-run linkage recorded, never guessed. Forbidden on schemaVersion-1 documents (see the top-level if/then)."
     }
   },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schemaVersion": {
+            "const": 1
+          }
+        },
+        "required": ["schemaVersion"]
+      },
+      "then": {
+        "properties": {
+          "provenance": false
+        },
+        "description": "A v1 document is pinned: the ADR-032 provenance field must be absent. (Version coupling of phaseData.recovery and delegationData.invocationId cannot reference the document version in draft-07; it is validator/reducer-checked, per the contract README's split of schema-enforced vs validator-enforced invariants.)"
+      }
+    }
+  ],
   "definitions": {
     "nodeId": {
       "type": "string",
@@ -239,6 +261,11 @@
         "agent": {
           "type": "string",
           "minLength": 1
+        },
+        "invocationId": {
+          "type": "string",
+          "minLength": 1,
+          "description": "ADR-032 correlation field (optional): the delegation invocation this child job belongs to. Validator/reducer-checked against schemaVersion (v1 documents must not carry it)."
         }
       }
     },
@@ -260,6 +287,53 @@
               "type": "null"
             }
           ]
+        },
+        "recovery": {
+          "enum": ["ReadOnly", "Idempotent", "Mutating"],
+          "description": "ADR-032 phase recovery metadata (optional): the live re-run isolation policy class of the phase. Validator/reducer-checked against schemaVersion (v1 documents must not carry it)."
+        }
+      }
+    },
+    "artifactPointer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Pointer kind, e.g. work_dir or events."
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Native artifact location (environment-relative; deliberately NOT part of GraphHash, ADR-032 §3)."
+        }
+      }
+    },
+    "provenanceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifacts"],
+      "properties": {
+        "parentRunId": {
+          "oneOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Run id of the parent run; null/absent = root run (never guessed)."
+        },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/artifactPointer"
+          },
+          "description": "Native artifact pointers of the upstream run."
         }
       }
     },
