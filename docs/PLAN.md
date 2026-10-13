@@ -2,6 +2,13 @@
 
 # Raider: Detailed Development Plan
 
+Owner priority (2026-10-14): **chat → editable Scala workflow → local/generic CI**.
+[RAI-155 and its six delivery cards](tasks/lineage.md#rai-155-chat-to-editable-scala-workflow-to-local-and-generic-ci)
+are registered, not implemented. [Roadmap §6d](roadmap-12k.md#6d-chat-to-editable-scala-workflow-rai-155)
+fits this path into P4.C/P7/P10 without stopping the current lineage/TUI wave.
+Start with the RAI-116 boundary, then RAI-155.a; use the
+[implementation prompt](prompts/opencode-chat-to-workflow.txt).
+
 Current improvement sequence (2026-10-05): [12,000-hour plan](roadmap-12k.md)
 and [parallel execution prompt](prompts/opencode-12k-parallel.txt).
 Revision 2026-10-12: the Scala/ZIO embedding SDK is incorporated into P0/P4.C/P7/P10

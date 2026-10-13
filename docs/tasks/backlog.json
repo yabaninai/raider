@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 165,
+  "raider_count": 166,
   "companion_count": 3,
   "cards": [
     {
@@ -4769,6 +4769,226 @@
       },
       "non_goals": "Second scheduler/runtime, live providers, plan-mode semantics changes, renderer changes.",
       "context": "RAI-144 limitation (headless delegation not wired), RAI-144 review risk 1 (root-anchored fork records), RAI-147 limitation (RunLineageArtifacts refuses phase-bearing graphs). Registered promptly per the RAI-147 review risk 2."
+    },
+    {
+      "id": "RAI-155",
+      "title": "Chat to editable Scala workflow to local and generic CI",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.a",
+        "RAI-155.b",
+        "RAI-155.c",
+        "RAI-155.d",
+        "RAI-155.e",
+        "RAI-155.f"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "docs/work/records/RAI-155.md"
+      ],
+      "profiles": [
+        "static",
+        "contracts",
+        "runtime",
+        "ci",
+        "docs"
+      ],
+      "behavior": "Priority integration umbrella. Deliver one supported product path: a user completes a multi-turn coding conversation in raider chat, selects the relevant turns and task intent, explicitly exports a proposed Scala workflow, edits that normal source file, compiles/packages it, and runs the edited definition on a fresh workspace through the existing local/headless runtime. The output must launch real agent work and trusted checks; returning LineageStep/StepReport history, a fixed answer, a historical patch, or a TaskSummary-only demonstration does not satisfy this card. All six child packets are required for acceptance; the parent owns integration only. Preserve current P-LIN/TUI lanes and accepted contracts.",
+      "acceptance": {
+        "normal": "CWF-01: from a real multi-turn chat entry exercised through a local Scala provider stand, export source; edit a meaningful prompt/check parameter; compile the edited file with pinned Scala. Execute a two-input by two-launcher matrix: each input runs locally and in non-TTY generic CI on its own fresh fixture copy (four edited-workflow runs), with pairwise equivalent normalized results for the same input. All runs perform actual model/tool rounds and independent failing-before/passing-after checks. Different inputs alter the expected behavior. An additional fresh unedited-workflow control on the first input demonstrates the manual edit changes observable behavior; no manually authored replacement workflow or canned success is accepted.",
+        "error": "CWF-02: unsupported or incomplete selected turns, invalid edits/inputs, stale approval/context, failed checks, and export/artifact failures produce actionable failure, never READY. Construction/export/compile of generated output launches no agent/tool work. Any synthesis model request is separately explicit and configured, with deterministic no-provider generation available for the supported recorded task specification.",
+        "concurrency": "CWF-03: append/export races use a consistent turn boundary; interruption preserves partial/unknown status without redispatching mutations. Non-TTY SIGTERM owns and terminates launched work within a bound and produces a truthful nonzero/incomplete outcome. Final docs and all acceptance run on the same integrated candidate."
+      },
+      "non_goals": "Arbitrary-session conversion, automatic replay of observed tool arguments, durable continuation of arbitrary Scala effects, changing ADR-031 projection semantics, autonomous publishing/deploy/PR/merge, new scheduler/runtime, new forge adapter, general-purpose code-generation platform.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.a",
+      "title": "Contract for explicit chat capture and executable workflow export",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-116",
+        "RAI-140"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "docs/adr/**",
+        "docs/runtime-contracts.md",
+        "docs/ci-runtime.md",
+        "docs/api.md",
+        "contracts/chat-workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "contracts",
+        "docs"
+      ],
+      "behavior": "Freeze a separate reviewed ADR/contract after the existing RAI-116 authoring/launch boundary. Define selection of session/turns, completed/incomplete boundaries, supported task specification, proposed export command and output layout, human-editable Scala plus versioned metadata, input schema, redaction/environment references, export versus compile versus execution, and compatibility with BundleWorkflow v1 Program[String,String]. Reserve command names only after source audit; no current :export-workflow or raider compile support is assumed. Decide binding of workflow input/provider/workspace/limits to the existing runtime. First slice supports sequential coding intent, explicit prompt refinements, named trusted check commands, and reusable task/workspace inputs. Define refusal for unrepresentable history and uncertainty; do not infer concurrency, skip missing context, or silently compile/run generated code. Coordinate with RAI-117 for future checkpoints/external effects without expanding this slice to them. Prepare a remaining-work estimate and proposed hour allocation/tradeoff in the ADR; the coordinator records the allocation in the roadmap before implementation.",
+      "acceptance": {
+        "normal": "CWF-A01: reviewed fixtures describe a multi-turn repair/export/edit/compile/local/CI lifecycle, input and artifact schemas, generated program shape, and exact implementation/verification responsibilities. Parent acceptance is traceable to every contract clause; launch uses the one existing runtime and unchanged bundle ABI where feasible.",
+        "error": "CWF-A02: contract specifies typed refusal for unsupported selections, missing context, secret-bearing exports, path escape/symlink/existing target, ambiguous effects and invalid source; export text is data, never an instruction to invoke a shell. Any required public ABI change is separately versioned and reviewed before implementation.",
+        "concurrency": "CWF-A03: consistent export snapshot, saved/reopened sessions, pending/failed turns, cancellation ownership, policy checks on a new CI invocation, and non-TTY approval refusal are specified. Existing projection remains zero-dispatch and unaffected."
+      },
+      "non_goals": "Implementing runtime behavior, protected verifier weakening, forcing all chat records through unified lineage, silently redefining bundle v1 or SDLC effects.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.b",
+      "title": "Persist exportable chat turns and explicit task selection",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.a"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/main/scala/raider/cli/Main.scala",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
+      "behavior": "Implement the reviewed chat capture and selection contract through the actual chat entry. Persist turn/job identity, user intent/refinements, relevant workspace/provider configuration references, tool outcomes and pending/completed/interrupted boundaries required to explain the proposed workflow. Keep sensitive values out of export/logs and use environment/helper names. Preserve usable source turns across history compaction and save/reopen; legacy conversation-only saves remain readable but cannot invent absent execution records. Reopening does not restore authority or silently change active backend/workspace; validate or show explicit mismatch. Export takes a bounded immutable selection and performs no model/tool execution.",
+      "acceptance": {
+        "normal": "CWF-B01: at least three chat turns with one code edit and check round survive save/reopen and compaction with stable selection/ordering. A selected task specification reaches the exporter without omitted constraints; legacy sessions have documented limitations and current launch configuration is explicit.",
+        "error": "CWF-B02: missing/corrupt history, unsupported selection, configuration mismatch, or secret-bearing content gives a typed diagnostic. Interrupted turns keep the pending user request and partial/unknown effect status instead of disappearing from the saved state.",
+        "concurrency": "CWF-B03: concurrent append/export sees a complete selection boundary; interrupted write never exposes a successful partial export; restart does not redispatch a started mutation. Streaming/status rendering and existing chat behavior remain compatible."
+      },
+      "non_goals": "Durable fiber resume, automatic retry of ambiguous mutations, TUI prompt submission, changes to provider wire protocols or ADR-031 projection.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.c",
+      "title": "Generate editable executable Scala from the selected chat task",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.a",
+        "RAI-155.b"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/workflow/**",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**",
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/main/scala/raider/cli/workflow/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "examples/chat-workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "Generate normal editable Scala using the accepted runtime binding, Program/Task and existing composition verbs. Target an executable BundleWorkflow v1 definition with validated JSON decoded inside the String input boundary, explicit task/workspace/checks/limits, output validation, and bounded agent work. The source must request new agent work on new input, not embed recorded final answers or blindly repeat tool calls. Export source, manifest/input example and non-secret origin metadata; preserve source/turn references separately from subsequent execution lineage. Known workflow structure renders deterministically from the supported task specification. If optional LLM synthesis is needed, make it an explicit configured operation and validate its proposal; do not execute arbitrary chat text. Reject unsupported constructs rather than emitting misleading runnable-looking stubs.",
+      "acceptance": {
+        "normal": "CWF-C01: selected chat intent produces Scala source/manifest/input data that compiles with the pinned compiler, includes actual runtime agent stages and deterministic checks, and accepts a second task/workspace input. Editing a prompt/check parameter survives compilation and changes the later result. Identical supported specification renders stable output.",
+        "error": "CWF-C02: hostile Scala literals, path/symlink escape, existing export target, missing context, unsupported control flow, credential/private-path leakage, and invalid edited Scala fail visibly with useful diagnostics. No provider/tool dispatch occurs from generating or compiling supported output; skeletons with TODOs or fixed outcomes do not pass.",
+        "concurrency": "CWF-C03: concurrent exports do not overwrite one another; interruption leaves incomplete output identifiable and never published as a complete workflow. Export/compile cannot redispatch any tool from the source chat."
+      },
+      "non_goals": "General synthesis of arbitrary sessions, inventing parallelism from timestamps, exporting secrets, replacing projection or replay, new DSL macros/runtime, making unrestricted Scala safe to execute.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.d",
+      "title": "Compile edited chat workflows and launch them locally and in generic CI",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.c"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/workflow/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/Main.scala",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/dsl/src/main/scala/raider/dsl/workflow/**",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**",
+        "examples/chat-workflow/**",
+        "scripts/build/chat-workflow.sh"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
+      "behavior": "Provide the reviewed explicit build/package path for user-edited source and execute the same resulting workflow locally and through existing headless bundle launch. Reuse one runner/loop, policy/budget and cancellation ownership. Record the actual source/input/build identity so a manual edit invalidates earlier result claims. Generated code is trusted Scala; initial construction/loading of generated supported output must not start agent/tool work. Execution resolves current credentials and policy rather than inheriting chat authority. No published SDK or selected forge is required. CLI syntax must reflect implementation; currently no --ci or compile command may be assumed. Restrict the first end-to-end path to sequential chat tasks; unified phases/delegation additionally require RAI-153/154.",
+      "acceptance": {
+        "normal": "CWF-D01: fresh checkout compiles and packages the edited generated class without an example preloaded on the runner classpath; local launch and non-TTY CLI bundle launch execute identical workflow logic on separate fresh workspaces with equivalent normalized outputs for the same input (the two-input matrix is specified in CWF-01), real tool effects, and independent check results. Provider, workspace and input are explicit.",
+        "error": "CWF-D02: invalid Scala/manifest/input, stale build/source identity, unmet policy/approval, failed trusted checks, missing credentials and unwritable output fail usefully with nonzero status. READY requires actual checks on the new workspace. Existing v1 bundles still load and run with their established behavior.",
+        "concurrency": "CWF-D03: stdin closed and SIGTERM during active model/process work yield bounded owned-work cleanup and truthful incomplete/error artifacts; no automatic mutation retry. Separate launches share no accidental state or hidden admission authority."
+      },
+      "non_goals": "A second scheduler, forging cross-run graph edges, durable resume, automatic commit/PR/merge/release/deploy, compulsory hosted CI integration, arbitrary untrusted Scala sandboxing.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.e",
+      "title": "Independent end-to-end verifier for chat to edited Scala to CI",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.b",
+        "RAI-155.c",
+        "RAI-155.d"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "contracts/chat-workflow/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**",
+        "scripts/quality/chat_workflow.py"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
+      "behavior": "Independent reviewer-owned acceptance packet for CWF-01..03 and all child cases. Freeze Scala fixtures and a local OpenAI-compatible Scala stand that drives actual multi-turn chat, export, manual source edit, pinned compile/package, local execution and non-TTY generic CI. Include a second fresh task/repo input and assert new actual model/tool calls, changed source, independent checker results and matching artifact/source identities. A fixed successful report, lineage-only program, prewritten replacement workflow, or re-execution of the original chat is a negative case. Review protected fixtures separately from implementation; no product implementation edits are allowed in this verifier card.",
+      "acceptance": {
+        "normal": "CWF-E01: full product-entry chain passes the CWF-01 two-input by two-launcher matrix on four fresh copies, with pairwise equivalent local/CI outcomes per input. A fifth fresh unedited-workflow control for the first input isolates the observable effect of the manual edit. No-provider capture/export/build probes prove no implicit agent work. Existing runtime acceptance is preserved and integrated candidate artifacts identify the checked source.",
+        "error": "CWF-E02: negative corpus detects bogus success, unsupported/lost chat context, invalid source/inputs, prompt injection into emitted code, secret leakage, changed verifier/test, path escape, stale build and failed checks. Every missing/timeout/skipped case is non-pass; no fixture hand-authoring substitutes for export.",
+        "concurrency": "CWF-E03: interrupted stream/tool/export/build, consistent append/export snapshot, fresh-process launch and SIGTERM cases have bounded observable outcomes; replay/resume of ambiguous mutations is forbidden. Repeat deterministic cases sufficiently to expose concurrency failures; preserve any red trail."
+      },
+      "non_goals": "Changing product implementation or relaxing protected assertions, claiming live model quality from a scripted stand, hosted CI/forge support, changing global gate policy without a separate reviewed card.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
+    },
+    {
+      "id": "RAI-155.f",
+      "title": "User walkthrough: chat, export Scala, edit, and run in CI",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.e"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "README.md",
+        "docs/onboarding.md",
+        "docs/user-guide.md",
+        "docs/user-guide-repl.md",
+        "docs/user-guide-ci.md",
+        "docs/user-guide-lineage.md",
+        "docs/api.md",
+        "docs/examples/chat-workflow/**",
+        "examples/chat-workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "docs"
+      ],
+      "behavior": "Document the accepted user path in English with a real small conversation, exact shipped export command, complete exported Scala source, a meaningful user edit/diff, exact compile/package/local/CI commands and actual result/artifact locations. Make the edited generated workflow the main example; distinguish authoring source from dry-run lineage and later run history in plain language. Keep acceptance/internal planning detail out of the user tutorial. Preserve old captures and link the new source/result to the candidate that produced them.",
+      "acceptance": {
+        "normal": "CWF-F01: a new user can follow chat -> export -> edit -> compile -> local -> generic CI from a clean checkout using the same example source; all commands exist, all links resolve, and the complete generated and edited Scala are provided with actual output.",
+        "error": "CWF-F02: document supported chat selection and incomplete/unsupported export errors, invalid edits, input/provider failures and failed checks with actionable next steps; no aspirational command is presented as shipped.",
+        "concurrency": "CWF-F03: explain interrupted/unknown state and explicit new launch, bounded concurrent work if supported, and policy/credential setup without secrets; docs match the integrated verified behavior."
+      },
+      "non_goals": "Implementing adjacent features, replacing user instructions with acceptance narration, inventing successful live runs, silently updating historical captures.",
+      "context": "Owner request 2026-10-14: work with an agent in chat, explicitly export an editable Scala workflow, edit it, then run the same definition locally and in generic CI. Roadmap section 6d; this is workflow authoring, not ADR-031 dry-run projection or replay."
     }
   ]
 }

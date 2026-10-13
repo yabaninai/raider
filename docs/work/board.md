@@ -1,5 +1,23 @@
 # Raider Execution Board
 
+## 2026-10-14 — Chat to editable Scala workflow priority
+
+Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
+The requested chat → export Scala → edit → local/generic CI path is not yet
+implemented end to end. Current lineage projections remain historical dry runs.
+The canonical backlog now contains 175 entries (166 Raider root cards, three
+companion root cards, six RAI-155 child cards).
+
+Order: accepted RAI-116 and RAI-140 → RAI-155.a → b → c → d → e → f,
+then parent integration. Check actual acceptance before opening a dependent lane.
+RAI-116 remains the next prerequisite if still unaccepted. Existing lineage/TUI
+lanes continue; RAI-153/154 only gate unified phase/delegation claims.
+The coordinator owns registry and hour allocation; verifier ownership is separate.
+
+Scope, acceptance and phase allocation: [roadmap §6d](../roadmap-12k.md#6d-chat-to-editable-scala-workflow-rai-155).
+Execution: [OpenCode prompt](../prompts/opencode-chat-to-workflow.txt).
+This registration is planning only; it does not claim runtime checks or release readiness.
+
 ## 2026-10-13 — English documentation and verified current examples
 
 DOCS-EN translation and gallery are integrated through visible Luna lanes; all task metadata and existing RAI-127/128/129 entries are preserved. The permanent documentation language is English. Current examples cover real Scala regression repair, evidence-based payment configuration audit, parallel REPL review with a checked test plan, and deterministic typed release readiness.

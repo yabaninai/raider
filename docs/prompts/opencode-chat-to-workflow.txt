@@ -1,0 +1,75 @@
+Implement RAI-155: chat -> editable Scala workflow -> local and generic CI.
+
+Read AGENTS.md, docs/working-product.md, docs/parallel-development.md,
+docs/PLAN.md, docs/roadmap-12k.md section 6d, docs/work/board.md, and the
+canonical RAI-155 / RAI-155.a-f cards in docs/tasks/backlog.json and
+docs/tasks/lineage.md. Inspect actual main source and accepted work records;
+card registration does not mean implementation or acceptance.
+
+Own the user path through completion, including practical English documentation.
+First inspect status and active lanes. Work in isolated branch-per-lane worktrees,
+with one coordinator owning shared contracts/build/board and main integration.
+Use visible spawned workers/reviewers under the parallel runbook, targeting eight
+useful lanes when independent work exists. Do not fake concurrency by starting
+blocked implementation children, duplicate builds in a shared checkout, or run
+background opencode loops. Continue existing lineage/TUI work without disruption.
+
+Start with RAI-116 if its workflow authoring/launch boundary is not accepted.
+RAI-155.a also requires accepted RAI-140. Then deliver a -> b -> c -> d -> e -> f;
+close RAI-155 only after integrated acceptance. Audit existing implementation
+before creating anything. Freeze the ADR, command names, supported task selection,
+input/output layout, compatibility and estimate/hour allocation before code.
+The coordinator records phase allocation; do not assume added scope fits 13,100 h.
+
+The required demonstration is real chat with multiple turns, explicit selection
+of a supported coding task, export of normal editable Scala, a meaningful manual
+prompt/check parameter edit, compilation with the pinned toolchain, and running
+that same edited workflow locally and in non-TTY generic CI on fresh inputs.
+Use the actual chat/export/build/run entrypoints and a local Scala provider stand.
+Prove new model/tool work, actual repository changes, independent checks failing
+before repair and passing afterward, and observable behavior affected by the edit.
+Run two input cases through both local and CI launchers on four fresh fixture
+copies, comparing normalized results pairwise for the same input. Use a fifth
+fresh run of the unedited workflow on the first input to isolate the manual edit. A hand-written
+replacement program, cached answer, historical tool replay, report, LineageStep
+projection or preloaded workflow class cannot stand in for generated source.
+
+First scope: explicit sequential task intent/refinements, task/workspace parameters,
+named trusted checks and bounded agent work. Reuse Program/Task, BundleWorkflow v1
+String-to-String with typed decoding where possible, and the existing runtime and
+runner. No second scheduler or invented stable API. Commands such as
+:export-workflow and raider compile are proposals until the ADR and implementation
+exist; document only actual accepted commands. Supported task specs need a
+deterministic renderer; any model-assisted synthesis is explicit and configured.
+
+Preserve task/turn origins and incomplete/interrupted state through save/load and
+compaction; legacy sessions may lack sufficient context and must fail clearly.
+Export/build must not implicitly execute agent tools. Never infer authority from
+saved chat: bind current credentials/policy on execution. Credentials remain
+references to env/helpers and never enter source, logs, manifests or git. Handle
+hostile Scala strings, path escapes/symlinks, stale build inputs and partial writes.
+Do not retry ambiguous mutations. Ordinary Scala and repository builds are trusted
+code; policy is not a Scala sandbox. No arbitrary-session conversion, durable
+resume, real forge PR/merge, release publishing or deployment in this slice.
+RAI-117 owns later SDLC effects. RAI-153/154 gate claims of unified phase/delegation
+lineage, but do not block the first sequential export.
+
+Keep the verifier independent (RAI-155.e); do not let implementation edits weaken
+protected fixtures or gate policy. Run the required stage-aware checks and card
+profiles for implemented work, including real compiler, non-TTY, SIGTERM, exit,
+artifact and trust cases. Use local Scala stands by default; paid calls require
+explicit provider mode/budget authorization. Record exact results and failures;
+mock acceptance makes no live-model quality claim. Do not call skipped work passed.
+
+RAI-155.f must be a readable English walkthrough: task, actual conversation,
+complete exported Scala, meaningful edit, exact build/local/CI commands, expected
+and observed results, repository changes and generated execution lineage. Explain
+source provenance separately from the new run. Keep ADR-031 dry-run semantics.
+Avoid internal evidence jargon in the user journey and mark limits plainly.
+
+After independent review, update cards/board/work records, integrate accepted
+changes into current main without overwriting concurrent work, and push normally
+(no force). Recheck affected acceptance on the integrated candidate according to
+the runbook. Report commit, remote status, concrete user commands, exact checks,
+remaining limitations and the next available card. Do not stop at a projection
+example: finish the chat-to-edited-executable-workflow user path.
