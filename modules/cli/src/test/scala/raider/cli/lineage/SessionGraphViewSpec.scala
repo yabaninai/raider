@@ -472,13 +472,24 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
     )
 
   // ----- expectations for the golden renders (derived from the frozen payloads)
+  //
+  // RAI-141 note: this pipeline renders through the REAL
+  // `SessionGraphView.toView`, which does not yet populate `NodeView.inputs`
+  // / `NodeView.outcome` (the follow-up CLI-main integration card). So the
+  // tiny-graph recorded-Failed tool (n3, edit_file) renders as a NORMAL
+  // reporting step here, and all inputs render as `Vector.empty` — while the
+  // LineageCompileGateSpec's test-local adapter DOES populate both fields and
+  // therefore exercises the threaded/failed shapes against the same goldens.
 
   private val tinyExpectedNames = Vector(
     "object lineage_run_tiny_001:",
-    "def phase_investigate(): Unit =",
-    "// model(\"mock-coder\", round = 1)",
-    "// tool(\"read_file\", recovery = \"ReadOnly\")",
-    "// tool(\"edit_file\", recovery = \"Mutating\")"
+    "val phase_investigate: Program[Unit, Vector[StepReport]] =",
+    "val program: Program[Unit, Vector[StepReport]] =",
+    "LineageStep.phase(\"n0\", \"investigate\", None, Vector.empty, nesting = 1)",
+    "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
+    "LineageStep.tool(\"n2\", \"read_file\", \"ReadOnly\", Some(\"d2\"), Vector.empty, nesting = 1)",
+    "LineageStep.tool(\"n3\", \"edit_file\", \"Mutating\", Some(\"d3\"), Vector.empty, nesting = 1)",
+    "import raider.dsl.lineage.proj.runtime.{LineageStep, StepReport}"
   )
 
   private val tinyExpectedRefs =
@@ -497,10 +508,12 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
 
   private val deepExpectedNames = Vector(
     "object lineage_run_deep_001:",
-    "def phase_plan(): Unit =",
-    "def delegation_worker(): Unit =",
-    "// model(\"mock-coder\", round = 1)",
-    "// tool(\"grep_search\", recovery = \"Idempotent\")"
+    "val phase_plan: Program[Unit, Vector[StepReport]] =",
+    "val delegation_worker: Program[Unit, Vector[StepReport]] =",
+    "val program: Program[Unit, Vector[StepReport]] =",
+    "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
+    "LineageStep.model(\"n3\", \"mock-coder\", 1, Some(\"d3\"), Vector.empty, nesting = 2)",
+    "LineageStep.tool(\"n4\", \"grep_search\", \"Idempotent\", Some(\"d4\"), Vector.empty, nesting = 2)"
   )
 
   private val deepExpectedRefs =
@@ -532,10 +545,15 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
         result.map(_.runId) == Right("run-unit-001"),
         result.map(_.roots) == Right(unitExpected),
         contentA == contentB,
-        // adapter output renders end-to-end (delegation/phase become named defs)
+        // adapter output renders end-to-end (delegation/phase become named
+        // defs building sub-Programs — RAI-141 shape)
         result
           .flatMap(LineageRenderer.render)
-          .map(_.contains("def delegation_worker(): Unit =")) ==
+          .map(
+            _.contains(
+              "val delegation_worker: Program[Unit, Vector[StepReport]] ="
+            )
+          ) ==
           Right(true)
       )
     },

@@ -20,24 +20,25 @@ import java.util.concurrent.TimeUnit
   * `artifacts/tools/m2`). Before LIN-11 the renderer emitted `object X:` +
   * indented comment-only body; comments never bind a Scala 3 indentation
   * region, so dotc 3.9.0 rejected the artifact with "indented definitions
-  * expected, eof found" (LIN-09 reproducer). The fix closes the def-free body
-  * with the legal `()` statement; this gate pins the behavior against the real
-  * compiler, not only the sbt build (same discipline as the frozen
-  * LineageCompileGateSpec, whose private plumbing is deliberately duplicated
-  * here — the frozen spec is not modifiable from this card).
+  * expected, eof found" (LIN-09 reproducer). Since RAI-141 the object body
+  * ALWAYS carries the real `val program` statement (an executable
+  * `Program.fromFunction` composition over `LineageStep`), so the comment-only
+  * defect shape is structurally impossible and no closer line exists at all
+  * (same pinned-compile discipline as the frozen LineageCompileGateSpec, whose
+  * private plumbing is deliberately duplicated here — the frozen spec is not
+  * modifiable from this card).
   *
-  * Acceptance: LIN11-01 the plain-run projection compiles (exit 0), and the
-  * byte-identical repeat render re-compiles (exit 0); LIN11-02 the negative
-  * stays negative: the pre-fix artifact (trailing `()` dropped — exactly the
-  * LIN-09 defect shape) does NOT compile, and a torn object header does NOT
-  * compile (a compile timeout or an IO failure is never counted as
-  * non-compilation evidence).
+  * Acceptance: LIN11-01 the plain-run projection compiles (exit 0) as an
+  * executable Program (real `LineageStep` composition — RAI-141/REN-01), and
+  * the byte-identical repeat render re-compiles (exit 0); LIN11-02 the
+  * negatives stay negative: a render whose runtime import is dropped (the
+  * generated source's LineageStep/StepReport coupling torn) does NOT compile,
+  * and a torn object header does NOT compile (a compile timeout or an IO
+  * failure is never counted as non-compilation evidence).
   *
   * The view is hand-built (not parsed from golden documents): the golden
-  * fixtures contain named defs by design and stay byte-identical under LIN-11
-  * (their invariance is pinned by the frozen LineageCompileGateSpec and the
-  * dsl-level golden specs); the def-free shape has no golden and needs none —
-  * the renderer output is asserted byte-exactly in
+  * fixtures contain named defs by design; the def-free shape has no committed
+  * golden — the renderer output is asserted byte-exactly in
   * raider.dsl.lineage.proj.LineageRendererSpec (LIN11-03).
   */
 object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
@@ -203,16 +204,21 @@ object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
       Right(p)
     catch case t: Throwable => Left(tag + ".scala write failed: " + t)
 
-  /** LIN11-02 negative (a): the PRE-FIX artifact — the trailing `  ()` closer
-    * line dropped, which is exactly the LIN-09 defect shape (`object X:` +
-    * indented comments only; no indentation region ever opens). Deterministic
-    * against pinned dotc 3.9.0 ("indented definitions expected, eof found").
+  /** LIN11-02 negative (a) under the RAI-141 shape: the generated source's
+    * runtime coupling torn — the `LineageStep`/`StepReport` import dropped, so
+    * every step constructor reference is undefined. Deterministic against
+    * pinned dotc 3.9.0 ("not found: value LineageStep"). (The pre-RAI-141
+    * negative — dropping the trailing `  ()` closer, the LIN-09 defect shape —
+    * is gone with the closer itself: the executable object body can no longer
+    * be comment-only.)
     */
-  private def dropObjectCloser(src: String): String =
+  private def dropRuntimeImport(src: String): String =
     val lines = src.linesIterator.toVector
-    val idx = lines.lastIndexWhere(_.trim == "()")
+    val idx = lines.indexWhere(
+      _.trim == "import raider.dsl.lineage.proj.runtime.{LineageStep, StepReport}"
+    )
     if idx < 0 then
-      throw new IllegalStateException("render has no object closer to drop")
+      throw new IllegalStateException("render has no runtime import to drop")
     lines.patch(idx, Nil, 1).mkString("", "\n", "\n")
 
   /** LIN11-02 negative (b): a structurally CORRUPTED render — the `object`
@@ -273,13 +279,24 @@ object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
 
   def spec = suite("LIN-11 plain-run compile-gate (pinned dotc 3.9.0)")(
     test(
-      "LIN11-01: plain-run projection (no named-def roots) compiles with pinned dotc (exit 0), repeat artifact re-compiles"
+      "LIN11-01: plain-run projection (no named-def roots) compiles with pinned dotc (exit 0) as an executable Program, repeat artifact re-compiles"
     ) {
       val first = plainRunSrc("plain-run render")
       val second = plainRunSrc("plain-run repeat render")
       val byteIdentical =
         first.getBytes(StandardCharsets.UTF_8).toSeq ==
           second.getBytes(StandardCharsets.UTF_8).toSeq
+      if !(first.contains("Program.fromFunction") && first.contains(
+          "LineageStep."
+        ))
+      then
+        throw new IllegalStateException(
+          "plain-run render carries no real Program/Step composition"
+        )
+      if first.linesIterator.exists(_.trim == "()") then
+        throw new IllegalStateException(
+          "plain-run render carries a standalone `()` closer — renderer bug"
+        )
       val path = requireRight(
         writeRender("plain-run", first),
         "write plain-run render"
@@ -303,10 +320,10 @@ object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
       )
     },
     test(
-      "LIN11-02: pre-fix artifact (object closer dropped — the LIN-09 defect shape) honestly does NOT compile"
+      "LIN11-02: runtime-coupled projection (LineageStep/StepReport import dropped) honestly does NOT compile"
     ) {
       val src = plainRunSrc("plain-run render")
-      val defect = dropObjectCloser(src)
+      val defect = dropRuntimeImport(src)
       val path = requireRight(
         writeRender("plain-run-defect", defect),
         "write defect render"

@@ -142,7 +142,11 @@ Node payloads (prompts, responses, tool args/results, usage) stay in
 keys only (`Option[String]`); no inline data enters the generated source or
 the reports. This keeps the generated file and the data resource separate
 artifacts joined by key, exactly as the renderer's `// data:` comments do
-today.
+today. The same carve-out covers `LineageStep.failed(..., reason)` (§2.4):
+`reason` is a bounded, payload-free RECORDED-OUTCOME phrase — the renderer
+emits only the recorded outcome class as a fixed phrase (e.g.
+`recorded outcome: Failed`), never an inline payload; recorded payloads stay
+addressable exclusively through `dataRef` keys.
 
 ### 2.6 `NodeView.inputs`
 
