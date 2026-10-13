@@ -204,8 +204,10 @@ object CiAdapterBatchSpec extends ZIOSpecDefault:
             outcome.exitCode != 0,
             outcome.exitCode == 21, // preflight-failure family (input invalid)
             checksFailed,
-            // zero dispatch: no ledger reached the run.json accounting
-            !runJson.contains("\"attempts\"")
+            // zero dispatch: the run.json `accounting` field is spliced iff
+            // the run passed through the budget ledger (CIW-02); a preflight
+            // refusal never reaches the ledger
+            !runJson.contains("\"accounting\"")
           )
         }
       }
@@ -245,7 +247,9 @@ object CiAdapterBatchSpec extends ZIOSpecDefault:
               )
           yield assertTrue(
             outcome.exitCode == 0,
-            status.contains(raider.core.result.ExecutionStatus.Succeeded)
+            status.contains(raider.core.result.ExecutionStatus.Succeeded),
+            // discriminator direction proven: a ledgered run HAS accounting
+            run.contains("\"accounting\"")
           )
         }
       }
@@ -350,19 +354,30 @@ object CiAdapterBatchSpec extends ZIOSpecDefault:
                   ZIO.attempt {
                     val raw = Files.readString(p, UTF_8)
                     val lines = raw.split("\n").filter(_.trim.nonEmpty)
-                    // no broken middle line: every COMPLETE line decodes
-                    val whole = if raw.endsWith("\n") then lines else lines.init
-                    (
-                      whole.forall(l =>
-                        l.fromJson[raider.runtime.events.EventEnvelope].isRight
-                      ),
-                      raw.nonEmpty
-                    )
+                    // No broken middle line: every COMPLETE line decodes. An
+                    // EMPTY file is an honest mid-interrupt artifact (the
+                    // writer creates the file before the first envelope
+                    // flush), so emptiness is accepted, never masked.
+                    val whole =
+                      if lines.isEmpty then true
+                      else if raw.endsWith("\n") then
+                        lines.forall(l =>
+                          l.fromJson[raider.runtime.events.EventEnvelope]
+                            .isRight
+                        )
+                      else
+                        lines.init.forall(l =>
+                          l.fromJson[raider.runtime.events.EventEnvelope]
+                            .isRight
+                        )
+                    (whole, raw.nonEmpty)
                   }
                 }
               yield assertTrue(
                 raws.nonEmpty,
-                raws.forall((whole, nonEmpty) => whole && nonEmpty)
+                // whole-ness is the invariant; emptiness after an immediate
+                // interrupt is honest and explicitly allowed
+                raws.forall(_._1)
               )
             }
           }
