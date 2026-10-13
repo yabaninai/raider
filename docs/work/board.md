@@ -451,6 +451,35 @@ Night progress (2026-10-13):
   (full-suite load flakes). Queue behind: RAI-132/134/136/137,
   RAI-123 (conditional), 129.b/c, LIN-03/04 (live projection + TUI).
 
+## Chat-to-workflow campaign (owner directive 2026-10-14, §6d)
+
+Owner priority: RAI-155 chat → editable Scala workflow → local + generic CI
+(docs/prompts/opencode-chat-to-workflow.txt). Cards RAI-155.a-f were
+registered by the SDK session; RAI-116 gates .a.
+
+Completed before the campaign (night wave, all reviews approve):
+- **RAI-153** live phase emission (LoopEvents PhaseSink, plan bracket, export
+  wiring; RAI-145 stand-ins retired) — merge f2765aa. **RAI-154** headless
+  coder delegation wiring + per-level fork anchoring (RED reproducer first) +
+  unified lineage-data writer — merge d23bc90. Joint verification on merged
+  main: MultiJobExport/PhaseEmission/LineageArtifacts/CoderDelegation 20/20.
+- **RAI-152** full-suite flake determinism (hub relay race mechanism: two
+  forwarder fibers, dropped=0 discriminator; test-side masked at 3 sites) —
+  merge 50d8b99. **RAI-132** steering surface (typed receipts, :send,
+  steering-aware facade turn loop; STR-01..03) — merge b91e678.
+- **RAI-146/156 adjudication**: MJE-03c integration red was a FIXTURE
+  scheduler race, NOT a 153x154 semantic conflict (fresh-reviewer
+  adjudication; Resolution A applied: driveNested + pollUntil connection pin,
+  product semantics unchanged). RAI-156 registered (product-side
+  eventuallyTerminal drain — the open product race); RAI-157 registered
+  (settle-window silent-loss window).
+- Integrated gates on the merged candidate: EXECUTE 10/10 (20261014-012827).
+- **RAI-116 DONE** (merge; review APPROVE): ADR-029 workflow SDK contract —
+  authoring/launch boundary, BundleWorkflow v1 honesty (agent work cannot run
+  behind v1), H1-H8, packet proposals; RAI-155.a UNBLOCKED (RAI-116 ✓ +
+  RAI-140 ✓). Minors: JDK-27 toolchain pin recommendation; Option L vs B
+  decision belongs to .a.
+
 ## Owner directive 2026-10-13: LIN-02 completion + unified CI pipeline
 
 Owner mandate (interactive session): (P1) the LIN-02 projection must be REAL
