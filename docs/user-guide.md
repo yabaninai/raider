@@ -1,107 +1,181 @@
-# Examples you can run today
+# Raider user handbook
 
-This guide documents behavior in the current source checkout. The examples use the pinned Scala 3.9.0 / ZIO 2.1.26 toolchain. They do not imply a published SDK or autonomous release workflow.
+This handbook walks through four useful tasks from the current checkout: fix a
+Scala billing defect, write an audit finding, compose typed Scala requests, and
+inspect a run's lineage. Commands and code below are drawn from
+`examples/user-guide/` and the current CLI implementation.
 
-## Build and run the examples
+## 1. Prepare the examples
 
-Requirements: JDK 21, sbt 1.11.4, Python 3, the JDK `jar` command, and a populated Coursier cache (or access to resolve pinned dependencies). Run from the repository root:
+From the repository root, use JDK 21, sbt 1.11.4, Python 3, and a populated
+Coursier cache (or network access to resolve the pinned dependencies). Build
+the example classpath and release bundle, then run the offline verifier:
 
 ```sh
 sh scripts/build/user-examples.sh
 python3 scripts/quality/user_examples.py
 ```
 
-The verifier runs the actual Scala compiler, REPL, bundle loader, native CLI, workspace tools and subprocess tool. Each run writes a report, captured stdout/stderr and hashes under the ignored `artifacts/user-examples/verification-*/` directory. A nonzero command exit, assertion failure, timeout or missing artifact fails verification.
+The verifier runs the real Scala compiler, compiler-backed REPL, bundle loader,
+CLI, workspace tools, and subprocess tool. It writes a report, command output,
+and hashes under `artifacts/user-examples/verification-*/`. To run one scenario,
+use `--only coding`, `--only audit`, `--only repl-review`, or `--only bundle`.
 
-For the Scala REPL, prepare the runtime classpath and start the real compiler-backed console:
+To use the REPL directly, load the generated classpath and feed it one of the
+checked-in Scala scripts:
 
 ```sh
 RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
-RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main
+RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
+  < examples/user-guide/repl/01compiler.repl
 ```
 
-The mock REPL prints `[scripted-fixture]` responses. They are fixed demonstration responses and do not read your repository or solve arbitrary requests. See [REPL and typed workflow examples](user-guide-repl.md).
+That script compiles a value, case class, typed function, and multiline
+definition. Its assertion precedes the `EXAMPLE-01 PASS` marker. More REPL
+examples, including sessions, background jobs, and typed parallel asks, are in
+the [REPL guide](user-guide-repl.md).
 
-## 1. Fix a billing boundary bug
+## 2. Repair the billing boundary
 
-The fixture models a realistic cents-based pricing defect: a fixed $10 discount should apply at and above a $100 subtotal, but the initial implementation uses `>` and excludes exactly 10,000 cents. The Scala test covers below, at, and above the boundary.
+The fixture defines a flat 1,000-cent discount for purchases of at least
+10,000 cents. Its implementation has a strict comparison:
 
-Run the deterministic offline demo:
+```scala
+package billing
+
+object Discount:
+  def discountCents(s: Int): Int = if s > 10000 then 1000 else 0
+```
+
+The test checks the value below, at, and above the threshold:
+
+```scala
+val results = List(
+  check(Discount.discountCents(9999), 0, "below-threshold"),
+  check(Discount.discountCents(10000), 1000, "exact-threshold"),
+  check(Discount.discountCents(10001), 1000, "above-threshold")
+)
+```
+
+Run the offline coding scenario:
 
 ```sh
 python3 scripts/quality/user_examples.py --only coding
 ```
 
-This starts a local scripted OpenAI-compatible stand and runs the actual `coder` agent and native workspace tools in a disposable copy. The stand is a fixed tool-call script, not a live model; it checks each preceding tool result before selecting the next action. The expected sequence is:
+It copies the fixture to a disposable workspace and connects the real `coder`
+agent and native workspace tools to a local, fixed OpenAI-compatible script.
+The input asks: “Fix the billing discount boundary at exactly 100 dollars.
+Compile and run the boundary tests before and after the edit.” The scripted
+sequence reads `Discount.scala`, searches for `s > 10000`, compiles, runs the
+tests, edits the source with its recorded SHA-256 as a precondition, then
+compiles and tests again.
 
-1. Read `Discount.scala` and record its SHA-256.
-2. Search for the strict threshold condition.
-3. Compile both Scala files with the pinned Scala 3 compiler.
-4. Run `DiscountSpec`; the exact-boundary assertion fails with exit 1.
-5. Change `>` to `>=` using the read hash as the edit precondition.
-6. Compile again and run the boundary tests; they pass with exit 0.
+The observable test results are:
 
-The verifier checks the transcript, compiler and test exits, hashes, resulting source, and that the checked-in fixture remains unchanged. The final CLI `summary.md` contains `[scripted-billing]` so the fixed stand cannot be mistaken for model output.
-
-### Optional live run
-
-The same fixture can be sent to a live configured OpenAI-compatible provider. Tool definition parity for the Anthropic Messages backend is tracked separately (RAI-127), so this tool-using scenario is not documented as supported on Anthropic. Use the live mode only after the coordinator has selected the endpoint, model and spend budget. Credentials stay in `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`; never put them in a URL, argv, report, or transcript. The driver records provider, model, sanitized endpoint identity, and run artifacts, but never reads or writes credential values.
-
-```sh
-RAIDER_LIVE_APPROVED=1 \
-RAIDER_PROVIDER=openai \
-RAIDER_BASE_URL="$RAIDER_BASE_URL" \
-RAIDER_MODEL="$RAIDER_MODEL" \
-python3 scripts/quality/user_examples.py --only coding --live
+```text
+before edit: FAIL exact-threshold       (test process exit 1)
+after edit:  DiscountSpec: PASS 3 boundaries (test process exit 0)
 ```
 
-The live mode does not retry a run after an ambiguous result. It verifies the resulting Scala source and successful run; it does not claim that one model run establishes general coding quality. Do not use a paid endpoint until its budget is explicitly set.
+The resulting function uses `s >= 10000`. The verifier checks the tool order,
+compile/test exits, before-and-after hashes, final source, and that the checked-in
+fixture is unchanged. `summary.md` carries `[scripted-billing]` to identify the
+fixed response source.
 
-## 2. Audit a repository and write evidence
+## 3. Audit configuration and save evidence
 
-The audit fixture contains a payment configuration that permits plaintext fallback. The offline example uses the native `coder` tools to inspect the tree, read and search the configuration, then create `AUDIT.json` in the disposable workspace. The report records severity, exact path/line/matched text, impact and a concrete remediation. The verifier checks the report schema and content, source hash, tool transcript and that the source configuration was not edited.
+The audit fixture contains this setting in `config/payments.conf`:
+
+```hocon
+allow_plaintext_fallback = true
+retry_limit = 3
+```
+
+Run its offline audit scenario:
 
 ```sh
 python3 scripts/quality/user_examples.py --only audit
 ```
 
-As with the bugfix, the local stand scripts the tool calls. It verifies the mechanics and structured evidence path, not model reasoning. An explicitly configured live audit uses an OpenAI-compatible endpoint and the same opt-in and budget requirements:
+The agent receives the task to inspect the payment configuration, search for
+plaintext fallback, and create `AUDIT.json` without editing the configuration.
+The checked-in local script drives `fs_tree`, `fs_read`, `fs_search`, and
+`fs_edit` in a disposable copy. The report follows this shape:
 
-```sh
-RAIDER_LIVE_APPROVED=1 \
-RAIDER_PROVIDER=openai \
-RAIDER_BASE_URL="$RAIDER_BASE_URL" \
-RAIDER_MODEL="$RAIDER_MODEL" \
-python3 scripts/quality/user_examples.py --only audit --live
+```json
+{
+  "schemaVersion": 1,
+  "status": "action_required",
+  "findings": [{
+    "id": "PAY-001",
+    "severity": "high",
+    "evidence": {
+      "path": "config/payments.conf",
+      "line": 2,
+      "matched": "allow_plaintext_fallback = true"
+    },
+    "impact": "Payment requests may use plaintext transport when the primary route is unavailable.",
+    "action": "Set allow_plaintext_fallback = false and verify the production transport policy before deployment."
+  }]
+}
 ```
 
-The live driver makes one CLI run and does not replay after an ambiguous result. It checks the resulting JSON report and source remains unchanged; model-authored findings still need human review.
+The verifier checks the finding fields against the file, confirms that the
+configuration bytes did not change, and confirms that `AUDIT.json` was created.
+The run directory contains `summary.md` and `transcript.json`; the report itself
+is in the disposable workspace. The summary includes `[scripted-audit]` for the
+offline scenario.
 
-## 3. Parallel DSL review with useful prompts
+## 4. Compose Scala requests with typed results
 
-The REPL can compose real requests lazily. This example asks one agent to identify the exact billing boundary defect and another to propose the smallest useful boundary test set. `map` adds stable labels to each answer; `all(...).run()` executes both asks together.
+The billing review example builds two lazy asks, labels each answer with a
+tuple, then executes both together:
+
+```scala
+val billingCode = "if subtotalCents > 10000 then 1000 else 0"
+val billingPolicy =
+  "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
+
+val scoutAsk = scout(
+  s"$billingPolicy Review this Scala expression: $billingCode. " +
+    "Identify the exact boundary defect and give one concrete input/output counterexample. Do not use tools."
+).map(answer => ("boundary-review", answer))
+
+val testAsk = worker(
+  s"$billingPolicy For this Scala expression: $billingCode, " +
+    "specify the expected discounts for 9999, 10000 and 10001 cents. " +
+    "Return only a JSON array of [subtotalCents, expectedDiscountCents] pairs. No tools."
+).map(answer => ("test-plan", answer))
+
+val (review, plan) = all(scoutAsk, testAsk).run()
+```
+
+The checked-in version asserts the labels and non-empty replies. In an
+OpenAI-compatible live run, its verifier also checks that the returned JSON
+contains `[[9999,0],[10000,1000],[10001,1000]]` after sorting. Run the compiled
+REPL example with the deterministic provider using:
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
   < examples/user-guide/repl/06billing-review.repl
 ```
 
-The mock run verifies that the actual Scala code compiles, both asks execute, and the labels survive. Its fixed responses are placeholders. The same file can be run once against a deliberately configured OpenAI-compatible model:
+It prints `EXAMPLE-06 PASS`. The fixed mock replies demonstrate compilation,
+composition, and tuple labels; they do not perform the requested analysis.
+See [Scala REPL and typed workflow examples](user-guide-repl.md) for `map`,
+`batch`, `openSession`, and bundle workflows.
+
+## 5. Check release readiness from typed inputs
+
+The example bundle implements a `BundleWorkflow` named `task-summary`. Its
+program parses comma-separated `name=status` entries, then validates the
+required `tests`, `migration`, and `rollback` checks. Statuses are `pass` and
+`pending`; missing, duplicate, unknown, or malformed checks fail validation.
+
+Run it with one pending check:
 
 ```sh
-RAIDER_LIVE_APPROVED=1 RAIDER_PROVIDER=openai \
-RAIDER_BASE_URL="$RAIDER_BASE_URL" RAIDER_MODEL="$RAIDER_MODEL" \
-python3 scripts/quality/user_examples.py --only repl-review --live
-```
-
-The prompts request analysis of inline code without tools. The live verifier rejects any observed tool request and checks the returned JSON test plan against the stated policy: `9999 → 0`, `10000 → 1000`, `10001 → 1000`. Review prose still needs inspection. The selected model comes from `RAIDER_MODEL`, and the live REPL runs in a disposable workspace.
-
-## 4. Typed release-readiness workflow
-
-The compiled bundle consumes required checks for `tests`, `migration`, and `rollback`. It validates names/statuses, rejects missing or malformed entries, and emits a structured decision with passed checks, pending checks and a follow-up action. It is deterministic Scala code and makes no provider call.
-
-```sh
-RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 java -cp "$RAIDER_CP" raider.cli.Main run \
   --bundle artifacts/user-examples/task-summary.jar \
   --workflow task-summary \
@@ -110,39 +184,63 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
   --mock
 ```
 
-The `summary.md` output contains a `BLOCKED` decision and identifies `rollback` as the action to complete. The verifier also checks a missing-required-check input and an invalid status; both must fail with CLI exit 21. Empty test input is not treated as a successful release.
+The workflow makes no model call. The generated `summary.md` contains a
+structured decision with these fields:
 
-## 5. Inspect run evidence
-
-The billing example produces actual CLI run artifacts: `run.json`, `summary.md`, `events.jsonl`, `transcript.json`, `lineage.scala` and `lineage-data.json`. The verifier checks their presence and status, then compiles the exported Scala lineage projection with the pinned compiler:
-
-```sh
-python3 scripts/quality/user_examples.py --only artifacts
+```json
+{"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
 ```
 
-These artifacts describe a completed run. They are not a durable session, source workflow, or promise that arbitrary runs can be resumed.
+When all required checks pass, the decision is `READY`, `pending` is empty, and
+the action is `No follow-up required.` Missing required checks or an invalid
+status return CLI exit 21. Treat `READY` as the result of these three supplied
+checks; the workflow does not run the checks itself.
 
-## Native coding tools and trust
+## 6. Inspect run artifacts and lineage
 
-The current headless `coder` registers `fs_read`, `fs_search`, `proc_run`, `fs_edit`, `fs_patch`, and `fs_tree`. Process requests use structured argv, an empty child environment unless explicitly allowlisted, a workspace cwd, timeouts and bounded output. `scout` and `worker` in headless mode have no workspace tool registry.
+Headless runs write a per-invocation directory below the path supplied to
+`--out`. A settled run includes `run.json`, `summary.md`, `events.jsonl`,
+`transcript.json`, `lineage.scala`, and `lineage-data.json`. The lineage Scala
+file is a deterministic projection of the session graph; its data references
+resolve through the JSON resource. Together these files let you inspect the
+graph, event sequence, run summary, and recorded node data.
 
-A repository command or Scala program executes with the process user's permissions. Workspace containment checks are not a sandbox for trusted code. Keep live examples on disposable workspaces.
-
-## Configure a provider
-
-Headless runs accept `--provider openai|anthropic`, `--base-url`, and `--model`. Supply credentials using `RAIDER_API_KEY` or a `RAIDER_API_KEY_CMD` helper reference; credential values do not belong in CLI arguments. The Scala REPL reads `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, and `RAIDER_MODEL` from its environment. Check the startup notice and response marker: scripted or mock output is not model output. Remote calls require a deliberately selected account and budget.
-
-### Local Yabanin profile
-
-Yabanin is an OpenAI-compatible endpoint; use `RAIDER_PROVIDER=openai`. Choose a model registered with the coding-plan provider when subscription-only routing is required. The locally checked profile requests `glm-5.3-flash`; the gateway model registry identifies it as `zai-coding`.
-
-If you keep a private, Git-ignored `.env.yabanin` file with your endpoint and env/helper credential configuration, load it without typing the key into shell history:
+The coding scenario above also creates a settled headless run. Its verification
+report records the `codingWorkDir`. Find the recorded run directory with:
 
 ```sh
-set -a
-. ./.env.yabanin
-set +a
-RAIDER_LIVE_APPROVED=1 python3 scripts/quality/user_examples.py --only coding --live
+python3 scripts/quality/user_examples.py --only coding
+find artifacts/user-examples/verification-* -path '*/coding/work-*' -type d -print
 ```
 
-The private configuration file is not part of the checkout. Set the endpoint, model and budget deliberately before using the opt-in. The examples do not push commits, publish releases or deploy anything.
+Set `RUN_DIR` to the `work-<uuid>` directory printed above, then inspect its
+files:
+
+```sh
+find "$RUN_DIR" -maxdepth 1 -type f -print
+cat "$RUN_DIR/run.json"
+cat "$RUN_DIR/summary.md"
+```
+
+Replay the recorded run against the original workspace:
+
+```sh
+raider replay "$RUN_DIR" --workspace examples/user-guide/fixture
+```
+
+A matching replay prints `verdict: match` with a normalized graph hash and exits
+0. A graph mismatch prints the first divergent node and both hashes, then exits
+10. A missing or corrupt `lineage-data.json` is a typed error and exits 21.
+Recorded replay makes no model calls. See the [lineage guide](user-guide-lineage.md)
+for reading the projection and replay reports.
+
+## Limits of these examples
+
+The offline coding and audit examples use deterministic local scripts that
+select tool calls from observed results. They verify the CLI, Scala checks,
+workspace operations, artifact contents, and report contracts. They do not
+measure model reasoning. The mock REPL returns fixed responses. Live provider
+examples require a deliberately selected endpoint, model, and spend budget;
+this handbook does not report new live verification. Repository commands and
+Scala programs run with the process user's permissions, so use disposable
+workspaces for tasks that can change files.
