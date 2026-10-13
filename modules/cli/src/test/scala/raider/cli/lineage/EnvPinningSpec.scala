@@ -5,9 +5,9 @@ import zio.test.*
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 
-/** LIN-08D acceptance (packet R5, ADR-027 §2 "Environment change", docs/lineage.md
-  * §6): compare the pinned environment in `toolchain.json` with the code's
-  * actual environment BEFORE replay execution:
+/** LIN-08D acceptance (packet R5, ADR-027 §2 "Environment change",
+  * docs/lineage.md §6): compare the pinned environment in `toolchain.json` with
+  * the code's actual environment BEFORE replay execution:
   *   - PIN-01: equal environments → [[EnvPinning.PinVerdict.Matching]], and
   *     `annotate` returns the report unchanged;
   *   - PIN-02: changing scala in the pinned data → Divergent with the `scala`
@@ -15,8 +15,8 @@ import java.nio.file.{Files, Path}
   *     a different environment: ..." in `annotate`;
   *   - PIN-03: malformed `toolchain.json` → typed Malformed with bounded
   *     detail; a missing file → typed Missing;
-  *   - repeating all checks produces byte-identical results (deterministic:
-  *     no clocks, network, processes, or heap-order traversals).
+  *   - repeating all checks produces byte-identical results (deterministic: no
+  *     clocks, network, processes, or heap-order traversals).
   *
   * Fixtures are written to a temporary directory through java.nio — the
   * production path `readPinned` reads only the supplied file, nothing else.

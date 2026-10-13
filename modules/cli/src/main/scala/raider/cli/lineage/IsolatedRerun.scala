@@ -59,10 +59,10 @@ enum RerunError:
   /** LIN6-02 policy refusal, issued BEFORE any dispatch: the record carries
     * Mutating tool nodes ([[IsolatedRerun.mutatingTools]]) but the requested
     * replay target is not the isolated copy of the original — the ADR-027 §2
-    * isolation policy ("Mutating only in an isolated workspace copy")
-    * refuses. `tools` lists the mutating tool names in deterministic (sorted,
-    * distinct) order; no workspace paths — the caller knows the target (the
-    * same no-absolute-path discipline as [[IsolationError.Tampered]]).
+    * isolation policy ("Mutating only in an isolated workspace copy") refuses.
+    * `tools` lists the mutating tool names in deterministic (sorted, distinct)
+    * order; no workspace paths — the caller knows the target (the same
+    * no-absolute-path discipline as [[IsolationError.Tampered]]).
     */
   case MutatingUnisolated(tools: Vector[String])
 end RerunError
@@ -324,8 +324,8 @@ object IsolatedRerun:
       .sorted
       .distinct
 
-  /** LIN6-02 typed pre-execution refusal (ADR-027 §2: "Mutating nodes only in an
-    * isolated workspace copy; refusal before execution"): the PRODUCT-path
+  /** LIN6-02 typed pre-execution refusal (ADR-027 §2: "Mutating nodes only in
+    * an isolated workspace copy; refusal before execution"): the PRODUCT-path
     * guard for calling layers that aim the harness mechanics at a chosen
     * target. A record whose [[mutatingTools]] is non-empty may only be replayed
     * against a FAITHFUL isolated copy of `original` — the target must be a

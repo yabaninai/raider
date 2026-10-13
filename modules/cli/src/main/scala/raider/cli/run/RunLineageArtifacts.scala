@@ -24,14 +24,14 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.util.control.NonFatal
 
 /** LIN-09 (ADR-027 §2/§6.5, docs/lineage.md §9.2 "Writing artifacts to the run
-  * directory"): writes the settled run's lineage artifacts NEXT TO the run's own
-  * events.jsonl/summary.md — `lineage-data.json` (the frozen schemaVersion-1
-  * document, written through the accepted atomic store [[LineageDataStore]])
-  * and `lineage.scala` (the deterministic [[SessionGraphView]] →
-  * [[LineageRenderer]] projection, written with the SAME atomic tmp+ATOMIC_MOVE
-  * pattern). The run directory is per-invocation (`work-<uuid>`), so parallel
-  * runs never share a target path — isolation is structural (LIN9-03), not
-  * locking.
+  * directory"): writes the settled run's lineage artifacts NEXT TO the run's
+  * own events.jsonl/summary.md — `lineage-data.json` (the frozen
+  * schemaVersion-1 document, written through the accepted atomic store
+  * [[LineageDataStore]]) and `lineage.scala` (the deterministic
+  * [[SessionGraphView]] → [[LineageRenderer]] projection, written with the SAME
+  * atomic tmp+ATOMIC_MOVE pattern). The run directory is per-invocation
+  * (`work-<uuid>`), so parallel runs never share a target path — isolation is
+  * structural (LIN9-03), not locking.
   *
   * Total by contract: every failure is a typed [[ArtifactError]], never an
   * exception, so a projection/store failure can never change the run's exit

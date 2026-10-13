@@ -7,8 +7,8 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.util.Arrays
 
 /** Typed failure of the LIN-06C workspace isolation slice (packet L52, ADR-027
-  * §2 "live re-run: isolated workspace copy, budget, diff report"). Closed
-  * set on purpose, mirroring the [[LineageDataStore]] error discipline:
+  * §2 "live re-run: isolated workspace copy, budget, diff report"). Closed set
+  * on purpose, mirroring the [[LineageDataStore]] error discipline:
   *   - [[IsolationError.OriginalMissing]] — the workspace path does not exist
   *     (or is not a directory) at the moment of the call;
   *   - [[IsolationError.CopyFailed]] — an environment-level IO failure while

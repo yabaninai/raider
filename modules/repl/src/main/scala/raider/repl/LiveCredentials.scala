@@ -51,7 +51,8 @@ object LiveCredentials:
   /** PURE key resolution (unit-tested, RKEY-01..03). `envValue` is the raw
     * `RAIDER_API_KEY` value, `helperOutput` the first stdout line the helper
     * runner captured (both injectable so tests never spawn processes):
-    *   - mock/unknown provider -> Right(None) (no key needed; existing mock path)
+    *   - mock/unknown provider -> Right(None) (no key needed; existing mock
+    *     path)
     *   - live + non-empty env value -> Right(Some(trimmed key))
     *   - live + helper output present -> Right(Some(trimmed first line))
     *   - live + both empty -> Left(guidance message explaining how to enable
