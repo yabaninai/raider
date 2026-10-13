@@ -763,6 +763,13 @@ RAI-155.a freezes the proposed commands and output layout before implementation;
 there is no current `:export-workflow` or `raider compile` command to advertise.
 Prefer the existing BundleWorkflow v1 String-to-String boundary with typed input
 decoding inside the workflow, pinned toolchain, and existing scheduler/runner.
+[Alignment note 2026-10-14, RAI-155.a/ADR-033 §3.2: the export packaging is
+DECIDED — Option L launcher artifact. ADR-029 §3.2 proved BundleWorkflow v1's
+no-arg SPI cannot host agent work (no service injection; the runner settles one
+opaque outer slot at MicroUsd(0), so cost is structurally unobservable). The
+surviving v1 duties: pinned toolchain, existing scheduler/runner discipline,
+typed input decoding INSIDE the workflow, ci-runtime §7-8 artifacts/exit codes.
+Bundle v2 remains a separate ADR+migration (ADR-029 §3.2).]
 Export and compilation never dispatch agent tools implicitly. Optional model
 assistance in authoring must be explicit and configured; the supported task
 specification also has a deterministic renderer. Generated Scala remains trusted
