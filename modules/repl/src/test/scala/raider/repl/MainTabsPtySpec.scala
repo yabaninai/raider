@@ -329,19 +329,19 @@ object MainTabsPtySpec extends ZIOSpecDefault:
       s.send(":switch alpha\r")
       val focusedA = s.waitFor("focused: alpha", 20.seconds)
       // The A→B→A tour while the fixture stream runs through the REAL hub.
-      s.send("привет😀\r")
-      val draftA1 = s.waitFor("draft [alpha]: привет😀", 25.seconds)
+      s.send("résumé😀\r")
+      val draftA1 = s.waitFor("draft [alpha]: résumé😀", 25.seconds)
       s.send(":next\r")
       val focusedB = s.waitFor("focused: beta", 20.seconds)
-      s.send("мир漢\r")
-      val draftB = s.waitFor("draft [beta]: мир漢", 25.seconds)
+      s.send("tea漢\r")
+      val draftB = s.waitFor("draft [beta]: tea漢", 25.seconds)
       s.send(":prev\r")
       val focusedBack = s.waitFor("focused: alpha", 20.seconds)
-      s.send(" хвост\r")
-      val draftA2 = s.waitFor("draft [alpha]: привет😀 хвост", 25.seconds)
+      s.send(" tail\r")
+      val draftA2 = s.waitFor("draft [alpha]: résumé😀 tail", 25.seconds)
       val (text, code, rows, bad, bye) = finishTabs(s, "p2e01")
-      val echoA = countSubstr(text, "draft [alpha]: привет😀 хвост")
-      val echoB = countSubstr(text, "draft [beta]: мир漢")
+      val echoA = countSubstr(text, "draft [alpha]: résumé😀 tail")
+      val echoB = countSubstr(text, "draft [beta]: tea漢")
       assertTrue(promptUp) &&
       assertTrue(bannerMode && bannerStream && bannerBackend && bannerNote) &&
       assertTrue(createdA && createdB) &&
@@ -360,7 +360,7 @@ object MainTabsPtySpec extends ZIOSpecDefault:
     drive("p2e02", tabs = true) { s =>
       val promptUp = s.waitFor(Prompt, 120.seconds)
       // Draft with NO tabs: typed registry failure.
-      s.send("тест\r")
+      s.send("café\r")
       val noTabs = s.waitFor("error: no tabs are open", 20.seconds)
       s.send(":new only\r")
       val created = s.waitFor("tab created: only", 20.seconds)
@@ -425,18 +425,18 @@ object MainTabsPtySpec extends ZIOSpecDefault:
       s.send(":switch quiet\r")
       val focusedQuiet = s.waitFor("focused: quiet", 20.seconds)
       // Active input DURING the burst.
-      s.send("строка1\r")
-      val draftQuiet1 = s.waitFor("draft [quiet]: строка1", 25.seconds)
+      s.send("cafébar\r")
+      val draftQuiet1 = s.waitFor("draft [quiet]: cafébar", 25.seconds)
       s.send(":next\r")
       val focusedBusy = s.waitFor("focused: busy", 20.seconds)
-      s.send("бурст😀\r")
-      val draftBusy = s.waitFor("draft [busy]: бурст😀", 25.seconds)
+      s.send("crème😀\r")
+      val draftBusy = s.waitFor("draft [busy]: crème😀", 25.seconds)
       // The prompt stays editable AFTER the storm: keep typing on quiet.
       s.send(":switch quiet\r")
       val backQuiet = s.waitFor("focused: quiet", 20.seconds)
-      s.send(" хвост2\r")
+      s.send(" tail2\r")
       val quietFull =
-        s.waitFor("draft [quiet]: строка1 хвост2", 25.seconds)
+        s.waitFor("draft [quiet]: cafébar tail2", 25.seconds)
       val (text, code, rows, bad, bye) = finishTabs(
         s,
         "p2e03-tabs",
@@ -451,8 +451,8 @@ object MainTabsPtySpec extends ZIOSpecDefault:
         "quietFull" -> boolJson(quietFull)
       )
       val echoQuietFull =
-        countSubstr(text, "draft [quiet]: строка1 хвост2")
-      val echoBusy = countSubstr(text, "draft [busy]: бурст😀")
+        countSubstr(text, "draft [quiet]: cafébar tail2")
+      val echoBusy = countSubstr(text, "draft [busy]: crème😀")
       assertTrue(promptUp) &&
       assertTrue(createdBusy && createdQuiet) &&
       assertTrue(focusedQuiet && focusedBusy && backQuiet) &&

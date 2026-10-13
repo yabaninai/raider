@@ -26,7 +26,7 @@ object PaletteCompleterSpec extends ZIOSpecDefault:
         assertTrue(PaletteCompleter.candidates("").isEmpty) &&
         assertTrue(PaletteCompleter.candidates("val x").isEmpty) &&
         assertTrue(PaletteCompleter.candidates(":switch al").isEmpty) &&
-        assertTrue(PaletteCompleter.candidates("привет").isEmpty)
+        assertTrue(PaletteCompleter.candidates("résumé").isEmpty)
       },
       test("only the trailing token matters (caret semantics)") {
         assertTrue(

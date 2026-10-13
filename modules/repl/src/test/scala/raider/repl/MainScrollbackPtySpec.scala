@@ -327,8 +327,8 @@ object MainScrollbackPtySpec extends ZIOSpecDefault:
           30.seconds
         )
       // The prompt stays alive after the render.
-      s.send("привет\r")
-      val draftAlive = s.waitFor("draft [alpha]: привет", 25.seconds)
+      s.send("résumé\r")
+      val draftAlive = s.waitFor("draft [alpha]: résumé", 25.seconds)
       s.send(":quit\r")
       val bye = s.waitFor("bye", 30.seconds)
       val code = s.finishWait(60.seconds)
@@ -467,8 +467,8 @@ object MainScrollbackPtySpec extends ZIOSpecDefault:
           m.group(3).toLong + m.group(1).toLong == m.group(2).toLong
         }
       // The prompt stays editable while/after the render.
-      s.send("строка1\r")
-      val draftAlive = s.waitFor("draft [busy]: строка1", 25.seconds)
+      s.send("cafébar\r")
+      val draftAlive = s.waitFor("draft [busy]: cafébar", 25.seconds)
       val drained = s.waitQuiet(1500.millis, 60.seconds)
       s.send(":quit\r")
       val bye = s.waitFor("bye", 30.seconds)
