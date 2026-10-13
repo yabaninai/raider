@@ -188,3 +188,9 @@ These cards were already present in the local backlog when documentation work be
 | **RAI-128** [Cross-root fairness: named test with ≥2 roots under contention (Admission)](m1.md)) | M1 | RAI-009 | static, unit, runtime |
 | **RAI-129** [§13 recovery remainder: JobJournal recovery/resume in product commands (scoping slice)](m1.md)) | M1 | RAI-027 | static, unit, contracts, ci |
 | **RAI-130** [:type PTY oracles — remove echo saturation and use an honest error prefix](m2-p2.md) | P2 | RAI-124 | static, unit, repl |
+- **RAI-131** [CI adapter batch: GitHub/GitLab contexts + trust preflight + exit contracts (combined RAI-023 remainder + RAI-024)](m0.md); dependencies: RAI-100, RAI-078; profiles: static, unit, contracts, ci.
+- **RAI-132** [Steering surface: job.send wiring in REPL/DSL + :send command + typed receipts (P3 send/steering remainder)](m2-p2.md); dependencies: RAI-074; profiles: static, unit, repl, runtime.
+- **RAI-133** [W05 completion: structured tool_result content blocks + cross-wire parity spec (OpenAI vs Anthropic)](m1.md); dependencies: RAI-127; profiles: static, unit, contracts, transport.
+- **RAI-134** [User guide refresh: new product surfaces in onboarding/api (English documentation policy)](m1.md); dependencies: RAI-129, RAI-124, RAI-113, RAI-110; profiles: docs.
+- **RAI-135** [Registry: additive component-stage eval and perf profiles (gate policy change, coordinator-executed)](m1.md); dependencies: RAI-114; profiles: static, docs.
+- **RAI-136** [Load soak: PTY stability under storm + RAI-123 trigger probe (conditional product fix)](m2-p2.md); dependencies: RAI-119, RAI-123; profiles: static, unit, repl, runtime.

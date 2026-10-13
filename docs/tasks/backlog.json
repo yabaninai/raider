@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 143,
+  "raider_count": 149,
   "companion_count": 3,
   "cards": [
     {
@@ -4146,6 +4146,174 @@
       },
       "non_goals": "Compiler layer, new commands (:kind/:doc), chat module, or weakening the existing TYPE-01..03 oracles.",
       "context": "RAI-124 review: findings 1–2 (PTY oracles are pre-saturated by echoes) + risk 1 (UX prefix). TYPE-03 is currently covered in CI only by the unit spec."
+    },
+    {
+      "id": "RAI-131",
+      "title": "CI adapter batch: GitHub/GitLab contexts + trust preflight + exit contracts (combined RAI-023 remainder + RAI-024)",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-100",
+        "RAI-078"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "Combined overnight card (owner decision 2026-10-13) closing the W12 core: (1) orchestrator context fixtures — GitHub and GitLab env fixture sets parse into CiContext (extend RAI-078 surface where needed: GITHUB_*/GITLAB_* job metadata, workspace, ref); (2) trust preflight — provenance verification of bundle/policy before dispatch (bundle hash match against declared provenance; unknown/mismatched source -> typed refusal BEFORE any model dispatch or spend); (3) exit/artifact contract per context — the same compiled workflow runs under generic/GitHub/GitLab fixtures with identical semantics: run/result/events/JUnit/summary artifacts, exit codes per ci-runtime §8, SIGTERM/timeout cleanup of owned children. No second scheduler/runtime, no live providers, frozen exit mapping unchanged.",
+      "acceptance": {
+        "normal": "CI-ADP-01: one bundle, three context fixtures (generic/GitHub/GitLab) — identical exit codes and artifact sets (named diff empty); JUnit/summary content correct per context.",
+        "error": "CI-ADP-02: untrusted provenance (bundle hash mismatch, unknown source, tampered policy) — typed preflight refusal, zero model dispatches (admission counter pinned at 0), non-zero exit.",
+        "concurrency": "CI-ADP-03: SIGTERM mid-run under each context — owned children cleaned within bound, artifacts still written, exit code per policy; repeat x3."
+      },
+      "non_goals": "Second scheduler/runtime, live providers/paid calls, changing frozen ExitCodes mapping, RAI-026 MVP aggregate acceptance (separate), deployment/publishing.",
+      "context": "Owner decision 2026-10-13 (overnight, combined cards): W12 items RAI-023 remainder + RAI-024 shipped as one lane; RAI-078 (CiContext) and RAI-100 (CI wrappers) accepted; audit 2026-10-13 lists CI adapters as open."
+    },
+    {
+      "id": "RAI-132",
+      "title": "Steering surface: job.send wiring in REPL/DSL + :send command + typed receipts (P3 send/steering remainder)",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-074"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/dsl/src/main/scala/raider/dsl/**",
+        "modules/dsl/src/test/scala/raider/dsl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "runtime"
+      ],
+      "behavior": "Combined overnight card closing the P3 send/steering obligation: runtime steering exists (RAI-065/074 mailbox, send_to_child) but FacadeOps.send throws and no user surface exists. Wire it end to end: (1) FacadeOps/job handle send delegates to the runtime mailbox; (2) REPL command :send <job> <text> registered through the freshness registry (ReplChatCommands precedent RAI-111); (3) typed receipts surfaced (queued/applied/rejected — never silent); (4) golden DSL scenario: start scripted child, steer mid-run, steering text observable in the next model turn, await result contains steered behavior; (5) :jobs marks steerable jobs. Scripted backends only; cancellation/deadline semantics untouched.",
+      "acceptance": {
+        "normal": "STR-01: scripted child steered mid-run — receipt queued then applied, next turn input contains the steering text, final result reflects it (pinned).",
+        "error": "STR-02: send to finished/unknown/cancelled job — typed error receipt, REPL alive, subsequent commands work; empty text — usage, no dispatch.",
+        "concurrency": "STR-03: PTY live session — :send during active streaming: one writer, no prompt tear, badge/streaming unaffected; x3 flake=0."
+      },
+      "non_goals": "Runtime mailbox semantics changes (RAI-074 frozen behavior), cross-process steering, chat JLine module, second scheduler, live providers.",
+      "context": "Owner decision 2026-10-13 (overnight, combined cards); board Open Obligations row 'send_agent (steering) — REPL facade': runtime ready, FacadeOps.send not wired (FacadeOps.scala:249-251)."
+    },
+    {
+      "id": "RAI-133",
+      "title": "W05 completion: structured tool_result content blocks + cross-wire parity spec (OpenAI vs Anthropic)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-127"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/provider-anthropic/src/main/scala/raider/provider/anthropic/**",
+        "modules/provider-anthropic/src/test/scala/**",
+        "modules/provider-chat/src/test/scala/**",
+        "modules/core/src/main/scala/raider/core/**",
+        "modules/core/src/test/scala/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport"
+      ],
+      "behavior": "Combined overnight card finishing W05 tool-round parity: (1) Anthropic tool_result content serialized as structured blocks (array of typed text blocks per Anthropic Messages API) instead of a bare string, with decode back-compat (legacy string content still accepted — pinned regression); (2) cross-wire parity spec on local stands (RAI-079 pattern): the same scripted tool scenario runs over the OpenAI-compatible stand and the Anthropic stand through the SAME AgentLoop — identical observable semantics (ToolCallReady, tool result delivery, final text, usage accounting, cancel mid-round); divergences are findings, not silenced. No image/binary blocks, no live wire, OpenAI encode path unchanged.",
+      "acceptance": {
+        "normal": "TRC-01: structured blocks round-trip on the Anthropic stand (exact wire JSON pinned); tool_use_id mapping intact.",
+        "error": "TRC-02: legacy string tool_result content still decodes and completes the round (regression pinned bit-for-bit where applicable); malformed block — typed error, no silent drop.",
+        "concurrency": "TRC-03: parity spec green x3 on both stands (same scenario, same assertions); existing provider specs green without assertion weakening."
+      },
+      "non_goals": "Image/file blocks, live providers, OpenAI encode changes, wire event schema (ADR-024) changes, second scheduler.",
+      "context": "Owner decision 2026-10-13 (overnight, combined cards); RAI-127 review risk 3: tool_result content still travels as a string — W05 not fully closed until structured blocks + parity."
+    },
+    {
+      "id": "RAI-134",
+      "title": "User guide refresh: new product surfaces in onboarding/api (English documentation policy)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-129",
+        "RAI-124",
+        "RAI-113",
+        "RAI-110"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/onboarding.md",
+        "docs/api.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "Combined overnight documentation card (English per owner policy 2026-10-13): refresh the user-facing guides for all recently merged surfaces — tabs mode (--tabs: tabs, drafts, :scrollback with eviction counter, palette), plan mode (:plan read-only phase, :approve/:reject, ADR-028 semantics), :type (type query without execution), raider replay (verification) and raider resume (read-only recovery, exit codes 0/26/21/20), lineage artifacts next to runs, catalog persistence. Every documented command gets a concrete example with expected observable behavior verified against the actual surface (code reading; --help; PTY reproduction where cheap). Honest limitations section: live-wire pending, multi-job export absent, phase/recovery schema pending, tool_result structured blocks in flight (RAI-133). No claims beyond integrated state at the lane baseline.",
+      "acceptance": {
+        "normal": "DOC-N1-01: every command example verified against the actual surface at baseline (evidence per entry in the record: file:line or PTY transcript).",
+        "error": "DOC-N2-02: stale claims audit — no statement contradicts code; limitations section enumerates open owner-gated items.",
+        "concurrency": "DOC-N3-03: docs profile green; all links/anchors valid; diff limited to the two allowed files; text in English."
+      },
+      "non_goals": "Product code, board/tasks files, ADRs, translation of historical Russian docs (only new/updated text is English).",
+      "context": "Owner decision 2026-10-13 (overnight, combined cards); documentation language policy (owner, 2026-10-13): all new/updated documentation must be English; surfaces RAI-108..130 merged without a guide refresh since onboarding was written."
+    },
+    {
+      "id": "RAI-135",
+      "title": "Registry: additive component-stage eval and perf profiles (gate policy change, coordinator-executed)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-114"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality-policy/registry.json",
+        "scripts/quality/quality.py",
+        "docs/quality-gates.md"
+      ],
+      "profiles": [
+        "static",
+        "docs"
+      ],
+      "behavior": "Combined overnight card (owner decision 2026-10-13) registering two ADDITIVE component-stage quality profiles (gate policy change — requires separate card + independent review, which this is): (1) eval — runs the deterministic plan-mode corpus (PlanScenarioCorpusSpec, RAI-114) as a named profile; (2) perf — runs the UX baseline measurement harness (RAI-070 family) producing a baseline artifact without thresholds. No changes to existing profiles, thresholds, or activation stages; docs/quality-gates.md documents both (activation stage: component). The full task-corpus eval remains a working-product stage obligation and is NOT claimed here. Coordinator executes (shared files); independent reviewer validates the policy diff before merge.",
+      "acceptance": {
+        "normal": "REG-01: make quality-profile PROFILES=\"eval\" runs the corpus green (fresh manifest); make quality-profile PROFILES=\"perf\" measures and writes the baseline artifact.",
+        "error": "REG-02: diff is strictly additive — existing profile definitions byte-identical (programmatic check in record); unknown profile name still fails typed.",
+        "concurrency": "REG-03: both profiles green x3 without flakes; full EXECUTE unchanged (10/10); independent review approves the policy change."
+      },
+      "non_goals": "Threshold changes to existing profiles, activation-stage changes for existing gates, full task-corpus eval (working-product stage), license/security gate changes.",
+      "context": "Owner decision 2026-10-13 (overnight, combined cards); board obligation 'Performance/eval profile in registry': registry has 12 profiles, eval corpus ready since RAI-114; RAI-107 record marks named eval profile as the remaining milestone obligation."
+    },
+    {
+      "id": "RAI-136",
+      "title": "Load soak: PTY stability under storm + RAI-123 trigger probe (conditional product fix)",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-119",
+        "RAI-123"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "runtime"
+      ],
+      "behavior": "Combined overnight card: (1) sustained load soak — run the PTY family suites (PlanPanelSpec, TabShellUnreadPtySpec, MainScrollbackPtySpec, TypeCommandsPtySpec) plus full raiderRepl/test repeatedly under deliberate CPU storms (parallel sbt builds / busy cores, load comparable to the 8-lane night waves), collecting manifests and per-run summaries; (2) RAI-123 trigger probe — attempt to reproduce the wave-4 PlanPanel race (labels missing plan-exec) that RAI-119 could not reproduce in 18 attempts; (3) CONDITIONAL: if the recurrence is captured, execute RAI-123 (per-job outcomeRef scoping in PlanPanel — product fix) with the captured reproducer (red -> green x10 under load); if not triggered after the documented attempt budget, close as not-triggered with the attempt log — no product changes without a reproducer.",
+      "acceptance": {
+        "normal": "SOAK-01: storm runs documented (count, load levels, manifests); PTY family green throughout OR every failure attributed (existing known classes vs new).",
+        "error": "SOAK-02: if recurrence captured — RAI-123 fix applied, reproducer red pre-fix and green x10 post-fix under load; PLAN/PLANUI/RAI-107/114 corpora green x3.",
+        "concurrency": "SOAK-03: final full sbt test green x2 on the lane tree; honest trail of any red run in the record."
+      },
+      "non_goals": "Assertion weakening, timeout inflation as medicine, unrelated product refactors, RAI-123 execution without a captured reproducer.",
+      "context": "Owner decision 2026-10-13 (overnight): idle night capacity used for stability evidence; RAI-123 is registered conditional on recurrence; RAI-119 fixed the family preventively (reviewer risk: real mechanism may be approve2 not reaching startExecution)."
     }
   ]
 }

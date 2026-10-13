@@ -306,6 +306,36 @@ static/unit/contracts/ci/docs/runtime/repl/security 9/9 (manifest
 (retention) — после owner schema-card; W05-tool_result content (структурный
 block mapping) — карточка-кандидат.
 
+## Night campaign 2026-10-13 (owner decision)
+
+Owner decision (interactive session, 2026-10-13): overnight development
+continuation is authorized in the visible spawn-agent mode (parallel-development
+§1b) — explicitly NOT the deprecated headless night-loop; combined cards are
+allowed so that more functionality ships per lane. Reason: use idle night
+capacity to accelerate progress toward the working product. All new records,
+cards, and board text follow the English documentation policy (2026-10-13).
+
+Registered night cards (validate passed, 152 cards):
+
+- **RAI-131** — CI adapter batch (combined RAI-023 remainder + RAI-024):
+  GitHub/GitLab context fixtures, trust preflight (provenance before spend),
+  per-context exit/artifact contracts (W12 core).
+- **RAI-132** — Steering surface (P3 send/steering remainder): FacadeOps/job
+  send wiring, REPL :send command, typed receipts, golden DSL steering.
+- **RAI-133** — W05 completion: structured tool_result content blocks on the
+  Anthropic wire + cross-wire parity spec (OpenAI vs Anthropic stands).
+- **RAI-134** — User guide refresh for all new surfaces (English).
+- **RAI-135** — Registry: additive eval/perf component-stage profiles
+  (coordinator-executed gate-policy change; independent review required).
+- **RAI-136** — Load soak of the PTY family + RAI-123 trigger probe
+  (conditional product fix only with a captured reproducer).
+
+Wave N1: RAI-131/132/133/134/136 as visible worker lanes; RAI-135 executed by
+the coordinator in the root checkout (shared files) while lanes run. Wave N2:
+independent reviews, sequential integration, full integrated gates, board and
+records. Owner-gated items remain untouched (live-wire, multi-job export,
+phase/recovery schema-card, F-14 sign-off).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
