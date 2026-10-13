@@ -4,6 +4,7 @@ import raider.core.*
 import zio.json.{DecoderOps, DeriveJsonDecoder, JsonDecoder}
 import zio.json.ast.Json
 import zio.test.*
+import zio.Chunk
 import zio.ZIO
 
 import java.net.{InetAddress, InetSocketAddress}
@@ -381,10 +382,21 @@ object AnthropicToolDefinitionsSpec extends ZIOSpecDefault:
               )
             ),
             // round 2: envelope → NATIVE tool_result block, correlation kept
+            // (RAI-133: content is a structured text-block array; the payload
+            // is a JSON string, rendered verbatim — quotes included)
             toolBlock.flatMap(b => fieldOf(b, "tool_use_id")) ==
               Some(Json.Str("toolu_127")),
             toolBlock.flatMap(b => fieldOf(b, "content")) ==
-              Some(Json.Str("stand tool output")),
+              Some(
+                Json.Arr(
+                  Chunk(
+                    Json.Obj(
+                      ("type", Json.Str("text")),
+                      ("text", Json.Str("\"stand tool output\""))
+                    )
+                  )
+                )
+              ),
             ev2.collect { case ModelEvent.TextDelta(_, t) =>
               t
             }.mkString == "stand final answer",

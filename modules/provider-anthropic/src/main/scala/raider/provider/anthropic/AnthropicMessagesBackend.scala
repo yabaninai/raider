@@ -297,10 +297,13 @@ object AnthropicMessagesBackend:
         acc.flatMap { v =>
           if m.role == "tool" then
             // loop tool-result envelope → NATIVE tool_result block (§4:
-            // never plain text — correlation preserved). The tool output
-            // JSON rides as a string payload inside tool_result.content;
-            // the definitions these results correlate with ARE on the wire
-            // since RAI-127 (see encodeTools).
+            // never plain text — correlation preserved). RAI-133: the payload
+            // rides as a STRUCTURED content block — "content" is an array of
+            // typed text blocks (Anthropic Messages API), the rendered JSON
+            // payload carried VERBATIM inside "text" (bit-for-bit recoverable);
+            // a bare object payload was invalid wire before this change. The
+            // definitions these results correlate with ARE on the wire since
+            // RAI-127 (see encodeTools); the decode side (tool_use) is untouched.
             case class Envelope(tool_call_id: String, output: Json)
             object Envelope:
               given JsonDecoder[Envelope] = DeriveJsonDecoder.gen[Envelope]
@@ -312,10 +315,12 @@ object AnthropicMessagesBackend:
                   )
                 )
               case Right(env) =>
+                val payloadText =
+                  env.output.toJson.toJson // rendered JSON → JSON string literal
                 Right(
                   v :+ s"""{"role":"user","content":[{"type":"tool_result",""" +
                     s""""tool_use_id":${env.tool_call_id.toJson},""" +
-                    s""""content":${env.output.toJson}}]}"""
+                    s""""content":[{"type":"text","text":$payloadText}]}]}"""
                 )
           else
             Right(
