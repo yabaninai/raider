@@ -27,9 +27,9 @@ import java.util.concurrent.atomic.AtomicInteger
   * maxAttempts refuses only A's dispatch (typed RA-LBUDGET) and never blocks
   * root B on the same pool.
   *
-  * FAIR-03: both roots admit in full parallel — 0 lost/duplicated tokens,
-  * exact ledger sums, no slot leak; the pre-existing BudgetAdmissionSpec stays
-  * green (run ×3 alongside this spec).
+  * FAIR-03: both roots admit in full parallel — 0 lost/duplicated tokens, exact
+  * ledger sums, no slot leak; the pre-existing BudgetAdmissionSpec stays green
+  * (run ×3 alongside this spec).
   */
 object CrossRootFairnessSpec extends ZIOSpecDefault:
 
@@ -66,6 +66,7 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
   )
 
   private object Trace:
+
     def make: UIO[Trace] =
       Ref.make(Vector.empty[(RootId, Int)]).map { grants =>
         Trace(grants, new AtomicInteger(0), new AtomicInteger(0))
@@ -122,6 +123,7 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
     * per-request gate until the scenario opens it (release).
     */
   private final class RealPool(adm: Admission, trace: Trace) extends SlotPool:
+
     def run(root: RootId, tag: Int): ZIO[Any, RaiderError, InFlight] =
       for
         gate <- Promise.make[Nothing, Unit]
@@ -162,11 +164,12 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
     def usage: UIO[Option[UsageReport]] =
       adm.budgetLedger.usage.map(Some(_))
 
-  /** FAIR-02a negative control: a bounded single-slot pool with an intentionally
-    * UNFAIR dispatch policy — root `priority` always overtakes the FIFO order.
-    * Same observable surface as [[RealPool]] so scenario and checker run
-    * unchanged. Registration is synchronous inside `run` (policy dispatch needs
-    * no park observation), so `confirmEntered` needs no bracket polling.
+  /** FAIR-02a negative control: a bounded single-slot pool with an
+    * intentionally UNFAIR dispatch policy — root `priority` always overtakes
+    * the FIFO order. Same observable surface as [[RealPool]] so scenario and
+    * checker run unchanged. Registration is synchronous inside `run` (policy
+    * dispatch needs no park observation), so `confirmEntered` needs no bracket
+    * polling.
     */
   private final class UnfairPool private (
       priority: RootId,
@@ -178,18 +181,19 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
       * otherwise the FIFO head — and only when the permit is free.
       */
     private val dispatch: UIO[Unit] =
-      state.modify {
-        case (free, waiters) =>
+      state
+        .modify { case (free, waiters) =>
           if !free then (None, (free, waiters))
           else
             waiters.find(_._1 == priority).orElse(waiters.headOption) match
               case None => (None, (true, waiters))
               case Some((_, p)) =>
                 (Some(p), (false, waiters.filterNot(_._2 == p)))
-      }.flatMap {
-        case Some(p) => p.succeed(()).unit
-        case None    => ZIO.unit
-      }
+        }
+        .flatMap {
+          case Some(p) => p.succeed(()).unit
+          case None    => ZIO.unit
+        }
 
     private val releasePermit: UIO[Unit] =
       state.update { case (_, waiters) => (true, waiters) } *> dispatch
@@ -218,6 +222,7 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
     def usage: UIO[Option[UsageReport]] = ZIO.succeed(None)
 
   private object UnfairPool:
+
     def make(
         priority: RootId,
         trace: Trace
@@ -388,7 +393,9 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
         yield assertTrue(
           fairnessViolations(result, 6).isEmpty,
           result.usage.exists(u =>
-            u.observedTotal == MicroUsd(expectedSum.toLong) && // exact, no drift
+            u.observedTotal == MicroUsd(
+              expectedSum.toLong
+            ) && // exact, no drift
               u.reservedActive == MicroUsd(0L) && // every reservation settled
               u.uncertainTotal == MicroUsd(0L) &&
               u.unpricedAttempts == 0L
@@ -478,19 +485,21 @@ object CrossRootFairnessSpec extends ZIOSpecDefault:
           requests = (1 to 6).toList.flatMap(i =>
             List((rootA, i), (rootB, i))
           ) // fixed interleaved plan
-          results <- ZIO.foreachPar(requests) { case (root, tag) =>
-            adm.withSlot(
-              SlotKind.Model,
-              root,
-              CostEstimate.Priced(costOf(root, tag)),
-              None
-            ) {
-              enterSlot(trace) *>
-                ZIO
-                  .succeed(((root, tag), costOf(root, tag)))
-                  .ensuring(exitSlot(trace))
+          results <- ZIO
+            .foreachPar(requests) { case (root, tag) =>
+              adm.withSlot(
+                SlotKind.Model,
+                root,
+                CostEstimate.Priced(costOf(root, tag)),
+                None
+              ) {
+                enterSlot(trace) *>
+                  ZIO
+                    .succeed(((root, tag), costOf(root, tag)))
+                    .ensuring(exitSlot(trace))
+              }
             }
-          }.timeout(ZDuration.fromSeconds(60))
+            .timeout(ZDuration.fromSeconds(60))
           usage <- adm.budgetLedger.usage
           free <- adm.availableSlots(SlotKind.Model)
         yield {
