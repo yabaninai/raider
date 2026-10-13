@@ -399,9 +399,13 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
             // batch verb, then introduces the members in pinned order.
             val stageReviews =
               for
-                forks = List(
-                  forkChild(hub, manager, relR1)(stageEvents(StageReviews)),
-                  forkChild(hub, manager, relR2)(stageEvents(StageReviews))
+                // ZIO.succeed form: scalameta cannot parse `x = expr`
+                // bindings in for-comprehensions (scalafix parse error).
+                forks <- ZIO.succeed(
+                  List(
+                    forkChild(hub, manager, relR1)(stageEvents(StageReviews)),
+                    forkChild(hub, manager, relR2)(stageEvents(StageReviews))
+                  )
                 )
                 handles <- Task.zio(batch(forks, 2)(fx => Task(fx)))
                 _ <- publishIntroduction(
@@ -426,10 +430,12 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
             // boundary: the recorded batch of three.
             val stageBoundary =
               for
-                forks = List(
-                  forkChild(hub, manager, relB1)(stageEvents(StageBoundary)),
-                  forkChild(hub, manager, relB2)(stageEvents(StageBoundary)),
-                  forkChild(hub, manager, relB3)(stageEvents(StageBoundary))
+                forks <- ZIO.succeed(
+                  List(
+                    forkChild(hub, manager, relB1)(stageEvents(StageBoundary)),
+                    forkChild(hub, manager, relB2)(stageEvents(StageBoundary)),
+                    forkChild(hub, manager, relB3)(stageEvents(StageBoundary))
+                  )
                 )
                 handles <- Task.zio(batch(forks, 3)(fx => Task(fx)))
                 _ <- publishIntroduction(
