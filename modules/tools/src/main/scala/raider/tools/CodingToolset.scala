@@ -29,6 +29,13 @@ import zio.json.*
   *
   * All outputs are single-line JSON matched back by tool_call_id. Tool failures
   * are typed RaiderErrors (→ structured feedback for the loop).
+  *
+  * Recovery stamps (RAI-149): each tool carries its frozen `RecoveryClass`,
+  * consistent with the canonical `RecoveryTaxonomy` membership — `proc_run`,
+  * `fs_edit`, `fs_patch` are `Mutating` (exec/write classes); `fs_read`,
+  * `fs_search`, `fs_tree` are `ReadOnly`. Plan-mode read-only enforcement
+  * (`PlanMode.of` narrowing + `AgentLoop.enforceReadOnly`) consumes exactly
+  * this field, so a stamp here is policy, not metadata.
   */
 final class CodingToolset private (
     read: ReadTool,
@@ -163,13 +170,14 @@ final class CodingToolset private (
       toolName: String,
       descr: String,
       schema: String,
+      recoveryClass: RecoveryClass,
       run: String => ZIO[Scope, RaiderError, String]
   ): Tool =
     new Tool:
       def name = toolName
       def version = 1
       def description = descr
-      def recovery = RecoveryClass.ReadOnly
+      def recovery = recoveryClass
       def timeoutMs = 300000L
       def capabilities = ToolCapabilities(concurrentSafe = false)
       override def parametersJsonSchema = schema
@@ -198,10 +206,18 @@ final class CodingToolset private (
   private val ProcRunSchema =
     """{"type":"object","properties":{"argv":{"type":"array","items":{"type":"string"},"description":"command and arguments, NO shell"},"cwd":{"type":"string","description":"relative working directory"},"timeout_s":{"type":"integer","description":"timeout in seconds"}},"required":["argv"]}"""
 
+  // RAI-149: per-tool frozen RecoveryClass stamps — the plan-mode read-only
+  // enforcement (PlanMode.of surface narrowing + AgentLoop.enforceReadOnly)
+  // consumes exactly this field, so every stamp must match the canonical
+  // RecoveryTaxonomy membership (raider.runtime.lineage.model): exec/write
+  // tools (proc_run, fs_edit, fs_patch) are Mutating; pure reads
+  // (fs_read, fs_search, fs_tree) stay ReadOnly. A wrong stamp here lets a
+  // mutating tool through the plan phase (the escalated defect).
   private val fsReadT = toolOf(
     "fs_read",
     "Read a text file inside the workspace (bounded, with sha256).",
     FsReadSchema,
+    RecoveryClass.ReadOnly,
     fsReadInvoke
   )
 
@@ -209,6 +225,7 @@ final class CodingToolset private (
     "fs_search",
     "Search a literal query in workspace text files.",
     FsSearchSchema,
+    RecoveryClass.ReadOnly,
     fsSearchInvoke
   )
 
@@ -216,6 +233,7 @@ final class CodingToolset private (
     "proc_run",
     "Run a command by explicit argv (NO shell) inside the workspace.",
     ProcRunSchema,
+    RecoveryClass.Mutating,
     procRunInvoke
   )
 
@@ -226,6 +244,7 @@ final class CodingToolset private (
     "fs_edit",
     "Write content to a file (atomic, requires expected_sha256 for existing files; empty string to create).",
     FsEditSchemaStr,
+    RecoveryClass.Mutating,
     fsEditInvoke
   )
 
@@ -236,6 +255,7 @@ final class CodingToolset private (
     "fs_patch",
     "Apply a unified diff to an existing file (atomic; requires expected_sha256 from fs_read).",
     FsPatchSchemaStr,
+    RecoveryClass.Mutating,
     fsPatchInvoke
   )
 
@@ -246,6 +266,7 @@ final class CodingToolset private (
     "fs_tree",
     "List workspace files as a bounded tree (skips .git/target/node_modules, max 500 entries).",
     FsTreeSchemaStr,
+    RecoveryClass.ReadOnly,
     fsTreeInvoke
   )
 
