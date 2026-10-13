@@ -4,7 +4,7 @@ import raider.core.*
 import zio.json.{DecoderOps, DeriveJsonDecoder, JsonDecoder}
 import zio.json.ast.Json
 import zio.test.*
-import zio.ZIO
+import zio.{Chunk, ZIO}
 
 import java.net.{InetAddress, InetSocketAddress}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -317,8 +317,19 @@ object AnthropicMessagesStandSpec extends ZIOSpecDefault:
               .flatMap(b => fieldOf(b, "tool_use_id")) == Some(
               Json.Str("toolu_1")
             ),
+            // RAI-133: content is a STRUCTURED text-block array; the payload
+            // is a JSON string carried verbatim inside "text" (quotes are
+            // part of the rendered payload) — assertion strength kept: id +
+            // payload still exact, now block-typed
             toolBlock.flatMap(b => fieldOf(b, "content")) == Some(
-              Json.Str("stand tool output")
+              Json.Arr(
+                Chunk(
+                  Json.Obj(
+                    ("type", Json.Str("text")),
+                    ("text", Json.Str("\"stand tool output\""))
+                  )
+                )
+              )
             ),
             // final round: usage + end_turn
             ev2.head == ModelEvent.Started(AttemptId("msg_l20_t2")),
