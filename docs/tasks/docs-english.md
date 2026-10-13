@@ -20,3 +20,18 @@ The `docs/useful-examples` lane owns README, user guides, `examples/user-guide/*
 ## Non-goals
 
 No new runtime features, provider fallback, deployment, forge integration, or API stability promises. Translation does not change historical evidence or roadmap scope.
+
+## Follow-up: all tracked files (2026-10-13)
+
+The owner clarified that Russian must be removed from every tracked file,
+including source comments, test descriptions, and fixture prompts/responses.
+Eight isolated `docs/all-files-1` through `docs/all-files-8` lanes own disjoint
+source inventories; the coordinator owns integration and contributor policy.
+Translate correlated fixture assertions together and retain UTF-8/emoji/CJK
+coverage. Protected verifier translations use the separate verifier card.
+
+The owner explicitly requested no builds, tests, or quality gates. Only reading,
+text inventory, diff review, translation, and Git integration are authorized for
+this follow-up. Existing evidence remains historical; changing source invalidates
+its acceptance for the new revision. Historical run transcripts and independent
+worktrees retain their original inputs and are not delivered by a Git merge.
