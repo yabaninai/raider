@@ -115,22 +115,26 @@ object FacadeOpsSpec extends ZIOSpecDefault:
       yield assertTrue(!cancelled)
     },
     test(
-      "send is a typed refusal: RaiderError.CapabilityUnsupported (RA-CAP)"
+      "send is wired (RAI-132): a terminal job answers a typed Rejected receipt — the old RA-CAP refusal is gone"
     ) {
       for
         (_, session) <- scripted(Head, Tail)
         handle = AgentRef("scout").start("bg")(using session)
-        refusal <- ZIO.attempt(handle.send("steer")(using session)).either
-        capability = refusal match
-          case Left(_: RaiderError.CapabilityUnsupported) => true
-          case _                                          => false
-        code = refusal match
-          case Left(e: RaiderError) => e.code
-          case _                    => ""
-        detail = refusal match
-          case Left(e: RaiderError) => e.detail
-          case _                    => ""
-      yield assertTrue(capability, code == "RA-CAP", detail.contains("send"))
+        _ = handle.await()(using session) // Succeeded — already terminal
+        receipt = handle.send("steer")(using session)
+      yield assertTrue(
+        receipt.text == "steer",
+        receipt.jobId == handle.id,
+        receipt match
+          case SteerReceipt.Rejected(
+                _,
+                _,
+                _,
+                raider.runtime.mailbox.MailboxError.TerminalJob(_, status)
+              ) =>
+            status == JobStatus.Succeeded
+          case _ => false
+      )
     },
     test(
       "two background starts: distinct JobIds, both Succeeded in adminView"

@@ -24,11 +24,14 @@ import zio.test._
   */
 object ReplChatPaletteSpec extends ZIOSpecDefault:
 
-  /** helpText command line: two-space indent, the `:name [<arg>]` usage token,
-    * then 2+ spaces, then the summary. Deliberately strict — a helpText
-    * formatting change must FAIL here (loud drift), not pass silently.
+  /** helpText command line: two-space indent, the `:name [<arg>...]` usage
+    * token (zero or more `<arg>` tokens — RAI-132 `:send <jobId> <text>` is a
+    * genuine two-argument command; every pre-existing one-arg/zero-arg line
+    * parses identically), then 2+ spaces, then the summary. Deliberately strict
+    * — a helpText formatting change must FAIL here (loud drift), not pass
+    * silently.
     */
-  private val CommandLine = raw"^  (:\S+(?: <[^>]+>)?)\s{2,}(.+?)\s*$$".r
+  private val CommandLine = raw"^  (:\S+(?: <[^>]+>)*)\s{2,}(.+?)\s*$$".r
 
   /** The parsed source of truth: (name, usage, summary) in helpText order. */
   private def parsedHelpText: Vector[(String, String, String)] =
@@ -67,10 +70,13 @@ object ReplChatPaletteSpec extends ZIOSpecDefault:
           // strict command-line parser must not pick them up as palette
           // entries. RAI-124: ":type" LEFT that line — it is a dispatched
           // command now (the freshness equality above pins it against
-          // helpText).
+          // helpText). RAI-132: ":send" left that line too (job steering over
+          // the runtime mailbox, typed receipts).
           assertTrue(!ShellPalette.chatCommands.contains(":kind")) &&
           assertTrue(!ShellPalette.chatCommands.contains(":doc")) &&
           assertTrue(ShellPalette.chatCommands.contains(":type")) &&
+          assertTrue(ShellPalette.chatCommands.contains(":send")) &&
+          assertTrue(!Commands.helpText.contains("send steering")) &&
           assertTrue(Commands.helpText.contains("Not in this slice:"))
         }
       ),
