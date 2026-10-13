@@ -22,6 +22,19 @@ import scala.jdk.CollectionConverters.*
   * full tool registry and process privileges. Reviewer prompts request no
   * tools, and observed tool calls/workspace changes fail postconditions; those
   * checks are not a permission boundary or sandbox.
+  *
+  * Lineage framing: each headless invocation writes its own SINGLE-ROOT
+  * lineage artifacts (`lineage.scala` + `lineage-data.json`) and each stays an
+  * independent native root here — the index below is application-owned, not a
+  * native graph join. The UNIFIED lineage shape for this pipeline (one phase
+  * graph with real delegation edges, demonstrated on real generated
+  * artifacts) is the RAI-146 acceptance corpus
+  * (`contracts/lineage/unified/`, case-1 billing) plus the checked-in rendered
+  * program `docs/examples/ci-pipeline/unified-lineage/lineage.scala`; the
+  * guide section "Unified lineage for this pipeline shape"
+  * (`docs/user-guide-ci.md`) documents the shipped export/join (`MultiJobExport`)
+  * and the dry-run projection semantics (ADR-031). This example does not use
+  * the unified path.
   */
 object BillingCi:
 

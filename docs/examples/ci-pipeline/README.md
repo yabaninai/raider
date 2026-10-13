@@ -66,3 +66,15 @@ the excerpt. `nativeRuns` contains the six validated graphs recovered directly
 from their artifact directories. The current source fixes reference retention
 and stage naming; the first index must not be treated as a correct six-run
 linkage table.
+
+## Unified shape (not a capture of this pipeline)
+
+The [unified lineage program](unified-lineage/lineage.scala) with its
+[provenance record](unified-lineage/README.md) is a real generated artifact of
+the RAI-146 acceptance corpus: the same billing pipeline shape rendered as ONE
+multi-job graph (five phases, eight correlation-linked delegate children, two
+recorded batch fan-outs) when the stages run as delegate children of a single
+run. It is not a capture of the six-root pipeline above; that application
+still produces six independent native graphs today. See
+[the CI guide's unified section](../../user-guide-ci.md#unified-lineage-for-this-pipeline-shape)
+for the distinction and the evidence paths.
