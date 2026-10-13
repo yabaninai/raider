@@ -363,31 +363,31 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
       s.send(":switch alpha\r")
       val focusedA = s.waitFor("focused: alpha", 20.seconds)
       // Draft A, first chunk (multibyte), while both feeders stream.
-      s.send("привет😀 мир漢字\r")
-      val draftA1 = s.waitFor("draft [alpha]: привет😀 мир漢字", 25.seconds)
+      s.send("café😀 résumé漢字\r")
+      val draftA1 = s.waitFor("draft [alpha]: café😀 résumé漢字", 25.seconds)
       // Streaming is LIVE here (both tabs Running) and A's draft is exact.
       val liveMid = s.waitForReport(
         draftsNow(
           List("alpha", "beta"),
-          Map("alpha" -> "привет😀 мир漢字")
+          Map("alpha" -> "café😀 résumé漢字")
         ),
         30.seconds
       )
       // A→B: draft B is tab-isolated.
       s.send(":next\r")
       val focusedB = s.waitFor("focused: beta", 20.seconds)
-      s.send("ßeta✓\r")
-      val draftB = s.waitFor("draft [beta]: ßeta✓", 25.seconds)
+      s.send("résumé✓\r")
+      val draftB = s.waitFor("draft [beta]: résumé✓", 25.seconds)
       // B→A: append to draft A — bytes survive the tour.
       s.send(":prev\r")
       val focusedBack = s.waitFor("focused: alpha", 20.seconds)
-      s.send(" 漢字-хвост\r")
+      s.send(" 漢字-tail\r")
       val draftA2 =
-        s.waitFor("draft [alpha]: привет😀 мир漢字 漢字-хвост", 25.seconds)
+        s.waitFor("draft [alpha]: café😀 résumé漢字 漢字-tail", 25.seconds)
       val rep = s.waitForReport(
         settled(
           List("alpha", "beta"),
-          Map("alpha" -> "привет😀 мир漢字 漢字-хвост", "beta" -> "ßeta✓")
+          Map("alpha" -> "café😀 résumé漢字 漢字-tail", "beta" -> "résumé✓")
         ),
         90.seconds
       )
@@ -418,8 +418,8 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
           "exit" -> code.toString
         )
       )
-      val echoA = countSubstr(text, "draft [alpha]: привет😀 мир漢字 漢字-хвост")
-      val echoB = countSubstr(text, "draft [beta]: ßeta✓")
+      val echoA = countSubstr(text, "draft [alpha]: café😀 résumé漢字 漢字-tail")
+      val echoB = countSubstr(text, "draft [beta]: résumé✓")
       assertTrue(promptUp) &&
       assertTrue(createdA) &&
       assertTrue(createdB) &&
@@ -484,13 +484,13 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
       val alphaStillOpen = s.waitFor("*1. alpha [", 15.seconds)
       val betaStillThere = s.waitFor("2. beta [", 15.seconds)
       // The prompt is editable and the draft still accumulates after refusal.
-      s.send(" после-отказа\r")
+      s.send(" after-refusal\r")
       val draftA2 =
-        s.waitFor("draft [alpha]: draft-alpha😀 после-отказа", 25.seconds)
+        s.waitFor("draft [alpha]: draft-alpha😀 after-refusal", 25.seconds)
       val rep2 = s.waitForReport(
         settled(
           List("alpha", "beta"),
-          Map("alpha" -> "draft-alpha😀 после-отказа", "beta" -> "draft-beta漢")
+          Map("alpha" -> "draft-alpha😀 after-refusal", "beta" -> "draft-beta漢")
         ),
         30.seconds
       )
@@ -564,7 +564,7 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
       Thread.sleep(80)
       s.send(":next\r")
       Thread.sleep(80)
-      s.send("draft03ß\r")
+      s.send("draft03é\r")
       Thread.sleep(80)
       s.send(":switch t20\r")
       Thread.sleep(80)
@@ -576,7 +576,7 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
       val expectedDrafts = Map(
         "t01" -> "draft01😀",
         "t02" -> "draft02漢",
-        "t03" -> "draft03ß",
+        "t03" -> "draft03é",
         "t20" -> "draft20✓"
       )
       val rep = s.waitForReport(settled(labels, expectedDrafts), 120.seconds)
@@ -584,10 +584,10 @@ object TabShellDraftsPtySpec extends ZIOSpecDefault:
       // append — leading space preserved byte-exact (draft was empty).
       s.send(":switch t05\r")
       val focused05 = s.waitFor("focused: t05", 20.seconds)
-      s.send(" добавка\r")
-      val draft05 = s.waitFor("draft [t05]:  добавка", 25.seconds)
+      s.send(" addition\r")
+      val draft05 = s.waitFor("draft [t05]:  addition", 25.seconds)
       val rep2 = s.waitForReport(
-        settled(labels, expectedDrafts + ("t05" -> " добавка")),
+        settled(labels, expectedDrafts + ("t05" -> " addition")),
         30.seconds
       )
       s.send(":tabs\r")

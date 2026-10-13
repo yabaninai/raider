@@ -361,20 +361,20 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
       s.send(":switch alpha\r")
       val focusedA = s.waitFor("focused: alpha", 20.seconds)
       // The A→B→A tour while the feeder streams through the real hub.
-      s.send("привет😀\r")
-      val draftA1 = s.waitFor("draft [alpha]: привет😀", 25.seconds)
+      s.send("café😀\r")
+      val draftA1 = s.waitFor("draft [alpha]: café😀", 25.seconds)
       s.send(":next\r")
       val focusedB = s.waitFor("focused: beta", 20.seconds)
-      s.send("мир漢\r")
-      val draftB = s.waitFor("draft [beta]: мир漢", 25.seconds)
+      s.send("résumé漢\r")
+      val draftB = s.waitFor("draft [beta]: résumé漢", 25.seconds)
       s.send(":prev\r")
       val focusedBack = s.waitFor("focused: alpha", 20.seconds)
-      s.send(" хвост\r")
-      val draftA2 = s.waitFor("draft [alpha]: привет😀 хвост", 25.seconds)
+      s.send(" tail\r")
+      val draftA2 = s.waitFor("draft [alpha]: café😀 tail", 25.seconds)
       val rep = s.waitForReport(
         settled(
           List("alpha", "beta"),
-          Map("alpha" -> "привет😀 хвост", "beta" -> "мир漢")
+          Map("alpha" -> "café😀 tail", "beta" -> "résumé漢")
         ),
         90.seconds
       )
@@ -406,8 +406,8 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
           "exit" -> code.toString
         )
       )
-      val echoA = countSubstr(text, "draft [alpha]: привет😀 хвост")
-      val echoB = countSubstr(text, "draft [beta]: мир漢")
+      val echoA = countSubstr(text, "draft [alpha]: café😀 tail")
+      val echoB = countSubstr(text, "draft [beta]: résumé漢")
       assertTrue(promptUp) &&
       assertTrue(createdA) &&
       assertTrue(createdB) &&
@@ -490,34 +490,34 @@ object TabShellHostPtySpec extends ZIOSpecDefault:
       // Active input DURING the burst: the feeder starts streaming on the
       // first :new; these bytes are typed while events flood the terminal
       // (queued by the PTY, processed by the one JLine loop).
-      s.send("строка1\r")
+      s.send("lineone\r")
       s.send(":next\r")
       val focusedBusy = s.waitFor("focused: busy", 20.seconds)
-      s.send("бурст😀\r")
-      val draftBusy = s.waitFor("draft [busy]: бурст😀", 25.seconds)
-      val draftQuiet1 = s.waitFor("draft [quiet]: строка1", 25.seconds)
+      s.send("burst😀\r")
+      val draftBusy = s.waitFor("draft [busy]: burst😀", 25.seconds)
+      val draftQuiet1 = s.waitFor("draft [quiet]: lineone", 25.seconds)
       // Burst over: feeds settled with the intermediate drafts byte-exact.
       val settledDuring =
         s.waitForReport(
           settled(
             List("busy", "quiet"),
-            Map("busy" -> "бурст😀", "quiet" -> "строка1")
+            Map("busy" -> "burst😀", "quiet" -> "lineone")
           ),
           90.seconds
         )
       // The prompt stays editable AFTER the storm: keep appending.
       s.send(":switch quiet\r")
       val backQuiet = s.waitFor("focused: quiet", 20.seconds)
-      s.send(" хвост2\r")
+      s.send(" tail2\r")
       val quietFull =
-        s.waitFor("draft [quiet]: строка1 хвост2", 25.seconds)
-      s.send(" после-бури\r")
+        s.waitFor("draft [quiet]: lineone tail2", 25.seconds)
+      s.send(" after-storm\r")
       val quietAfter =
-        s.waitFor("draft [quiet]: строка1 хвост2 после-бури", 25.seconds)
+        s.waitFor("draft [quiet]: lineone tail2 after-storm", 25.seconds)
       val settledFinal = s.waitForReport(
         settled(
           List("busy", "quiet"),
-          Map("busy" -> "бурст😀", "quiet" -> "строка1 хвост2 после-бури")
+          Map("busy" -> "burst😀", "quiet" -> "lineone tail2 after-storm")
         ),
         30.seconds
       )
