@@ -1,0 +1,30 @@
+{
+  "caseId": "case-4-pure-fanout-roots",
+  "streamFile": "cases/case-4-pure-fanout-roots.jsonl",
+  "runId": "camp-fanout",
+  "graphHash": "1a580061def335ae815f8ff6dbccbd729faff139343a91811c15b523f3c27b22",
+  "provenance": null,
+  "segments": [
+    { "jobId": "j-worker-1", "invocationId": "inv-worker-1", "status": "linked", "detail": null },
+    { "jobId": "j-worker-2", "invocationId": "inv-worker-2", "status": "linked", "detail": null }
+  ],
+  "fanOut": [
+    {
+      "parentId": null,
+      "members": ["camp-fanout:n1", "camp-fanout:n2"],
+      "parallelism": 2
+    }
+  ],
+  "reportTree": [
+    { "id": "camp-fanout:n1", "kind": "delegation:worker", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "j-worker-1:n1", "kind": "model:work-model:1", "dataRef": "j-worker-1/round-1", "inputs": ["camp-fanout:n1"], "nesting": 1 },
+    { "id": "camp-fanout:n2", "kind": "delegation:worker", "dataRef": null, "inputs": ["camp-fanout:n1"], "nesting": 1 },
+    { "id": "j-worker-2:n1", "kind": "model:work-model:1", "dataRef": "j-worker-2/round-1", "inputs": ["camp-fanout:n2"], "nesting": 1 }
+  ],
+  "sourcePins": [
+    "val segments: Vector[(String, String, String)] =",
+    "batch(List(delegation_worker, delegation_worker_2), 2)(p => p(())).map(_.flatten.toVector)"
+  ],
+  "sourceAbsent": ["runProvenance"],
+  "generatedSourceSha256": "38e5efc54c20aa50b8a605c2a25a773e0234ef2621e8052d207798e2c89c7315"
+}

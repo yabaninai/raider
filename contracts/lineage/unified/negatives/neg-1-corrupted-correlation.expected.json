@@ -1,0 +1,8 @@
+{
+  "caseId": "neg-1-corrupted-correlation",
+  "streamFile": "negatives/neg-1-corrupted-correlation.jsonl",
+  "reader": { "envelopeCount": 48, "truncatedTail": null },
+  "strictError": { "kind": "MissingCorrelation", "job": "j-repair", "seq": 1 },
+  "partialError": { "kind": "MissingCorrelation", "job": "j-repair", "seq": 1 },
+  "partial": null
+}

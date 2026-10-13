@@ -1,0 +1,30 @@
+{
+  "caseId": "case-3-unlinked",
+  "streamFile": "cases/case-3-unlinked.jsonl",
+  "runId": "camp-unlinked",
+  "graphHash": "f9d873a820bc75598118984a814c63dc44a083c70cd1539153bcaae88d6b9908",
+  "provenance": {
+    "parentRunId": null,
+    "artifacts": [
+      { "kind": "work_dir", "path": "runs/upstream-c/jobs/j-checker" },
+      { "kind": "events", "path": "runs/upstream-c/jobs/j-checker/events.jsonl" }
+    ]
+  },
+  "segments": [
+    { "jobId": "j-checker", "invocationId": "inv-checker", "status": "linked", "detail": null },
+    { "jobId": "j-stray", "invocationId": null, "status": "unlinked", "detail": "captured but never introduced: no Delegated record, never joined — separate native root" }
+  ],
+  "fanOut": [],
+  "reportTree": [
+    { "id": "camp-unlinked:n1", "kind": "phase:check", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-unlinked:n2", "kind": "delegation:checker", "dataRef": null, "inputs": ["camp-unlinked:n1"], "nesting": 2 },
+    { "id": "j-checker:n1", "kind": "model:check-model:1", "dataRef": "j-checker/round-1", "inputs": ["camp-unlinked:n2"], "nesting": 2 }
+  ],
+  "sourcePins": [
+    "val runProvenance: Vector[(String, String)] =",
+    "val segments: Vector[(String, String, String)] =",
+    "unlinked: captured but never introduced: no Delegated record, never joined — separate native root"
+  ],
+  "sourceAbsent": ["batch("],
+  "generatedSourceSha256": "c70954b44bcd7397f2d268db4c47887f128d2db7aff743098d043bf8affe54f6"
+}

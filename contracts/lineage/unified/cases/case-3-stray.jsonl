@@ -1,0 +1,3 @@
+{"schemaVersion":2,"seq":1,"jobId":"j-stray","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":5,"payload":{"type":"ModelCallStarted","round":1,"model":"stray-model"},"invocationId":"inv-checker"}
+{"schemaVersion":2,"seq":2,"jobId":"j-stray","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":10,"payload":{"type":"ModelCallFinished","round":1,"durationMs":3,"usage":{"reserved":0,"observed":2,"unknown":false}},"invocationId":"inv-checker"}
+{"schemaVersion":2,"seq":3,"jobId":"j-stray","rootId":"root-unified-corpus","sessionId":"sess-unified-corpus","atMs":15,"payload":{"type":"Terminal","outcome":"Succeeded"},"invocationId":"inv-checker"}

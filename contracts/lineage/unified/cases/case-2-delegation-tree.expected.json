@@ -1,0 +1,34 @@
+{
+  "caseId": "case-2-delegation-tree",
+  "streamFile": "cases/case-2-delegation-tree.jsonl",
+  "runId": "camp-orchestrator",
+  "graphHash": "bc03485861e89fb06c9037c50311721045d851fcce87adc624e33590825f9b66",
+  "provenance": null,
+  "segments": [
+    { "jobId": "j-worker-a", "invocationId": "inv-worker-a", "status": "linked", "detail": null },
+    { "jobId": "j-worker-b", "invocationId": "inv-worker-b", "status": "linked", "detail": null },
+    { "jobId": "j-leaf", "invocationId": "inv-leaf", "status": "linked", "detail": null }
+  ],
+  "fanOut": [
+    {
+      "parentId": "camp-orchestrator:n1",
+      "members": ["camp-orchestrator:n3", "camp-orchestrator:n4"],
+      "parallelism": 2
+    }
+  ],
+  "reportTree": [
+    { "id": "camp-orchestrator:n1", "kind": "model:plan-model:1", "dataRef": "camp-orchestrator/round-1", "inputs": [], "nesting": 0 },
+    { "id": "camp-orchestrator:n3", "kind": "delegation:worker", "dataRef": null, "inputs": ["camp-orchestrator:n1"], "nesting": 1 },
+    { "id": "j-worker-a:n1", "kind": "delegation:subworker", "dataRef": null, "inputs": [], "nesting": 2 },
+    { "id": "j-leaf:n1", "kind": "model:leaf-model:1", "dataRef": "j-leaf/round-1", "inputs": ["j-worker-a:n1"], "nesting": 2 },
+    { "id": "j-worker-a:n2", "kind": "model:work-model:1", "dataRef": "j-worker-a/round-1", "inputs": ["j-worker-a:n1"], "nesting": 1 },
+    { "id": "camp-orchestrator:n4", "kind": "delegation:worker", "dataRef": null, "inputs": ["camp-orchestrator:n3"], "nesting": 1 },
+    { "id": "j-worker-b:n1", "kind": "model:work-model:1", "dataRef": "j-worker-b/round-1", "inputs": ["camp-orchestrator:n4"], "nesting": 1 }
+  ],
+  "sourcePins": [
+    "val segments: Vector[(String, String, String)] =",
+    "batch(List(delegation_worker, delegation_worker_2), 2)(p => p(()))"
+  ],
+  "sourceAbsent": ["runProvenance"],
+  "generatedSourceSha256": "de2507a4c6633422d5eec32986b976c696400a87aee8036c289d42bc29f4758d"
+}

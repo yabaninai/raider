@@ -214,10 +214,6 @@ object UnifiedProjection:
 
   private final case class DefBlock(
       name: String,
-      // The def NODE's own id: the def body scope holds the node's CHILDREN,
-      // so the fan-out groups valid inside this body are those whose parentId
-      // equals this id (root-scope groups carry parentId = None).
-      scopeNode: Option[String],
       body: scala.collection.mutable.ArrayBuffer[Plan]
   )
 
@@ -380,10 +376,12 @@ object UnifiedProjection:
           val defName = nextDefName(base)
           // Reserve the def block BEFORE recursing: defs emit in pre-order
           // discovery order (outer first), like the single-run renderer. The
-          // def BODY is the node's children scope (fan-out groups are scoped
-          // per that node id).
+          // def BODY is the node's children scope; fan-out groups are claimed
+          // at emission by the scope whose steps hold their member calls
+          // (which for a def body means the groups whose members are this
+          // node's children).
           val body = scala.collection.mutable.ArrayBuffer.empty[Plan]
-          defs += DefBlock(defName, Some(n.id), body)
+          defs += DefBlock(defName, body)
           for
             own <- atomicStep(
               n,
@@ -503,11 +501,21 @@ object UnifiedProjection:
           * pre-order). Every element's fragment is bound (`n_*` variables,
           * deduped per scope); the final `.map` concatenates them in
           * declaration order, which equals the graph's pre-order walk.
+          *
+          * Scope claiming (RAI-146, review finding f2): a VALIDATED group is
+          * claimed by the ONE scope whose steps hold its member calls — the def
+          * body of the group's parent when that parent is a def node
+          * (phase/delegation), the ENCLOSING scope when the parent is any other
+          * node (e.g. a model round the forks hang under), the root scope for
+          * root-level groups. Matching by member presence (each member call
+          * site lives in exactly one scope) keeps every validated group
+          * composed as recorded — `GeneratedProjection.fanOut` never claims a
+          * group the emitted source does not compose as `batch`.
           */
         def emitScope(
             baseIndent: String,
             steps: Vector[Plan],
-            groupsHere: Vector[FanOutGroup]
+            groups: Vector[FanOutGroup]
         ): Unit =
           val vars = scala.collection.mutable.HashMap.empty[String, String]
           val varCounts = scala.collection.mutable.HashMap.empty[String, Int]
@@ -521,7 +529,7 @@ object UnifiedProjection:
             name
 
           // group plans into emission elements
-          val localGroups = groupsHere.filter(g =>
+          val localGroups = groups.filter(g =>
             steps.exists {
               case Plan.Call(id, _, _) => groupOf.get(id).contains(g)
               case _                   => false
@@ -570,9 +578,18 @@ object UnifiedProjection:
                 "), " + g.parallelism + ")(p => p(()))"
 
           if elems.sizeIs == 1 then
+            // A scope whose ONLY element is a fan-out flattens the batch
+            // result (`Task[List[Vector[StepReport]]]`) into the fragment
+            // vector — the bare batch expression alone does not typecheck as
+            // the Program body (RAI-146, review finding f1; corpus case-4
+            // pure-fan-out-roots is the reproducer).
+            val line = elems.head match
+              case Elem.Fan(_, _) =>
+                elemLine(elems.head) + ".map(_.flatten.toVector)"
+              case other => elemLine(other)
             out
               .append(baseIndent)
-              .append(elemLine(elems.head))
+              .append(line)
               .append(dataComment(elems.head))
               .append('\n')
           else
@@ -617,8 +634,7 @@ object UnifiedProjection:
 
         def emitMember(
             name: String,
-            body: Vector[Plan],
-            groupsHere: Vector[FanOutGroup]
+            body: Vector[Plan]
         ): Unit =
           // The sub-Program member is a val (strict, pure construction — the
           // runtime dispatches nothing at build time), mirroring the
@@ -636,12 +652,8 @@ object UnifiedProjection:
             .append(name)
             .append("\") { _ =>")
             .append('\n')
-          emitScope(Indent * 3, body, groupsHere)
+          emitScope(Indent * 3, body, groups)
           out.append(Indent * 2).append('}').append('\n')
-
-        // groups scoped per parent id (def body / root scope)
-        def groupsUnder(parent: Option[String]): Vector[FanOutGroup] =
-          groups.filter(_.parentId == parent)
 
         val rootSteps = scala.collection.mutable.ArrayBuffer.empty[Plan]
         val walkResult = in.view.roots
@@ -742,7 +754,7 @@ object UnifiedProjection:
             out.append('\n')
           defs.zipWithIndex.foreach { (d, k) =>
             if k > 0 then out.append('\n')
-            emitMember(d.name, d.body.toVector, groupsUnder(d.scopeNode))
+            emitMember(d.name, d.body.toVector)
           }
           if defs.nonEmpty then out.append('\n')
           out
@@ -755,7 +767,7 @@ object UnifiedProjection:
             .append(objName)
             .append("\") { _ =>")
             .append('\n')
-          emitScope(Indent * 3, rootSteps.toVector, groupsUnder(None))
+          emitScope(Indent * 3, rootSteps.toVector, groups)
           out.append(Indent * 2).append('}').append('\n')
 
           GeneratedProjection(

@@ -1,0 +1,82 @@
+{
+  "caseId": "case-1-billing",
+  "streamFile": "cases/case-1-billing.jsonl",
+  "runId": "camp-billing",
+  "graphHash": "8febe295b01e5bc7da743dfd170c601d42e6a27bba1896a9eedb101d274c3d5b",
+  "provenance": {
+    "parentRunId": "run-upstream-2026-10-12-a",
+    "artifacts": [
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-baseline" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-baseline/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-repair" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-repair/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-final" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-final/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-review-1" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-review-1/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-review-2" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-review-2/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-boundary-1" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-boundary-1/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-boundary-2" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-boundary-2/events.jsonl" },
+      { "kind": "work_dir", "path": "runs/upstream-a/jobs/j-boundary-3" },
+      { "kind": "events", "path": "runs/upstream-a/jobs/j-boundary-3/events.jsonl" }
+    ]
+  },
+  "segments": [
+    { "jobId": "j-baseline", "invocationId": "inv-baseline", "status": "linked", "detail": null },
+    { "jobId": "j-repair", "invocationId": "inv-repair", "status": "linked", "detail": null },
+    { "jobId": "j-final", "invocationId": "inv-final", "status": "linked", "detail": null },
+    { "jobId": "j-review-1", "invocationId": "inv-review-1", "status": "linked", "detail": null },
+    { "jobId": "j-review-2", "invocationId": "inv-review-2", "status": "linked", "detail": null },
+    { "jobId": "j-boundary-1", "invocationId": "inv-boundary-1", "status": "linked", "detail": null },
+    { "jobId": "j-boundary-2", "invocationId": "inv-boundary-2", "status": "linked", "detail": null },
+    { "jobId": "j-boundary-3", "invocationId": "inv-boundary-3", "status": "linked", "detail": null }
+  ],
+  "fanOut": [
+    {
+      "parentId": "camp-billing:n10",
+      "members": ["camp-billing:n11", "camp-billing:n12"],
+      "parallelism": 2
+    },
+    {
+      "parentId": "camp-billing:n14",
+      "members": ["camp-billing:n15", "camp-billing:n16", "camp-billing:n17"],
+      "parallelism": 3
+    }
+  ],
+  "reportTree": [
+    { "id": "camp-billing:n1", "kind": "phase:baseline-check", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-billing:n2", "kind": "delegation:ci-baseline", "dataRef": null, "inputs": ["camp-billing:n1"], "nesting": 2 },
+    { "id": "j-baseline:n1", "kind": "model:check-model:1", "dataRef": "j-baseline/round-1", "inputs": ["camp-billing:n2"], "nesting": 2 },
+    { "id": "camp-billing:n4", "kind": "phase:repair", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-billing:n5", "kind": "delegation:ci-repair", "dataRef": null, "inputs": ["camp-billing:n4"], "nesting": 2 },
+    { "id": "j-repair:n1", "kind": "model:repair-model:1", "dataRef": "j-repair/round-1", "inputs": ["camp-billing:n5"], "nesting": 2 },
+    { "id": "j-repair:n3", "kind": "tool:bash:Mutating", "dataRef": "j-repair/call-c1", "inputs": ["j-repair:n1"], "nesting": 2 },
+    { "id": "j-repair:n5", "kind": "model:repair-model:2", "dataRef": "j-repair/round-2", "inputs": ["j-repair:n3"], "nesting": 2 },
+    { "id": "camp-billing:n7", "kind": "phase:final-check", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-billing:n8", "kind": "delegation:ci-final", "dataRef": null, "inputs": ["camp-billing:n7"], "nesting": 2 },
+    { "id": "j-final:n1", "kind": "model:check-model:1", "dataRef": "j-final/round-1", "inputs": ["camp-billing:n8"], "nesting": 2 },
+    { "id": "camp-billing:n10", "kind": "phase:reviews", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-billing:n11", "kind": "delegation:ci-review", "dataRef": null, "inputs": ["camp-billing:n10"], "nesting": 2 },
+    { "id": "j-review-1:n1", "kind": "model:review-model:1", "dataRef": "j-review-1/round-1", "inputs": ["camp-billing:n11"], "nesting": 2 },
+    { "id": "camp-billing:n12", "kind": "delegation:ci-review", "dataRef": null, "inputs": ["camp-billing:n11"], "nesting": 2 },
+    { "id": "j-review-2:n1", "kind": "model:review-model:1", "dataRef": "j-review-2/round-1", "inputs": ["camp-billing:n12"], "nesting": 2 },
+    { "id": "camp-billing:n14", "kind": "phase:boundary", "dataRef": null, "inputs": [], "nesting": 1 },
+    { "id": "camp-billing:n15", "kind": "delegation:ci-boundary", "dataRef": null, "inputs": ["camp-billing:n14"], "nesting": 2 },
+    { "id": "j-boundary-1:n1", "kind": "model:boundary-model:1", "dataRef": "j-boundary-1/round-1", "inputs": ["camp-billing:n15"], "nesting": 2 },
+    { "id": "camp-billing:n16", "kind": "delegation:ci-boundary", "dataRef": null, "inputs": ["camp-billing:n15"], "nesting": 2 },
+    { "id": "j-boundary-2:n1", "kind": "model:boundary-model:1", "dataRef": "j-boundary-2/round-1", "inputs": ["camp-billing:n16"], "nesting": 2 },
+    { "id": "camp-billing:n17", "kind": "delegation:ci-boundary", "dataRef": null, "inputs": ["camp-billing:n16"], "nesting": 2 },
+    { "id": "j-boundary-3:n1", "kind": "model:boundary-model:1", "dataRef": "j-boundary-3/round-1", "inputs": ["camp-billing:n17"], "nesting": 2 }
+  ],
+  "sourcePins": [
+    "val runProvenance: Vector[(String, String)] =",
+    "val segments: Vector[(String, String, String)] =",
+    "batch(List(delegation_ci_review, delegation_ci_review_2), 2)(p => p(()))",
+    "batch(List(delegation_ci_boundary, delegation_ci_boundary_2, delegation_ci_boundary_3), 3)(p => p(()))"
+  ],
+  "sourceAbsent": [],
+  "generatedSourceSha256": "77339a8b649e4d7731db79536dcde6de70331f2f1668b41c7dfc0fc0801120cc"
+}
