@@ -344,6 +344,27 @@ RAI-132 (steering) -> RAI-134 (guide refresh) -> RAI-136 (soak). Owner-gated
 items remain untouched (live-wire, multi-job export, phase/recovery
 schema-card, F-14 sign-off).
 
+Night progress (2026-10-13):
+- **RAI-135 DONE** (bd1f94b): eval component-stage profile registered
+  (eval-corpus gate = deterministic plan-mode corpus, green x3, manifests
+  20261013-044405/-044440/-044510); perf deferred to RAI-137 with an honest
+  reason (ux_baseline exits 0 on skipped measurements — would violate
+  skip-is-never-passed). Explore-agent verification: APPROVE (strictly
+  additive, claims supported).
+- **RAI-133 DONE** (merge 91b0b49): Anthropic tool_result content is a
+  structured text-block array (payload verbatim); TRC-01 exact wire JSON,
+  TRC-02 encoder tolerance, TRC-03 cross-wire parity via ONE AgentLoop over
+  both local stands (3 repetitions); 2 pre-existing pins updated with
+  justification (strength kept); module 25/0; gates EXECUTE 5/5 + profiles
+  static/unit/contracts/transport. Explore-agent verification: APPROVE
+  (independent re-run 25/0, manifest hashes matched). Integrated gates on
+  91b0b49: EXECUTE 10/10 (20261013-053133) + profiles
+  ci/contracts/docs/repl/runtime/security/static/transport/unit 9/9
+  (20261013-053643). The W05 tool round is now complete on both wires at the
+  definitions+results level.
+- Next in queue: RAI-131 (CI adapter batch) -> RAI-132 (steering) ->
+  RAI-134 (guide refresh) -> RAI-136 (soak).
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
@@ -398,6 +419,8 @@ schema-card, F-14 sign-off).
 | RAI-122 tabs_pty_probe sync | accepted | [record](records/RAI-122.md); PROBE-01..03; protected verifier, review approve |
 | RAI-124 REPL :type | accepted | [record](records/RAI-124.md); TYPE-01..03, without execution; review approve; follow-ups → RAI-130 |
 | RAI-126 probes COURSIER_CACHE | accepted | [record](records/RAI-126.md); CC-01..03; protected verifiers, review approve |
+| RAI-135 eval registry profile | accepted (eval half; perf -> RAI-137) | [record](records/RAI-135.md); REG-01(eval)/02/03; explore verification approve; gate-policy change reviewed |
+| RAI-133 structured tool_result + parity | accepted | [record](records/RAI-133.md); TRC-01..03; explore verification approve (independent re-run 25/0) |
 | RAI-003/023/027 etc. | todo | prerequisites not met |
 | M1 | accepted-pending-owner-note | [M1-ACCEPTANCE.md](records/M1-ACCEPTANCE.md) (evidence compiled) |
 | Remaining M1/M2/P2 | todo | per working-product.md acceptance |
