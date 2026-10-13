@@ -5,6 +5,10 @@ native graph retains its original node IDs, parent links, input references, and
 data references. Tool arguments, private classpaths, full transcripts, and model
 prompts are omitted. These excerpts are for documentation and are not replay inputs.
 
+Read the [complete six Scala projections](native-projections.md) alongside
+the successful capture, or inspect the [current unified DSL artifact](unified-lineage/lineage.scala)
+with its [offline corpus provenance](unified-lineage/README.md).
+
 ## Successful run
 
 [Successful capture](successful-run.json): the corrected application completed

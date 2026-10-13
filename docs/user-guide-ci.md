@@ -1,12 +1,54 @@
-# A local Scala workflow for CI
+# Run the billing check locally
 
-This example repairs a deliberately incorrect Scala billing rule, checks the result with an independent compiler and test process, asks two reviewers to inspect inline source, checks three discount boundaries, and writes a typed decision plus an index of the run artifacts. The workflow is written in Scala and uses Raider's current `Program`, `Task`, composition, headless runner, and lineage APIs.
+This walkthrough runs a small Scala CI-style workflow against a copied fixture. The fixture has a planted boundary bug: a discount should apply when the subtotal is **at least** 10,000 cents, but the original code uses a strict greater-than comparison. The workflow asks an agent to repair it, verifies the result with independent compiler and test processes, collects two source reviews and three boundary reviews, then writes a typed `READY` or `BLOCKED` decision.
 
-The application is in [`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala). Its build and output layout are assembled by the repository-owned [`user-ci.sh`](../scripts/build/user-ci.sh). This guide separates the application's index of several runs from the native lineage graph written by each headless run: each native graph has its own root and budget.
+The runnable application is [`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala); [`user-ci.sh`](../scripts/build/user-ci.sh) builds it against the current checkout. This is an explicitly opted-in live example: it needs a configured OpenAI-compatible endpoint and may incur provider cost. No credentials belong in the command or files.
+
+## Prepare and run
+
+Prerequisites: JDK 21, `sbt`, `jq`, and a private Raider provider configuration. The script checks the JDK version and writes build outputs under `artifacts/user-ci/`.
+
+```sh
+sh scripts/build/user-ci.sh
+```
+
+Before launch, configure these variables through the approved private environment or credential helper: `RAIDER_PROVIDER=openai`, `RAIDER_BASE_URL`, `RAIDER_MODEL=glm-5.3-flash`, and either `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`. Set `RAIDER_LIVE_APPROVED=1` only when you intend to make the live calls. Then run:
+
+```sh
+RAIDER_LIVE_APPROVED=1 java -cp "$(cat artifacts/user-ci/classpath.txt)" demo.BillingCi \
+  "$(cat artifacts/user-ci/runtime-classpath.txt)" \
+  artifacts/user-ci/run \
+  examples/user-guide/fixture
+```
+
+The three arguments are the child-run runtime classpath, the output directory, and the source fixture. The application copies the fixture to `artifacts/user-ci/run/workspace` before it changes anything. Its five-minute pipeline deadline bounds the whole example; each native agent invocation has a 120-second deadline and its own default `maxAttempts=400`. Those per-run limits do not add up to a shared request or cost cap.
+
+The expected successful result is application decision `READY`, process exit 0, and `SUCCEEDED` in `pipeline-index.json`. `READY` means the baseline compiled and failed only at the exact threshold, the repair changed the source, the independent final compile/test passed, both general reviews passed validation, and all three boundary results passed. `BLOCKED` or another ordinary failure exits 1; a pipeline deadline writes an `UNKNOWN` index state and exits 24. These are application outcomes, not promises about a provider call.
+
+For a concrete recorded example, the successful capture below has decision `READY` and process exit 0. It is historical evidence for the exact captured source/configuration, not a fresh run of your checkout. The unified lineage corpus discussed later is a separate offline acceptance artifact; it does not claim to be the lineage output of this live six-invocation application.
+
+## Find the results
+
+Start at `artifacts/user-ci/run/decision.json` for the typed application decision and `pipeline-index.json` for stage statuses and links. Each agent stage's `nativeWorkDir` points to its own run directory. That directory can contain `run.json` (native status and exit), `events.jsonl` (the run's event stream), `summary.md`, `transcript.json`, and, for a settled reducible run, `lineage.scala` plus `lineage-data.json`. The baseline and final compiler/test process outputs are `baseline-check.log` and `final-independent-check.log`; they are not extra native agent roots. The copied and potentially repaired source is under `workspace/`.
+
+Use the index to locate a stage instead of guessing runtime-assigned run IDs:
+
+```sh
+RAIDER_PIPELINE=artifacts/user-ci/run
+jq '{status, decision, stages}' "$RAIDER_PIPELINE/pipeline-index.json"
+RAIDER_STAGE=$(jq -r '.stages[] | select(.name == "repair") | .nativeWorkDir' \
+  "$RAIDER_PIPELINE/pipeline-index.json")
+jq '.nodes, .data' "$RAIDER_PIPELINE/$RAIDER_STAGE/lineage-data.json"
+cat "$RAIDER_PIPELINE/$RAIDER_STAGE/lineage.scala"
+```
+
+The index is an application-owned list of six independent native roots. Its links are useful for finding evidence, but they do not join the roots, provide a shared budget, or make the workflow resumable.
+
+The [complete historical native projections](examples/ci-pipeline/native-projections.md) show the actual six graphs from the recorded run and explain their provenance. The [lineage walkthrough](user-guide-lineage.md) explains node links and artifact limits.
 
 ## What the application does
 
-The application works on a copy of the checked-in billing fixture. Its order is deliberate: make a repair, independently verify it, gather parallel review results, check boundary cases, then derive a typed release decision and write the index. Review stages receive source as input and have no mutation authorization. Compiler and test results come from actual process exits, not from model summaries.
+The application works on a copy of the checked-in billing fixture. Compiler and test results come from actual process exits, not from model summaries.
 
 ```mermaid
 flowchart TD
@@ -28,30 +70,11 @@ The graph describes orchestration and file ownership in the example. It does not
 
 The two reviewer prompts request analysis of the inline source and forbid tools. The application rejects a reviewer result if it observes a tool call or any file in that review's workspace. The current `coder` agent still has the full registered tool set and process permissions; these prompt and postcondition checks do not enforce a read-only capability boundary or sandbox arbitrary process effects.
 
-## Build and launch
+## How the Scala application is wired
 
-The build script compiles the Scala application and writes a classpath containing the example plus its runtime dependencies, and a runtime classpath for child CLI processes:
+The preparation and launch commands are at the top of this guide. The build writes an application classpath and a child-runtime classpath. At launch, `BillingCi` calls [`CliArgs.parse`](../modules/cli/src/main/scala/raider/cli/run/CliArgs.scala) and [`HeadlessRunner.run`](../modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala) with generic CI context. The current CLI parser has no `--ci` flag, so the app writes a [`CiContext`](../modules/cli/src/main/scala/raider/cli/run/CiContext.scala) JSON file per invocation with `ci="generic"` and `trusted=false`. The runner redacts the context's repository, ref, SHA, pipeline, and job fields in its artifact view.
 
-```sh
-sh scripts/build/user-ci.sh
-RAIDER_CI_CP=$(cat artifacts/user-ci/classpath.txt)
-RAIDER_RUNTIME_CP=$(cat artifacts/user-ci/runtime-classpath.txt)
-```
-
-Configure the owner's approved OpenAI-compatible endpoint, model, and coding-plan credentials privately in the environment or credential helper. Keep credential values out of source, shell history, argv, the index, and run reports. Then launch the example with the explicit live approval switch:
-
-```sh
-RAIDER_LIVE_APPROVED=1 java -cp "$RAIDER_CI_CP" demo.BillingCi \
-  "$RAIDER_RUNTIME_CP" \
-  artifacts/user-ci/run \
-  examples/user-guide/fixture
-```
-
-The three arguments are the runtime classpath used by child runs, the output directory, and the source fixture workspace. The application copies the fixture into `<artifact-output-dir>/workspace` and runs the repair there. It writes `RUNBOOK.md` and a pinned checker into the copy. The baseline checker compiles the Scala source/tests and expects only the exact-threshold test to fail; after repair, the same checker must exit zero and report all three boundaries passing. The original fixture stays available for comparison.
-
-`RAIDER_LIVE_APPROVED=1` is an explicit opt-in for this example's provider calls. It does not supply credentials or select a different provider. The coding-plan endpoint/model configuration must already be present through the owner's private setup. Do not add a provider key or URL containing credentials to this command.
-
-The app requires `RAIDER_PROVIDER=openai`, `RAIDER_BASE_URL`, `RAIDER_MODEL=glm-5.3-flash`, and either `RAIDER_API_KEY` or `RAIDER_API_KEY_CMD`, in addition to `RAIDER_LIVE_APPROVED=1`. Configure those names through the approved private environment or helper before running the command. The app passes each stage to [`CliArgs.parse`](../modules/cli/src/main/scala/raider/cli/run/CliArgs.scala) and calls [`HeadlessRunner.run`](../modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala) with an explicit generic CI selection. The current CLI parser does not expose a `--ci` flag; the app writes a [`CiContext`](../modules/cli/src/main/scala/raider/cli/run/CiContext.scala) JSON file with `ci="generic"` and `trusted=false` for each invocation. The runner's artifact view redacts the repository, ref, SHA, pipeline, and job fields of this untrusted context.
+The app copies the fixture, writes `RUNBOOK.md` and a pinned checker into that copy, and records each process log. The baseline checker must compile and fail only with `FAIL exact-threshold`; after repair, it must exit zero and report all three boundaries passing. The checked-in original fixture remains unchanged for comparison.
 
 ## The Scala composition
 
@@ -165,12 +188,12 @@ A run with no delegation keeps the byte-identical frozen v1 layout.
 
 This application does not use that path: it launches six independent headless
 invocations, so each stage remains its own native root with its own stream,
-graph, and budget. The index links the roots; it creates no native edges. Two
-further wiring facts, reported accurately: the headless product path does not
-yet wire delegation into the `coder` agent (the join is fully wired in the
-runner and exercised end to end by fixtures; a wiring card is a follow-up),
-and the product runtime cannot emit v2 phase envelopes yet — see the
-limitations at the end of this section.
+graph, and budget. The index links the roots; it creates no native edges. The
+headless product path does not yet wire delegation into the `coder` agent,
+although the runner join is wired and exercised by fixtures. Headless coder
+wiring, per-level fork anchoring, and the unified lineage-data writer remain
+pending RAI-154. The runtime cannot emit v2 phase envelopes yet; real phase
+emission remains pending RAI-153.
 
 ### The unified shape the corpus demonstrates
 
@@ -210,14 +233,23 @@ delegation nodes and nine child-segment nodes at nesting 2. Its first entries:
 { "id": "j-repair:n3", "kind": "tool:bash:Mutating", "dataRef": "j-repair/call-c1", "inputs": ["j-repair:n1"], "nesting": 2 }
 ```
 
-The rendered program for that graph is checked in, real, and byte-pinned:
+The rendered program for that graph is checked in, real, and byte-pinned. It is
+the **complete current unified DSL projection** generated for the RAI-147
+guide acceptance; open the linked Scala file for every phase and delegation
+definition, including sections not excerpted here:
 [`examples/ci-pipeline/unified-lineage/lineage.scala`](examples/ci-pipeline/unified-lineage/lineage.scala)
 (SHA-256 `77339a8b649e4d7731db79536dcde6de70331f2f1668b41c7dfc0fc0801120cc`,
 equal to the corpus `generatedSourceSha256` pin that the verifier
 [`UnifiedCorpusVerifierSpec`](../modules/cli/src/test/scala/raider/cli/lineage/UnifiedCorpusVerifierSpec.scala)
-re-derives from the frozen stream on every run). Phase defs per pipeline
-stage, delegation blocks per linked child, and the recorded fan-outs composed
-with the shipped `batch` verb, from that artifact:
+re-derives from the frozen stream on every run). In plain terms, each
+`phase_*` definition marks a top-level stage. A `delegation_*` definition
+represents a child segment linked by its invocation ID; its model and tool
+reports follow in recorded order. The `batch(...)` calls appear only for the
+recorded parallel review pair and boundary trio. `runProvenance` holds
+pointers to earlier run artifacts, while `segments` lists linked child IDs
+and invocation IDs. These definitions describe the recorded graph; they do
+not launch agents or repeat tools. Representative definitions from the
+complete artifact:
 
 ```scala
 val phase_reviews: Program[Unit, Vector[StepReport]] =
@@ -297,30 +329,31 @@ are unchanged. A unified lineage export or its projection is never a reason a
 pipeline succeeds: the decision still comes from actual process exits and the
 application's own checks.
 
-### Honest limitations
+### Current limits and follow-ups
 
-- **Live-wire gated.** The unified acceptance evidence is offline and
-  deterministic (corpus + verifier). No live provider run through the unified
-  path has been performed; live claims remain gated behind the owner's
-  live-wire obligation.
+- **Different evidence scopes.** The successful six-root capture is an actual
+  recorded live run through the Yabanin coding-plan gateway. Unified lineage
+  evidence is an offline corpus and projection, not a live unified run. The
+  projection dispatches no provider calls.
 - **Phase stand-ins.** The product runtime cannot emit v2 phase envelopes yet
   (the frozen ADR-024 hub seam has no phase surface). In the RAI-145
   machinery fixture the campaign phases are inserted at deterministic
   positions around real machinery envelopes; in the RAI-146 corpus the phases
   are frozen wire payloads authored through the real codecs. Real phase
-  emission is a wiring card candidate.
+  emission remains pending RAI-153.
 - **Per-level anchoring before nested delegation ships.** Fork records are
   root-anchored in the export; nested delegation chains (worker → subworker)
   need per-level anchoring as a precondition. The corpus's
   `case-2-delegation-tree` pins the projection semantics for deeper nesting;
-  the export-side anchoring is not shipped.
+  the export-side anchoring is not shipped; it is part of the RAI-154 follow-up.
 - **No unified lineage-data writer yet.** The run artifact writer
   (`RunLineageArtifacts`) refuses phase-bearing graphs typed, so a unified
   program like the one quoted above is produced through the
   projection/verifier path — not yet written beside a run's `events.jsonl`.
   For a real delegation join without phases, the writer emits
   `lineage-data.json` schemaVersion 2 with the top-level `provenance` record
-  (RAI-144).
+  (RAI-144). Headless coder delegation wiring and the unified writer remain
+  pending RAI-154.
 
 ## Captured CI run and lineage
 

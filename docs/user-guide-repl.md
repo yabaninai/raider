@@ -30,11 +30,16 @@ assert(total(pair) == 43)
 
 Multiline definitions are submitted when you enter a blank line. The REPL keeps bindings across submissions until `:reset`.
 
+<a id="2-lazy-ask-and-map"></a>
+
 ## Build a lazy ask and inspect its type
 
-Calling `scout(prompt)` constructs an `AgentAsk[String]`. It does not dispatch a model request. `map` transforms the result while keeping the descriptor lazy; `.run()` or `.ask()` executes it in the foreground, and `.start()` creates a background job.
+Calling `scout(prompt)` constructs an `AgentAsk[String]`. It does not dispatch a model request. Run it in the foreground with `.run()` (or `.ask()`), transform the eventual answer with `.map`, and run the transformed descriptor when you are ready. The result type changes with the mapping function.
 
 ```scala
+val ask = scout("Summarize the parser entry point")
+:type ask
+val answer: String = ask.run()
 val description = scout("Summarize the parser entry point").map(_.length)
 :type description
 ```
@@ -48,7 +53,24 @@ assert(observed == 0)
 val summaryLength: Int = description.run()
 ```
 
-This distinction is useful when you want to prepare a request, add typed transformations, and inspect the result shape before dispatch. The executable fixture is [`02lazy-map.repl`](../examples/user-guide/repl/02lazy-map.repl).
+The first type query reports `AgentAsk[String]`; the second reports `AgentAsk[Int]`. The foreground `run()` returns the answer text as a `String`; the mapped `run()` returns its character count as an `Int`. The mock answer is fixed fixture text, so its length demonstrates the Scala transformation, not a model's answer quality. Type inspection compiles but does not evaluate the expression. The executable fixture is [`02lazy-map.repl`](../examples/user-guide/repl/02lazy-map.repl).
+
+## Join typed stages with `andThen`
+
+`AgentAsk.map` transforms an ask's answer. For a pipeline where one program's output is the next program's input, use `Program.andThen`. The release-check example below defines and composes two stages; this small pure example shows the type relationship:
+
+```scala
+import raider.core.{Program, Task}
+
+val parseCount: Program[String, Int] =
+  Program.fromFunction("parse-count")(text => Task.succeed(text.toInt))
+val describeCount: Program[Int, String] =
+  Program.fromFunction("describe-count")(count => Task.succeed(s"count=$count"))
+val describeInput: Program[String, String] = parseCount.andThen(describeCount)
+val pending: Task[String] = describeInput("3")
+```
+
+`andThen` only composes the two program types; applying the result produces a `Task[String]`. A runner interprets that task; it is not a synchronous `AgentAsk` and has no `.run()` facade method. In the REPL, use the `Program`/`Task` pattern from the [typed release-check section](#connect-a-typed-program-pipeline-to-a-bundle), where the bundle runner executes the composition. The pipeline is pure Scala and makes no model call.
 
 ## Compose parallel reviews and check structured output
 
@@ -211,6 +233,7 @@ Here the final `Program` has type `Program[String, String]`: it accepts the CLI 
 The bundle declares the workflow name `task-summary`. With the user-example artifacts built, run the compiled bundle through the CLI:
 
 ```sh
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 java -cp "$RAIDER_CP" raider.cli.Main run \
   --bundle artifacts/user-examples/task-summary.jar \
   --workflow task-summary \
@@ -242,6 +265,8 @@ Every coder invocation has its own native run directory, event stream, and run a
 
 ## REPL commands and boundaries
 
-Use `:help` for the commands available in the current console. The relevant ones are `:type <expression>`, `:jobs`, `:cancel <id>`, `:log <id>`, `:reset`, and `:quit`. Everything else is compiled as Scala. `:type` compiles without evaluating the expression. `:reset` clears interpreter bindings and installs a fresh prelude; it does not provide persistence for those bindings.
+Use `:help` for the commands available in this console: `:jobs`, `:cancel <id>`, `:log <id>`, `:type <expression>`, `:reset`, and `:quit` (also `:q` or `:exit`). Everything else is compiled as Scala. `:type` compiles without evaluating the expression. `:reset` clears interpreter bindings and installs a fresh prelude; it does not provide persistence for those bindings. There is no `:session` command: create an in-memory conversation with `openSession(agent)` as shown above. The `Chat` object has no persistence or `close()` method.
 
-The REPL facade's `JobHandle.send` method is present for API shape but currently throws `CapabilityUnsupported`; job steering is not implemented in this slice. Agent and tool code runs with the permissions of the Raider process. Tool policy governs calls routed through the agent runtime, but it is not a sandbox for arbitrary Scala entered into the REPL. Do not paste credentials into REPL expressions or examples; configure credentials through the supported environment/helper setup.
+The REPL facade's `JobHandle.send` method currently throws `CapabilityUnsupported`; job steering is not implemented in this slice. Agent and tool code runs with the permissions of the Raider process. Tool policy governs calls routed through the agent runtime, but it is not a sandbox for arbitrary Scala entered into the REPL. Do not paste credentials into REPL expressions or examples; configure credentials through the supported environment/helper setup.
+
+For lineage, distinguish the two current evidence paths. A live local CI run starts independent headless roots; its pipeline index points to each root's own artifacts and does not merge them into one native phase graph. The complete unified projection is a separate corpus-derived, generated artifact: [unified lineage program](examples/ci-pipeline/unified-lineage/README.md). It is a dry-run description of recorded structure, not a live CI capture or replay. The [lineage guide](user-guide-lineage.md) explains both scopes.
