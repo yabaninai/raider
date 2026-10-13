@@ -388,13 +388,13 @@ object PlanTabsPtySpec extends ZIOSpecDefault:
         // feeder): typing + plan review overlap the live hub traffic.
         s.send(":new busy\r")
         val created = s.waitFor("tab created: busy", 20.seconds)
-        s.send("строка1\r")
-        val draftDuring = s.waitFor("draft [busy]: строка1", 30.seconds)
+        s.send("cafélog\r")
+        val draftDuring = s.waitFor("draft [busy]: cafélog", 30.seconds)
         val ready = s.waitForReport(_.phase == "ready", 60.seconds)
         s.send(":aux\r")
         val proposalVisible = s.waitFor("proposal: Ship it", 20.seconds)
-        s.send(" хвост2\r")
-        val draftAfter = s.waitFor("draft [busy]: строка1 хвост2", 30.seconds)
+        s.send(" queue2\r")
+        val draftAfter = s.waitFor("draft [busy]: cafélog queue2", 30.seconds)
         s.send(":approve\r")
         val approvedPrinted =
           s.waitFor("plan approved: execution job ", 30.seconds)

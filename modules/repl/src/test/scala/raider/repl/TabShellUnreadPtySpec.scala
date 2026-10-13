@@ -566,8 +566,8 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
         s.waitForReport(_.phase == "burst", 20.seconds)
       // Active input DURING the storm (bytes queue in the PTY, processed by
       // the one JLine loop).
-      s.send("строка1\r")
-      val draftDuring = s.waitFor("draft [t1]: строка1", 30.seconds)
+      s.send("cafélog\r")
+      val draftDuring = s.waitFor("draft [t1]: cafélog", 30.seconds)
       // Burst settled: every delivered envelope counted exactly once, the
       // focused tab untouched, hub dropped nothing.
       val settled = s.waitForReport(
@@ -602,9 +602,9 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
           s.send(":tabs\r")
           s.waitFor(s"($BurstEvents unread)", 30.seconds)
       // The prompt stays editable AFTER the storm.
-      s.send(" хвост2\r")
+      s.send(" queue2\r")
       val draftAfter =
-        s.waitFor("draft [t1]: строка1 хвост2", 25.seconds)
+        s.waitFor("draft [t1]: cafélog queue2", 25.seconds)
       s.send(":tabs\r")
       val finalRender = s.waitFor(s"($BurstEvents unread)", 15.seconds)
       // RAI-119 determinism (precedent 71d0aa3): drain in-flight bar renders
@@ -621,7 +621,7 @@ object TabShellUnreadPtySpec extends ZIOSpecDefault:
       val rowT1NoBadge =
         lineMatching(text, raw"^\*1\. t1 \[[^\]]+\]$$".r)
       val noZeroBadge = !text.contains("(0 unread)")
-      val draftEchoes = countSubstr(text, "draft [t1]: строка1 хвост2")
+      val draftEchoes = countSubstr(text, "draft [t1]: cafélog queue2")
       val crashed = text.contains("Exception") || text.contains("at raider.")
       s.persist(
         text,

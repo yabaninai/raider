@@ -385,12 +385,12 @@ object TabShellChatPalettePtySpec extends ZIOSpecDefault:
       //   - a shell TAB completion (":he" + TAB, palette proper);
       //   - a chat-command near miss (":jo" → typed error + the combined-
       //     catalog did-you-mean ":jobs?" — the RAI-111 chat hint surface).
-      s.send("строка1\r")
+      s.send("cafélog\r")
       s.send(":he\t")
       s.send("\r")
       s.send(":jo\r")
-      s.send(" хвост\r")
-      val draft1 = s.waitFor("draft [busy]: строка1", 30.seconds)
+      s.send(" queue\r")
+      val draft1 = s.waitFor("draft [busy]: cafélog", 30.seconds)
       // In TABS mode the completed ":help" executes the FROZEN router's help
       // (the "tabs: ..." hint line), NOT the legacy Commands.helpText prose —
       // the chat helpText surface belongs to the no-flag REPL cycle (its
@@ -400,17 +400,17 @@ object TabShellChatPalettePtySpec extends ZIOSpecDefault:
       // nearest catalog surfaces the chat command exactly once.
       val typedChat = s.waitFor("hint: unknown command: :jo", 30.seconds)
       val nearest = s.waitFor("  did you mean: :jobs?", 30.seconds)
-      val draft2 = s.waitFor("draft [busy]: строка1 хвост", 30.seconds)
+      val draft2 = s.waitFor("draft [busy]: cafélog queue", 30.seconds)
       val rep = s.waitForReport(
-        settled(List("busy"), Map("busy" -> "строка1 хвост")),
+        settled(List("busy"), Map("busy" -> "cafélog queue")),
         90.seconds
       )
       // The prompt stays editable after the storm.
-      s.send(" после-бури\r")
+      s.send(" after-echo\r")
       val draft3 =
-        s.waitFor("draft [busy]: строка1 хвост после-бури", 25.seconds)
+        s.waitFor("draft [busy]: cafélog queue after-echo", 25.seconds)
       val settledFinal = s.waitForReport(
-        settled(List("busy"), Map("busy" -> "строка1 хвост после-бури")),
+        settled(List("busy"), Map("busy" -> "cafélog queue after-echo")),
         30.seconds
       )
       val code = s.quit()

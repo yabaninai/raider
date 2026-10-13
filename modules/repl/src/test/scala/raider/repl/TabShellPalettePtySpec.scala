@@ -438,24 +438,24 @@ object TabShellPalettePtySpec extends ZIOSpecDefault:
       // rendering and the drafts happen UNDER the live stream.
       s.send(":he\t")
       s.send("\r")
-      s.send("строка1\r")
+      s.send("cafélog\r")
       s.send(":pl\t")
       s.send("\r")
-      s.send(" хвост\r")
+      s.send(" queue\r")
       val helpShown = s.waitFor("commands:", 30.seconds)
-      val draft1 = s.waitFor("draft [busy]: строка1", 30.seconds)
+      val draft1 = s.waitFor("draft [busy]: cafélog", 30.seconds)
       val pluginsShown = s.waitFor("(no plugins)", 30.seconds)
-      val draft2 = s.waitFor("draft [busy]: строка1 хвост", 30.seconds)
+      val draft2 = s.waitFor("draft [busy]: cafélog queue", 30.seconds)
       val rep = s.waitForReport(
-        settled(List("busy"), Map("busy" -> "строка1 хвост")),
+        settled(List("busy"), Map("busy" -> "cafélog queue")),
         90.seconds
       )
       // The prompt stays editable after the storm.
-      s.send(" после-бури\r")
+      s.send(" after-echo\r")
       val draft3 =
-        s.waitFor("draft [busy]: строка1 хвост после-бури", 25.seconds)
+        s.waitFor("draft [busy]: cafélog queue after-echo", 25.seconds)
       val settledFinal = s.waitForReport(
-        settled(List("busy"), Map("busy" -> "строка1 хвост после-бури")),
+        settled(List("busy"), Map("busy" -> "cafélog queue after-echo")),
         30.seconds
       )
       s.send(":quit\r")
