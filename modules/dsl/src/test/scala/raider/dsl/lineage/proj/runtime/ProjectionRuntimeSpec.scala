@@ -305,8 +305,10 @@ object ProjectionRuntimeSpec extends ZIOSpecDefault:
           // the built Program is an immutable value, so the fibers below only
           // EXECUTE their own projection's Task chain — no shared mutable
           // state, each fiber sees only its own projection's reports.
-          built1 = sampleProgram(())
-          built2 = otherProgram(())
+          // (ZIO.succeed form: scalameta cannot parse `x = expr` bindings in
+          // for-comprehensions — same class as the RAI-114 gate fix.)
+          built1 <- ZIO.succeed(sampleProgram(()))
+          built2 <- ZIO.succeed(otherProgram(()))
           f1 <- Task.zio(built1).fork
           f2 <- Task.zio(built2).fork
           r1 <- f1.join
