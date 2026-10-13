@@ -5,7 +5,7 @@ import raider.runtime.lineage.model.{
   DataRef,
   GraphError,
   NodeId,
-  RecoveryClass,
+  RecoveryTaxonomy,
   SessionGraph,
   SessionNode
 }
@@ -139,10 +139,14 @@ end ReduceError
   * these keys.
   *
   * `RecoveryClass` (static taxonomy until the wave-2 schema card, ADR-027
-  * §6.2): exec tools (`bash`, `sh`, `process`, `python`) and write tools
-  * (`edit`, `fs_edit`, `write`, `fs_write`, `apply_patch`, `patch`, `mv`, `rm`,
+  * §6.2): every verdict comes from the CANONICAL
+  * [[raider.runtime.lineage.model.RecoveryTaxonomy]] — exec tools (`bash`,
+  * `sh`, `process`, `python`, `proc_run`) and write tools (`edit`, `fs_edit`,
+  * `write`, `fs_write`, `apply_patch`, `patch`, `fs_patch`, `mv`, `rm`,
   * `mkdir`, `touch`) are `Mutating`; everything else is `ReadOnly` (the ADR
-  * default). `Idempotent` is deliberately never guessed from
+  * default). No private copy of the sets lives here (RAI-148 deduplication —
+  * the reducer was one of three drifted copies that missed `fs_patch` and
+  * `proc_run`). `Idempotent` is deliberately never guessed from
   * `ToolOutcome`/`RetryScheduled` — a rate-limit retry does not make a mutating
   * tool safe to re-run; the closed enum stays reserved for the schema card and
   * a config-driven extension.
@@ -157,30 +161,6 @@ end ReduceError
   * tolerant LIN5-03 counterpart for exactly that crash shape.
   */
 object LineageReducer:
-
-  /** Static exec-class tool names (ADR-027 §6.2): running them can mutate the
-    * world, so live re-run isolation must treat them as Mutating.
-    */
-  private val ExecTools = Set("bash", "sh", "process", "python")
-
-  /** Static write-class tool names (ADR-027 §6.2). */
-  private val WriteTools = Set(
-    "edit",
-    "fs_edit",
-    "write",
-    "fs_write",
-    "apply_patch",
-    "patch",
-    "mv",
-    "rm",
-    "mkdir",
-    "touch"
-  )
-
-  private def recovery(tool: String): RecoveryClass =
-    if ExecTools.contains(tool) || WriteTools.contains(tool) then
-      RecoveryClass.Mutating
-    else RecoveryClass.ReadOnly
 
   /** A tool call opened by `ToolStarted`, waiting for its `ToolFinished`.
     * `parent`/`inputs` are fixed at start; the node is appended at finish (or
@@ -251,7 +231,7 @@ object LineageReducer:
         open.atMs,
         open.callId,
         open.tool,
-        recovery(open.tool),
+        RecoveryTaxonomy.classify(open.tool),
         outcome,
         open.inputs,
         Some(DataRef(s"$job/call-${open.callId}"))

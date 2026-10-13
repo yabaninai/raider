@@ -3,7 +3,7 @@ package raider.cli.lineage
 import raider.core.RaiderError
 import raider.dsl.lineage.data.{LineageDataDocument, NodeData}
 import raider.dsl.lineage.replay.RecordedSource
-import raider.runtime.lineage.model.SessionGraph
+import raider.runtime.lineage.model.{RecoveryTaxonomy, SessionGraph}
 import raider.runtime.lineage.reduce.ReduceError
 import raider.runtime.budget.BudgetLimits
 
@@ -274,39 +274,17 @@ object IsolatedRerun:
 
   // -- LIN6-02: the isolation policy guard (product path) --------------------
 
-  /** Static exec-class tool names of the ADR-027 §6.2 taxonomy (frozen until
-    * the wave-2 schema card). Mirrors the classification LineageReducer applies
-    * when it WRITES the recorded `recovery` verdict — the two sets cite the
-    * same ADR section; unifying them is a schema-card concern (the reducer's
-    * classifier is private to the runtime module).
-    */
-  private val ExecTools = Set("bash", "sh", "process", "python")
-
-  /** Static write-class tool names of the ADR-027 §6.2 taxonomy. */
-  private val WriteTools = Set(
-    "edit",
-    "fs_edit",
-    "write",
-    "fs_write",
-    "apply_patch",
-    "patch",
-    "mv",
-    "rm",
-    "mkdir",
-    "touch"
-  )
-
-  private def isMutatingTool(name: String): Boolean =
-    ExecTools.contains(name) || WriteTools.contains(name)
-
   /** The Mutating tool names the replay of `recorded` would EXECUTE for real
     * (LIN6-02 policy input), deterministic (sorted, distinct). Two signals,
     * because the recorded annotation can under-report what the loop actually
     * runs (the replay executes the recorded RESPONSE envelope — the IR-02
     * record's annotation says fs_read while its response carries fs_edit):
     *   - every `tool_calls` envelope found in the recorded responses (the
-    *     [[ReplayModelBackend]] record convention), classified through the §6.2
-    *     static taxonomy;
+    *     [[ReplayModelBackend]] record convention), classified through the
+    *     CANONICAL §6.2 static taxonomy
+    *     ([[raider.runtime.lineage.model.RecoveryTaxonomy]] — RAI-148 removed
+    *     the drifted private copy that lived here and missed `fs_patch` and
+    *     `proc_run`);
     *   - every `ToolCallData` entry whose recorded `recovery` is `Mutating`
     *     (the recording-time verdict — trusted verbatim).
     */
@@ -319,7 +297,7 @@ object IsolatedRerun:
       case t: NodeData.ToolCallData if t.recovery == "Mutating" => t.tool
     }
     (fromResponses ++ fromAnnotations)
-      .filter(isMutatingTool)
+      .filter(RecoveryTaxonomy.isMutating)
       .toVector
       .sorted
       .distinct
