@@ -151,8 +151,8 @@ final class MultiJobExport private (
     * payload carries no parent id, so the topology source is the WIRING: the
     * site that builds a delegation-capable loop for `forkingJob` registers
     * every child that loop may fork, BEFORE the child's fork record can be
-    * delivered (the same trust level that publishes the fork record itself).
-    * A registration is a declaration of an existing fact, never an edge
+    * delivered (the same trust level that publishes the fork record itself). A
+    * registration is a declaration of an existing fact, never an edge
     * invention: the anchored record still carries only the frozen payload's
     * verbatim `childJobId`/`agent`.
     *
@@ -230,17 +230,16 @@ final class MultiJobExport private (
     * child.
     *
     * RAI-154 (WIR-02) per-level anchoring: the canonical fork record is
-    * anchored in the FORKING job's stream — the child registered for this
-    * child via [[anchorForkUnder]] when one exists, else the campaign (root)
-    * stream, which keeps every unregistered (single-level) introduction
-    * byte-identical to the pre-RAI-154 layout (MJE-01 pin). A registration
-    * naming a job that has not connected is a loud defect, never a silent
-    * wrong-shape export (the per-level wiring discipline: the forking job's
-    * own introduction connects before it forks). Post-terminal honesty
-    * applies PER LEVEL: a fork observed after the anchoring job's Terminal
-    * was exported connects as a NATIVE-ONLY segment (nothing joins — an
-    * interposed introduction would be `ReduceError.AfterTerminal` or an
-    * invented edge).
+    * anchored in the FORKING job's stream — the child registered for this child
+    * via [[anchorForkUnder]] when one exists, else the campaign (root) stream,
+    * which keeps every unregistered (single-level) introduction byte-identical
+    * to the pre-RAI-154 layout (MJE-01 pin). A registration naming a job that
+    * has not connected is a loud defect, never a silent wrong-shape export (the
+    * per-level wiring discipline: the forking job's own introduction connects
+    * before it forks). Post-terminal honesty applies PER LEVEL: a fork observed
+    * after the anchoring job's Terminal was exported connects as a NATIVE-ONLY
+    * segment (nothing joins — an interposed introduction would be
+    * `ReduceError.AfterTerminal` or an invented edge).
     */
   private def connect(
       jobId: JobId,

@@ -28,8 +28,8 @@ import scala.util.control.NonFatal
   * the ADR-032 v2 shape when the run exported joined child segments OR the
   * reduced graph carries wire-native phase nodes — RAI-154, see
   * [[schemaVersionOf]]) and `lineage.scala` (the deterministic
-  * [[SessionGraphView]] → [[LineageRenderer]] projection, written with the
-  * SAME atomic tmp+ATOMIC_MOVE pattern). The run directory is per-invocation
+  * [[SessionGraphView]] → [[LineageRenderer]] projection, written with the SAME
+  * atomic tmp+ATOMIC_MOVE pattern). The run directory is per-invocation
   * (`work-<uuid>`), so parallel runs never share a target path — isolation is
   * structural (LIN9-03), not locking.
   *
@@ -89,8 +89,8 @@ object RunLineageArtifacts:
     * ADR-032) are written as real `phase` nodes with their name/note bound as
     * `PhaseData` entries (the reducer's node id convention keys the
     * `<job>/phase-<seq>` dataRef), and the document is schemaVersion 2. Every
-    * other failure stays a typed [[ArtifactError]] (view/render/store/io) —
-    * a refusal is data for the summary line, never a crashed run (LIN9-02).
+    * other failure stays a typed [[ArtifactError]] (view/render/store/io) — a
+    * refusal is data for the summary line, never a crashed run (LIN9-02).
     */
   def write(
       workDir: Path,

@@ -314,7 +314,12 @@ object HeadlessRunner:
                 workDir,
                 Some(le),
                 ciOut,
-                usageOut
+                usageOut,
+                // RAI-154 (WIR-01): the delegation wiring forks child jobs on
+                // the SAME manager and publishes the fork records on the SAME
+                // hub — the multi-job export capture needs no further wiring.
+                manager,
+                hub
               )
             )
             .foldZIO(
@@ -518,7 +523,9 @@ object HeadlessRunner:
       workDir: Path,
       events: Option[LoopEvents],
       ciOut: Ref[Option[CiContext]],
-      usageOut: Ref[Option[UsageReport]]
+      usageOut: Ref[Option[UsageReport]],
+      manager: JobManager,
+      hub: EventHub
   ): ZIO[Scope, RaiderError, String] =
     for
       // RAI-086/RAI-100 preflight (args-level, FIRST): resolve the ci
@@ -563,19 +570,38 @@ object HeadlessRunner:
               args.workspace
                 .getOrElse(Paths.get("").toAbsolutePath)
             )
-            toolset <-
+            codingRegistry <-
               if name == "coder"
               then
                 raider.tools.CodingToolset
                   .make(wsPath.toString)
-                  .flatMap(st => ZIO.fromEither(st.registry).map(r => Some(r)))
-              else ZIO.succeed(None)
-            registry = toolset.getOrElse(ToolRegistry.empty)
+                  .flatMap(st => ZIO.fromEither(st.registry))
+              else ZIO.succeed(ToolRegistry.empty)
             // RAI-071: one factory maps the validated --provider value onto
             // its backend — mock | openai | anthropic (Messages wire); both
             // live wires ride the same credential preflight resolved above
             // and the same RateLimitRetries wrapper.
             backend <- ProviderBackend.make(args.provider, args.baseUrl, keyOpt)
+            // RAI-154 (WIR-01): the CODER agent's delegation policy surface —
+            // the §11 model tools (delegate/await_agent/cancel_agent/
+            // list_agents) over the SAME manager/hub, typed and policy-gated
+            // ([[CoderDelegationWiring]]); forks join the run's multi-job
+            // export through the existing capture. Other agents are unchanged
+            // (empty base registry, no delegation tools).
+            registry <-
+              if name == "coder" then
+                ZIO.fromEither(
+                  CoderDelegationWiring.augment(
+                    manager,
+                    hub,
+                    backend,
+                    admission,
+                    limits,
+                    root,
+                    codingRegistry
+                  )
+                )
+              else ZIO.succeed(codingRegistry)
             model =
               if name == "coder" then args.model
               else s"builtin:$name"
@@ -792,10 +818,9 @@ object HeadlessRunner:
         RunLineageArtifacts.write(workDir, o.graph, o.wire, o.provenance) match
           case Right(written) =>
             s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion ${
-                // RAI-154: ONE source of the v1/v2 decision (joined provenance
-                // OR wire-native phases) — the writer's own rule.
-                RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)
-              })"
+              // RAI-154: ONE source of the v1/v2 decision (joined provenance
+              // OR wire-native phases) — the writer's own rule.
+              RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)})"
           case Left(e) => s"- lineage artifacts: unavailable ($e)"
       }
       val summary = s"""# raider run
