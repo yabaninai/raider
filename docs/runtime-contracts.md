@@ -229,3 +229,13 @@ An error includes a stable code, public explanation, retryability, safe details,
 ## 15. Deferred Complexity
 
 Do not build in MVP: distributed scheduling, daemon attach, arbitrary durable Scala replay, self-modifying plugins, auto-merge/push, custom DSL parser, macro/direct-style transformation, general cross-effect API, independent repetition of gateway routing, marketplace/signing infrastructure. Their absence does not prevent a full local REPL and native agent loop.
+
+## 16. Workflow SDK launch boundary (ADR-029)
+
+Proposed contract ([ADR-029](adr/ADR-029-workflow-sdk.md), card RAI-116; signatures there are non-frozen until reviewed with the §7.3 consumer migration plan):
+
+- **First-class path**: an author writes ordinary Scala over the existing lazy `Task`/`Program` and composition verbs and runs the same definition locally and in non-TTY generic CI through ONE ZIO-native launch capability per run, assembled from explicit backend/tools/policy/limits. Host embedding is a secondary surface. Construction performs no I/O and no dispatch; operations return effects, and only console adapters (REPL/CLI `main`) may block via `Runtime.default`.
+- **Wire**: BundleWorkflow v1 stays the frozen `Program[String,String]` boundary; typed in-process composition is never presented as a typed wire. Wire/codec/SPI changes require a new bundle `schemaVersion`, a separate ADR, and a migration. Agent-performing workflows cannot run behind the v1 no-arg SPI today (no service injection; the runner admits one opaque outer slot) — see ADR-029 §3.2/§6.
+- **One root/admission/ledger per run**: one launch instance owns one `RootId`, one `Admission`, one `BudgetLedger`, one `JobManager`; two instances share nothing. Admission discipline is single per dispatch path — loop-owned for loop-dispatched programs, one outer slot for opaque programs; nesting Model takes deadlocks on `maxLLM=1`.
+- **Honesty**: no durable resume (`Interrupted`/`Uncertain` + explicit rerun); no hidden `Runtime.default` in the SDK path; no second scheduler; no hidden provider fallback. Known gap, not hidden: `AgentLoop.collect` ignores `UsageObserved` and both loop and bundle paths settle `MicroUsd(0)` today, so no truthful observed-USD or hard-cap claim may be made through the launch boundary until a separate runtime card corrects and verifies settlement; unknown stays unknown, never zero.
+- **Cases**: WF-01/02 and SDK-01/02/03 with consumers, versioning, owner paths, and implementation packets are enumerated in ADR-029 §5/§7; the chat→export→edit→compile→run chain (RAI-155) is the first consumer and depends on this boundary.

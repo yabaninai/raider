@@ -397,3 +397,22 @@ are required; missing decision is an error, not auto-allow.
 All documented examples must execute through fake backend in docs gate and
 selected examples through real Scala REPL. Do not rewrite an example to hide a
 REPL defect without updating the contract.
+
+## 13. Workflow SDK authoring path (proposed, ADR-029)
+
+The first-class SDK path ([ADR-029](adr/ADR-029-workflow-sdk.md), card
+RAI-116 — proposed contract, not yet implemented): an author writes ordinary
+Scala over the same lazy `Task`/`Program` and composition verbs used in this
+guide, and runs the same definition locally and in non-TTY generic CI through
+one explicitly configured launch capability — one root/admission/ledger per
+run, no hidden global state, no second scheduler, no durable resume. Host
+embedding is a secondary surface.
+
+Export/package command names in the RAI-155 chain (chat → export → edit →
+compile → run) are **proposals only**: no `:export-workflow` REPL command and
+no `raider compile` CLI command exist today. Nothing in §12 above may be read
+as advertising them. BundleWorkflow v1 remains the frozen `String→String`
+portable boundary; typed in-process composition does not make the wire typed.
+Until a separate runtime card corrects usage settlement
+(ADR-029 §4, item H3), cost reporting through the authoring path is
+unpriced/unknown — never zero.
