@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 167,
+  "raider_count": 168,
   "companion_count": 3,
   "cards": [
     {
@@ -5016,6 +5016,34 @@
       },
       "non_goals": "Hub forwarding-order semantics changes (the unspecified-order contract stays; we drain, not reorder), event wire changes, renderer/comparator changes, masking via test retries only.",
       "context": "RAI-152 review (approve) required coordinator registration: the product race family is open in `raider replay` under load until this lands; RAI-152's test-side masks are instrumented at three call sites only."
+    },
+    {
+      "id": "RAI-157",
+      "title": "MultiJobExport settle window: captured-but-unconnected introductions must not vanish silently",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-144",
+        "RAI-156"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala",
+        "modules/cli/src/test/scala/raider/cli/run/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "RAI-146/156 adjudication finding (small, real): a mid-campaign introduction whose capture fiber has not delivered by drain(2000ms)+close is dropped with NO wire trace — zero observability of an incomplete child in a live run. The RAI-152 pattern applied to the exporter: the runner's settle must wait for captured-but-unconnected introductions (bounded: introduction queue/watermark), so every correlated child is either JOINED (complete), PARTIAL (LIN5-03 discipline), or NATIVE-ONLY-with-fork-record — never absent. Product determinism, not test retry.",
+      "acceptance": {
+        "normal": "SW-01: typed reproducer first — an introduction delivered after the current drain window under a documented load storm is absent from the wire (red); after the settle-window fix the child is observable in one of the three classes (joined/partial/native-only) with its fork record (green).",
+        "error": "SW-02: MJE-02/03b/03c get the same pollUntil determinism pins (the adjudicator's optional hardening); delegation-free exports byte-identical.",
+        "concurrency": "SW-03: bounded wait (no unbounded hang); drain budget documented; x3 deterministic; full sbt test x1 green."
+      },
+      "non_goals": "Hub forwarding-order semantics changes, unbounded waits, wire format changes, masking via test retries.",
+      "context": "RAI-146/156 adjudication (2026-10-14): 'in a live run, a mid-campaign introduction whose capture fiber has not delivered by drain+close is dropped with no wire trace — register a settle-window relay-race card (the RAI-156 pattern).'"
     }
   ]
 }

@@ -917,3 +917,27 @@ Status: ready. Milestone: LIN. Dependencies: RAI-152.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-157: MultiJobExport settle window: captured-but-unconnected introductions must not vanish silently
+
+Status: ready. Milestone: LIN. Dependencies: RAI-144, RAI-156.
+
+**Scenario and contract.** RAI-146/156 adjudication finding (small, real): a mid-campaign introduction whose capture fiber has not delivered by drain(2000ms)+close is dropped with NO wire trace — zero observability of an incomplete child in a live run. The RAI-152 pattern applied to the exporter: the runner's settle must wait for captured-but-unconnected introductions (bounded: introduction queue/watermark), so every correlated child is either JOINED (complete), PARTIAL (LIN5-03 discipline), or NATIVE-ONLY-with-fork-record — never absent. Product determinism, not test retry.
+
+**Context.** RAI-146/156 adjudication (2026-10-14): 'in a live run, a mid-campaign introduction whose capture fiber has not delivered by drain+close is dropped with no wire trace — register a settle-window relay-race card (the RAI-156 pattern).'
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala` `modules/cli/src/test/scala/raider/cli/run/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: SW-01: typed reproducer first — an introduction delivered after the current drain window under a documented load storm is absent from the wire (red); after the settle-window fix the child is observable in one of the three classes (joined/partial/native-only) with its fork record (green).
+- Error/adversarial: SW-02: MJE-02/03b/03c get the same pollUntil determinism pins (the adjudicator's optional hardening); delegation-free exports byte-identical.
+- Cancellation/concurrency: SW-03: bounded wait (no unbounded hang); drain budget documented; x3 deterministic; full sbt test x1 green.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Hub forwarding-order semantics changes, unbounded waits, wire format changes, masking via test retries.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
