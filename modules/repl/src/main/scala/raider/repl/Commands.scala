@@ -44,7 +44,11 @@ object Commands:
         println(helpText)
         true
       case ":jobs" =>
-        printCaptured(engine, "raider.repl.facade.ReplCommands.printJobs()")
+        printCaptured(
+          engine,
+          "raider.repl.facade.ReplCommands.printJobs()",
+          typeQuery = false
+        )
         true
       case ":cancel" =>
         parts.lift(1) match
@@ -54,7 +58,8 @@ object Commands:
             val id = raw.replace("\"", "")
             printCaptured(
               engine,
-              s"raider.repl.facade.ReplCommands.printCancel(\"$id\")"
+              s"raider.repl.facade.ReplCommands.printCancel(\"$id\")",
+              typeQuery = false
             )
         true
       case ":log" =>
@@ -65,7 +70,8 @@ object Commands:
             val id = raw.replace("\"", "")
             printCaptured(
               engine,
-              s"raider.repl.facade.ReplCommands.printLog(\"$id\")"
+              s"raider.repl.facade.ReplCommands.printLog(\"$id\")",
+              typeQuery = false
             )
         true
       case ":reset" =>
@@ -87,7 +93,7 @@ object Commands:
         // mutation; resN numbering untouched). A type error is the honest
         // compiler diagnostic; the empty argument is the driver's own usage
         // line (":type <expression>").
-        printCaptured(engine, line.trim)
+        printCaptured(engine, line.trim, typeQuery = true)
         true
       case ":approve" | ":reject" =>
         println(
@@ -101,9 +107,14 @@ object Commands:
 
   /** Evaluate a Unit expression whose println output is the command result: the
     * engine captures it into the Value repr (printed once here; Unit evals
-    * render nothing, so user resN numbering is untouched).
+    * render nothing, so user resN numbering is untouched). A type query
+    * (RAI-130) renders compile errors honestly — see compileErrorText.
     */
-  private def printCaptured(engine: ReplEngine, expr: String): Unit =
+  private def printCaptured(
+      engine: ReplEngine,
+      expr: String,
+      typeQuery: Boolean
+  ): Unit =
     val result =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(engine.eval(expr)).getOrThrow()
@@ -113,11 +124,24 @@ object Commands:
         val text = repr.trim
         if text.nonEmpty then println(text)
       case EvalResult.CompileError(msg) =>
-        println(
-          s"command failed (prelude broken?): ${msg.trim.linesIterator.take(3).mkString(" | ")}"
-        )
+        println(compileErrorText(msg, typeQuery))
       case EvalResult.RuntimeFailure(m) =>
         println(s"command failed: $m")
+
+  /** RAI-130 (TYPED-02): the compile-error rendering of a captured command. A
+    * `:type` query compiles the USER's expression against the live session — a
+    * failure there is the expression's own problem, so the full honest compiler
+    * diagnostic is printed verbatim (the same rendering as ordinary input; the
+    * misleading "command failed (prelude broken?)" framing never applies). The
+    * stateful facade commands keep the legacy prefix: their sources are
+    * generated `ReplCommands.print*` calls, so a compile failure genuinely can
+    * mean a broken prelude/session — the prefix honestly flags that (existing
+    * semantics unchanged).
+    */
+  def compileErrorText(msg: String, typeQuery: Boolean): String =
+    if typeQuery then msg.trim
+    else
+      s"command failed (prelude broken?): ${msg.trim.linesIterator.take(3).mkString(" | ")}"
 
   // ----- RAI-124 `:type` input plumbing (pure; unit-tested without Main) ----
 

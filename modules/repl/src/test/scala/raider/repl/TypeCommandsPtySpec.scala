@@ -8,15 +8,15 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths}
 import java.util.concurrent.TimeUnit
 
-/** RAI-124 / TYPE-03 — PTY acceptance of the `:type <expression>` command on
-  * the PRODUCT chat REPL host: `raider.repl.Main` (the legacy W10 cycle — mock
-  * provider by default, real in-process compiler, real JLine line editor),
-  * entered through the test-scope launcher TypeCommandsPtyApp (PTY winsize fix
-  * only). Driver mechanics mirror the RAI-106/RAI-111 reference
+/** RAI-124/RAI-130 / TYPE-03 — PTY acceptance of the `:type <expression>`
+  * command on the PRODUCT chat REPL host: `raider.repl.Main` (the legacy W10
+  * cycle — mock provider by default, real in-process compiler, real JLine line
+  * editor), entered through the test-scope launcher TypeCommandsPtyApp (PTY
+  * winsize fix only). Driver mechanics mirror the RAI-106/RAI-111 reference
   * (ReplChatCyclePtySpec): /usr/bin/script openpty relay, capability-query
   * answering, ANSI-cleaning; the oracle is the transcript itself.
   *
-  * Acceptance (card RAI-124):
+  * Acceptance (card RAI-124; oracles de-tautologized by RAI-130):
   *   - TYPE-03a: a live-session query answers with the exact type and the
   *     prompt stays alive (":type List(1, 2)" → "List[Int]"; a session binding
   *     is visible: "val n = 7" then ":type n" → "Int").
@@ -26,8 +26,21 @@ import java.util.concurrent.TimeUnit
   *     normally.
   *   - TYPE-03c: AFTER a compile error — an intentionally broken line is the
   *     honest compiler error, the prompt stays alive and the next :type works.
+  *   - RAI-130 TYPED-02: a type error on the live surface is the honest
+  *     compiler diagnostic — the misleading "command failed (prelude broken?)"
+  *     prefix is gone from the :type path.
   *   - Freshness: :help lists :type and the empty query prints the driver's
   *     usage line — both visible on the live surface.
+  *
+  * RAI-130 TYPED-01 oracle discipline (echo-saturation is dead): every :type
+  * oracle requires the ANSWER strictly AFTER the echo of the sent query
+  * (sendAndWaitAnswer). A plain `contains` (the old bindingType=waitFor("Long")
+  * and jobType=waitFor("JobHandle[String]")) was pre-saturated by the binding
+  * reprs of the PREVIOUS steps (`val counter: Long = 7`, `val j: ...JobHandle[
+  * String] = ...`) and passed with the command dead. The anchor — the query's
+  * own echoed line — cannot exist before the send, so with the send disabled
+  * every oracle falls (negative control: a TEMPORARY uncommitted edit that
+  * skips the send; reproducer in the work record).
   *
   * Flake discipline: the test asserts only order-independent substring outcomes
   * on the final cleaned transcript; every step waits for its own oracle before
@@ -58,7 +71,7 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
       Paths.get(JSystem.getProperty("java.home"), "bin", "java").toString
 
     private val cp = JSystem.getProperty("java.class.path")
-    private val home = Files.createTempDirectory("rai124-type-pty-home")
+    private val home = Files.createTempDirectory("rai130-type-pty-home")
 
     private val pb = new java.lang.ProcessBuilder(
       "/usr/bin/script",
@@ -124,16 +137,43 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
         Thread.sleep(150)
       cleaned.contains(substr)
 
-    /** Flake discipline for REPEATED oracles: waits until `substr` has been
-      * seen at least `n` times on the cleaned transcript (a plain contains wait
-      * would trivially pass on an earlier occurrence).
+    /** RAI-130 TYPED-01 oracle: the ANSWER must occur strictly AFTER the echo
+      * of the sent query. Steps: (1) send the query; (2) wait for `anchor` —
+      * the echoed query line, text that cannot exist before the send (with the
+      * send disabled the anchor never appears and the oracle falls — the
+      * negative control); (3) wait for `answer` to occur after the END of the
+      * LAST anchor occurrence — the binding repr of an earlier step (echo
+      * saturation) always sits BEFORE the anchor and can never satisfy this.
+      * Returns (anchorSeen, answerAfterAnchor).
       */
-    def waitForCount(substr: String, n: Int, timeout: Duration): Boolean =
-      val deadline = JSystem.nanoTime() + timeout.toNanos
-      while JSystem.nanoTime() < deadline do
-        if countSubstr(cleaned, substr) >= n then return true
-        Thread.sleep(150)
-      countSubstr(cleaned, substr) >= n
+    def sendAndWaitAnswer(
+        query: String,
+        anchor: String,
+        answer: String,
+        timeout: Duration
+    ): (Boolean, Boolean) =
+      send(query + "\r")
+      waitForAfterAnchor(anchor, answer, timeout)
+
+    /** The positional half of the oracle against an ALREADY-sent input: waits
+      * for `anchor`, then for `answer` strictly after the LAST anchor
+      * occurrence.
+      */
+    def waitForAfterAnchor(
+        anchor: String,
+        answer: String,
+        timeout: Duration
+    ): (Boolean, Boolean) =
+      if !waitFor(anchor, timeout) then (false, false)
+      else
+        val deadline = JSystem.nanoTime() + timeout.toNanos
+        var found = false
+        while !found && JSystem.nanoTime() < deadline do
+          val text = cleaned
+          val last = text.lastIndexOf(anchor)
+          found = last >= 0 && text.indexOf(answer, last + anchor.length) >= 0
+          if !found then Thread.sleep(150)
+        (true, found)
 
     def finishWait(timeout: Duration): Int =
       val deadline = JSystem.nanoTime() + timeout.toNanos
@@ -185,46 +225,49 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
   private def summaryJson(fields: (String, String)*): String =
     fields
       .map((k, v) => s"\"$k\":$v")
-      .mkString(s"""{"name":"rai124-type-pty",""", ",", "}")
+      .mkString(s"""{"name":"rai130-type-pty",""", ",", "}")
 
   private def boolJson(b: Boolean): String = if b then "true" else "false"
 
   private def crashed(text: String): Boolean =
     text.contains("Exception") || text.contains("at raider.")
 
-  private def countSubstr(haystack: String, needle: String): Int =
-    if needle.isEmpty then 0
-    else
-      var idx = haystack.indexOf(needle)
-      var n = 0
-      while idx >= 0 do
-        n += 1
-        idx = haystack.indexOf(needle, idx + needle.length)
-      n
-
   // ----- TYPE-03 -----
 
   private def type03: ZIO[Any, Throwable, TestResult] =
     ZIO.attempt {
-      val evidence = sys.env.get("RAI124_PTY_EVIDENCE_DIR") match
+      val evidence = sys.env.get("RAI130_PTY_EVIDENCE_DIR") match
         case Some(dir) => Path.of(dir)
         case None =>
-          Files.createTempDirectory("rai124-type-pty-ev")
+          Files.createTempDirectory("rai130-type-pty-ev")
       val session = PtySession(evidence)
       try
         // Engine startup: the prelude (scripted backend, session, facade
         // bindings) compiles through the real in-process compiler.
         val promptUp = session.waitFor(Prompt, 240.seconds)
 
-        // TYPE-03a: live-session query — exact type, prompt alive.
-        session.send(":type List(1, 2)\r")
-        val listType = session.waitFor("List[Int]", 30.seconds)
-        // The binding probe uses a type name that occurs NOWHERE else on the
-        // transcript (a plain "Int" would trivially match the banner/echoes).
+        // TYPE-03a: live-session query — exact type, prompt alive. RAI-130:
+        // the answer is required AFTER the echoed query, never a pre-saturated
+        // substring of an earlier step.
+        val (listEcho, listType) =
+          session.sendAndWaitAnswer(
+            ":type List(1, 2)",
+            ":type List(1, 2)",
+            "List[Int]",
+            30.seconds
+          )
+        // The binding probe keeps its plain echo oracle: the val was JUST sent
+        // and nothing else can print its repr (this echo is the saturation
+        // material the OLD bindingType oracle wrongly matched).
         session.send("val counter = 7L\r")
         val bound = session.waitFor("val counter: Long = 7", 30.seconds)
-        session.send(":type counter\r")
-        val bindingType = session.waitFor("Long", 30.seconds)
+        val (bindingEcho, bindingType) =
+          session.sendAndWaitAnswer(
+            ":type counter",
+            ":type counter",
+            "Long",
+            30.seconds
+          )
 
         // TYPE-03b: DURING streaming — a background job streams through the
         // scripted backend while the prompt stays interactive; the query on a
@@ -233,28 +276,55 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
         session.send("val j = worker.start(\"bg\")\r")
         val jobStarted =
           session.waitFor("val j: raider.runtime.jobs.JobHandle", 30.seconds)
-        session.send(":type j\r")
-        // JobHandle[String] renders qualified — the class name is the honest
-        // discriminating substring.
-        val jobType = session.waitFor("JobHandle[String]", 30.seconds)
+        val (jobEcho, jobType) =
+          session.sendAndWaitAnswer(
+            ":type j",
+            ":type j",
+            "JobHandle[String]",
+            30.seconds
+          )
         session.send("j.await()\r")
         val jobDone = session.waitFor("mock answer", 60.seconds)
 
         // TYPE-03c: AFTER a compile error — honest diagnostic, prompt alive,
-        // the next query works (second "List[Int]" occurrence — count-based).
+        // the next query answers AFTER ITS OWN echo (the first "List[Int]"
+        // occurrence from TYPE-03a sits before the anchor and is excluded).
         // The broken line must NOT end in a continuation token ("=") — the
         // accepted W10 multiline heuristic would keep buffering it.
         session.send("val broken = = 1\r")
         val compileError = session.waitFor("Syntax Error", 30.seconds)
-        session.send(":type List(1, 2)\r")
-        val aliveAfterError =
-          session.waitForCount("List[Int]", 2, 30.seconds)
+        val (aliveEcho, aliveAfterError) =
+          session.sendAndWaitAnswer(
+            ":type List(1, 2)",
+            ":type List(1, 2)",
+            "List[Int]",
+            30.seconds
+          )
+
+        // RAI-130 TYPED-02: a type error on the live surface is the honest
+        // compiler diagnostic — no "command failed (prelude broken?)" prefix
+        // (the rendering is unit-pinned in TypeCommandsSpec; this is the live
+        // surface proof).
+        val (typeErrEcho, typeErrHonest) =
+          session.sendAndWaitAnswer(
+            ":type zqxMissing130",
+            ":type zqxMissing130",
+            "Not found: zqxMissing130",
+            30.seconds
+          )
 
         // Freshness on the live surface: the empty query prints the driver's
         // own usage line FIRST, then :help lists :type (the help line also
         // contains the usage token, so the order matters for honest oracles).
+        // The anchor is the prompt-adjacent echo ("raider> :type") — the last
+        // such occurrence at wait time is this very send.
         session.send(":type\r")
-        val usage = session.waitFor(":type <expression>", 30.seconds)
+        val (usageEcho, usage) =
+          session.waitForAfterAnchor(
+            anchor = "raider> :type",
+            answer = ":type <expression>",
+            timeout = 30.seconds
+          )
         session.send(":help\r")
         val helpListsType =
           session.waitFor(
@@ -269,27 +339,37 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
           text,
           summaryJson(
             "promptUp" -> boolJson(promptUp),
+            "listEcho" -> boolJson(listEcho),
             "listType" -> boolJson(listType),
             "bound" -> boolJson(bound),
+            "bindingEcho" -> boolJson(bindingEcho),
             "bindingType" -> boolJson(bindingType),
             "jobStarted" -> boolJson(jobStarted),
+            "jobEcho" -> boolJson(jobEcho),
             "jobType" -> boolJson(jobType),
             "jobDone" -> boolJson(jobDone),
             "compileError" -> boolJson(compileError),
+            "aliveEcho" -> boolJson(aliveEcho),
             "aliveAfterError" -> boolJson(aliveAfterError),
+            "typeErrEcho" -> boolJson(typeErrEcho),
+            "typeErrHonest" -> boolJson(typeErrHonest),
             "helpListsType" -> boolJson(helpListsType),
+            "usageEcho" -> boolJson(usageEcho),
             "usage" -> boolJson(usage),
             "noCrash" -> boolJson(!crashed(text)),
+            "noPreludePrefix" -> boolJson(!text.contains("prelude broken")),
             "exit" -> code.toString
           )
         )
         assertTrue(promptUp) &&
-        assertTrue(listType) &&
-        assertTrue(bound && bindingType) &&
-        assertTrue(jobStarted && jobType && jobDone) &&
-        assertTrue(compileError && aliveAfterError) &&
-        assertTrue(helpListsType && usage) &&
+        assertTrue(listEcho && listType) &&
+        assertTrue(bound && bindingEcho && bindingType) &&
+        assertTrue(jobStarted && jobEcho && jobType && jobDone) &&
+        assertTrue(compileError && aliveEcho && aliveAfterError) &&
+        assertTrue(typeErrEcho && typeErrHonest) &&
+        assertTrue(helpListsType && usageEcho && usage) &&
         assertTrue(!crashed(text)) &&
+        assertTrue(!text.contains("prelude broken")) &&
         assertTrue(code == 0)
       catch
         case e: Throwable =>
@@ -303,7 +383,7 @@ object TypeCommandsPtySpec extends ZIOSpecDefault:
 
   def spec =
     suite(
-      "TypeCommandsPtySpec (RAI-124: :type on the live product chat REPL)"
+      "TypeCommandsPtySpec (RAI-124/130: :type on the live product chat REPL)"
     )(
       test(
         "TYPE-03: live/during-streaming/after-error queries; prompt alive; help freshness (PTY)"

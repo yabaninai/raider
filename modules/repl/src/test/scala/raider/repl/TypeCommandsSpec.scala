@@ -17,6 +17,9 @@ import zio.test._
   *   - TYPE-02: a nonexistent identifier and a type mismatch are the HONEST
   *     compiler diagnostics (no fabricated Any/Unit); the REPL stays alive and
   *     the next command runs; the empty query is the driver's own usage line.
+  *     RAI-130: the RENDERING of a type-query compile error carries no "command
+  *     failed (prelude broken?)" prefix (pure pin; the live surface is
+  *     TypeCommandsPtySpec TYPED-02).
   *   - Multiline: the buffered query flattens into the single-line command
   *     source the dotty command grammar accepts; statement blocks need explicit
   *     `;` (honest syntax error otherwise — the documented residue).
@@ -155,6 +158,20 @@ object TypeCommandsSpec extends ZIOSpecDefault:
       }
     ),
     suite("input plumbing (pure)")(
+      test(
+        "RAI-130: a type-query compile error renders honestly, no prelude prefix"
+      ) {
+        val msg =
+          "-- [E006] Not Found Error: ------\n1 |notDefinedId130\n  |Not found: notDefinedId130"
+        val typeRendering = Commands.compileErrorText(msg, typeQuery = true)
+        val legacyRendering = Commands.compileErrorText(msg, typeQuery = false)
+        assertTrue(
+          typeRendering == msg.trim,
+          !typeRendering.contains("prelude broken"),
+          !typeRendering.contains("command failed"),
+          legacyRendering.startsWith("command failed (prelude broken?)")
+        )
+      },
       test("isTypeQuery: exact forms only, near-misses stay ordinary input") {
         assertTrue(
           Commands.isTypeQuery(":type") &&
