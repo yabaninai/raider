@@ -35,14 +35,17 @@ import SessionGraphView.ViewError
   * frozen `lineage-data.json` (which carries every model field) and then
   * cross-checked against the companion's control/dataflow edge sets.
   *
-  * SGB acceptance (RAI-150, ADR-031 §2.6): the adapter POPULATES
+  * SGB acceptance (RAI-150, ADR-031 §2.6/§2.4): the adapter POPULATES
   * `NodeView.inputs` from the graph's dataflow edges (unit graph: model → tool,
   * failed tool ← tool, multi-input order; golden deep-tree: the n3 ← n1 edge
   * crossing the delegation subtree) and degrades honestly to empty vectors
-  * where the model carries no edges (tiny-graph has none). The recorded
-  * `ToolOutcome` class stays model-side: the frozen `NodeView` schema has no
-  * outcome field (ADR-031 §2.6 pinned `inputs` only), so the adapter invents
-  * nothing there — see the work record's contract-change request.
+  * where the model carries no edges (tiny-graph has none). It also POPULATES
+  * `NodeView.outcome` from the recorded `ToolOutcome` class (frozen
+  * lineage-data v1 vocabulary: Succeeded/Failed/Cancelled/Timeout; None where
+  * the graph carries no outcome), case for case the same mapping as the
+  * LineageCompileGateSpec gate adapter — so product and gate agree on the same
+  * frozen goldens, and the tiny-graph recorded-Failed tool renders the exact
+  * `LineageStep.failed` shape the compile gate pins.
   */
 object SessionGraphViewSpec extends ZIOSpecDefault:
 
@@ -168,8 +171,9 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
 
   /** Builds the SessionGraph from the frozen lineage-data document. The
     * contract records only the outcome CLASS for tool calls (no failure
-    * reason), so `Failed` maps to the empty reason — the projection never reads
-    * outcomes, and the fixture invents nothing beyond that documented empty.
+    * reason), so `Failed` maps to the empty reason — the view carries the
+    * outcome class only (ADR-031 §2.5), and the fixture invents nothing beyond
+    * that documented empty.
     */
   private def buildGraph(doc: DataDoc): Either[String, SessionGraph] =
     def payloadOf(dn: DataNode): DataPayload =
@@ -402,7 +406,9 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
     }
 
   // Expected view mirrors unitGraph's dataflow edges 1:1 (SGB-01): n2 ← n1,
-  // n3 ← n2, n5 ← (n1, n3); honest empties on n0/n1/n4 (SGB-02).
+  // n3 ← n2, n5 ← (n1, n3); honest empties on n0/n1/n4 (SGB-02). Outcomes are
+  // the recorded classes (SGB-01): n2 Succeeded, n3 Failed; every other kind
+  // carries None.
   private val unitExpected: Vector[NodeView] =
     Vector(
       NodeView(
@@ -431,15 +437,18 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
                         Some("n4"),
                         Vector.empty,
                         Some("d5"),
-                        Vector("n1", "n3")
+                        inputs = Vector("n1", "n3"),
+                        outcome = None
                       )
                     ),
                     None,
-                    Vector.empty
+                    inputs = Vector.empty,
+                    outcome = None
                   )
                 ),
                 Some("d2"),
-                Vector("n1")
+                inputs = Vector("n1"),
+                outcome = Some("Succeeded")
               ),
               NodeView(
                 "n3",
@@ -447,15 +456,18 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
                 Some("n1"),
                 Vector.empty,
                 None,
-                Vector("n2")
+                inputs = Vector("n2"),
+                outcome = Some("Failed")
               )
             ),
             Some("d1"),
-            Vector.empty
+            inputs = Vector.empty,
+            outcome = None
           )
         ),
         None,
-        Vector.empty
+        inputs = Vector.empty,
+        outcome = None
       )
     )
 
@@ -473,13 +485,13 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
 
   // ----- expectations for the golden renders (derived from the frozen payloads)
   //
-  // RAI-141 note: this pipeline renders through the REAL
-  // `SessionGraphView.toView`, which does not yet populate `NodeView.inputs`
-  // / `NodeView.outcome` (the follow-up CLI-main integration card). So the
-  // tiny-graph recorded-Failed tool (n3, edit_file) renders as a NORMAL
-  // reporting step here, and all inputs render as `Vector.empty` — while the
-  // LineageCompileGateSpec's test-local adapter DOES populate both fields and
-  // therefore exercises the threaded/failed shapes against the same goldens.
+  // RAI-150: the pipeline renders through the REAL `SessionGraphView.toView`,
+  // which populates `NodeView.inputs` AND `NodeView.outcome` (case for case
+  // the RAI-141 GraphToView mapping), so these expectations are EXACTLY the
+  // gate-pinned shapes of LineageCompileGateSpec for the same frozen goldens:
+  // the tiny-graph recorded-Failed tool (n3, edit_file) renders the typed
+  // `LineageStep.failed` short-circuit with the bounded reason phrase, and
+  // the deep-tree n3 ← n1 cross-scope edge threads as the id literal.
 
   private val tinyExpectedNames = Vector(
     "object lineage_run_tiny_001:",
@@ -488,7 +500,8 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
     "LineageStep.phase(\"n0\", \"investigate\", None, Vector.empty, nesting = 1)",
     "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
     "LineageStep.tool(\"n2\", \"read_file\", \"ReadOnly\", Some(\"d2\"), Vector.empty, nesting = 1)",
-    "LineageStep.tool(\"n3\", \"edit_file\", \"Mutating\", Some(\"d3\"), Vector.empty, nesting = 1)",
+    "LineageStep.failed(\"n3\", NodeKind.ToolCall(\"edit_file\", \"Mutating\"), Some(\"d3\"),",
+    "reason = \"recorded outcome: Failed\"",
     "import raider.dsl.lineage.proj.runtime.{LineageStep, StepReport}"
   )
 
@@ -512,7 +525,7 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
     "val delegation_worker: Program[Unit, Vector[StepReport]] =",
     "val program: Program[Unit, Vector[StepReport]] =",
     "LineageStep.model(\"n1\", \"mock-coder\", 1, Some(\"d1\"), Vector.empty, nesting = 1)",
-    "LineageStep.model(\"n3\", \"mock-coder\", 1, Some(\"d3\"), Vector.empty, nesting = 2)",
+    "LineageStep.model(\"n3\", \"mock-coder\", 1, Some(\"d3\"), Vector(\"n1\"), nesting = 2)",
     "LineageStep.tool(\"n4\", \"grep_search\", \"Idempotent\", Some(\"d4\"), Vector.empty, nesting = 2)"
   )
 
@@ -591,6 +604,46 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SGB-01: NodeView.outcome populated from the recorded ToolCall class (unit graph, incl. a failed tool)"
+    ) {
+      val view = SessionGraphView
+        .toView(unitGraph())
+        .fold(
+          e => throw new IllegalStateException("toView failed: " + e),
+          identity
+        )
+      val node = (id: String) =>
+        findNode(view.roots, id).getOrElse(
+          throw new IllegalStateException("view node missing: " + id)
+        )
+      val rendered = LineageRenderer
+        .render(view)
+        .fold(
+          e => throw new IllegalStateException("render failed: " + e),
+          identity
+        )
+      assertTrue(
+        // the succeeded tool carries its class string...
+        node("n2").outcome == Some("Succeeded"),
+        // ...and the FAILED tool carries the failed class the renderer maps
+        // to the LineageStep.failed short-circuit (ADR-031 §2.4)
+        node("n3").outcome == Some("Failed"),
+        // every non-tool kind carries None — no invented outcomes (SGB-02)
+        node("n0").outcome.isEmpty,
+        node("n1").outcome.isEmpty,
+        node("n4").outcome.isEmpty,
+        node("n5").outcome.isEmpty,
+        // product adapter and gate adapter agree: the same recorded class
+        // renders the exact LineageStep.failed shape the compile gate pins
+        // (LineageCompileGateSpec tinyExpectedNames), with the bounded
+        // payload-free reason phrase — the Failed reason "exit 1" (graph-side
+        // only) never crosses the view boundary (ADR-031 §2.5)
+        rendered.contains("LineageStep.failed(\"n3\""),
+        rendered.contains("reason = \"recorded outcome: Failed\""),
+        !rendered.contains("exit 1")
+      )
+    },
+    test(
       "SGB-02: empty/absent dataflow edges degrade honestly (empty inputs, no invented values)"
     ) {
       val graph = unitGraph()
@@ -635,17 +688,31 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           .orDieWith(err =>
             new IllegalStateException("golden pipeline failed: " + err)
           )
-      yield assertTrue(
-        out.first == out.second,
-        out.first.getBytes(StandardCharsets.UTF_8).toSeq ==
-          out.second.getBytes(StandardCharsets.UTF_8).toSeq,
-        tinyExpectedNames.forall(out.first.contains),
-        tinyExpectedRefs.forall(out.first.contains),
-        tinyForbiddenInline.forall(s => !out.first.contains(s)),
-        // frozen fixture has NO dataflow edges → every view input degrades
-        // honestly to the empty vector (SGB-02 on real wire data)
-        allNodes(out.view.roots).forall(_.inputs.isEmpty)
-      )
+      yield {
+        val node = (id: String) =>
+          findNode(out.view.roots, id).getOrElse(
+            throw new IllegalStateException(
+              "golden tiny-graph: view node " + id + " missing"
+            )
+          )
+        assertTrue(
+          out.first == out.second,
+          out.first.getBytes(StandardCharsets.UTF_8).toSeq ==
+            out.second.getBytes(StandardCharsets.UTF_8).toSeq,
+          tinyExpectedNames.forall(out.first.contains),
+          tinyExpectedRefs.forall(out.first.contains),
+          tinyForbiddenInline.forall(s => !out.first.contains(s)),
+          // frozen fixture has NO dataflow edges → every view input degrades
+          // honestly to the empty vector (SGB-02 on real wire data)
+          allNodes(out.view.roots).forall(_.inputs.isEmpty),
+          // recorded outcome classes reach the view from the frozen wire
+          // (SGB-01 on real data): the failed tool carries Failed, the
+          // succeeded tool Succeeded, the model None
+          node("n3").outcome == Some("Failed"),
+          node("n2").outcome == Some("Succeeded"),
+          node("n1").outcome.isEmpty
+        )
+      }
     },
     test(
       "VIEW-A-02: golden deep-tree E2E renders byte-identical, data-free text"
@@ -661,6 +728,11 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
             "golden deep-tree: view node n3 missing"
           )
         )
+        val n4 = findNode(out.view.roots, "n4").getOrElse(
+          throw new IllegalStateException(
+            "golden deep-tree: view node n4 missing"
+          )
+        )
         assertTrue(
           out.first == out.second,
           out.first.getBytes(StandardCharsets.UTF_8).toSeq ==
@@ -670,7 +742,10 @@ object SessionGraphViewSpec extends ZIOSpecDefault:
           deepForbiddenInline.forall(s => !out.first.contains(s)),
           // the frozen fixture's single dataflow edge (n3 consumes n1's output,
           // crossing the delegation subtree boundary) reaches the view 1:1
-          n3.inputs == Vector("n1")
+          n3.inputs == Vector("n1"),
+          // the tool's null outcome on the frozen wire degrades honestly to
+          // None — no invented outcome class (SGB-02 on real wire data)
+          n4.outcome.isEmpty
         )
       }
     },

@@ -1,6 +1,7 @@
 package raider.cli.lineage
 
 import raider.dsl.lineage.proj.{LineageView, NodeKind, NodeView}
+import raider.runtime.events.ToolOutcome
 import raider.runtime.lineage.model.{
   GraphError,
   RecoveryClass,
@@ -38,11 +39,17 @@ import raider.runtime.lineage.model.{
   *     sorting, no dedup, no invention (ADR-031 §2.6). Phases carry no inputs
   *     by definition ([[SessionNode.Phase.inputs]] is empty), so their view
   *     inputs degrade honestly to the empty vector.
-  *   - '''ToolCall outcome''': the recorded `ToolOutcome` class is NOT carried
-  *     by the current view schema — `NodeView` (frozen dsl projection type) has
-  *     no outcome field; ADR-031 §2.6 pinned `inputs` only. The adapter invents
-  *     nothing: failed-marker rendering stays renderer work (RAI-141) once the
-  *     view schema carries the outcome class.
+  *   - '''ToolCall outcome''' ([[outcomeClassOf]]): the recorded `ToolOutcome`
+  *     class as the frozen lineage-data v1 vocabulary string the renderer
+  *     consumes on `NodeView.outcome` (ADR-031 §2.4/§2.5): `Succeeded` /
+  *     `Failed` / `Cancelled` / `Timeout`. `None` for the other kinds and for a
+  *     tool the graph carries no finished outcome for (honest degradation).
+  *     `Failed` carries no reason here — payloads stay in lineage-data,
+  *     addressable by dataRef only (§2.5); the renderer's failed-marker phrase
+  *     stays the bounded `recorded outcome: <class>`. The mapping is total over
+  *     the closed `ToolOutcome` enum, so the view can never emit a class
+  *     outside the renderer's vocabulary; strings outside it remain the
+  *     renderer's typed UnknownKind rejection (future wire revisions).
   *
   * Structural safety: the graph is validated first ([[SessionGraph.validated]])
   * and every violation becomes a typed [[ViewError.Inconsistent]] — duplicate
@@ -70,7 +77,8 @@ object SessionGraphView:
   /** Deterministic conversion of the whole graph: roots in emission order,
     * children recursively by [[SessionGraph.childrenOf]] (which preserves the
     * emission order per parent), kind → NodeKind 1:1, parentId → parentId,
-    * dataRef → dataRef, inputs → inputs. Same graph → same view, byte for byte.
+    * dataRef → dataRef, inputs → inputs, outcome → outcome. Same graph → same
+    * view, byte for byte.
     */
   def toView(g: SessionGraph): Either[ViewError, LineageView] =
     g.validated.left.map(inconsistent).flatMap { graph =>
@@ -116,7 +124,8 @@ object SessionGraphView:
                 parentId,
                 children,
                 dataRefOf(n),
-                inputsOf(n)
+                inputs = inputsOf(n),
+                outcome = outcomeClassOf(n)
               )
             )
         }
@@ -149,6 +158,28 @@ object SessionGraphView:
     */
   private def inputsOf(n: SessionNode): Vector[String] =
     n.inputs.map(_.value)
+
+  /** Recorded ToolOutcome → the outcome CLASS string of the frozen lineage-data
+    * v1 vocabulary (ADR-031 §2.4/§2.5) — exactly the strings the renderer
+    * consumes on `NodeView.outcome`: "Succeeded" / "Failed" / "Cancelled" /
+    * "Timeout". The Failed reason never crosses the view boundary (payloads
+    * stay addressable by dataRef, §2.5). Total over the closed `ToolOutcome`
+    * enum; nodes without a recorded outcome (the other kinds, or a tool with no
+    * finished outcome) map to None — no invented values (SGB-02). Same mapping,
+    * case for case, as the compile-gate adapter
+    * (`LineageCompileGateSpec.GraphToView.outcomeClassOf`), so the product view
+    * and the gate view agree for the same graph.
+    */
+  private def outcomeClassOf(n: SessionNode): Option[String] =
+    n match
+      case t: SessionNode.ToolCall =>
+        t.outcome.map {
+          case ToolOutcome.Succeeded => "Succeeded"
+          case ToolOutcome.Failed(_) => "Failed"
+          case ToolOutcome.Cancelled => "Cancelled"
+          case ToolOutcome.Timeout   => "Timeout"
+        }
+      case _ => None
 
   /** Structural violations are data: every GraphError becomes a typed
     * Inconsistent with the offending ids in the detail string.
