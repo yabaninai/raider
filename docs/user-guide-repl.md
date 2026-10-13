@@ -2,7 +2,7 @@
 
 The REPL is an in-process Scala 3 compiler with Raider bindings installed in the same interpreter. You can define values and methods, use case classes, and build typed expressions. Agent calls use the current REPL session and its configured backend, tools, and limits.
 
-This guide describes the current implementation. The snippets marked **source illustration** are adapted from existing source examples for readability; they were not executed as part of this documentation edit. The scripted REPL fixtures return text marked `[scripted-fixture]`: they exercise Scala compilation and Raider composition, not model quality. See [the lineage guide](user-guide-lineage.md) for reading and reviewing recorded runs.
+The examples below use the current REPL bindings and the checked-in workflow files. The mock provider returns fixed text marked `[scripted-fixture]`; configure a provider to receive model answers. See [the lineage guide](user-guide-lineage.md) to inspect recorded calls and tool results.
 
 ## Start the REPL
 
@@ -54,7 +54,7 @@ This distinction is useful when you want to prepare a request, add typed transfo
 
 `all(askA, askB).run()` runs two lazy asks through the composition interpreter and returns a tuple whose component types come from the asks. `all(scout, worker).ask(prompt)` is the shorter form when both agents receive the same prompt. `map` can attach a typed label to a result, so the tuple retains which answer came from which review.
 
-The following **source illustration** follows [`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl). It asks for a code review and a JSON boundary test plan for the same billing rule. In live OpenAI-compatible mode, the fixture parses the worker's answer as JSON and checks it against the stated policy.
+The following example follows [`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl). It asks for a code review and a JSON boundary test plan for the same billing rule. In live OpenAI-compatible mode, the fixture parses the worker's answer as JSON and checks it against the stated policy.
 
 ```scala
 import zio.json.*
@@ -86,28 +86,35 @@ if sys.env.get("RAIDER_PROVIDER").contains("openai") then
   assert(decoded.map(_.sortBy(_.headOption.getOrElse(-1))).contains(expected))
 ```
 
-With the mock backend, both answers are scripted fixture text; only the shape and composition run. The JSON assertion is conditional on `RAIDER_PROVIDER=openai`. The existing example verifier can run the live case only with the configured endpoint/model and explicit live opt-in; this guide does not perform a live call. The verifier rejects tool requests for this review and checks the exact three boundary inputs.
+With the mock backend, both answers are scripted fixture text; only the shape and composition run. The JSON assertion is conditional on `RAIDER_PROVIDER=openai`. For the live case, configure an endpoint and model, then enable the verifier’s live option. The verifier rejects tool requests for this review and checks the exact three boundary inputs.
 
 ## Run an ordered batch with bounded concurrency
 
 `batch(inputs, parallelism)(f)` builds one ask per input, runs at most `parallelism` items at once, and returns results in input order. The function `f` returns a lazy `AgentAsk`; it can use `map` to produce a value tied to each input.
 
 ```scala
-val ordered = batch(List("parser", "config", "cli"), parallelism = 2) { area =>
-  scout(s"Review the $area module").map(_ => area)
+val checks = List(
+  "boundary" -> s"$billingPolicy Check the comparison in: $billingCode",
+  "money" -> s"Review the integer-cents calculation in: $billingCode",
+  "tests" -> s"$billingPolicy Propose boundary tests for: $billingCode"
+)
+val reviews = batch(checks, parallelism = 2) { case (area, prompt) =>
+  scout(s"$prompt. Reply with one actionable observation; do not use tools.")
+    .map(answer => (area, answer))
 }.run()
 
-assert(ordered == List("parser", "config", "cli"))
+assert(reviews.map(_._1) == List("boundary", "money", "tests"))
+reviews.foreach { case (area, answer) => println(s"$area: $answer") }
 ```
 
-This is bounded parallel work with deterministic result ordering, not a promise that the responses themselves are deterministic. Use `collect()` when you need per-item domain failures returned as explicit outcomes; external interruption still propagates. The runnable composition fixture is [`03parallel-batch.repl`](../examples/user-guide/repl/03parallel-batch.repl).
+Results preserve input order even when requests finish in a different order. Use `collect()` when you need per-item domain failures returned as explicit outcomes; external interruption still propagates. The runnable composition fixture is [`03parallel-batch.repl`](../examples/user-guide/repl/03parallel-batch.repl).
 
 ## Start and cancel a background job
 
 `worker.start(prompt)` returns a typed job handle immediately. `await` waits for its result; `cancel()` requests cancellation and returns `false` when the job is already terminal. The handle remains usable in later REPL submissions.
 
 ```scala
-val job = worker.start("Inspect the configuration loading path")
+val job = worker.start(s"$billingPolicy Review this expression: $billingCode. Give one counterexample; do not use tools.")
 job
 :jobs
 ```
@@ -125,9 +132,10 @@ You can also await a job in Scala with `val answer = job.await`. Do not assume c
 `openSession(worker)` creates an in-memory `Chat`. Each successful `ask` appends the user message and assistant reply; the next call receives that history. The history belongs to the `Chat` object in this REPL process.
 
 ```scala
+val parserCode = "def parsePort(raw: String): Int = raw.toInt"
 val chat = openSession(worker)
-val first = chat.ask("Inspect the parser and identify its entry point")
-val second = chat.ask("Now summarize the error handling around that entry point")
+val first = chat.ask(s"Review input validation in this Scala function: $parserCode. Do not use tools.")
+val second = chat.ask("Propose two malformed inputs and explain how the function handles each. Do not use tools.")
 chat.messages.size // four RequestMessage values: two user and two assistant
 ```
 
@@ -137,7 +145,7 @@ This facade does not provide session persistence or a `close` method. The determ
 
 The REPL facade composes agent asks with `all` and `batch`. A deterministic workflow can instead be expressed as `Program` stages and packaged as a bundle. The existing [`TaskSummary` implementation](../examples/user-guide/bundle/TaskSummary.scala) is a complete example: it parses comma-separated check records, validates their names and statuses, then produces a JSON readiness report. Its second stage is a typed `Program[List[(String, String)], String]`; `andThen` connects it to the parser's output.
 
-The following **source illustration** reproduces the essential body and types from that bundle. It uses only `Task.succeed` and `Task.fail`; it makes no model or network calls.
+Here are the two stages and their composition from that bundle. It uses only `Task.succeed` and `Task.fail`; it makes no model or network calls.
 
 ```scala
 import raider.core.{Program, RaiderError, Task}

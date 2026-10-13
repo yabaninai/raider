@@ -2,9 +2,8 @@
 
 Raider writes a structural record of a completed headless coding run. The record
 shows which model rounds and tools occurred, their order, and references to the
-associated data. It is useful for inspecting and verifying a run. It is not the
-original workflow source, a resumable session, or a transcript of every value
-that passed through the tools.
+associated data. Use it to inspect the order of calls and locate their associated evidence.
+The detailed process outputs remain in the event log and transcript.
 
 This guide uses the saved offline billing example at
 `artifacts/user-examples/verification-ip716woq/coding/work-b1d4212a/`. The local
@@ -46,8 +45,9 @@ comes from the saved `lineage-data.json`; `seq` gives the order:
 | 7 | `proc_run` | Run tests after the edit |
 | 8 | — | Final model round, with no tool child |
 
-This tree follows the actual `parentId` links. The model nodes are independent
-roots, ordered by `seq`:
+This tree follows the actual `parentId` links. Each model node has no containment parent. Its `inputs` link identifies the
+preceding tool result used by the next round. Solid arrows below represent
+containment; dashed arrows represent these input dependencies:
 
 ```mermaid
 graph TD
@@ -59,6 +59,13 @@ graph TD
   M6["n39 · model round 6 · j_1/round-6"] --> T6["n42 · proc_run · j_1/call-compile-after"]
   M7["n46 · model round 7 · j_1/round-7"] --> T7["n49 · proc_run · j_1/call-test-after"]
   M8["n53 · model round 8 · j_1/round-8"]
+  T1 -. input .-> M2
+  T2 -. input .-> M3
+  T3 -. input .-> M4
+  T4 -. input .-> M5
+  T5 -. input .-> M6
+  T6 -. input .-> M7
+  T7 -. input .-> M8
 ```
 
 The exported `lineage.scala` is a valid Scala projection. Here is its actual
@@ -122,6 +129,10 @@ Each Scala comment's `data:` value is a key in the `data` object of
 }
 ```
 
+The tool outcome `Succeeded` means the invocation returned a tool result. For
+`proc_run`, inspect the process exit code in that result: the pre-edit boundary
+test exits 1 even though the tool invocation succeeded.
+
 These are the actual saved values for this fixture. All eight recorded
 model-call entries have empty prompt and response strings. All seven tool-call
 entries have `resultTail: null`; the `argsSummary` and `outcome` still identify
@@ -129,12 +140,20 @@ the recorded operation and status. Do not treat an empty response or null tail
 as proof that the model or tool had no input or output. The event log is the
 source of truth for the run, while these lineage artifacts are a projection.
 
-Use `jq` to inspect a particular reference and its node:
+Set `RAIDER_RUN` to the run directory printed by the billing example. For the
+saved run described here:
 
 ```sh
-jq '.data["j_1/round-1"]' <run-dir>/lineage-data.json
-jq '.data["j_1/call-read-source"]' <run-dir>/lineage-data.json
-jq '.nodes[] | select(.dataRef == "j_1/call-read-source")' <run-dir>/lineage-data.json
+RAIDER_RUN=artifacts/user-examples/verification-ip716woq/coding/work-b1d4212a
+```
+
+A fresh run has different directory and node identifiers. Use `jq` to inspect a
+particular reference and its node:
+
+```sh
+jq '.data["j_1/round-1"]' "$RAIDER_RUN/lineage-data.json"
+jq '.data["j_1/call-read-source"]' "$RAIDER_RUN/lineage-data.json"
+jq '.nodes[] | select(.dataRef == "j_1/call-read-source")' "$RAIDER_RUN/lineage-data.json"
 ```
 
 The Scala API follows the same exact-key rule. `RecordedSource.fromFile(path)`
@@ -152,26 +171,47 @@ the current billing review fixture creates two lazy asks, labels their results,
 and executes them together:
 
 ```scala
-val scoutAsk = scout("Review the billing boundary and give a counterexample.")
-  .map(answer => ("boundary-review", answer))
-val testAsk = worker("Propose expected cases below, at, and above $100.")
-  .map(answer => ("test-plan", answer))
+val scoutAsk = scout("Review the billing boundary and give a counterexample.").map(answer => ("boundary-review", answer))
+val testAsk = worker("Propose expected cases below, at, and above $100.").map(answer => ("test-plan", answer))
 val (review, plan) = all(scoutAsk, testAsk).run()
 ```
 
 This illustrates current DSL composition from
 [`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl).
-It is a separate REPL example; it is not the source program that produced the
-headless `coder` artifact shown above. `lineage.scala` is generated from the
-observed graph, not a saved copy of the original Scala workflow. It contains
-structural comments and `dataRef`s, not executable model/tool instructions.
+The REPL prints these two results in the foreground. This `.run()` path currently
+does not write the CLI run directory shown above. The generated Scala projection
+records observed structure through comments and `dataRef`s; the authored workflow
+remains in your source file.
 
-## Verify a saved run
+For a nested structure, the checked-in [delegation fixture](../contracts/lineage/golden/deep-tree/lineage-data.json)
+contains the following parent chain:
 
-The product command replays a recorded run without calling a model provider:
+```text
+n0 phase: plan                       dataRef d0
+└── n1 model call: mock-coder          dataRef d1
+    └── n2 delegation: worker         dataRef d2; childJobId job-0042
+        └── n3 child model call       dataRef d3; input n1
+            └── n4 tool: grep_search  dataRef d4
+```
+
+This is a schema fixture for reading parent, input, and data relationships. It
+was not produced by the parallel billing REPL example. The `d2` record links the
+delegation to its child job, while `d3` stores that child’s prompt and answer.
+
+## Replay prerequisites and command
+
+Replay requires a compatible record with enough recorded model responses to
+reconstruct the original sequence. The saved billing export used in this guide
+has empty responses and cannot reproduce its tool sequence through the current
+replay backend. Its graph and detailed traces remain useful for inspection.
+No replay result is claimed for this example.
+
+For a compatible complete run, set `RAIDER_REPLAY_RUN` to its run directory and
+`RAIDER_REPLAY_WORKSPACE` to the workspace baseline it used. The command is:
 
 ```sh
-raider replay <run-dir> --workspace <original-workspace>
+java -cp "$RAIDER_CP" raider.cli.Main replay "$RAIDER_REPLAY_RUN" \
+  --workspace "$RAIDER_REPLAY_WORKSPACE"
 ```
 
 The command reads `lineage-data.json`, uses the recorded model answers, and
