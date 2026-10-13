@@ -444,6 +444,18 @@ object HeadlessRunner:
       // honest view).
       ciOpt <- ZIO.fromEither(resolveCi(args, env, ciFlag))
       _ <- ciOut.set(ciOpt)
+      // RAI-131 TRUST PREFLIGHT: when the operator declared provenance
+      // (--require-provenance), the resolved bundle (and its policy file, if
+      // any) is hash-verified AGAINST the declaration BEFORE admission and
+      // before the first model dispatch — a mismatch is a typed
+      // InputValidation (preflight-failure exit family), so a tampered or
+      // unknown-provenance bundle NEVER reaches a provider. Applies to the
+      // Bundle target (the CI path); built-in agent runs are local and not
+      // covered by this slice.
+      _ <- (args.requireProvenance, args.target) match
+        case (Some(pf), CliArgs.Target.Bundle(jar, _)) =>
+          ZIO.fromEither(Provenance.verify(pf, jar, None))
+        case _ => ZIO.unit
       // RAI-064 preflight: a live provider requires a credential from the
       // environment BEFORE any dispatch/spend — no network call, no artifact,
       // no spend when the key is missing (SETUP-02). Mock needs no key.
@@ -710,6 +722,43 @@ object HeadlessRunner:
           artifactsLine.fold("")(l => l + "\n"),
         UTF_8
       )
+      // RAI-131 (CI adapter batch): checks.junit.xml — the ci-runtime
+      // artifact contract rendered from the ACTUAL executed checks (stable
+      // IDs, pass/fail/error/skipped counts, escaped details). An empty
+      // suite is written honestly; it never pretends to verify task
+      // correctness (docs/ci-runtime.md artifacts table).
+      def xmlEscape(s: String): String =
+        s.replace("&", "&amp;")
+          .replace("<", "&lt;")
+          .replace(">", "&gt;")
+          .replace("\"", "&quot;")
+          .replace("'", "&apos;")
+      def testCaseXml(c: CheckResult): String =
+        val inner = c.outcome match
+          case CheckOutcome.Passed => ""
+          case CheckOutcome.Failed =>
+            s"""<failure message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
+                c.detail
+              )}</failure>"""
+          case CheckOutcome.Errored =>
+            s"""<error message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
+                c.detail
+              )}</error>"""
+          case CheckOutcome.Skipped => "<skipped/>"
+        s"""    <testcase name="${xmlEscape(
+            c.id
+          )}" classname="raider.run.checks">$inner</testcase>"""
+      val allChecks = finalResult.checks
+      val failures = allChecks.count(_.outcome == CheckOutcome.Failed)
+      val errored = allChecks.count(_.outcome == CheckOutcome.Errored)
+      val skipped = allChecks.count(_.outcome == CheckOutcome.Skipped)
+      val junit =
+        s"""<?xml version="1.0" encoding="UTF-8"?>
+           |<testsuite name="raider run" tests="${allChecks.size}" failures="$failures" errors="$errored" skipped="$skipped">
+           |${allChecks.map(testCaseXml).mkString("\n")}
+           |</testsuite>
+           |""".stripMargin
+      Files.writeString(workDir.resolve("checks.junit.xml"), junit, UTF_8)
       ()
     }.orDie
 
