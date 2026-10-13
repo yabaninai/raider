@@ -1,329 +1,137 @@
 # Read a coding run's lineage
 
-Raider writes a structural record of a completed headless coding run. It helps
-answer what ran, why a run failed, what files changed, and how the Scala
-projection represents the graph. Lineage is a structural index; use
-`events.jsonl`, `transcript.json`, and `run.json` for detailed inputs, outputs,
-process status, and verification results.
+Lineage helps answer three questions: what ran, what failed, and what files
+changed. A run directory contains a summary, event log, transcript, and—when
+the event stream can be reduced—two lineage files. The lineage files organize
+the run; the event log and transcript provide the detail behind each step.
 
-This guide uses the saved offline billing example at
-`artifacts/user-examples/verification-ip716woq/coding/work-b1d4212a/`. The local
-scripted OpenAI-compatible stand performed the coding sequence; `scripted-billing`
-was not a live model. The example reads a Scala discount implementation, searches
-for the strict boundary, compiles and tests before the edit, changes `>` to `>=`,
-then compiles and tests again. The saved `summary.md` reports a successful run
-and exit code 0, and says all three boundary checks pass. Treat the stand's fixed
-responses as deterministic fixture behavior, not evidence of model reasoning.
+## Find a run
 
-Start with `summary.md` and `run.json` for the outcome. Use `lineage.scala`
-for the sequence of calls, then follow a node into `lineage-data.json` and the
-transcript when you need its inputs or output. The walkthrough below follows
-one saved run; its local ignored artifact directory is not included in a fresh
-clone. The [CI capture](examples/ci-pipeline/README.md) is available in Git.
+Start with the output directory printed by your `raider run` command or set by
+its `--out` option. Each completed invocation gets its own `work-<id>`
+directory. Replace the placeholder below with the actual path printed by your
+run; a new run has a different directory name.
 
-## Find the run artifacts
-
-Each settled run has its own `work-<id>` directory below the `--out` directory.
-Lineage files are written beside the event log and normal run results:
-
-```text
-<out>/work-<id>/
-├── run.json
-├── events.jsonl
-├── summary.md
-├── transcript.json
-├── lineage.scala
-└── lineage-data.json
+```sh
+RUN_DIR='<path-to-the-printed-work-directory>'
+cat "$RUN_DIR/summary.md"
+cat "$RUN_DIR/run.json"
 ```
 
-For this example, the recorded graph hash is
-`28cc750c72a2e175c0c9094e8c9fbc4e011a4a16f238abed7f5055d42d1f7b17`, with 15
-nodes: eight `model_call` nodes and seven `tool_call` nodes. The sequence below
-comes from the saved `lineage-data.json`; `seq` gives the order:
+| File | Use it to |
+| --- | --- |
+| `summary.md` | Get the human-readable run status and exit code. |
+| `run.json` | Inspect the structured result, checks, and accounting. |
+| `events.jsonl` | Trace ordered events and detailed process/tool results. |
+| `transcript.json` | Read the run's conversation and tool trace. |
+| `lineage.scala` | See the Scala projection of the recorded graph. |
+| `lineage-data.json` | Look up node details using their `dataRef` keys. |
 
-| Model round | Tool child | Purpose |
-| --- | --- | --- |
-| 1 | `fs_read` | Read the discount source |
-| 2 | `fs_search` | Find the strict threshold |
-| 3 | `proc_run` | Compile before the edit |
-| 4 | `proc_run` | Run tests before the edit |
-| 5 | `fs_edit` | Change the discount boundary |
-| 6 | `proc_run` | Compile after the edit |
-| 7 | `proc_run` | Run tests after the edit |
-| 8 | — | Final model round, with no tool child |
+The saved billing example used below lives in an ignored local artifact
+directory, so it may not exist in a fresh checkout. For a checked-in example,
+use the [sanitized CI capture](examples/ci-pipeline/README.md).
 
-This tree follows the actual `parentId` links. Each model node has no containment parent. Its `inputs` link identifies the
-preceding tool result used by the next round. Solid arrows below represent
-containment; dashed arrows represent these input dependencies:
+## What ran?
 
-```mermaid
-graph TD
-  M1["n4 · model round 1 · j_1/round-1"] --> T1["n7 · fs_read · j_1/call-read-source"]
-  M2["n11 · model round 2 · j_1/round-2"] --> T2["n14 · fs_search · j_1/call-find-boundary"]
-  M3["n18 · model round 3 · j_1/round-3"] --> T3["n21 · proc_run · j_1/call-compile-before"]
-  M4["n25 · model round 4 · j_1/round-4"] --> T4["n28 · proc_run · j_1/call-test-before"]
-  M5["n32 · model round 5 · j_1/round-5"] --> T5["n35 · fs_edit · j_1/call-edit-discount"]
-  M6["n39 · model round 6 · j_1/round-6"] --> T6["n42 · proc_run · j_1/call-compile-after"]
-  M7["n46 · model round 7 · j_1/round-7"] --> T7["n49 · proc_run · j_1/call-test-after"]
-  M8["n53 · model round 8 · j_1/round-8"]
-  T1 -. input .-> M2
-  T2 -. input .-> M3
-  T3 -. input .-> M4
-  T4 -. input .-> M5
-  T5 -. input .-> M6
-  T6 -. input .-> M7
-  T7 -. input .-> M8
+Open `lineage-data.json`. Each item in `nodes` has a sequence number (`seq`),
+a kind, and usually a `dataRef`. `parentId` shows containment, such as a tool
+call under a model call. `inputs` identifies earlier nodes whose results fed
+the step. The `data` object maps each `dataRef` to the recorded model or tool
+details.
+
+For example, inspect a fresh run without assuming a fixed node ID:
+
+```sh
+jq '.nodes[] | {seq, id, kind, parentId, inputs, dataRef}' \
+  "$RUN_DIR/lineage-data.json"
+jq '.data | to_entries[] | {ref: .key, detail: .value}' \
+  "$RUN_DIR/lineage-data.json"
 ```
 
-The saved billing run predates the current renderer. This excerpt is its
-historical comments-only projection, not current generated output:
+The offline billing walkthrough records eight model rounds and seven tool
+calls: source read, boundary search, compile and test before the edit, edit,
+then compile and test after it. The recorded order comes from `seq`; tool
+parent links and input links describe different relationships.
+
+For a multi-stage CI capture, `successful-run.json` contains an application
+index and six separate native runs. Inspect the stage list and the native
+summaries with:
+
+```sh
+jq '.pipelineIndex.stages' docs/examples/ci-pipeline/successful-run.json
+jq '.nativeRuns[] | {stage, runId, nativeStatus, nativeExitCode, nodes}' \
+  docs/examples/ci-pipeline/successful-run.json
+```
+
+Those six roots are linked by the application index; they are not one native
+graph. The capture's `nativeWorkDir` values identify original artifact
+locations, while the checked-in JSON contains sanitized excerpts. The
+[pipeline guide](user-guide-ci.md) explains the stages and their outcomes.
+
+## What failed?
+
+Follow the relevant `dataRef` to find the operation, then inspect its process
+result in `events.jsonl` or `transcript.json`. A tool call with outcome
+`Succeeded` means the tool returned a result. It does not mean the command
+that the tool launched passed. In the billing example, the pre-edit test
+process exits 1 because the strict discount boundary is still present. The
+later edit and passing checks are separate steps. Read `summary.md` and
+`run.json` for the overall status rather than inferring it from one node.
+
+## What files changed?
+
+Look for recorded mutating operations, then inspect the actual source diff in
+the project working copy used for the run. For example, find `fs_patch` tool
+entries in a captured pipeline and review the corresponding source file:
+
+```sh
+jq '.nativeRuns[].data | to_entries[] | select(.value.tool == "fs_patch")' \
+  docs/examples/ci-pipeline/successful-run.json
+SOURCE_FILE='path-from-the-recorded-patch'
+git diff -- "$SOURCE_FILE"
+```
+
+The diff command must run from the relevant project working copy. Tool
+arguments show what change was requested or recorded; the workspace diff
+shows what actually changed. In the CI capture, the `fs_patch` recovery label
+is `ReadOnly` even though the patch mutated source. That label is not a
+permission or replay guarantee. See the [capture notes](examples/ci-pipeline/README.md).
+
+## The Scala projection
+
+The current renderer produces a typed Scala 3 `Program` using `LineageStep`
+and `Task` composition. A small excerpt from the current unified artifact:
 
 ```scala
-// Generated by Raider lineage projection (ADR-027). Do not edit — comparator detects edits.
-object lineage_cli_a2323b24:
-  // model("scripted-billing", round = 1) // data: j_1/round-1
-    // tool("fs_read", recovery = "ReadOnly") // data: j_1/call-read-source
-  // model("scripted-billing", round = 2) // data: j_1/round-2
-    // tool("fs_search", recovery = "ReadOnly") // data: j_1/call-find-boundary
-  // model("scripted-billing", round = 3) // data: j_1/round-3
-    // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-compile-before
-  // model("scripted-billing", round = 4) // data: j_1/round-4
-    // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-test-before
-  // model("scripted-billing", round = 5) // data: j_1/round-5
-    // tool("fs_edit", recovery = "Mutating") // data: j_1/call-edit-discount
-```
-
-After the round 6 and 7 `proc_run` children, the saved projection ends with
-this final model round and the object's closing expression:
-
-```scala
-  // model("scripted-billing", round = 8) // data: j_1/round-8
-  ()
-```
-
-These comments identify graph nodes and their data references. They do not
-call the model or execute tools. The recorded graph has eight model-call
-roots; each tool call is a child of its corresponding model call. Read those
-roots in `seq` order rather than inferring parent edges between model rounds.
-
-## Follow a `dataRef` into the JSON
-
-Each Scala comment's `data:` value is a key in the `data` object of
-`lineage-data.json`. For example, the first model node refers to
-`j_1/round-1`, and its `fs_read` child refers to `j_1/call-read-source`:
-
-```json
-{
-  "j_1/round-1": {
-    "model": "scripted-billing",
-    "round": 1,
-    "prompt": "",
-    "response": "",
-    "usage": {
-      "reservedMicroUsd": 0,
-      "observedMicroUsd": 0,
-      "unknown": true
-    }
-  },
-  "j_1/call-read-source": {
-    "tool": "fs_read",
-    "callId": "read-source",
-    "recovery": "ReadOnly",
-    "outcome": "Succeeded",
-    "argsSummary": "{\"path\":\"src/main/scala/billing/Discount.scala\"}",
-    "resultTail": null
+val phase_baseline_check: Program[Unit, Vector[StepReport]] =
+  Program.fromFunction("phase_baseline_check") { _ =>
+    LineageStep.phase("camp-billing:n1", "baseline-check", None, Vector.empty, nesting = 1)
+      .flatMap { n_camp_billing_n1 =>
+        delegation_ci_baseline(())
+          .map { n_camp_billing_n2 =>
+            n_camp_billing_n1 ++ n_camp_billing_n2
+          }
+      }
   }
-}
 ```
 
-The tool outcome `Succeeded` means the invocation returned a tool result. For
-`proc_run`, inspect the process exit code in that result: the pre-edit boundary
-test exits 1 even though the tool invocation succeeded.
+The phase and child steps return structural reports: node kind and ID,
+`dataRef`, inputs, and nesting. Payloads stay in `lineage-data.json`. The
+projection is a **dry-run description**: constructing or executing its
+program reports recorded call-graph structure; it performs no model call, tool
+call, or I/O. It is not replay or live rerun.
 
-These are the actual saved values for this fixture. All eight recorded
-model-call entries have empty prompt and response strings. All seven tool-call
-entries have `resultTail: null`; the `argsSummary` and `outcome` still identify
-the recorded operation and status. Do not treat an empty response or null tail
-as proof that the model or tool had no input or output. The event log is the
-source of truth for the run, while these lineage artifacts are a projection.
+Read the [complete unified lineage Scala artifact](examples/ci-pipeline/unified-lineage/lineage.scala)
+with its [provenance and evidence notes](examples/ci-pipeline/unified-lineage/README.md).
+For the separate six-root CI capture, see the [historical captured native
+projections](examples/ci-pipeline/native-projections.md); those saved
+comments-only projections predate the current renderer.
 
-Set `RAIDER_RUN` to the run directory printed by the billing example. For the
-saved run described here:
+## Replay limits
 
-```sh
-RAIDER_RUN=artifacts/user-examples/verification-ip716woq/coding/work-b1d4212a
-```
-
-A fresh run has different directory and node identifiers. Use `jq` to inspect a
-particular reference and its node:
-
-```sh
-jq '.data["j_1/round-1"]' "$RAIDER_RUN/lineage-data.json"
-jq '.data["j_1/call-read-source"]' "$RAIDER_RUN/lineage-data.json"
-jq '.nodes[] | select(.dataRef == "j_1/call-read-source")' "$RAIDER_RUN/lineage-data.json"
-```
-
-The Scala API follows the same exact-key rule. `RecordedSource.fromFile(path)`
-loads the data document; `source.modelOutput("j_1/round-1")` returns that
-recorded model-call entry. Unknown references and references to non-model data
-produce typed errors. It does not search by prefix or invent a replacement
-answer. See [RecordedSource.scala](../modules/dsl/src/main/scala/raider/dsl/lineage/replay/RecordedSource.scala)
-and the [lineage data contract](lineage.md#1-three-artifacts-and-the-source-of-truth).
-
-## Answer the run questions
-
-### What ran?
-
-Read `lineage-data.json` and follow `nodes` in sequence order. `parentId`
-shows containment (for example, a tool call under a model call); `inputs`
-shows which earlier node's result was used. Each node's `dataRef` points to
-its entry in the top-level `data` map. The opening example has eight model
-rounds and seven tool calls. A tool outcome of `Succeeded` means the invocation
-returned a result; it does not mean a compiler or test command passed.
-
-### Why did it fail?
-
-Follow the relevant `dataRef` into the tool entry, then inspect the process
-result in `events.jsonl` or `transcript.json` for its exit code and output.
-Here, the pre-edit test invocation succeeded as a tool call, but the test
-process exited 1 because the strict discount boundary was still present. The
-later edit and checks are separate recorded steps. Use `run.json` and
-`summary.md` for overall status; a graph alone does not explain a failure.
-
-### What files changed?
-
-Find mutating tools such as `fs_edit` in the lineage data and inspect their
-recorded arguments. Then verify the actual diff or file state in the run's
-workspace artifacts and consult the event log or transcript for detail. Here,
-`j_1/call-edit-discount` records the `fs_edit` operation; `Mutating` describes
-its recovery class. A lineage entry is evidence of a recorded operation, not
-a substitute for checking the resulting diff.
-
-## How the Scala projection works
-
-The headless run above used the built-in `coder` agent and native workspace
-tools. The Scala REPL exposes a separate DSL for composing asks. For example,
-the current billing review fixture creates two lazy asks, labels their results,
-and executes them together:
-
-```scala
-val scoutAsk = scout("Review the billing boundary and give a counterexample.").map(answer => ("boundary-review", answer))
-val testAsk = worker("Propose expected cases below, at, and above $100.").map(answer => ("test-plan", answer))
-val (review, plan) = all(scoutAsk, testAsk).run()
-```
-
-This illustrates current DSL composition from
-[`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl).
-The REPL prints these two results in the foreground. This `.run()` path currently
-does not write the CLI run directory shown above. A generated lineage projection
-is derived from observed structure; the authored workflow remains in your
-source file.
-
-Older captures shown elsewhere in this guide contain comments-only Scala.
-Those are historical artifacts from the former renderer, not the current
-output. The current projection is a typed Scala 3 `Program` built from
-`LineageStep` values composed as `Task`s. Each step reports its node ID, kind,
-`dataRef`, input IDs, and nesting level, in recorded graph order. Payloads
-remain in `lineage-data.json`, addressed by `dataRef`.
-
-For example, the unified artifact defines each phase as a `Program[Unit,
-Vector[StepReport]]`; inside it, a phase step is composed with its delegated
-child using `flatMap`. Recorded sibling groups use `batch` only where the
-reduced graph contains a fan-out. This keeps the Scala structure aligned with
-the graph; it does not invent parallel edges or execute the recorded work.
-
-This projection describes recorded structure. Building or executing it
-dispatches no model call, tool call, or I/O. It is distinct from replay, which
-consumes a record through the replay harness, and live rerun, which combines
-recorded and live work under isolation and budget controls. See the complete
-[unified lineage Scala example](examples/ci-pipeline/unified-lineage/lineage.scala)
-and the accompanying six-page historical
-[native projections walkthrough](examples/ci-pipeline/native-projections.md).
-
-## Read lineage from a multi-stage CI example
-
-The [CI pipeline guide](user-guide-ci.md) describes a multi-stage example whose
-application-owned `pipeline-index.json` points to six native headless runs. Each
-entry represents a separate root run with its own model/tool graph and native
-artifacts. The index is a convenient map across the application stages; it does
-not join those roots into one native phase graph, add model-to-model edges across
-roots, or create a shared global budget. `all` and bounded `batch` can run
-application work concurrently, but that composition does not add those native
-lineage relationships or accounting.
-
-The [successful captured pipeline](examples/ci-pipeline/successful-run.json)
-contains `pipelineIndex` and six `nativeRuns`: 24 nodes total, with 19 in the
-repair root and one in each review root. Its decision is `READY`, and the
-process exited 0. In the original output, open `pipeline-index.json` and follow
-each entry to its native headless work directory. In the sanitized capture,
-follow the matching `nativeRootId` and `nativeRuns[].runId` instead. In every work directory, inspect `lineage-data.json` alongside
-`lineage.scala` and `events.jsonl`. The data file describes that run's actual
-model-call and tool-call nodes; use its references and parent/input links to
-understand the graph, then consult the event log or transcript for detailed
-inputs and outputs. Repeat this for each indexed run instead of treating the
-application index as a native combined graph.
-
-In the repair stage, the initial tool invocation that runs compiler/tests can
-have outcome `Succeeded` while the tests themselves fail: `Succeeded` records
-that the tool invocation returned a result. The process result carries the
-nonzero exit code that reports the unpatched defect. Read that result before
-interpreting the next repair step; a successful tool call is not the same as a
-passing test suite. The captured files under `docs/examples/ci-pipeline/` are
-the evidence for the actual stage paths and outcomes.
-
-For a nested structure, the checked-in [delegation fixture](../contracts/lineage/golden/deep-tree/lineage-data.json)
-contains the following parent chain:
-
-```text
-n0 phase: plan                       dataRef d0
-└── n1 model call: mock-coder          dataRef d1
-    └── n2 delegation: worker         dataRef d2; childJobId job-0042
-        └── n3 child model call       dataRef d3; input n1
-            └── n4 tool: grep_search  dataRef d4
-```
-
-This is a schema fixture for reading parent, input, and data relationships. It
-was not produced by the parallel billing REPL example. The `d2` record links the
-delegation to its child job, while `d3` stores that child’s prompt and answer.
-
-## Replay and rerun limits
-
-Replay requires a compatible record with recorded responses and supported
-tool operations. The saved billing export has empty model responses and cannot
-reproduce its tool sequence. The checked `ReplayHarness` acceptance fixture
-demonstrates a read-only `fs_read` replay; it does not establish that a
-mutating repair sequence can be replayed. Do not use replay as a repair
-command or assume it applies changes to the original workspace. Replay uses a
-throwaway workspace copy and compares graph structure. A matching graph does
-not establish that a live model would make the same choices. See
-[the replay command contract](lineage.md#10-actual-commands-and-paths-checked-against-modulescli).
-
-Live rerun is a separate path with isolation and budget controls. Consult
-[Session lineage](lineage.md) for current status and supported operations;
-neither a projection nor a replay result claims a live rerun.
-
-The source run's `summary.md` reports `SUCCEEDED` and exit code 0. Its `run.json`
-also records a `bundle-preflight` check with outcome `Failed` and detail
-`preflight ok`, alongside a passed `run-result-schema` check. Keep that artifact
-detail visible when interpreting the saved evidence; the lineage graph itself
-does not resolve this check-status inconsistency. No replay was performed while
-preparing this guide.
-
-## Trust and limits
-
-- A lineage projection and its referenced data are part of the run evidence.
-  Editing the projection changes what the graph comparator sees.
-- Scala and process execution use the invoking user's permissions. Workspace
-  tool policy does not sandbox arbitrary Scala code.
-- Replay operates on an isolated workspace copy for supported operations;
-  this guide makes no claim that arbitrary mutating repairs are supported.
-- This saved example used a scripted local stand and recorded unknown usage.
-  Its zero-valued reserved/observed amounts are not evidence of a priced live
-  request or general provider billing behavior.
-- The lineage records structure and references. Check `events.jsonl`,
-  `transcript.json`, `run.json`, and the original verification report for the
-  detail needed to answer a specific execution question.
-
-For the schema, artifact lifecycle, replay modes, and implementation status,
-see [Session lineage](lineage.md). For the complete billing workflow and its
-offline verifier, see [the user guide](user-guide.md).
+Replay consumes recorded responses and supports only operations handled by the
+replay harness. The saved billing export lacks model responses, and the checked
+replay fixture demonstrates a read-only `fs_read` sequence. This guide does
+not claim that mutating repair replay works or provide a repair recipe. Replay
+uses an isolated workspace copy; live rerun is a separate, guarded path. See
+[Session lineage](lineage.md) for current status and limitations.
