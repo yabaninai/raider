@@ -471,9 +471,9 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     yield NestedExported(handle.id, wire, segments)
 
   /** The CANONICAL fork records of an exported stream: frozen v1
-    * `Delegated(child, _)` envelopes carried by a stream OTHER than the
-    * child's own (the introductions the joined stream represents once, in the
-    * forking job's stream).
+    * `Delegated(child, _)` envelopes carried by a stream OTHER than the child's
+    * own (the introductions the joined stream represents once, in the forking
+    * job's stream).
     */
   private def canonicalForkRecords(
       envs: Vector[LineageEnvelope]
@@ -907,7 +907,7 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             // cleanup: release and settle the parked child
             _ <- childRelease.succeed(()).unit
             _ <- manager.awaitSettled(child)
-           yield assertTrue(
+          yield assertTrue(
             segments.size == 1,
             // nothing of the child joined the run stream
             wire.forall(_.jobId == handle.id),
@@ -966,9 +966,11 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             childSeg = exported.segments.headOption.getOrElse(
               throw new IllegalStateException("no child segment joined")
             )
-            grandSeg = exported.segments.lift(1).getOrElse(
-              throw new IllegalStateException("no grandchild segment joined")
-            )
+            grandSeg = exported.segments
+              .lift(1)
+              .getOrElse(
+                throw new IllegalStateException("no grandchild segment joined")
+              )
             forkRecs = canonicalForkRecords(envs)
             campaignRecs = forkRecs.filter(_._1 == campaignId)
             childStreamRecs = forkRecs.filter(_._1 == childSeg.childJobId)
@@ -978,8 +980,12 @@ object MultiJobExportSpec extends ZIOSpecDefault:
                 d
               })
               .getOrElse(Vector.empty)
-            childDelegation = delegationNodes.find(_.childJobId == childSeg.childJobId)
-            grandDelegation = delegationNodes.find(_.childJobId == grandSeg.childJobId)
+            childDelegation = delegationNodes.find(
+              _.childJobId == childSeg.childJobId
+            )
+            grandDelegation = delegationNodes.find(
+              _.childJobId == grandSeg.childJobId
+            )
             // the grandchild's OWN node (its tool call) resolves its base
             // edge into the grandchild's per-level parent chain
             grandTool = reduction.toOption.flatMap(
@@ -1015,11 +1021,12 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             // in the CHILD's stream AND its parent edge resolves into the
             // CHILD's stream — never into the campaign's (the wrong
             // root-to-grandchild edge this card fixes).
-            grandDelegation.flatMap(_.parent).exists(p =>
-              p.value.startsWith(childSeg.childJobId.value)
-            ),
+            grandDelegation
+              .flatMap(_.parent)
+              .exists(p => p.value.startsWith(childSeg.childJobId.value)),
             grandTool.exists(t =>
-              t.parent.isDefined && t.parent.get == grandDelegation.map(_.id)
+              t.parent.isDefined && t.parent.get == grandDelegation
+                .map(_.id)
                 .getOrElse(NodeId("<none>"))
             ),
             graphHash.map(_.length) == Right(64),

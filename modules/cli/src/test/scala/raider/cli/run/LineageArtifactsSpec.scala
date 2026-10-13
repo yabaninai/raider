@@ -337,21 +337,21 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
     ).validated
       .fold(e => throw new IllegalStateException(s"fixture: $e"), identity)
 
-  /** The ADR-032 cross-run provenance record the exporter emits for a run
-    * with joined child segments (root run — `parentRunId` absent, never
-    * guessed).
+  /** The ADR-032 cross-run provenance record the exporter emits for a run with
+    * joined child segments (root run — `parentRunId` absent, never guessed).
     */
   private val provenanceRecord: LineagePayload.RunProvenance =
     LineagePayload.RunProvenance(
-    None,
-    Vector(
-      ArtifactPointer("work_dir", "/tmp/raider-unified-seg"),
-      ArtifactPointer("events", "/tmp/raider-unified-seg/events.jsonl")
+      None,
+      Vector(
+        ArtifactPointer("work_dir", "/tmp/raider-unified-seg"),
+        ArtifactPointer("events", "/tmp/raider-unified-seg/events.jsonl")
+      )
     )
-  )
 
-  /** The raw lineage-data.json bytes of a run dir (fixture-level loudness:
-    * a missing file is a test error, never a silent pass). */
+  /** The raw lineage-data.json bytes of a run dir (fixture-level loudness: a
+    * missing file is a test error, never a silent pass).
+    */
   private def rawDocument(work: Path): String =
     Files.readString(work.resolve("lineage-data.json"), UTF_8)
 
@@ -623,7 +623,9 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           // (the tool entry's v1 recovery vocabulary is unaffected)
           !raw.contains("\"provenance\""),
           !raw.contains("\"invocationId\""),
-          !raw.contains("\"j_1/phase-2\":{\"name\":\"implement\",\"note\":\"the build step\",\"recovery\""),
+          !raw.contains(
+            "\"j_1/phase-2\":{\"name\":\"implement\",\"note\":\"the build step\",\"recovery\""
+          ),
           // the rendered projection is produced verbatim and compiles
           src.contains("phase_implement"),
           compileExit == Right(0)
@@ -660,7 +662,9 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
         yield assertTrue(
           doc.schemaVersion == 2,
           doc.provenance.isDefined,
-          doc.provenance.flatMap(_.parentRunId).isEmpty, // root run, not guessed
+          doc.provenance
+            .flatMap(_.parentRunId)
+            .isEmpty, // root run, not guessed
           doc.provenance.map(_.artifacts.size) == Some(2),
           raw.contains("\"provenance\""),
           doc.nodes.exists(_.kind == NodeKind.Phase),

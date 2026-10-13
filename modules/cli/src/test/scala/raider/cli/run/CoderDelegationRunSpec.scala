@@ -17,14 +17,15 @@ import java.nio.file.{Files, Path}
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** RAI-154 (WIR-01): the headless CODER agent delegates through the PRODUCT
-  * entry — `raider run --agent coder` with a delegation-capable scripted
-  * policy — and the run exports the UNIFIED multi-job lineage end-to-end (the
-  * RAI-144 MJE-01 semantics no longer fixture-only):
+  * entry — `raider run --agent coder` with a delegation-capable scripted policy
+  * — and the run exports the UNIFIED multi-job lineage end-to-end (the RAI-144
+  * MJE-01 semantics no longer fixture-only):
   *   - the campaign coder loop issues `delegate` → a REAL child job starts on
   *     the run's JobManager, its `Delegated(childJobId, agent)` fork record is
-  *     published under the child's id ([[raider.runtime.delegate.DelegationEvents]]
-  *     convention) and [[MultiJobExport]] joins the child segment into the
-  *     run's single events.jsonl (correlated v2 envelopes);
+  *     published under the child's id
+  *     ([[raider.runtime.delegate.DelegationEvents]] convention) and
+  *     [[MultiJobExport]] joins the child segment into the run's single
+  *     events.jsonl (correlated v2 envelopes);
   *   - `await_agent` observes the child; the campaign settles; exactly ONE
   *     canonical fork record lives in the campaign stream and exactly ONE
   *     `run_provenance` record rides immediately before the campaign Terminal;
@@ -58,7 +59,9 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
   /** The child's id from a delegate tool result (JobManager `j_<n>` ids). */
   private def childIdOf(results: List[String]): String =
     val r = """"child_id":"(j_\d+)"""".r
-    results.flatMap(m => r.findFirstMatchIn(m).map(_.group(1))).headOption
+    results
+      .flatMap(m => r.findFirstMatchIn(m).map(_.group(1)))
+      .headOption
       .getOrElse("j_missing")
 
   /** Content-routed delegation policy:
@@ -230,8 +233,8 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
               }
               val reduction = LineageReducer.reduceWire(wire)
               val delegationNode = reduction.toOption.flatMap(
-                _.graph.nodes.collectFirst {
-                  case d: SessionNode.Delegation => d
+                _.graph.nodes.collectFirst { case d: SessionNode.Delegation =>
+                  d
                 }
               )
               val dataRaw =
