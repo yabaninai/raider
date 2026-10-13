@@ -81,7 +81,16 @@ between §3 and the current event layer (ADR-024, 13 frozen payload cases):
 2. **RecoveryClass on wire**: tool calls do not carry a recovery class; before the
    schema card, the source is a static tool-name → RecoveryClass taxonomy in the lineage
    layer (ReadOnly by default, Mutating for write/exec classes), extensible through
-   config without changing frozen events.
+   config without changing frozen events. **Update (2026-10-13, RAI-148)**: the
+   canonical taxonomy source is `raider.runtime.lineage.model.RecoveryTaxonomy`
+   (single source; LineageReducer, LiveGraphBuilder, and IsolatedRerun consume it
+   — no private copies). Membership correction: `fs_patch` (write class) and
+   `proc_run` (exec class) are Mutating — they were missing from the original
+   sets, so captured repairs using `fs_patch` were misclassified ReadOnly.
+   GraphHash policy: the recovery class renders into the canonical form, so
+   historical records containing `fs_patch`/`proc_run` calls re-verify to
+   different hashes and must be recomputed per the RAI-148 record; no in-tree
+   fixture was affected.
 3. **Dataflow inputs/outputs**: `argsSummary ≤512 redacted` is not the full data;
    full data lives in lineage-data.json (the data resource), while the graph model
    carries `inputs: Vector[NodeId]` as separate dataflow edges.
