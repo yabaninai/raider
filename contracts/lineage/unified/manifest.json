@@ -1,0 +1,34 @@
+{
+  "corpus": "raider-unified-lineage-corpus",
+  "version": 1,
+  "date": "2026-10-13",
+  "card": "RAI-146",
+  "adrs": ["ADR-031", "ADR-032"],
+  "baseline": "800d235",
+  "obligations": {
+    "VR-01": "positive corpus passes: exact report trees + graph-hash pins + provenance resolution (+ corpus integrity, pinned-dotc compile, generated-source pins)",
+    "VR-02": "negatives fail typed: corrupted correlation, invented edge, torn segment (byte-tail and detached-prefix), unlinked segment separated + typed",
+    "VR-03": "verifier green x3; concurrent verification isolated (unique temp dirs)"
+  },
+  "files": {
+    "README.md": "1a73b11dc5a864f2987a18948ff737d753ce038f227fb3d3cc1a63f9d52d1693",
+    "cases/case-1-billing.jsonl": "3db04b64f8e67cdc7c13fbc22efa70dc59d600c709b7be400e7e922362a85ad5",
+    "cases/case-2-delegation-tree.jsonl": "9aa874e7eafa47b70825a87709198103f18d0122d726924af95dd30ceee1895d",
+    "cases/case-3-stray.jsonl": "b978e576329de59a4d990cdbc1be141c5ed1b989de2686921ab17726ad24ce4b",
+    "cases/case-3-unlinked.jsonl": "628ad2cdf2e8aac45c91d27b84fb74db6b480fd9a13782521fb124ca1023be01",
+    "cases/case-4-pure-fanout-roots.jsonl": "ef5754c21cbfe992c28fa98c4b6eaec6dbfde2290527cedecd27ce51b619ae33",
+    "cases/case-1-billing.expected.json": "bb2085882e815e67d0858f8dcdf2a50bbee82abd4fa205f458ad15cf22cfa639",
+    "cases/case-2-delegation-tree.expected.json": "2c5306f3bd773eecbc0d6c5c85b5a672d98c9568580bf71671a2a9fc11c5398e",
+    "cases/case-3-stray.expected.json": "4622763058c0d72edc14582f7695b9a5b9c2915cfe377b14e7df736400586d3d",
+    "cases/case-3-unlinked.expected.json": "16a74bc3efb24bc9a8cce6e7906bb1286e8c9f3e60bff9e9b195a82141526dc8",
+    "cases/case-4-pure-fanout-roots.expected.json": "c12ea19134b3cfbf6e1ec3d1bb675f83f8a3f50950e812a06ba33f2c798abdbd",
+    "negatives/neg-1-corrupted-correlation.jsonl": "a162cc787c585537cb687379eb6f847539ddab8d255da18debfc656e82f4b812",
+    "negatives/neg-2-invented-edge.jsonl": "295f4b827a79954799c4e45a4e8343530629ec24b44d415d8bbcd2cc49af0791",
+    "negatives/neg-3a-torn-tail.jsonl": "8fd9485b463398a77e789252b70c04b59b2c61aa3f133fe24b61769930bec13c",
+    "negatives/neg-3b-detached-segment.jsonl": "1ef756900460ca581ff0b0cf5259daa97a6374ef88d7de02ac0e396f0f37aa79",
+    "negatives/neg-1-corrupted-correlation.expected.json": "288671d0211d5ec7b13c4c07777f2018d6dbfc1aa1c292341f45adc43a93ce03",
+    "negatives/neg-2-invented-edge.expected.json": "ea65a8ae8aeb385ed5923d38ef791383e514df96d27c80ed1d6a3694461bb97f",
+    "negatives/neg-3a-torn-tail.expected.json": "4d00061a9bdf263708ffabe02bc343c340e64b42239935b1c49e513303f461bf",
+    "negatives/neg-3b-detached-segment.expected.json": "a301194b2cf0d0378f4821b24fec0b7773603c5f25b10ad12beca7d8ab22c3a2"
+  }
+}

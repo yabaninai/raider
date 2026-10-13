@@ -1,0 +1,15 @@
+{
+  "caseId": "case-3-stray",
+  "streamFile": "cases/case-3-stray.jsonl",
+  "runId": "root-unified-corpus",
+  "graphHash": "b15d9ff72eb4fb9b8e2c2e9d91637b28b5aeea17f5e42f36dcf22bde017e9be6",
+  "provenance": null,
+  "segments": [],
+  "fanOut": [],
+  "reportTree": [
+    { "id": "j-stray:n1", "kind": "model:stray-model:1", "dataRef": "j-stray/round-1", "inputs": [], "nesting": 0 }
+  ],
+  "sourcePins": [],
+  "sourceAbsent": ["runProvenance", "segments", "batch("],
+  "generatedSourceSha256": "7f37b86494fe14b6b28d5d9af24172070ad930702db254c7f952d506c6db040c"
+}

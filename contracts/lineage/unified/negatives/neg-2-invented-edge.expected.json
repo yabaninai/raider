@@ -1,0 +1,8 @@
+{
+  "caseId": "neg-2-invented-edge",
+  "streamFile": "negatives/neg-2-invented-edge.jsonl",
+  "reader": { "envelopeCount": 11, "truncatedTail": null },
+  "strictError": { "kind": "UnknownParent", "job": "j-stray", "seq": 1 },
+  "partialError": { "kind": "UnknownParent", "job": "j-stray", "seq": 1 },
+  "partial": null
+}
