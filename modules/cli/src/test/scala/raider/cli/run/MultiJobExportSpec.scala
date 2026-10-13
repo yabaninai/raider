@@ -22,7 +22,7 @@ import raider.runtime.lineage.io.{
   LineageWireReader,
   ParsedWireEvents
 }
-import raider.runtime.lineage.model.{GraphHash, SessionNode}
+import raider.runtime.lineage.model.{GraphHash, NodeId, SessionNode}
 import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
 import raider.runtime.lineage.wire.{LineageEnvelope, LineagePayload}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
@@ -412,6 +412,85 @@ object MultiJobExportSpec extends ZIOSpecDefault:
         EventPayload.Delegated(childId, "scout")
       )
       .catchAll(_ => ZIO.unit)
+
+  // -- NESTED-chain flows (RAI-154, WIR-02) -----------------------------------
+
+  private case class NestedExported(
+      campaignId: JobId,
+      wire: Vector[LineageEnvelope],
+      segments: Vector[MultiJobExport.SegmentView]
+  )
+
+  /** The exact runner collector discipline over a run-local harness; unlike
+    * [[driveCampaign]] the body also receives the join, so the fixture can
+    * register per-level fork anchors between introductions.
+    */
+  private def driveNested(dir: Path)(
+      body: (
+          EventHub,
+          JobManager,
+          MultiJobExport,
+          Promise[Nothing, Unit]
+      ) => ZIO[Any, RaiderError, Unit]
+  ): ZIO[Scope, Nothing, NestedExported] =
+    for
+      (hub, manager, join) <- harness(dir)
+      release <- Promise.make[Nothing, Unit]
+      _ <- body(hub, manager, join, release).forkDaemon
+      barrier <- Promise.make[Nothing, JobId]
+      job = Task(
+        barrier.await.flatMap { jobId =>
+          val le = LoopEvents(hub, jobId, rootId, sessionId)
+          le.modelCallStarted(1, "m", 1) *>
+            le.modelCallFinished(1, 5L) *>
+            release.await.unit
+        }
+      )
+      handle <- manager.start(rootId, "campaign", job)
+      _ <- join.campaign(handle.id)
+      subscribed <- hub.subscribe(handle.id)
+      (snapshot, stream) = subscribed
+      _ <- ZIO.foreachDiscard(
+        EventExport.startTransition(snapshot).toVector
+      )(e => join.exportParent(e))
+      collector <- EventExport
+        .inOrder(snapshot.lastSeq)(stream)
+        .foreach(e => join.exportParent(e))
+        .forkDaemon
+      _ <- barrier.succeed(handle.id).unit
+      _ <- manager.await(handle).either
+      _ <- join
+        .drain()
+        .zipRight(
+          EventExport.awaitCaughtUp(hub, handle.id, join.campaignWritten)
+        )
+      _ <- collector.interrupt
+      _ <- join.close
+      wire <- join.exportedWire
+      segments <- join.segmentsView
+    yield NestedExported(handle.id, wire, segments)
+
+  /** The CANONICAL fork records of an exported stream: frozen v1
+    * `Delegated(child, _)` envelopes carried by a stream OTHER than the
+    * child's own (the introductions the joined stream represents once, in the
+    * forking job's stream).
+    */
+  private def canonicalForkRecords(
+      envs: Vector[LineageEnvelope]
+  ): Vector[(JobId, JobId, LineageEnvelope)] =
+    envs.collect {
+      case e @ LineageEnvelope(
+            1,
+            _,
+            jid,
+            _,
+            _,
+            _,
+            LineagePayload.Frozen(EventPayload.Delegated(c, _)),
+            _
+          ) if jid != c =>
+        (jid, c, e)
+    }
 
   def spec = suite("multi-job lineage export (RAI-144)")(
     // -- MJE-01 ---------------------------------------------------------------
@@ -828,7 +907,7 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             // cleanup: release and settle the parked child
             _ <- childRelease.succeed(()).unit
             _ <- manager.awaitSettled(child)
-          yield assertTrue(
+           yield assertTrue(
             segments.size == 1,
             // nothing of the child joined the run stream
             wire.forall(_.jobId == handle.id),
@@ -838,6 +917,104 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             nativeLines >= 2,
             // the joined stream is still a VALID campaign (strict reduction)
             reduction.isRight
+          )
+        }
+      }
+    },
+    // -- RAI-154 / WIR-02: per-level fork anchoring ----------------------------
+    test(
+      "MJE-NESTED (RAI-154 WIR-02): a root-to-child-to-grandchild chain anchors every fork record in the FORKING job's stream — no root-to-grandchild edge; single-level anchoring unchanged"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            dir <- ZIO.attempt(tempDir("rai-154-nested")).orDie
+            exported <- driveNested(dir) { (hub, manager, join, release) =>
+              for
+                child <- forkChild(hub, manager, release)(le =>
+                  le.modelCallStarted(1, "m", 1) *>
+                    le.modelCallFinished(1, 5L)
+                )
+                _ <- publishIntroduction(hub, child.id)
+                // Wiring discipline the exporter pins: the grandchild is
+                // forked only after the child's own introduction CONNECTED
+                // (deterministic join order; no introduction reorder).
+                _ <- pollUntil(
+                  join.segmentsView.map(_.exists(_.childJobId == child.id))
+                )
+                grand <- forkChild(hub, manager, release)(le =>
+                  le.toolStarted("c1", "bash", "ls") *>
+                    le.toolFinished("c1", "bash", ToolOutcome.Succeeded)
+                )
+                // The wiring declares the topology: the CHILD forked the
+                // grandchild (the site that builds the child's delegation
+                // loop knows the child's job id).
+                _ <- join.anchorForkUnder(grand.id, child.id)
+                _ <- publishIntroduction(hub, grand.id)
+                _ <- pollUntil(
+                  join.segmentsView.map(_.exists(_.childJobId == grand.id))
+                )
+                _ <- release.succeed(()).unit
+                _ <- manager.await(child).either
+                _ <- manager.await(grand).either
+              yield ()
+            }
+            envs0 = exported.wire
+            p <- parsed(dir)
+            envs = p.envelopes
+            campaignId = exported.campaignId
+            childSeg = exported.segments.headOption.getOrElse(
+              throw new IllegalStateException("no child segment joined")
+            )
+            grandSeg = exported.segments.lift(1).getOrElse(
+              throw new IllegalStateException("no grandchild segment joined")
+            )
+            forkRecs = canonicalForkRecords(envs)
+            campaignRecs = forkRecs.filter(_._1 == campaignId)
+            childStreamRecs = forkRecs.filter(_._1 == childSeg.childJobId)
+            reduction = LineageReducer.reduceWire(envs)
+            delegationNodes = reduction.toOption
+              .map(_.graph.nodes.collect { case d: SessionNode.Delegation =>
+                d
+              })
+              .getOrElse(Vector.empty)
+            childDelegation = delegationNodes.find(_.childJobId == childSeg.childJobId)
+            grandDelegation = delegationNodes.find(_.childJobId == grandSeg.childJobId)
+            // the grandchild's OWN node (its tool call) resolves its base
+            // edge into the grandchild's per-level parent chain
+            grandTool = reduction.toOption.flatMap(
+              _.graph.nodes.collectFirst { case t: SessionNode.ToolCall => t }
+            )
+            graphHash = reduction.map(red => GraphHash(red.graph))
+          yield assertTrue(
+            p.truncatedTail.isEmpty,
+            envs == envs0, // the in-memory fold mirrors the file byte-for-byte
+            exported.segments.size == 2,
+            childSeg.invocationId == "inv-1",
+            grandSeg.invocationId == "inv-2",
+            // exactly TWO canonical fork records: the child's in the
+            // CAMPAIGN stream (single-level anchoring unchanged) and the
+            // grandchild's in the CHILD's stream (per-level anchoring)
+            forkRecs.size == 2,
+            campaignRecs.map(_._2) == Vector(childSeg.childJobId),
+            childStreamRecs.map(_._2) == Vector(grandSeg.childJobId),
+            // the joined stream strictly reduces with the real per-level
+            // edges: campaign -> child -> grandchild, never campaign ->
+            // grandchild
+            reduction.isRight,
+            childDelegation.exists(d =>
+              d.id.value.startsWith(campaignId.value)
+            ),
+            grandDelegation.exists(d =>
+              d.id.value.startsWith(childSeg.childJobId.value)
+            ),
+            grandDelegation.flatMap(_.parent) == childDelegation.map(_.id),
+            grandTool.exists(t =>
+              t.parent.isDefined && t.parent.get == grandDelegation.map(_.id)
+                .getOrElse(NodeId("<none>"))
+            ),
+            graphHash.map(_.length) == Right(64),
+            densePerJobSeq(envs)
           )
         }
       }

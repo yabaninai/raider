@@ -126,7 +126,8 @@ final class MultiJobExport private (
     campaignRef: Ref[Option[JobId]],
     rootTerminalExported: Ref[Boolean],
     invocationCounter: Ref[Long],
-    campaignLines: Ref[Long]
+    campaignLines: Ref[Long],
+    forkOwners: Ref[Map[String, JobId]]
 ):
 
   private val captures =
@@ -141,6 +142,22 @@ final class MultiJobExport private (
     * own loop). Required before a segment can connect.
     */
   def campaign(jobId: JobId): UIO[Unit] = campaignRef.set(Some(jobId))
+
+  /** RAI-154 (WIR-02): the per-level fork anchoring registration — declares
+    * WHICH job forked `child`. The frozen `Delegated(childJobId, agent)`
+    * payload carries no parent id, so the topology source is the WIRING: the
+    * site that builds a delegation-capable loop for `forkingJob` registers
+    * every child that loop may fork, BEFORE the child's fork record can be
+    * delivered (the same trust level that publishes the fork record itself).
+    * A registration is a declaration of an existing fact, never an edge
+    * invention: the anchored record still carries only the frozen payload's
+    * verbatim `childJobId`/`agent`.
+    *
+    * Unregistered children anchor at the campaign (root) stream exactly as
+    * before — the single-level export stays byte-identical (MJE-01 pin).
+    */
+  def anchorForkUnder(child: JobId, forkingJob: JobId): UIO[Unit] =
+    forkOwners.update(_.updated(child.value, forkingJob))
 
   /** The transition-listener side: subscribe to every job the moment it is
     * RUNNING, before its fiber is forked. Compose this BEFORE the status ledger
@@ -539,6 +556,7 @@ object MultiJobExport:
       rootDoneRef <- Ref.make(false)
       counter <- Ref.make(0L)
       campaignCounter <- Ref.make(0L)
+      ownersRef <- Ref.make(Map.empty[String, JobId])
     yield new MultiJobExport(
       hub,
       runWriter,
@@ -549,7 +567,8 @@ object MultiJobExport:
       campaignRef,
       rootDoneRef,
       counter,
-      campaignCounter
+      campaignCounter,
+      ownersRef
     )
 
 end MultiJobExport
