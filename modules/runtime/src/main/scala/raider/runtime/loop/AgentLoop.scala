@@ -75,6 +75,10 @@ import java.util.concurrent.atomic.AtomicLong
   *     `runFinish` before the RunFinished/RunFailed trace. Hooks NEVER
   *     influence the run's result or typed error channel (outcomes are only
   *     logged; `plugins = None` — the default — is a literal no-op).
+  *   - `phase_started`/`phase_finished` (RAI-153, ADR-032 v2 lineage wire) —
+  *     the plan phase only (the one boundary the runtime knows, RAI-107): enter
+  *     before the first attempt, exit on every outcome; the frozen hub family
+  *     is untouched (see [[LoopEvents.PhaseSink]]).
   * Emission never breaks the run (failure-absorbing, see [[LoopEvents]]); the
   * existing `trace` callback keeps its exact call points and event types (its
   * round fields now carry the real round instead of the old -1 hardcode); job
@@ -242,13 +246,30 @@ final case class AgentLoop(
             )
           )
         else
-          planAttempt(
-            messages,
-            ceilings,
-            maxRounds,
-            attemptNo = 1,
-            lastAttemptNo = pm.maxRepairAttempts + 1
-          )
+          // RAI-153 (ADR-032 §1): the plan phase is a REAL phase boundary the
+          // runtime knows (RAI-107 §2: the bounded plan phase, repairs are
+          // attempts INSIDE it) — one `phase_started` before the first attempt
+          // and one `phase_finished` on EVERY exit (success, typed rejection,
+          // cancellation; the onExit finalizer runs uninterruptibly). Recovery
+          // is the LINEAGE taxonomy's ReadOnly: the plan phase enforces the
+          // read-only toolset (PLAN-01) — the lineage-layer enum, not the
+          // `raider.core` tool-axis enum. The ordinary `runText` mode emits NO
+          // phases: the runtime tracks no further phase semantics (card
+          // non-goal — none are invented).
+          ev(
+            _.phaseStarted(
+              AgentLoop.planPhaseName,
+              raider.runtime.lineage.model.RecoveryClass.ReadOnly,
+              None
+            )
+          ) *>
+            planAttempt(
+              messages,
+              ceilings,
+              maxRounds,
+              attemptNo = 1,
+              lastAttemptNo = pm.maxRepairAttempts + 1
+            ).onExit(_ => ev(_.phaseFinished(AgentLoop.planPhaseName)))
 
   /** One bounded plan attempt: the read-only loop up to the final answer, then
     * structural validation; malformed → repair or the typed rejection.
@@ -770,6 +791,11 @@ object AgentLoop:
   val ToolRole: String = "tool"
   val AssistantRole: String = "assistant"
   val UserRole: String = "user"
+
+  /** RAI-153: the wire name of the plan phase (RAI-107 §2 semantics; the same
+    * label the plan-phase job carries). `phase_finished` closes it by name.
+    */
+  val planPhaseName: String = "plan"
 
   /** Reserved sentinel the loop never injects anywhere; its presence in a final
     * answer is an output-validation defect (marker-free contract).

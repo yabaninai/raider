@@ -266,6 +266,13 @@ object HeadlessRunner:
     * equals the exported bytes. A campaign that cannot reach Terminal (a
     * detached/torn child segment) falls back to the LIN5-03 partial entry and
     * is reported as the honest PARTIAL outcome.
+    *
+    * RAI-153 (ADR-032): the campaign's [[LoopEvents]] additionally carries the
+    * exporter's live phase sink, so `phase_started`/`phase_finished` v2 records
+    * emitted at REAL loop boundaries (the plan phase, RAI-107) land in the same
+    * events.jsonl stream — the unified reduction input stays the file, and the
+    * emitter names no stage the runtime does not track (no phases are invented
+    * for ordinary `runText` rounds).
     */
   private def executeAsJob(
       args: CliArgs,
@@ -293,7 +300,17 @@ object HeadlessRunner:
       droppedBefore <- hub.droppedDiagnostics
       job = Task(
         barrier.await.flatMap { jobId =>
-          val le = LoopEvents(hub, jobId, root, StatusLedger.sessionId)
+          // RAI-153: the CAMPAIGN loop's emission context carries the live
+          // phase sink (ADR-032 v2 wire into this exporter); child jobs keep
+          // the default sink-less context (their v2 envelopes would need the
+          // correlation key — delegation children emit no phases today).
+          val le = LoopEvents(
+            hub,
+            jobId,
+            root,
+            StatusLedger.sessionId,
+            phases = Some(join.phaseSink)
+          )
           // The observed hub-level diagnostics drop count rides out as a REAL
           // DiagnosticsCoalesced envelope BEFORE the job settles (so it is
           // never after Terminal); the marker is best-effort (diagnostics
