@@ -7,8 +7,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, NoSuchFileException, Path}
 
 /** Pinned-environment verification for lineage replay (LIN-08D, packet R5,
-  * ADR-027 §2 «Смена окружения: предупредить + попытаться; сверка pinned-версий
-  * (toolchain.json)», docs/lineage.md §6): the pinned toolchain is compared
+  * ADR-027 §2 "Environment change: warn + attempt; verify pinned versions
+  * (toolchain.json)", docs/lineage.md §6): the pinned toolchain is compared
   * with the FACTUAL environment of the code BEFORE a replay is attempted; a
   * divergence becomes a visible warning + the annotation «reproduced in a
   * different environment», which the diff report must carry — hiding a pinning
@@ -40,7 +40,7 @@ import java.nio.file.{Files, NoSuchFileException, Path}
   *     missing side is never reported as a divergence — no false alarms, and
   *     honestly documented instead of guessed).
   *
-  * Determinism (packet acceptance «повтор всех — идентичен»): every function is
+  * Determinism (packet acceptance "repeat all — identical"): every function is
   * a pure function of its inputs plus the stable JVM constants above — no wall
   * clock, no randomness, no heap-order iteration ([[compare]] walks the fixed
   * field order scala, jdk, raider, model), so repeated calls are

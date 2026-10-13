@@ -54,7 +54,7 @@ final case class JournalRecovery(
   * another). Cross-process concurrent writers on one directory are out of
   * scope.
   *
-  * Sequence honesty: the caller owns the per-job seq discipline ("контроль seq"
+  * Sequence honesty: the caller owns the per-job seq discipline ("seq control"
   * is external per RAI-087). The journal never assigns, renumbers or repairs
   * seqs; `append` echoes back the envelope's own `seq` as written.
   */

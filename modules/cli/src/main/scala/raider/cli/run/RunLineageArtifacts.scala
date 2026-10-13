@@ -23,8 +23,8 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.util.control.NonFatal
 
-/** LIN-09 (ADR-027 §2/§6.5, docs/lineage.md §9.2 «Запись артефактов в каталог
-  * рана»): writes the settled run's lineage artifacts NEXT TO the run's own
+/** LIN-09 (ADR-027 §2/§6.5, docs/lineage.md §9.2 "Writing artifacts to the run
+  * directory"): writes the settled run's lineage artifacts NEXT TO the run's own
   * events.jsonl/summary.md — `lineage-data.json` (the frozen schemaVersion-1
   * document, written through the accepted atomic store [[LineageDataStore]])
   * and `lineage.scala` (the deterministic [[SessionGraphView]] →

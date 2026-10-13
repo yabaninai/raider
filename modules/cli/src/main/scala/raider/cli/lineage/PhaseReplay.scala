@@ -58,7 +58,7 @@ final case class PhaseVerdict(
   * Pure functions over already-loaded inputs: no IO, no model access, no
   * environment reads; every phase is synthesized and verified INDEPENDENTLY, so
   * a broken dataRef in one phase never enters another phase's verdict (the
-  * LIN-7 «частичный» guarantee).
+  * LIN-7 "partial" guarantee).
   *
   * Traversal ([[PhaseReplay.phases]]): the same deterministic discipline as the
   * LIN-05E interpreter — breadth-first roots→children, each level sorted by

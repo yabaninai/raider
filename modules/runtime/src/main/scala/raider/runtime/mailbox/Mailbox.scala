@@ -129,7 +129,7 @@ object Mailbox:
     * the id set for exactly-once dedup. A single ref makes every operation a
     * one-transaction read-modify-write — no multi-ref composition to reason
     * about. The pending queue is a Vector appended at the tail; a boundary
-    * drain always takes ALL of it (drain = забор всех pending), so the batch
+    * drain always takes ALL of it (drain = taking all pending), so the batch
     * preserves arrival order by construction.
     */
   private final case class Cell(

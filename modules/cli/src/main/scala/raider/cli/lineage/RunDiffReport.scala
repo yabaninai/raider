@@ -20,7 +20,7 @@ final case class RunDiffMeta(
 )
 
 /** Deterministic text report of one normalized replay divergence (LIN-06C,
-  * packet L52, ADR-027 §2 «live re-run: ... diff-отчёт»): the live re-run
+  * packet L52, ADR-027 §2 "live re-run: ... diff report"): the live re-run
   * replayed the recorded campaign against an isolated workspace copy
   * ([[WorkspaceIsolation]]) and the replayed graph diverged from the recording
   * — this renders WHY, once, byte-stably.
