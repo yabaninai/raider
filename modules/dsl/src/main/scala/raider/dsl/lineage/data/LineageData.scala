@@ -7,7 +7,8 @@ import zio.json.ast.Json
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, StandardCopyOption}
 
-/** FROZEN lineage-data.json document (schemaVersion=1) — LIN-02B, ADR-027 §3.
+/** Versioned lineage-data.json document (LIN-02B, ADR-027 §3; v2 additive
+  * extension ADR-032, card RAI-143).
   *
   * Wire rules (same discipline as raider.runtime.events.EventCodecs):
   *   - `NodeKind` encodes as the schema's snake_case names
@@ -25,13 +26,20 @@ import java.nio.file.{Files, Path, StandardCopyOption}
   *     when absent (an explicit null would violate `type: "string"`).
   *   - `data` object keys are sorted on encode, so the same document always
   *     serializes to byte-identical JSON regardless of map construction order.
+  *   - ADR-032 v2 fields (`provenance`, `phaseData.recovery`,
+  *     `delegationData.invocationId`) are optional and OMITTED when absent, so
+  *     a v1 document encodes byte-identically to the frozen revision; carrying
+  *     any of them in a `schemaVersion: 1` document is refused typed by
+  *     [[LineageDataFile.read]] (`LineageDataError.V2FieldOnV1`), never
+  *     silently ignored.
   */
 final case class LineageDataDocument(
     schemaVersion: Int,
     generator: GeneratorInfo,
     runId: String,
     nodes: Vector[DataNode],
-    data: Map[String, NodeData]
+    data: Map[String, NodeData],
+    provenance: Option[ProvenanceRecord] = None
 )
 
 object LineageDataDocument:
@@ -66,6 +74,25 @@ final case class GeneratorInfo(
 
 object GeneratorInfo:
   given JsonCodec[GeneratorInfo] = DeriveJsonCodec.gen[GeneratorInfo]
+
+/** Cross-run provenance record (ADR-032 §1): `parentRunId` absent/null = root
+  * run, never guessed; `artifacts` are native artifact pointers of the upstream
+  * run. `parentRunId` is optional-nullable on the wire (omitted when absent).
+  */
+final case class ProvenanceRecord(
+    parentRunId: Option[String],
+    artifacts: Vector[ProvenanceArtifact]
+)
+
+object ProvenanceRecord:
+  given JsonCodec[ProvenanceRecord] = DeriveJsonCodec.gen[ProvenanceRecord]
+
+final case class ProvenanceArtifact(kind: String, path: String)
+
+object ProvenanceArtifact:
+
+  given JsonCodec[ProvenanceArtifact] =
+    DeriveJsonCodec.gen[ProvenanceArtifact]
 
 final case class DataNode(
     id: String,
@@ -146,20 +173,24 @@ enum NodeData:
 
   case DelegationData(
       childJobId: String,
-      agent: String
+      agent: String,
+      invocationId: Option[String] = None
   )
 
   case PhaseData(
       name: String,
-      note: Option[String]
+      note: Option[String],
+      recovery: Option[String] = None
   )
 
 object NodeData:
 
   // Canonical data shapes (review F1): `usage`, `outcome`, `resultTail` and
   // `note` are required-nullable keys in the frozen schema, so their `None`
-  // encodes as an explicit `Json.Null`, never as an omitted key. DelegationData
-  // has no optional fields and keeps the derived encoder.
+  // encodes as an explicit `Json.Null`, never as an omitted key. The ADR-032
+  // v2 fields (`PhaseData.recovery`, `DelegationData.invocationId`) are
+  // optional NON-nullable, so their `None` stays omitted entirely — a v1
+  // document encodes byte-identically to the frozen revision.
   private given JsonEncoder[ModelCallData] =
     JsonEncoder[Json].contramap { data =>
       Json.Obj(
@@ -200,11 +231,12 @@ object NodeData:
 
   private given JsonEncoder[PhaseData] =
     JsonEncoder[Json].contramap { data =>
+      val base = Chunk(
+        "name" -> Json.Str(data.name),
+        "note" -> data.note.fold[Json](Json.Null)(Json.Str(_))
+      )
       Json.Obj(
-        Chunk(
-          "name" -> Json.Str(data.name),
-          "note" -> data.note.fold[Json](Json.Null)(Json.Str(_))
-        )
+        data.recovery.fold(base)(r => base :+ ("recovery" -> Json.Str(r)))
       )
     }
 
@@ -278,13 +310,21 @@ end Usage
 enum LineageDataError:
   case Malformed(detail: String)
   case SchemaVersion(found: Int)
+
+  /** A `schemaVersion: 1` document carries an ADR-032 v2 field (`provenance`,
+    * `phaseData.recovery` or `delegationData.invocationId`): v1 is pinned, so
+    * the mixing anomaly is refused typed, never silently ignored (ADR-032 §4).
+    */
+  case V2FieldOnV1(detail: String)
   case BrokenRef(nodeId: String, dataRef: String)
 
-/** Atomic file IO + read validation for lineage-data.json (LIN-02B contract).
+/** Atomic file IO + read validation for lineage-data.json (LIN-02B contract;
+  * versioned per ADR-032 §4).
   */
 object LineageDataFile:
 
-  private val SupportedSchemaVersion = 1
+  /** The frozen revision (pinned) and the ADR-032 additive revision. */
+  private val SupportedSchemaVersions = Set(1, 2)
 
   /** Write atomically: unique tmp file in the target directory + ATOMIC_MOVE
     * (SessionStore/JobJournal pattern). Concurrent writers to distinct targets
@@ -306,9 +346,10 @@ object LineageDataFile:
       Files.deleteIfExists(tmp)
       ()
 
-  /** Decode + validate: schemaVersion must be 1; every node dataRef must
-    * resolve into `data`. parents-before-children ordering is intentionally NOT
-    * checked here — that is the graph layer (wave-2).
+  /** Decode + validate: schemaVersion must be 1 (frozen) or 2 (ADR-032); a v1
+    * document must not carry any v2 field; every node dataRef must resolve into
+    * `data`. parents-before-children ordering is intentionally NOT checked here
+    * — that is the graph layer (wave-2).
     */
   def read(path: Path): Either[LineageDataError, LineageDataDocument] =
     try
@@ -324,14 +365,48 @@ object LineageDataFile:
   private def validate(
       document: LineageDataDocument
   ): Either[LineageDataError, LineageDataDocument] =
-    if document.schemaVersion != SupportedSchemaVersion then
+    if !SupportedSchemaVersions.contains(document.schemaVersion) then
       Left(LineageDataError.SchemaVersion(document.schemaVersion))
     else
-      val broken = document.nodes.flatMap { node =>
-        node.dataRef
-          .filter(ref => !document.data.contains(ref))
-          .map(ref => LineageDataError.BrokenRef(node.id, ref))
+      v2FieldsOnV1(document) match
+        case Some(detail) => Left(LineageDataError.V2FieldOnV1(detail))
+        case None =>
+          val broken = document.nodes.flatMap { node =>
+            node.dataRef
+              .filter(ref => !document.data.contains(ref))
+              .map(ref => LineageDataError.BrokenRef(node.id, ref))
+          }
+          broken.headOption match
+            case Some(error) => Left(error)
+            case None        => Right(document)
+
+  /** The first v2-only field of a `schemaVersion: 1` document, if any
+    * (deterministic order: top-level provenance, then node order).
+    */
+  private def v2FieldsOnV1(
+      document: LineageDataDocument
+  ): Option[String] =
+    if document.schemaVersion != 1 then None
+    else
+      val nodeLevel = document.nodes.collectFirst {
+        case node
+            if node.dataRef
+              .flatMap(document.data.get)
+              .flatMap(v2FieldName)
+              .isDefined =>
+          val name = node.dataRef
+            .flatMap(document.data.get)
+            .flatMap(v2FieldName)
+            .getOrElse("")
+          s"node ${node.id}: $name"
       }
-      broken.headOption match
-        case Some(error) => Left(error)
-        case None        => Right(document)
+      document.provenance.map(_ => "top-level provenance").orElse(nodeLevel)
+  end v2FieldsOnV1
+
+  private def v2FieldName(payload: NodeData): Option[String] = payload match
+    case NodeData.PhaseData(_, _, Some(_)) =>
+      Some("phaseData.recovery")
+    case NodeData.DelegationData(_, _, Some(_)) =>
+      Some("delegationData.invocationId")
+    case _ => None
+  end v2FieldName

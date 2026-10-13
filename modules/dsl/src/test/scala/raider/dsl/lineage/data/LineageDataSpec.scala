@@ -466,7 +466,9 @@ object LineageDataSpec extends ZIOSpecDefault:
       }
     ),
     suite("LIN2-B-02 typed read errors")(
-      test("schemaVersion != 1 → SchemaVersion(found)") {
+      test(
+        "schemaVersion 0/3 → SchemaVersion(found); schemaVersion 2 without v2 fields decodes (ADR-032)"
+      ) {
         withTempDir { dir =>
           val json = sampleDoc().toJson
           for
@@ -478,11 +480,17 @@ object LineageDataSpec extends ZIOSpecDefault:
               dir.resolve("v2.json"),
               json.replace("\"schemaVersion\":1", "\"schemaVersion\":2")
             )
+            _ <- writeFile(
+              dir.resolve("v3.json"),
+              json.replace("\"schemaVersion\":1", "\"schemaVersion\":3")
+            )
             readV0 = LineageDataFile.read(dir.resolve("v0.json"))
             readV2 = LineageDataFile.read(dir.resolve("v2.json"))
+            readV3 = LineageDataFile.read(dir.resolve("v3.json"))
           yield assertTrue(
             readV0 == Left(LineageDataError.SchemaVersion(0)),
-            readV2 == Left(LineageDataError.SchemaVersion(2))
+            readV2.map(_.schemaVersion) == Right(2),
+            readV3 == Left(LineageDataError.SchemaVersion(3))
           )
         }
       },
