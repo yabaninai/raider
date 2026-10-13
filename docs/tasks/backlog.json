@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 162,
+  "raider_count": 163,
   "companion_count": 3,
   "cards": [
     {
@@ -4677,6 +4677,34 @@
       },
       "non_goals": "GraphHash/normalization changes, comparator changes, wire changes, data-resource format changes.",
       "context": "RAI-141 review finding 1 (minor, non-blocking): fails closed today, but the spec enshrines the non-compiling shape as expected; goldens are clean so nothing blocks integration."
+    },
+    {
+      "id": "RAI-152",
+      "title": "Full-suite load flakes: ReplayProductCliSpec LIN13-01 + SessionRegistrySpec TAB focus (flake-hunt + determinism fix)",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-119"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/ui/src/test/**",
+        "modules/repl/src/test/scala/raider/repl/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "ci",
+        "repl"
+      ],
+      "behavior": "RAI-146 full-suite EXECUTE runs caught two PRE-EXISTING load flakes in untouched suites (red manifests retained in the lane): (1) ReplayProductCliSpec LIN13-01 — process-based replay smoke flakes under parallel-suite load (process spawn/JIT window); (2) SessionRegistrySpec TAB focus (modules/ui) — tab-focus race under contention. Card: reproduce each under a documented load storm (RAI-119/136 methodology, manifests), then fix by the determinism precedents (quiescence drain / fresh-render retry / bounded wait-for-condition instead of sleep or blind timeout inflation; process smoke: bounded retry with a fresh process). Assertions NOT weakened; every fix with a reproducer; isolated x10 + full-suite x2 green.",
+      "acceptance": {
+        "normal": "FLK-01: each flake reproduced under documented load (log/manifest) BEFORE the fix; reproducer in record.",
+        "error": "FLK-02: determinism fixes applied by precedent; targeted suites 10/10 green post-fix; isolated reruns honest.",
+        "concurrency": "FLK-03: full sbt test x2 green on the lane tree; raiderCli 387/387 and ui suites green in every full run."
+      },
+      "non_goals": "Assertion weakening, timeout inflation, product code changes (unless a reproducer proves a product race — then typed reproducer + scoped fix), unrelated suites.",
+      "context": "RAI-146 honest red trail (2026-10-13): two red EXECUTE manifests retained; both suites green isolated; same class as RAI-119/RAI-136."
     }
   ]
 }
