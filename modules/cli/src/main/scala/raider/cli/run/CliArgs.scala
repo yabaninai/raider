@@ -37,7 +37,8 @@ final case class CliArgs(
     baseUrl: String = "http://127.0.0.1:8081/v1",
     model: String = "local",
     workspace: Option[Path] = None,
-    context: Option[Path] = None
+    context: Option[Path] = None,
+    requireProvenance: Option[Path] = None
 ):
   // RAI-064: NO credential field — the key is resolved from the environment
   // (RAIDER_API_KEY / RAIDER_API_KEY_CMD) at runtime, never carried in args.
@@ -104,7 +105,8 @@ object CliArgs:
       "--base-url",
       "--model",
       "--workspace",
-      "--context"
+      "--context",
+      "--require-provenance"
     )
 
   /** Parse `run` argv (the subcommand token included). */
@@ -229,6 +231,20 @@ object CliArgs:
                 s"--context file does not exist: $v"
               )
             )
+      // RAI-131: exists-check at parse time, same discipline as --context;
+      // the manifest CONTENT is verified in preflight (Provenance.verify)
+      // before any dispatch.
+      requireProvenance <- acc.get("--require-provenance") match
+        case None => Right(None)
+        case Some(v) =>
+          val p = Paths.get(v)
+          if Files.exists(p) then Right(Some(p))
+          else
+            Left(
+              RaiderError.Configuration(
+                s"--require-provenance file does not exist: $v"
+              )
+            )
       target <- (agent, bundle, workflow) match
         case (Some(a), None, None) =>
           if BuiltInAgents.contains(a) then Right(Target.Agent(a))
@@ -266,7 +282,8 @@ object CliArgs:
       baseUrl,
       model,
       workspace,
-      context
+      context,
+      requireProvenance
     )
 
   private def requireString(
