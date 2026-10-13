@@ -278,6 +278,34 @@ ready (RAI-114), profile registration in working-product stage.
 
 **Wave 4c (visible spawn mode §1b, base 7702fd0 → main acca49f) and obligations audit:** RAI-124/126 were registered (7702fd0, validate 142). RAI-124 implements REPL `:type` through native dotty TypeOf and frozen engine.eval WITHOUT execution: no side-effect marker, no resN advance; helpText/catalog freshness; TYPE-01..03, PTY ×3 flake=0; review approve. Minor findings: saturated PTY echo oracles and misleading UX error prefix → RAI-130. RAI-126 applies COURSIER_CACHE setdefault to three PTY-probe sites, including sbt_run :159 outside the original card anchor; the deviation is explicitly documented and approved by review. CC-01..03 numerically verify the caller cache grows from 0 to 180 files; protected verifiers, review approve. Independent read-only Open Obligations audit against main 7702fd0 found 7 of 18 rows CLOSED/STALE (file:line evidence); the key W05 gap is missing Anthropic tool definitions. The table was replaced; RAI-127/128/129 were registered from the audit, RAI-130 from review, validate 146 cards. Merges: 6f4e9e3/acca49f. Integrated gates on acca49f: EXECUTE 10/10 (20261013-023006-78942-0001), profiles 9/9 (20261013-023534-82374-0001). Hygiene: rescope RAI-015 (m0.md) through a separate card. Wave 4d: RAI-127/128/129/130.
 
+**Волна 4d (spawn-режим §1b, base 0e119da → main 1fd8636; scalafmt-fix
+committer follow-up):** Lanes и вердикты: **RAI-127** Anthropic tool
+definitions on wire (encodeTools: input_schema verbatim из
+parametersJsonSchema, definition-gated stand round — tool_use только при
+definitions на проводе; пустой tools бит-в-бит прежний; RED→green; review
+approve; minors: schema валидируется как JSON-object без deep-семантики,
+tool_result.content строкой — pre-existing, W05 не считать закрытым целиком);
+**RAI-128** cross-root fairness named-тест (FAIR-01..03: bounded-FIFO,
+peak==1 tripwire, per-root исчерпание — typed отказ только исчерпанного,
+негатив-контроль root-priority ловится; review approve; minors: settle 5ms —
+false-red-only, forkDaemon-хвосты безвредны); **RAI-129** `raider resume
+<run-dir>` — read-only recovery из events.jsonl (reducePartial → named-поля +
+SHA-256-указатели; exit 0/26/21/20 typed; torn tail — маркер без трекации
+хвоста; run-dir байт-идентичен; review approve; minors: exit-20 ветка
+untested — в 129.b, checkpoint.json — мёртвое имя, doc про events.jsonl vs
+segments при потреблении); **RAI-130** :type PTY-оракулы дезатурированы
+(anchor-механика send→эхо→ответ-после-последнего-анкора; негатив-контроль
+TYPED-01: без send падают 12 оракулов; compileErrorText(msg, typeQuery) —
+честный диагност без «prelude broken?»; review approve; minor: повторный
+идентичный запрос 03c — per-step изоляция оракула отсутствует, закрыто
+suite-уровнем). Интеграция: merges 89888f6/84b3ade/8c83ec1/1fd8636; гейт
+scalafmt-check на кандидате честно красный (6 файлов lanes) → whitespace-only
+fix → EXECUTE 10/10 (manifest 20261013-042259-77530-0001), профили
+static/unit/contracts/ci/docs/runtime/repl/security 9/9 (manifest
+20261013-042817-84409-0001). Открытое: 129.b (continuation) / 129.c
+(retention) — после owner schema-card; W05-tool_result content (структурный
+block mapping) — карточка-кандидат.
+
 ## Module Status
 
 | Card / scope | Status | Evidence / next step |
