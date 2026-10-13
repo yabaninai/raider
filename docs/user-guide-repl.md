@@ -1,12 +1,10 @@
-# Scala REPL and typed workflows
+# Scala REPL tutorial
 
-The REPL is an in-process Scala 3 compiler with Raider bindings installed in the same interpreter. You can define values and methods, use case classes, and build typed expressions. Agent calls use the current REPL session and its configured backend, tools, and limits.
-
-The examples below use the current REPL bindings and the checked-in workflow files. The mock provider returns fixed text marked `[scripted-fixture]`; configure a provider to receive model answers. See [the lineage guide](user-guide-lineage.md) to inspect recorded calls and tool results.
+Use the REPL to explore Raider from Scala: try an agent request, transform its answer, compare two reviews, or keep a short conversation. The examples below use the current source checkout and its built-in `scout` and `worker` bindings.
 
 ## Start the REPL
 
-Build the user example classpath, then start the REPL with the scripted backend:
+From the repository root, build the user examples and start the compiler-backed REPL in mock mode:
 
 ```sh
 sh scripts/build/user-examples.sh
@@ -14,50 +12,114 @@ RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main
 ```
 
-The prelude defines `scout` and `worker` as `AgentRef`s and installs a `ReplSession`. `RAIDER_PROVIDER=mock` selects a deterministic fixture backend; it does not contact a provider. A configured live provider uses the same Scala facade, but its responses and tool calls are live effects.
-
-The compiler accepts ordinary Scala definitions. This is the source-backed example from [`01compiler.repl`](../examples/user-guide/repl/01compiler.repl):
+At the `raider>` prompt, enter Scala. Bindings remain available in later submissions until you run `:reset`. Submit multiline definitions with a blank line. For example:
 
 ```scala
-val count: Int = 21
-case class Pair(left: Int, right: Int)
-val pair = Pair(count, count + 1)
-def total(p: Pair): Int =
-  p.left + p.right
-
-assert(total(pair) == 43)
+case class Check(name: String, passed: Boolean)
+val checks = List(Check("compile", true), Check("tests", false))
+checks.filterNot(_.passed).map(_.name)
 ```
 
-Multiline definitions are submitted when you enter a blank line. The REPL keeps bindings across submissions until `:reset`.
+The final expression evaluates to `List("tests")`. To try a real provider, follow [provider setup](onboarding.md#optional-provider-configuration) and configure its endpoint, model, and credential in your private environment before starting the REPL.
+
+To have Raider change and check code in a disposable project, follow the [offline billing repair](user-guide.md#repair-a-billing-boundary-offline). It uses a scripted stand and independent Scala compile/test commands; the short mock REPL request above does not modify files.
+
+## Make one request
+
+Call `ask` for a request that should run immediately:
+
+```scala
+scout.ask("Explain what a failed test means in one sentence")
+```
+
+The call returns the assistant's answer as a `String`. In mock mode the answer is fixed scripted text; it does not inspect your project. A configured live provider supplies the response instead.
 
 <a id="2-lazy-ask-and-map"></a>
 
-## Build a lazy ask and inspect its type
+## Prepare a lazy ask, then map its result
 
-Calling `scout(prompt)` constructs an `AgentAsk[String]`. It does not dispatch a model request. Run it in the foreground with `.run()` (or `.ask()`), transform the eventual answer with `.map`, and run the transformed descriptor when you are ready. The result type changes with the mapping function.
+Calling `scout(prompt)` creates an `AgentAsk[String]` without dispatching a request. Use `:type` to inspect it, then call `.run()` when you want the answer. `.map` transforms the eventual answer and keeps the ask lazy.
 
 ```scala
 val ask = scout("Summarize the parser entry point")
 :type ask
+
 val answer: String = ask.run()
-val description = scout("Summarize the parser entry point").map(_.length)
-:type description
+val answerLength = scout("Summarize the parser entry point").map(_.length)
+:type answerLength
+val length: Int = answerLength.run()
 ```
 
-The type query compiles the expression against the current interpreter and reports its type without running it. Here the descriptor is `AgentAsk[Int]`. You can likewise check that effectful code is not evaluated:
+The type queries report `AgentAsk[String]` and `AgentAsk[Int]`. Both `.run()` calls execute requests; the mapped one returns the answer's character count. `:type` compiles an expression but does not evaluate it. The runnable version of this example is [`02lazy-map.repl`](../examples/user-guide/repl/02lazy-map.repl).
+
+## Ask for a review and a test plan in parallel
+
+Create two lazy asks and label their results with `map`. `all(...).run()` returns both results as a tuple:
 
 ```scala
-var observed = 0
-:type { observed += 1; description.run() }
-assert(observed == 0)
-val summaryLength: Int = description.run()
+val code = "if subtotalCents > 10000 then 1000 else 0"
+val policy = "A 1000-cent discount applies at 10000 cents and above."
+
+val reviewAsk = scout(
+  s"$policy Review this expression: $code. Give one boundary counterexample. Do not use tools."
+).map(answer => ("review", answer))
+
+val testAsk = worker(
+  s"$policy Return expected [subtotalCents, discountCents] pairs for " +
+    "9999, 10000, and 10001. Return only JSON; do not use tools."
+).map(answer => ("tests", answer))
+
+val (review, testPlan) = all(reviewAsk, testAsk).run()
+review._1   // "review"
+testPlan._1 // "tests"
 ```
 
-The first type query reports `AgentAsk[String]`; the second reports `AgentAsk[Int]`. The foreground `run()` returns the answer text as a `String`; the mapped `run()` returns its character count as an `Int`. The mock answer is fixed fixture text, so its length demonstrates the Scala transformation, not a model's answer quality. Type inspection compiles but does not evaluate the expression. The executable fixture is [`02lazy-map.repl`](../examples/user-guide/repl/02lazy-map.repl).
+The tuple labels show which answer belongs to each request. In mock mode, the answer strings are fixed fixture replies; the example demonstrates Scala composition, not review quality. The [billing review fixture](../examples/user-guide/repl/06billing-review.repl) contains a fuller prompt and response check.
 
-## Join typed stages with `andThen`
+## Review several items with a bounded batch
 
-`AgentAsk.map` transforms an ask's answer. For a pipeline where one program's output is the next program's input, use `Program.andThen`. The release-check example below defines and composes two stages; this small pure example shows the type relationship:
+Use `batch(inputs, parallelism)(f)` when each input needs its own ask. It returns results in input order and runs no more than the requested number concurrently.
+
+```scala
+val areas = List("boundary", "integer cents", "test coverage")
+val notes = batch(areas, parallelism = 2) { area =>
+  scout(s"Review $area in this expression: $code. Give one observation; do not use tools.")
+    .map(answer => area -> answer)
+}.run()
+
+notes.map(_._1) // List("boundary", "integer cents", "test coverage")
+```
+
+Each result is a `(String, String)` pair containing the input label and response. The [batch fixture](../examples/user-guide/repl/03parallel-batch.repl) demonstrates ordered results using the scripted provider.
+
+## Run a background job
+
+Use `.start(prompt)` to get a job handle immediately. `await` returns its result; it can be called again to observe the same completed result. `cancel()` requests cancellation and returns `false` if the job is already terminal.
+
+```scala
+val job = worker.start("Review the parser for an empty-input bug. Do not use tools.")
+job.id
+val result = job.await
+```
+
+Use `:jobs` to list facade jobs and their IDs. To cancel by ID, enter `:cancel <id>`; to inspect a job trace, use `:log <id>`. Cancellation cannot undo an external effect that already happened. See the [background-job fixture](../examples/user-guide/repl/04background-job.repl).
+
+## Keep a conversation in memory
+
+`openSession(agent)` creates a `Chat`. Each successful `ask` adds a user message and assistant reply; the next ask receives that conversation history.
+
+```scala
+val chat = openSession(worker)
+val first = chat.ask("Review this parser: def parsePort(raw: String): Int = raw.toInt")
+val second = chat.ask("What happens for an empty string?")
+chat.messages.size // 4: two user messages and two replies
+```
+
+The history belongs to this `Chat` object in the current REPL process. It is not saved between processes, and `Chat` has no `close()` method. Mock replies are fixed text and do not demonstrate that a model used the earlier turn. The [session fixture](../examples/user-guide/repl/05session.repl) shows the scripted case.
+
+## Connect typed stages with `andThen`
+
+`Program[I, O]` describes a stage from input type `I` to output type `O`. `andThen` connects stages when the first output type matches the next input type. Applying the composed program creates a `Task`; a runner interprets that task.
 
 ```scala
 import raider.core.{Program, Task}
@@ -70,203 +132,10 @@ val describeInput: Program[String, String] = parseCount.andThen(describeCount)
 val pending: Task[String] = describeInput("3")
 ```
 
-`andThen` only composes the two program types; applying the result produces a `Task[String]`. A runner interprets that task; it is not a synchronous `AgentAsk` and has no `.run()` facade method. In the REPL, use the `Program`/`Task` pattern from the [typed release-check section](#connect-a-typed-program-pipeline-to-a-bundle), where the bundle runner executes the composition. The pipeline is pure Scala and makes no model call.
+This pure Scala pipeline makes no model request. For an executable typed workflow, see [`TaskSummary.scala`](../examples/user-guide/bundle/TaskSummary.scala) and the [typed bundle walkthrough](user-guide.md#2-typed-release-readiness-workflow). It composes two `Program` stages, then runs them through the bundle runner.
 
-## Compose parallel reviews and check structured output
+In the REPL, `:help` lists commands. The current console supports `:type <expression>`, `:jobs`, `:cancel <id>`, `:log <id>`, `:reset`, and `:quit` (also `:q` and `:exit`). There is no `:session` command; use `openSession` in Scala. `JobHandle.send(message)` currently throws `CapabilityUnsupported`, so running jobs cannot be steered from this facade.
 
-`all(askA, askB).run()` runs two lazy asks through the composition interpreter and returns a tuple whose component types come from the asks. `all(scout, worker).ask(prompt)` is the shorter form when both agents receive the same prompt. `map` can attach a typed label to a result, so the tuple retains which answer came from which review.
+Agent and tool code runs with the permissions of the Raider process. Tool policy applies to calls through the agent runtime; it is not a sandbox for arbitrary Scala entered in the REPL.
 
-The following example follows [`06billing-review.repl`](../examples/user-guide/repl/06billing-review.repl). It asks for a code review and a JSON boundary test plan for the same billing rule. In live OpenAI-compatible mode, the fixture parses the worker's answer as JSON and checks it against the stated policy.
-
-```scala
-import zio.json.*
-
-val billingCode = "if subtotalCents > 10000 then 1000 else 0"
-val billingPolicy =
-  "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
-
-val reviewAsk = scout(
-  s"$billingPolicy Review this Scala expression: $billingCode. " +
-    "Identify the exact boundary defect and give one concrete input/output counterexample. " +
-    "Do not use tools. Reply concisely."
-).map(answer => ("boundary-review", answer))
-
-val testPlanAsk = worker(
-  s"$billingPolicy For this Scala expression: $billingCode, " +
-    "specify the expected discounts required by the policy, not the outputs of the buggy code. " +
-    "Return ONLY a JSON array of [subtotalCents, expectedDiscountCents] pairs " +
-    "for 9999, 10000 and 10001 cents. No markdown or tools."
-).map(answer => ("test-plan", answer))
-
-val (review, plan) = all(reviewAsk, testPlanAsk).run()
-assert(review._1 == "boundary-review" && review._2.nonEmpty)
-assert(plan._1 == "test-plan" && plan._2.nonEmpty)
-
-if sys.env.get("RAIDER_PROVIDER").contains("openai") then
-  val expected = List(List(9999, 0), List(10000, 1000), List(10001, 1000))
-  val decoded = plan._2.fromJson[List[List[Int]]].toOption
-  assert(decoded.map(_.sortBy(_.headOption.getOrElse(-1))).contains(expected))
-```
-
-With the mock backend, both answers are scripted fixture text; only the shape and composition run. The JSON assertion is conditional on `RAIDER_PROVIDER=openai`. For the live case, configure an endpoint and model, then enable the verifier’s live option. The verifier rejects tool requests for this review and checks the exact three boundary inputs.
-
-## Run an ordered batch with bounded concurrency
-
-`batch(inputs, parallelism)(f)` builds one ask per input, runs at most `parallelism` items at once, and returns results in input order. The function `f` returns a lazy `AgentAsk`; it can use `map` to produce a value tied to each input.
-
-```scala
-val checks = List(
-  "boundary" -> s"$billingPolicy Check the comparison in: $billingCode",
-  "money" -> s"Review the integer-cents calculation in: $billingCode",
-  "tests" -> s"$billingPolicy Propose boundary tests for: $billingCode"
-)
-val reviews = batch(checks, parallelism = 2) { case (area, prompt) =>
-  scout(s"$prompt. Reply with one actionable observation; do not use tools.")
-    .map(answer => (area, answer))
-}.run()
-
-assert(reviews.map(_._1) == List("boundary", "money", "tests"))
-reviews.foreach { case (area, answer) => println(s"$area: $answer") }
-```
-
-Results preserve input order even when requests finish in a different order. Use `collect()` when you need per-item domain failures returned as explicit outcomes; external interruption still propagates. The runnable composition fixture is [`03parallel-batch.repl`](../examples/user-guide/repl/03parallel-batch.repl).
-
-## Start and cancel a background job
-
-`worker.start(prompt)` returns a typed job handle immediately. `await` waits for its result; `cancel()` requests cancellation and returns `false` when the job is already terminal. The handle remains usable in later REPL submissions.
-
-```scala
-val job = worker.start(s"$billingPolicy Review this expression: $billingCode. Give one counterexample; do not use tools.")
-job
-:jobs
-```
-
-`:jobs` lists jobs started through the facade, including each job's ID, status, and label. To request cancellation, copy the ID shown there:
-
-```text
-:cancel <job-id>
-```
-
-You can also await a job in Scala with `val answer = job.await`. Do not assume cancellation rolled back a tool effect that already happened. The REPL reports the job state; it cannot undo arbitrary user code or external effects. The current job fixture awaits a job to completion in [`04background-job.repl`](../examples/user-guide/repl/04background-job.repl); cancellation is also available through the console command.
-
-## Keep conversation history in a session
-
-`openSession(worker)` creates an in-memory `Chat`. Each successful `ask` appends the user message and assistant reply; the next call receives that history. The history belongs to the `Chat` object in this REPL process.
-
-```scala
-val parserCode = "def parsePort(raw: String): Int = raw.toInt"
-val chat = openSession(worker)
-val first = chat.ask(s"Review input validation in this Scala function: $parserCode. Do not use tools.")
-val second = chat.ask("Propose two malformed inputs and explain how the function handles each. Do not use tools.")
-chat.messages.size // four RequestMessage values: two user and two assistant
-```
-
-This facade does not provide session persistence or a `close` method. The deterministic mock fixture confirms that two exchanges are retained in memory, but fixed replies do not demonstrate that a live model used earlier context. See [`05session.repl`](../examples/user-guide/repl/05session.repl).
-
-## Connect a typed `Program` pipeline to a bundle
-
-The REPL facade composes agent asks with `all` and `batch`. A deterministic workflow can instead be expressed as `Program` stages and packaged as a bundle. The existing [`TaskSummary` implementation](../examples/user-guide/bundle/TaskSummary.scala) is a complete example: it parses comma-separated check records, validates their names and statuses, then produces a JSON readiness report. Its second stage is a typed `Program[List[(String, String)], String]`; `andThen` connects it to the parser's output.
-
-Here are the two stages and their composition from that bundle. It uses only `Task.succeed` and `Task.fail`; it makes no model or network calls.
-
-```scala
-import raider.core.{Program, RaiderError, Task}
-import zio.Chunk
-import zio.json.*
-import zio.json.ast.Json
-
-val parseChecks: Program[String, List[(String, String)]] =
-  Program.fromFunction("parse-release-checks") { input =>
-    Task.succeed(
-      input.split(",", -1).toList.map(_.trim).filter(_.nonEmpty).map { item =>
-        item.split("=", 2) match
-          case Array(name, status) => name.trim -> status.trim.toLowerCase
-          case _                   => item -> "invalid"
-      }
-    )
-  }
-
-val evaluate: Program[List[(String, String)], String] =
-  Program.fromFunction("evaluate-release-checks") { checks =>
-    val required = List("tests", "migration", "rollback")
-    val names = checks.map(_._1)
-    val duplicates = names.diff(names.distinct).distinct
-    val unknown = names.filterNot(required.contains)
-    val missing = required.filterNot(names.contains)
-    val invalid = checks.collect {
-      case (name, status) if status != "pass" && status != "pending" => name
-    }
-
-    if duplicates.nonEmpty || unknown.nonEmpty || invalid.nonEmpty then
-      Task.fail(
-        RaiderError.InputValidation(
-          s"invalid checks: ${(duplicates ++ unknown ++ invalid).distinct.sorted.mkString(", ")}"
-        )
-      )
-    else if missing.nonEmpty then
-      Task.fail(
-        RaiderError.InputValidation(s"missing required checks: ${missing.mkString(", ")}")
-      )
-    else
-      val pending = checks.collect { case (name, "pending") => name }.sorted
-      val passed = checks.collect { case (name, "pass") => name }.sorted
-      val decision = if pending.isEmpty then "READY" else "BLOCKED"
-      val action =
-        if pending.isEmpty then "No follow-up required."
-        else s"Complete: ${pending.mkString(", ")}."
-      val report = Json.Obj(
-        Chunk(
-          "decision" -> Json.Str(decision),
-          "passed" -> Json.Arr(Chunk.fromIterable(passed.map(Json.Str(_)))),
-          "pending" -> Json.Arr(Chunk.fromIterable(pending.map(Json.Str(_)))),
-          "action" -> Json.Str(action)
-        )
-      )
-      Task.succeed(report.toJson)
-  }
-
-val taskSummary: Program[String, String] = parseChecks.andThen(evaluate)
-```
-
-Here the final `Program` has type `Program[String, String]`: it accepts the CLI input string and returns a JSON string. Validation fails with `RaiderError.InputValidation` for missing, duplicate, unknown, or invalid checks. A `pending` check produces a successful `BLOCKED` decision with an action; all passing checks produce `READY`.
-
-The bundle declares the workflow name `task-summary`. With the user-example artifacts built, run the compiled bundle through the CLI:
-
-```sh
-RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
-java -cp "$RAIDER_CP" raider.cli.Main run \
-  --bundle artifacts/user-examples/task-summary.jar \
-  --workflow task-summary \
-  --input 'tests=pass,migration=pass,rollback=pending' \
-  --out artifacts/user-examples/release-check \
-  --mock
-```
-
-For this input, the report is `BLOCKED`, lists `rollback` as pending, and asks for that check to be completed. `--mock` selects the CLI backend configuration; this workflow itself has no model stage. The bundle is marked `trusted-local`. Run only bundles you trust: Scala workflow code executes with the process's permissions, and the trust label is not a sandbox.
-
-## Move the composition into local CI
-
-The REPL prelude installs `scout`, `worker`, and a `ReplSession` for interactive exploration. A compiled local CI application has no such preloaded names: it imports the core types and composition functions, defines its own typed inputs and outputs, and decides when to invoke Raider's native runner. The example imports `raider.core.{Program, Task}` and `raider.dsl.composition.{all, batch}`. See [`BillingCi.scala`](../examples/user-guide/ci/BillingCi.scala) and the [local CI guide](user-guide-ci.md) for the complete billing example and its invocation.
-
-In `BillingCi`, an agent stage is represented as `Program[AgentInput, AgentOutput]`. The program calls `Task(invokeAgent(input))`; `invokeAgent` builds real `CliArgs` and calls `HeadlessRunner.run(cliArgs, env, Some("generic"))`. That call supplies the generic CI context to the native headless runner. The app writes an untrusted `CiContext` per stage; it does not depend on a `--ci` command-line flag.
-
-The flow first records the fixture's expected exact-threshold failure, runs a native coder invocation to repair the billing expression, then compiles and checks the repaired fixture independently. It runs two independent inline reviews together and runs three boundary cases (9999, 10000, and 10001 cents) with bounded parallelism. The earlier `TaskSummary` example shows `andThen` joining a `Program[String, List[(String, String)]]` parser to a `Program[List[(String, String)], String]` evaluator. In the CI app, `all` combines the two review `Task`s into a tuple; `batch.collect` keeps each boundary case's domain result visible:
-
-```scala
-val reviews = all(reviewProgram(reviewA), reviewProgram(reviewB))
-val boundaryOutcomes = batch.collect(boundaryInputs, parallelism = 2) { input =>
-  boundaryProgram(input)
-}
-```
-
-`all` is fail-fast and interrupts its sibling if a task fails. `batch.collect` represents typed domain failures as `BatchOutcome.Failed`; external interruption and defects still propagate. The app validates its own review and boundary contracts before it can write a `READY` decision. A successful native invocation is not itself a successful pipeline verdict: the baseline's expected test failure is preserved, and the repaired source must pass the separate pinned checks.
-
-Every coder invocation has its own native run directory, event stream, and run artifacts. Settled runs with reducible events also receive lineage exports. `BillingCi` writes an application-owned index that points to those directories and records stage outcomes. The index does not combine them into native phase lineage, a shared runtime budget, or durable recovery. Use the [lineage guide](user-guide-lineage.md) to inspect each run's own trace and lineage artifacts.
-
-## REPL commands and boundaries
-
-Use `:help` for the commands available in this console: `:jobs`, `:cancel <id>`, `:log <id>`, `:type <expression>`, `:reset`, and `:quit` (also `:q` or `:exit`). Everything else is compiled as Scala. `:type` compiles without evaluating the expression. `:reset` clears interpreter bindings and installs a fresh prelude; it does not provide persistence for those bindings. There is no `:session` command: create an in-memory conversation with `openSession(agent)` as shown above. The `Chat` object has no persistence or `close()` method.
-
-The REPL facade's `JobHandle.send` method currently throws `CapabilityUnsupported`; job steering is not implemented in this slice. Agent and tool code runs with the permissions of the Raider process. Tool policy governs calls routed through the agent runtime, but it is not a sandbox for arbitrary Scala entered into the REPL. Do not paste credentials into REPL expressions or examples; configure credentials through the supported environment/helper setup.
-
-For lineage, distinguish the two current evidence paths. A live local CI run starts independent headless roots; its pipeline index points to each root's own artifacts and does not merge them into one native phase graph. The complete unified projection is a separate corpus-derived, generated artifact: [unified lineage program](examples/ci-pipeline/unified-lineage/README.md). It is a dry-run description of recorded structure, not a live CI capture or replay. The [lineage guide](user-guide-lineage.md) explains both scopes.
+The DSL examples here are live REPL operations. A generated lineage projection is a description of recorded structure, not a replay; see the [lineage walkthrough](user-guide-lineage.md) for the distinction between live CI roots and the separately generated unified projection.
