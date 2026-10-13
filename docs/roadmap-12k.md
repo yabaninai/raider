@@ -638,9 +638,11 @@ languages are out of scope.
 
 P-LIN remains a mechanism to record, explain, and replay supported operations.
 Scala-projection compilation, graph equality, and workflow execution are separate
-claims with separate evidence. Converting an arbitrary session into an editable
-program and durable resume of arbitrary Scala callbacks are not SDK properties;
-unfinished P-LIN acceptance remains in place and is not replaced by this refinement.
+claims with separate evidence. Explicit capture of a supported chat task into an
+editable executable workflow is now planned in RAI-155 (§6d). It is a separate
+authoring feature; ADR-031 projection remains a dry-run history representation.
+Automatic conversion of arbitrary sessions and durable resume of arbitrary Scala
+callbacks remain outside this slice. Unfinished P-LIN acceptance remains in place.
 
 RAI-115 is a source audit (P0.A); after independent review, the next card **RAI-116**
 sets the workflow authoring/launch contract, then **RAI-117** sets SDLC
@@ -724,6 +726,72 @@ The SDLC kit/SCM/release scope has been added to the early SDK assumption and is
 not fully estimated yet. Before implementation, record a separate estimate and
 hour source in P7/P10; reuse approved slices, do not remove old obligations.
 13,100 h is a historical envelope, not confirmation that the new scope fits it.
+
+## 6d. Chat to editable Scala workflow (RAI-155)
+
+Owner priority, 2026-10-14: **work with the agent in chat, export an ordinary Scala
+workflow, edit it, then run the edited workflow locally and in generic CI**.
+This path is not implemented end to end. Current chat commands execute work;
+saved conversations and Scala lineage projections do not provide this export.
+
+[RAI-155](tasks/lineage.md#rai-155-chat-to-editable-scala-workflow-to-local-and-generic-ci)
+is the integration card. Its children deliver one bounded path within existing
+P4.C/P7.B/C, with the walkthrough in P10. No new top-level phase is added and the
+current lineage/TUI wave continues. Prioritize the accepted authoring boundary
+(RAI-116), then RAI-155.a; do not describe an unaccepted ADR as implemented.
+
+| Card | Deliverable | Prerequisites | Existing phase |
+| --- | --- | --- | --- |
+| RAI-155.a | Reviewed chat selection/export contract and ADR | RAI-116, RAI-140 | P0.B / P4.C |
+| RAI-155.b | Persisted exportable turns and explicit task selection | RAI-155.a | P4.C |
+| RAI-155.c | Editable executable Scala generator | RAI-155.a/b | P4.C |
+| RAI-155.d | Build edited source and run the same bundle locally/in CI | RAI-155.c | P4.C / P7.B |
+| RAI-155.e | Independent end-to-end verifier | RAI-155.b/c/d | P7.B/C |
+| RAI-155.f | Complete user walkthrough with actual generated source | RAI-155.e | P10 |
+| RAI-155 | Integrated acceptance of the whole user path | All six children | P7.C |
+
+The first slice captures a selected, completed, sequential coding task: reusable
+intent and prompt refinements, explicit repository/task inputs, named trusted
+checks, and bounded agent work. The author can change a prompt or check parameter
+in normal Scala. Running it on another fresh repository input performs new model
+and tool work. It does not replay historical mutations or return the old answer.
+Unsupported or incomplete selections produce an actionable refusal. Arbitrary
+chat-to-program synthesis, inferred parallelism, PR/merge/release/deployment and
+durable resume are outside this first slice; SDLC effects remain under RAI-117.
+
+RAI-155.a freezes the proposed commands and output layout before implementation;
+there is no current `:export-workflow` or `raider compile` command to advertise.
+Prefer the existing BundleWorkflow v1 String-to-String boundary with typed input
+decoding inside the workflow, pinned toolchain, and existing scheduler/runner.
+Export and compilation never dispatch agent tools implicitly. Optional model
+assistance in authoring must be explicit and configured; the supported task
+specification also has a deterministic renderer. Generated Scala remains trusted
+code. Credentials stay env/helper references, and every run binds current policy.
+
+The integration demonstration must start at real chat entrypoints with a local
+Scala provider stand, select a multi-turn task, export it, make a meaningful Scala
+edit, compile it, and run two input cases through both local and non-TTY CI launchers (four fresh
+fixture copies). Results match across launchers for the same input; different
+inputs change expected behavior. A fifth fresh run of the unedited workflow on
+the first input isolates the effect of the manual edit. Independent checks fail
+before repair and pass afterward. Both launchers use the same edited program. A prewritten replacement workflow, dry-run projection, or source
+already on the runner classpath cannot satisfy this case. Failed checks must
+remain failures; SIGTERM closes owned work and records interruption honestly.
+The walkthrough includes the full generated source, the edit, commands, resulting
+repository changes and new execution lineage, with source-turn provenance separate.
+
+RAI-153/154 are required before claiming unified phase/delegation lineage for this
+path; the first sequential export does not wait for those features. WF-01/02 and
+SDK-01–05 retain their own acceptance: this card does not close the host SDK,
+full TokenRouter SDLC or full milestone gates. Provider stands prove behavior,
+not live-model quality. Preview compatibility remains experimental with migrations.
+
+Before implementation, RAI-155.a prepares a remaining-work estimate and the
+coordinator records its allocation/tradeoff within P4.C/P7/P10. The historical
+13,100-hour envelope is unchanged here and is not a claim that this scope fits.
+No existing acceptance obligation is removed to accommodate the new path.
+Implementation and independent verifier ownership must be separate; protected
+verifiers or global gate policy changes require their own reviewed card.
 
 ## 7. Scope control
 

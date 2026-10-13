@@ -210,3 +210,10 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-152** [Full-suite load flakes: ReplayProductCliSpec LIN13-01 + SessionRegistrySpec TAB focus (flake-hunt + determinism fix)](m2-p2.md); dependencies: RAI-119; profiles: static, unit, ci, repl.
 - **RAI-153** [Live phase emission: wire v2 phase payloads from the loop (replaces corpus stand-ins)](lineage.md); dependencies: RAI-143, RAI-144; profiles: static, unit, contracts, runtime, ci.
 - **RAI-154** [Headless coder-agent delegation wiring + per-level fork anchoring + unified lineage-data writer](lineage.md); dependencies: RAI-144; profiles: static, unit, contracts, ci.
+- **RAI-155** [Chat to editable Scala workflow to local and generic CI](lineage.md); dependencies: RAI-155.a, RAI-155.b, RAI-155.c, RAI-155.d, RAI-155.e, RAI-155.f; profiles: static, contracts, runtime, ci, docs.
+- **RAI-155.a** [Contract for explicit chat capture and executable workflow export](lineage.md); dependencies: RAI-116, RAI-140; profiles: static, contracts, docs.
+- **RAI-155.b** [Persist exportable chat turns and explicit task selection](lineage.md); dependencies: RAI-155.a; profiles: static, unit, contracts, runtime.
+- **RAI-155.c** [Generate editable executable Scala from the selected chat task](lineage.md); dependencies: RAI-155.a, RAI-155.b; profiles: static, unit, contracts.
+- **RAI-155.d** [Compile edited chat workflows and launch them locally and in generic CI](lineage.md); dependencies: RAI-155.c; profiles: static, unit, contracts, runtime, ci.
+- **RAI-155.e** [Independent end-to-end verifier for chat to edited Scala to CI](lineage.md); dependencies: RAI-155.b, RAI-155.c, RAI-155.d; profiles: static, unit, contracts, runtime, ci.
+- **RAI-155.f** [User walkthrough: chat, export Scala, edit, and run in CI](lineage.md); dependencies: RAI-155.e; profiles: static, docs.
