@@ -75,6 +75,16 @@ object CliArgs:
       */
     final case class Replay(argv: List[String]) extends Target
 
+    /** RAI-129: the `raider resume <run-dir>` subcommand (§13 recovery
+      * surface). Same shape as [[Replay]]: the target carries the RAW argv (the
+      * `resume` token included) — the argv contract (`<run-dir>`, usage errors)
+      * stays owned by `ResumeCommand`, and the recovery is dispatched BEFORE
+      * any run/preflight machinery: a resume is a recovery of a PAST run, it
+      * never creates a new invocation root. No run/chat flag is accepted or
+      * validated here.
+      */
+    final case class Resume(argv: List[String]) extends Target
+
   /** Built-in agents: scout/worker = plain mock loops; coder = REAL workspace
     * tools (fs_read/fs_search/proc_run) for self-hosting runs.
     */
@@ -107,6 +117,9 @@ object CliArgs:
       // and errors unchanged); everything after the token is delegated verbatim
       // to the LIN-10 chain (see [[raider.cli.run.ReplayCommand]]).
       case replay @ ("replay" :: _) => Right(replayArgs(replay))
+      // RAI-129: `raider resume <run-dir>` — recognized ADDITIVELY the same
+      // way; the raw argv is delegated to [[raider.cli.run.ResumeCommand]].
+      case resume @ ("resume" :: _) => Right(resumeArgs(resume))
       case other :: _ =>
         Left(
           RaiderError.Configuration(
@@ -123,6 +136,20 @@ object CliArgs:
   private def replayArgs(fullArgv: List[String]): CliArgs =
     CliArgs(
       target = Target.Replay(fullArgv),
+      input = None,
+      inputJson = None,
+      out = Paths.get(""),
+      mock = false
+    )
+
+  /** The resume subcommand's [[CliArgs]] shell — the exact [[replayArgs]]
+    * shape: NO run/chat flag surface, every resume argument (and its usage
+    * errors) is validated by `ResumeCommand` on the raw argv. `out` is an inert
+    * placeholder: a resume has no `work-<uuid>` invocation root.
+    */
+  private def resumeArgs(fullArgv: List[String]): CliArgs =
+    CliArgs(
+      target = Target.Resume(fullArgv),
       input = None,
       inputJson = None,
       out = Paths.get(""),

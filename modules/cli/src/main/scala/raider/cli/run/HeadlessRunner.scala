@@ -112,8 +112,12 @@ object HeadlessRunner:
     // machinery — full delegation to the accepted LIN-10 chain
     // ([[ReplayCommand]] → `ReplayCli.exec`), so the run/chat invocation below
     // is untouched (same preflight, artifacts, budgets and exit mapping).
+    // RAI-129: `raider resume <run-dir>` — dispatched the same way, BEFORE any
+    // run/preflight machinery ([[ResumeCommand]]): a recovery of a PAST run
+    // never creates a new invocation root and never spends anything.
     args.target match
       case CliArgs.Target.Replay(argv) => ReplayCommand.outcome(argv, args.out)
+      case CliArgs.Target.Resume(argv) => ResumeCommand.outcome(argv, args.out)
       case _                           => runInvocation(args, env, ci)
 
   /** The unchanged run/chat invocation body (moved verbatim by RAI-109; only
@@ -395,6 +399,9 @@ object HeadlessRunner:
     // ReplayCommand BEFORE the run path and never renders a summary line.
     case CliArgs.Target.Replay(argv) =>
       s"replay ${argv.drop(1).headOption.getOrElse("<run-dir>")}"
+    // RAI-129: exhaustivity only — same dispatch-before-run-path rule.
+    case CliArgs.Target.Resume(argv) =>
+      s"resume ${argv.drop(1).headOption.getOrElse("<run-dir>")}"
 
   private def checksFor(
       outcome: Either[RaiderError, String]
@@ -444,6 +451,7 @@ object HeadlessRunner:
       input <- ZIO.fromEither(args.inputText)
       text <- args.target match
         case CliArgs.Target.Replay(argv) => replayLeakDefect(argv)
+        case CliArgs.Target.Resume(argv) => resumeLeakDefect(argv)
         case CliArgs.Target.Agent(name) =>
           for
             limits <- ZIO.fromEither(
@@ -550,6 +558,13 @@ object HeadlessRunner:
     */
   private def replayLeakDefect(argv: List[String]): ZIO[Any, Nothing, Nothing] =
     ZIO.die(IllegalStateException(s"replay target leaked into run: $argv"))
+
+  /** The loud defect for a resume target that reached the run path — see the
+    * RAI-129 note in [[run]] (a recovery is dispatched before the run path;
+    * this path is unreachable by construction).
+    */
+  private def resumeLeakDefect(argv: List[String]): ZIO[Any, Nothing, Nothing] =
+    ZIO.die(IllegalStateException(s"resume target leaked into run: $argv"))
 
   /** LIN-03A-prep: events.jsonl is NOT written here — it is streamed during the
     * run by [[executeAsJob]] ([[EventsJsonlWriter]]), so it exists and is
