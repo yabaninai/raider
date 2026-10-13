@@ -20,8 +20,13 @@ import java.time.Duration as JDuration
   * `max_tokens` from ModelRequest; loop tool-result envelopes (role "tool",
   * `{"tool_call_id","output"}`) are translated into NATIVE `tool_result`
   * content blocks (correlation preserved — never plain text). Tool DEFINITIONS
-  * are not yet sent on the wire (structured message contract = later card,
-  * documented obligation). Stop reasons end_turn/tool_use/ max_tokens pass
+  * ride the wire (RAI-127, structured message contract): every `ToolDefinition`
+  * becomes one native `{"name","description","input_schema"}` entry whose
+  * schema rides VERBATIM from `parametersJsonSchema` — the SAME source as the
+  * OpenAI wire, no second hand-written schema. An EMPTY tools list keeps the
+  * legacy request byte-for-byte (no `tools` field); an invalid schema
+  * (empty/blank, unparsable, not a JSON object) is a typed InputValidation
+  * failure BEFORE any send. Stop reasons end_turn/tool_use/ max_tokens pass
   * through honestly (max_tokens truncation is NOT a full task output — the
   * loop/caller owns that policy).
   *
@@ -293,9 +298,9 @@ object AnthropicMessagesBackend:
           if m.role == "tool" then
             // loop tool-result envelope → NATIVE tool_result block (§4:
             // never plain text — correlation preserved). The tool output
-            // JSON rides as a string payload inside tool_result.content
-            // (full block mapping = structured message contract, documented
-            // obligation).
+            // JSON rides as a string payload inside tool_result.content;
+            // the definitions these results correlate with ARE on the wire
+            // since RAI-127 (see encodeTools).
             case class Envelope(tool_call_id: String, output: Json)
             object Envelope:
               given JsonDecoder[Envelope] = DeriveJsonDecoder.gen[Envelope]
@@ -318,12 +323,64 @@ object AnthropicMessagesBackend:
             )
         }
       }
-    messages.map { msgs =>
-      s"""{"model":${input.model.toJson},""" +
-        s""""max_tokens":${input.maxOutputTokens},""" +
-        s""""messages":${msgs.mkString("[", ",", "]")},""" +
-        s""""stream":$streaming}"""
+    messages.flatMap { msgs =>
+      encodeTools(input.tools).map { toolsField =>
+        s"""{"model":${input.model.toJson},""" +
+          s""""max_tokens":${input.maxOutputTokens},""" +
+          s""""messages":${msgs.mkString("[", ",", "]")},""" +
+          s"$toolsField" +
+          s""""stream":$streaming}"""
+      }
     }
+
+  /** RAI-127: one ToolDefinition → one native tools entry; the schema rides
+    * VERBATIM from `parametersJsonSchema` (the same schema source as the OpenAI
+    * wire — no second hand-written schema). An empty list yields "" (no `tools`
+    * field — byte-identical legacy request); an empty/blank, unparsable or
+    * non-object schema is a typed InputValidation failure BEFORE anything is
+    * sent.
+    */
+  private[anthropic] def encodeTools(
+      tools: List[ToolDefinition]
+  ): Either[RaiderError, String] =
+    if tools.isEmpty then Right("")
+    else
+      tools
+        .foldLeft[Either[RaiderError, Vector[String]]](Right(Vector.empty)) {
+          (acc, d) =>
+            acc.flatMap { v =>
+              val name = d.name
+              if d.parametersJsonSchema.trim.isEmpty then
+                Left(
+                  RaiderError.InputValidation(
+                    s"tool '$name': parametersJsonSchema is empty"
+                  )
+                )
+              else
+                Json.decoder.decodeJson(d.parametersJsonSchema) match
+                  case Left(err) =>
+                    Left(
+                      RaiderError.InputValidation(
+                        s"tool '$name': parametersJsonSchema is not " +
+                          s"valid JSON (${err.take(80)})"
+                      )
+                    )
+                  case Right(_: Json.Obj) =>
+                    Right(
+                      v :+ s"""{"name":${name.toJson},""" +
+                        s""""description":${d.description.toJson},""" +
+                        s""""input_schema":${d.parametersJsonSchema}}"""
+                    )
+                  case Right(_) =>
+                    Left(
+                      RaiderError.InputValidation(
+                        s"tool '$name': parametersJsonSchema must be a " +
+                          "JSON object"
+                      )
+                    )
+            }
+        }
+        .map(entries => s""""tools":[${entries.mkString(",")}],""")
 
   // ---- non-streaming response decoding ----
 
