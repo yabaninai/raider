@@ -64,8 +64,8 @@
     "d1": {
       "model": "mock-coder",
       "round": 1,
-      "prompt": "Разбей задачу на подзадачи и делегируй реализацию.",
-      "response": "Делегирую реализацию фикса агенту worker.",
+      "prompt": "Break the task into subtasks and delegate the implementation.",
+      "response": "I’m delegating the fix implementation to the worker agent.",
       "usage": {
         "reservedMicroUsd": 2000,
         "observedMicroUsd": 1850,
@@ -79,8 +79,8 @@
     "d3": {
       "model": "mock-coder",
       "round": 1,
-      "prompt": "Реализуй подзадачу: добавь недостающий тест для parser.",
-      "response": "Готовлю изменение и запускаю проверку.",
+      "prompt": "Implement the subtask: add the missing test for the parser.",
+      "response": "I’m preparing the change and running the check.",
       "usage": null
     },
     "d4": {

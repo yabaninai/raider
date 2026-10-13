@@ -87,8 +87,8 @@ object RecordedSourceSpec extends ZIOSpecDefault:
         "d1" -> NodeData.ModelCallData(
           "mock-coder",
           1,
-          "Найди точку входа и объясни, как запустить тесты.",
-          "Точка входа — raider.cli.Main; тесты запускаются командой make quality-changed.",
+          "Find the entry point and explain how to run the tests.",
+          "The entry point is raider.cli.Main; run the tests with make quality-changed.",
           Some(Usage(None, Some(1500L), false))
         ),
         "d2" -> NodeData.ToolCallData(
@@ -113,8 +113,8 @@ object RecordedSourceSpec extends ZIOSpecDefault:
   private val expectedModelCall = NodeData.ModelCallData(
     "mock-coder",
     1,
-    "Найди точку входа и объясни, как запустить тесты.",
-    "Точка входа — raider.cli.Main; тесты запускаются командой make quality-changed.",
+    "Find the entry point and explain how to run the tests.",
+    "The entry point is raider.cli.Main; run the tests with make quality-changed.",
     Some(Usage(None, Some(1500L), false))
   )
 

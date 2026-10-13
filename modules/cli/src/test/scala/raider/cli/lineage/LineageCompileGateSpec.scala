@@ -565,8 +565,8 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
   // Payload-only strings: prompts/responses/args/results/callIds live in the
   // data resource — they must never leak into the generated program.
   private val tinyForbiddenInline = Vector(
-    "Найди точку входа",
-    "Точка входа — raider.cli.Main",
+    "Find the entry point",
+    "The entry point is raider.cli.Main",
     "path=README.md",
     "# Raider development entrypoints",
     "call-001",
@@ -585,9 +585,9 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
     Vector("// data: d1", "// data: d3", "// data: d4")
 
   private val deepForbiddenInline = Vector(
-    "Разбей задачу",
-    "Реализуй подзадачу",
-    "Готовлю изменение",
+    "Break the task",
+    "Implement the subtask",
+    "I’m preparing the change",
     "pattern=TODO limit=20",
     "nightly delegation dry-run",
     "call-091",

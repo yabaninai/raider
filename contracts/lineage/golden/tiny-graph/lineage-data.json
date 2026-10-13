@@ -53,8 +53,8 @@
     "d1": {
       "model": "mock-coder",
       "round": 1,
-      "prompt": "Найди точку входа и объясни, как запустить тесты.",
-      "response": "Точка входа — raider.cli.Main; тесты запускаются командой make quality-changed.",
+      "prompt": "Find the entry point and explain how to run the tests.",
+      "response": "The entry point is raider.cli.Main; run the tests with make quality-changed.",
       "usage": {
         "reservedMicroUsd": null,
         "observedMicroUsd": 1500,
