@@ -1,59 +1,101 @@
 <div align="center">
-
 <img src="docs/logo.svg" alt="Raider" width="400"/>
 
 # Raider
 
-**Scala workflows for coding agents and CI** — Scala 3 + ZIO 2
+Scala workflows for coding agents and CI
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-e94560.svg)](LICENSE)
 [![Scala 3](https://img.shields.io/badge/Scala-3.9.0-0f3460?logo=scala&logoColor=white)](https://www.scala-lang.org/)
 [![ZIO 2](https://img.shields.io/badge/ZIO-2.1.26-e94560)](https://zio.dev/)
-
 </div>
 
-Raider is an in-development Scala coding agent and workflow runtime. The current source includes a native model/tool loop, a compiler-backed Scala REPL, compiled workflows, OpenAI-compatible and Anthropic Messages transports, workspace tools, and headless run artifacts. The live tool examples currently document OpenAI-compatible providers; Anthropic tool definition parity is tracked by RAI-127. The examples below exercise current code; they do not claim a released SDK or autonomous pull request, merge, or release workflow.
+Raider runs coding agents from a Scala REPL and a headless CLI. Write a request,
+compose several requests with Scala, or run a compiled workflow against a
+repository. The runtime connects to a model, dispatches workspace tools, and
+records the model and tool calls so you can inspect the work afterward.
 
-## Run the verified examples
+The project is in development. You can build and use the current checkout;
+SDK packaging and the full commit/PR/release workflow are on the [roadmap](docs/roadmap-12k.md).
 
-Requirements: JDK 21, sbt 1.11.4, Python 3, and the JDK `jar` tool. Run from the checkout root:
+## Start with the Scala REPL
+
+Install JDK 21 and sbt 1.11.4. The example builder resolves the pinned Scala
+3.9.0 and ZIO 2.1.26 dependencies, then writes the runtime classpath:
 
 ```sh
 sh scripts/build/user-examples.sh
-python3 scripts/quality/user_examples.py
+RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
+RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main
 ```
 
-The examples use the pinned Scala 3.9.0 and ZIO 2.1.26 dependencies. The first build may resolve dependencies. The verifier runs the actual Scala compiler, REPL, CLI and workspace tools. Reports, command exits, transcripts and input hashes go under ignored `artifacts/user-examples/verification-*/`.
+The REPL preloads `scout`, `worker`, `all`, and `batch`. It is a Scala console:
+you can define case classes and functions, inspect types, and keep values between
+submissions. The mock provider returns fixed answers with a `[scripted-fixture]`
+marker. To get model answers, [configure a provider](docs/onboarding.md).
 
-### Coding tasks and a release workflow
+## Review a bug and plan its tests in parallel
 
-| Scenario | Run | What to inspect |
-| --- | --- | --- |
-| Repair the $100 billing discount boundary | `python3 scripts/quality/user_examples.py --only coding` | `DiscountSpec` fails at exactly 10,000 cents, then passes below/at/above after a hash-guarded edit. |
-| Audit a payment configuration | `python3 scripts/quality/user_examples.py --only audit` | `AUDIT.json` reports `PAY-001`, the exact config line, impact and a remediation. |
-| Check release readiness | Run the bundle command below | Structured output says `BLOCKED` with `rollback` pending; the CLI run itself succeeds. |
-
-### Review code and propose tests in Scala
-
-The review example describes two lazy asks, labels their answers, then runs them together:
+A shop gives a flat $10 discount on purchases of at least $100. The code below
+uses a strict comparison and misses the exact boundary. Give the review and the
+test plan separate prompts, then combine their results:
 
 ```scala
 val billingCode = "if subtotalCents > 10000 then 1000 else 0"
 val billingPolicy = "A flat $10 (1000 cents) discount applies to purchases of at least $100 (10000 cents)."
+
 val scoutAsk = scout(s"$billingPolicy Review this Scala expression: $billingCode. Identify the exact boundary defect and give one concrete input/output counterexample. Do not use tools. Reply concisely.").map(answer => ("boundary-review", answer))
+
 val testAsk = worker(s"$billingPolicy For this Scala expression: $billingCode, Specify the expected discounts required by the policy, not the outputs of the buggy code. Return ONLY a JSON array of [subtotalCents, expectedDiscountCents] pairs for 9999, 10000 and 10001 cents. No markdown or tools.").map(answer => ("test-plan", answer))
+
 val (review, plan) = all(scoutAsk, testAsk).run()
 ```
 
-Run that exact example:
+Creating an ask stores a description. `map` transforms its eventual answer;
+`run()` starts execution. Here `all` runs both asks and returns their labeled
+results as a tuple. The policy's expected test plan is:
 
-```sh
-RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
-RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main \
-  < examples/user-guide/repl/06billing-review.repl
+```json
+[[9999, 0], [10000, 1000], [10001, 1000]]
 ```
 
-The review example runs two lazy prompts in parallel against inline Scala billing code. `map` adds typed result labels and `all(...).run()` combines the responses. The mock replies are fixed placeholders; use an explicitly selected OpenAI-compatible model and spend budget for the live verifier in the [guide](docs/user-guide.md#3-parallel-dsl-review-with-useful-prompts).
+The complete [billing review example](examples/user-guide/repl/06billing-review.repl)
+includes assertions for the labels and, with the live provider, the policy values.
+[The Scala tutorial](docs/user-guide-repl.md) explains lazy asks, ordered batches,
+background jobs, sessions, and typed programs with code you can follow.
+
+## Let the agent change a repository
+
+The billing repair example works in a disposable copy of a small Scala project.
+It reads and searches the source, compiles it, observes the failing boundary
+test, changes `>` to `>=`, and compiles and runs the tests again.
+
+```sh
+python3 scripts/quality/user_examples.py --only coding
+```
+
+The offline version uses a local stand that supplies a fixed sequence of tool
+calls. Scala compilation, file edits, and subprocess execution happen in the
+native runtime. The [handbook](docs/user-guide.md) covers the same task with a
+configured model and shows how to inspect the resulting patch and test evidence.
+
+| Task | Entry point | Result |
+| --- | --- | --- |
+| Repair a discount boundary | `--only coding` | Changed Scala implementation and passing below/at/above boundary tests |
+| Audit payment configuration | `--only audit` | `AUDIT.json` with the source line, impact, and remediation |
+| Review and propose tests | `--only repl-review` | Two labeled answers composed in Scala |
+| Check release readiness | Bundle command below | JSON decision with passed checks, pending checks, and the next action |
+
+These selectors belong to `python3 scripts/quality/user_examples.py`. With no
+selector, it runs all ten examples and writes a report under
+`artifacts/user-examples/verification-*/`.
+
+## Put deterministic steps in a typed workflow
+
+[TaskSummary.scala](examples/user-guide/bundle/TaskSummary.scala) composes two
+stages: `Program[String, List[(String, String)]]` parses the input, and
+`Program[List[(String, String)], String]` validates the checks and emits JSON.
+The workflow joins them with `parseChecks.andThen(evaluate)`.
 
 ```sh
 java -cp "$RAIDER_CP" raider.cli.Main run \
@@ -63,23 +105,48 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
   --out artifacts/user-examples/release-check --mock
 ```
 
-The offline coding and audit examples use the native runtime/compiler with deterministic scripted tool stands. The release workflow is ordinary typed Scala code. It verifies tool sequencing and real Scala checks without a model request. These runs do not establish general model quality. Reports and transcripts are under ignored `artifacts/user-examples/verification-*/`.
-
-## Current CLI surface
-
-The headless CLI supports `run`, `chat`, `plugin`, and `replay`. `raider.cli.Main` is the source launch entry point; `raider.repl.Main` starts the Scala REPL. The REPL's scripted/mock responses are fixed fixtures, not answers from a model. The tab shell (`--tabs`) is a separate UI from Scala evaluation.
-
-`coder` has native file and process tools. Scala scripts, bundles, plugins and repository commands run with the process user's permissions; workspace checks are not a sandbox. Use disposable workspaces for experiments.
-
-## Development quality gates
-
-```sh
-make quality-changed
-make quality-changed QUALITY_EXECUTE=1
+```json
+{"decision":"BLOCKED","passed":["migration","tests"],"pending":["rollback"],"action":"Complete: rollback."}
 ```
 
-The protected registry defines profile commands. Evidence is written to `artifacts/quality/<run-id>/manifest.json`. Counts and results belong to the checked candidate and are not hardcoded here.
+`BLOCKED` is a valid result, so this run exits successfully. Missing checks,
+duplicate names, or unsupported statuses fail input validation with exit 21.
+The workflow makes no model request.
 
-[Roadmap](docs/roadmap-12k.md) · [Execution board](docs/work/board.md) · [Runtime contracts](docs/runtime-contracts.md)
+## Read the lineage of a run
+
+The billing run writes `lineage.scala` and `lineage-data.json` alongside its
+summary, transcript, and event log. The generated Scala projection lists model
+rounds and the tools dispatched in each round. An excerpt from the saved offline
+billing run is:
+
+```scala
+// model("scripted-billing", round = 4) // data: j_1/round-4
+  // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-test-before
+// model("scripted-billing", round = 5) // data: j_1/round-5
+  // tool("fs_edit", recovery = "Mutating") // data: j_1/call-edit-discount
+// model("scripted-billing", round = 6) // data: j_1/round-6
+  // tool("proc_run", recovery = "ReadOnly") // data: j_1/call-compile-after
+```
+
+The `data:` references join the projection to records in `lineage-data.json`.
+The event log and transcript hold the detailed tool results, including process
+exit codes. [The lineage walkthrough](docs/user-guide-lineage.md) follows these
+links through an actual run and explains the distinction between a composition
+tree and the model/tool calls inside it.
+
+## Where to go next
+
+- [Setup and first run](docs/onboarding.md)
+- [Coding and audit handbook](docs/user-guide.md)
+- [Scala workflow tutorial](docs/user-guide-repl.md)
+- [Run lineage walkthrough](docs/user-guide-lineage.md)
+- [API reference](docs/api.md) and [architecture](docs/architecture.md)
+- [Contributing](docs/contributing.md), [execution board](docs/work/board.md), and [roadmap](docs/roadmap-12k.md)
+
+Scala code, workflow bundles, plugins, and repository commands run with your
+process permissions. Use workspaces and bundles you trust. Current live tool
+examples use OpenAI-compatible providers; Anthropic tool definitions are tracked
+by RAI-127. Credentials belong in an environment variable or helper, outside Git.
 
 MIT — see [LICENSE](LICENSE).

@@ -35,3 +35,17 @@ text inventory, diff review, translation, and Git integration are authorized for
 this follow-up. Existing evidence remains historical; changing source invalidates
 its acceptance for the new revision. Historical run transcripts and independent
 worktrees retain their original inputs and are not delivered by a Git merge.
+
+## Follow-up: practical English handbook (2026-10-13)
+
+The owner requested a full rewrite of user-facing documentation in direct,
+natural English, with more Scala examples and concrete resulting lineage.
+Allowed paths: `README.md`, `docs/{onboarding,user-guide,user-guide-repl,user-guide-lineage,api,architecture,contributing}.md`,
+and the post-work record. The coordinator owns README and integration; seven
+`docs/handbook-*` lanes own disjoint guide files, with independent static review.
+
+Use implemented signatures and existing executable examples. Identify literal
+excerpts from saved runs and fixtures by provenance; do not invent an exported
+call graph or claim a new execution. Explain how the Scala composition maps to
+actual agent/model/tool lineage. Builds, tests, gates, and paid calls remain
+disallowed for this follow-up at the owner's request.
