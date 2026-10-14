@@ -2,7 +2,7 @@ package raider.cli.workflow
 
 import zio.test.*
 import zio.test.Assertion.*
-import zio.{Chunk, Unsafe}
+import zio.{Chunk, Unsafe, ZIO}
 
 import raider.core.RaiderError
 import raider.dsl.workflow.{
@@ -19,6 +19,7 @@ import raider.dsl.workflow.{
 }
 
 import java.nio.charset.StandardCharsets
+import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.{Files, Path}
 import java.util.concurrent.TimeUnit
 import scala.jdk.CollectionConverters.*
@@ -346,6 +347,68 @@ object WorkflowRunSpec extends ZIOSpecDefault:
             runJson.contains("\"status\":\"Failed\"")
           )
         }
+      },
+      test(
+        "RAI-159 UO-01: a read-only parent --out fails TYPED (RA-JOURNAL, exit 27) with honest artifact absence — no work dir, no run.json, no events.jsonl"
+      ) {
+        // The round-1 preferred test (RAI-155.d limitations #8): the parent
+        // directory exists and denies write, so --out cannot be created. The
+        // typed output-dir probe must fail the run RA-JOURNAL/27 BEFORE the
+        // events writer opens (whose open defect used to shadow it — the raw
+        // AccessDeniedException crash, subprocess exit 1 with a raw stack).
+        // The chmod and the run BOTH live in the effect (a bare try/finally
+        // around the constructed ZIO would restore the permissions BEFORE
+        // the effect ever runs — found by the first red run of this spec).
+        val restore = (parent: Path) =>
+          ZIO
+            .attempt(
+              Files.setPosixFilePermissions(
+                parent,
+                java.util.Set.of(
+                  PosixFilePermission.OWNER_READ,
+                  PosixFilePermission.OWNER_WRITE,
+                  PosixFilePermission.OWNER_EXECUTE
+                )
+              )
+            )
+            .orDie
+        ZIO
+          .attempt {
+            val parent = Files.createTempDirectory("r159-readonly-parent")
+            Files.setPosixFilePermissions(
+              parent,
+              java.util.Set.of(
+                PosixFilePermission.OWNER_READ,
+                PosixFilePermission.OWNER_EXECUTE
+              )
+            )
+            val (buildDir, _) = build
+            val ws = freshWorkspace()
+            val input = Files.createTempDirectory("r159-in").resolve("i.json")
+            Files.writeString(input, inputJson(ws))
+            (parent, buildDir, input)
+          }
+          .flatMap { case (parent, buildDir, input) =>
+            val out = parent.resolve("out")
+            exec(
+              runArgs(buildDir, input, out),
+              Map("RAIDER_API_KEY" -> "k")
+            ).map { o =>
+              assertTrue(
+                o.exitCode == 27,
+                o.error.fold(false)(_.code == "RA-JOURNAL"),
+                o.error.fold(false)(
+                  _.detail.contains("output directory is not writable")
+                ),
+                // Honest artifact absence: the probe failed before ANY artifact
+                // step — `out` was never created, so there is no work- dir and
+                // no run.json/summary.md/events.jsonl anywhere under it.
+                !Files.exists(out),
+                !Files.exists(out.resolve("run.json")),
+                !Files.exists(out.resolve("events.jsonl"))
+              )
+            }.ensuring(restore(parent))
+          }
       }
     ) @@ TestAspect.sequential
 
