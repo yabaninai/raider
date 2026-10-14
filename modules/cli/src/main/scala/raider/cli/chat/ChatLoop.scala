@@ -9,7 +9,7 @@ import raider.runtime.budget.BudgetLimits
 import raider.runtime.events.EventHub
 import raider.runtime.jobs.{JobHandle, JobManager, StatusLedger}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
-import zio.{Promise, Ref, Scope, ZIO}
+import zio.{Exit, Promise, Ref, Scope, ZIO}
 import zio.json.EncoderOps
 
 import java.io.BufferedReader
@@ -75,12 +75,24 @@ object ChatLoop:
     * whole session (one root per chat run); each user message runs as ONE job
     * of that manager, so the status line spans queued→model→tool→terminal with
     * the job layer (RAI-059) owning the transitions.
+    *
+    * RAI-155.b (ADR-033 §5): `ledgerRef` is the exportable turn ledger —
+    * capture provenance kept BESIDE the message history, so compaction (which
+    * rewrites `historyRef`) and history truncation never touch it. `checksRef`
+    * holds user-registered named trusted checks; `selectionRef` holds the
+    * validated immutable selection snapshot (the RAI-155.c renderer entry
+    * point).
     */
-  private final case class RunCtx(
+  private[chat] final case class RunCtx(
       loop: AgentLoop, // base loop, events = None (per-message copy adds them)
       limits: BudgetLimits,
       historyRef: Ref[List[RequestMessage]],
       traceRef: Ref[Vector[raider.core.trace.TraceEvent]],
+      ledgerRef: Ref[Vector[TurnRecord]],
+      checksRef: Ref[List[NamedCheck]],
+      selectionRef: Ref[Option[TaskSelection]],
+      provider: String,
+      workspacePath: String,
       hub: EventHub,
       manager: JobManager,
       root: RootId,
@@ -118,7 +130,10 @@ object ChatLoop:
       resume: Option[String]
   ): ZIO[Any, Nothing, Int] =
     for
-      registry <- makeRegistry(workspace)
+      // RAI-155.b: one resolved workspace reference shared by the toolset and
+      // the capture configRefs (non-secret path reference, §5.1)
+      wsPath = workspace.getOrElse(Paths.get("").toAbsolutePath.toString)
+      registry <- makeRegistry(wsPath)
       limits <- ZIO.succeed(
         BudgetLimits
           .make(maxConcurrentTools = 2, maxAttempts = 48)
@@ -149,6 +164,12 @@ object ChatLoop:
       tracer <- ZIO.succeed(makeTracer(traceRef))
       // --resume seeds the conversation from a saved session (Phase 2.2)
       historyRef <- Ref.make(List.empty[RequestMessage])
+      // RAI-155.b capture state (ADR-033 §5): ledger + named checks + the
+      // validated selection snapshot (selection is session-authoring state,
+      // not persisted; it is rebuilt explicitly with :task select)
+      ledgerRef <- Ref.make(Vector.empty[TurnRecord])
+      checksRef <- Ref.make(List.empty[NamedCheck])
+      selectionRef <- Ref.make(Option.empty[TaskSelection])
       _ <- resume match
         case Some(name) =>
           SessionStore
@@ -162,12 +183,22 @@ object ChatLoop:
                 ),
               session =>
                 historyRef.set(session.messages) *>
-                  ZIO.succeed(
+                  ledgerRef.set(session.turns.toVector) *>
+                  checksRef.set(session.checks) *>
+                  ZIO.succeed {
                     println(
                       s"resumed '$name': ${session.messages.size} messages " +
                         s"(saved ${session.timestamp}, model ${session.model})"
                     )
-                  )
+                    // §5.3: reopen names a missing ledger explicitly and shows
+                    // saved-vs-active config mismatch; authority is never restored
+                    TaskCommands
+                      .restoreNotices(
+                        session.turns,
+                        ConfigRefs(wsPath, provider, model)
+                      )
+                      .foreach(n => println(s"  $n"))
+                  }
             )
         case None => ZIO.unit
       // single-sourced coder prompt (raider.cli.CoderPrompts, Phase 4.3)
@@ -190,6 +221,11 @@ object ChatLoop:
         limits,
         historyRef,
         traceRef,
+        ledgerRef,
+        checksRef,
+        selectionRef,
+        provider,
+        wsPath,
         hub,
         manager,
         root,
@@ -303,6 +339,8 @@ object ChatLoop:
               case cmd if cmd.startsWith(":delegate") =>
                 val spec = line.trim.drop(9).trim
                 handleDelegate(ctx, spec)
+              case cmd if cmd.startsWith(":task") =>
+                handleTask(ctx, cmd.drop(5).trim)
               case ":clear" =>
                 zio.Runtime.default.unsafe
                   .run(ctx.historyRef.set(List.empty))
@@ -313,12 +351,12 @@ object ChatLoop:
                 println("context cleared")
               case cmd if cmd.startsWith(":save") =>
                 val name = cmd.drop(5).trim
-                handleSave(ctx.historyRef, ctx.loop.model, name)
+                handleSave(ctx, name)
               case ":sessions" =>
                 handleListSessions()
               case cmd if cmd.startsWith(":load") =>
                 val name = cmd.drop(5).trim
-                handleLoad(ctx.historyRef, name)
+                handleLoad(ctx, name)
               case ":compact" =>
                 handleCompact(ctx.loop, ctx.limits, ctx.historyRef)
               case ":fix" =>
@@ -416,7 +454,17 @@ object ChatLoop:
         )
     yield result
 
-  private def processMessage(
+  /** One user message as ONE job (RAI-060) + capture (RAI-155.b, ADR-033 §5): a
+    * ledger turn begins inside the job body with status `Unknown` (the
+    * pending/torn state) and receives its terminal status only when the job
+    * settles — a crash before that write leaves the record typed-`Unknown`,
+    * never silently lost (§5.4). Interruption/defect → `Interrupted`; typed
+    * failure → `Failed`; success → `Completed`. The per-tool outcome summary
+    * comes from the trace events recorded during the turn (names + outcome
+    * classes only, no payloads). The failure/success of the message itself is
+    * re-raised unchanged — capture is observation, never control flow.
+    */
+  private[chat] def processMessage(
       ctx: RunCtx,
       input: String
   ): ZIO[Any, RaiderError, String] =
@@ -424,7 +472,43 @@ object ChatLoop:
       val loop = ctx.loop.copy(events =
         Some(LoopEvents(ctx.hub, jobId, ctx.root, StatusLedger.sessionId))
       )
-      processMessageBody(loop, ctx.limits, ctx.historyRef, ctx.traceRef, input)
+      val refs = ConfigRefs(ctx.workspacePath, ctx.provider, ctx.loop.model)
+      val turn = TurnLedger.beginTurn(
+        input,
+        jobId.value,
+        refs,
+        System.currentTimeMillis()
+      )
+      for
+        traceBefore <- ctx.traceRef.get.map(_.size)
+        _ <- ctx.ledgerRef.update(_ :+ turn)
+        outcome <- processMessageBody(
+          loop,
+          ctx.limits,
+          ctx.historyRef,
+          ctx.traceRef,
+          input
+        ).exit
+        traceAfter <- ctx.traceRef.get
+        tools = TurnLedger.toolOutcomes(traceAfter.drop(traceBefore))
+        status = outcome match
+          case Exit.Success(_) => TurnLedger.Status.Completed
+          case Exit.Failure(cause) =>
+            TurnLedger.terminalStatus(cause.failures.headOption)
+        _ <- ctx.ledgerRef.update: ts =>
+          ts.map: t =>
+            if t.turnId == turn.turnId then
+              TurnLedger.finishTurn(
+                t,
+                status,
+                tools,
+                System.currentTimeMillis()
+              )
+            else t
+        result <- outcome match
+          case Exit.Success(answer) => ZIO.succeed(answer)
+          case Exit.Failure(cause)  => ZIO.failCause(cause)
+      yield result
     }
 
   private def processMessageBody(
@@ -470,6 +554,12 @@ object ChatLoop:
   /** Summarize the oldest slice into one system message (Phase 2.3). The
     * summary itself is a side model call (1 round) and never enters the
     * history; on summary failure the history is left untouched.
+    *
+    * RAI-155.b (ADR-033 §5.2): this rewrite touches ONLY the model-facing
+    * message list (`historyRef.set` below is the exact provenance-destroying
+    * statement the contract calls out). The turn ledger lives in a separate ref
+    * and is never dropped or rewritten here — the ledger, not the message list,
+    * is the export-provenance source.
     */
   private def compactHistory(
       loop: AgentLoop,
@@ -584,38 +674,44 @@ object ChatLoop:
           )
     )
 
-  private def makeRegistry(
-      workspace: Option[String]
-  ): ZIO[Any, Nothing, ToolRegistry] =
-    val wsPath = workspace.getOrElse(Paths.get("").toAbsolutePath.toString)
+  private def makeRegistry(wsPath: String): ZIO[Any, Nothing, ToolRegistry] =
     raider.tools.CodingToolset
       .make(wsPath)
       .flatMap(ts => ZIO.fromEither(ts.registry))
       .orElse(ZIO.succeed(ToolRegistry.empty))
 
-  /** :save <name> — persist the current conversation history (Phase 2.2). */
-  private def handleSave(
-      historyRef: Ref[List[RequestMessage]],
-      model: String,
-      name: String
-  ): Unit =
+  /** :save <name> — persist the current conversation (Phase 2.2) PLUS the
+    * capture state (RAI-155.b: turn ledger + named checks, session schema v3).
+    * The write is atomic (SessionStore), so a crash mid-save never exposes a
+    * half-written document; an in-flight turn persists as typed-`Unknown`.
+    */
+  private def handleSave(ctx: RunCtx, name: String): Unit =
     if name.isEmpty then println("usage: :save <name>")
     else
       zio.Unsafe.unsafe { implicit u =>
         val history =
-          zio.Runtime.default.unsafe.run(historyRef.get).getOrThrow()
+          zio.Runtime.default.unsafe.run(ctx.historyRef.get).getOrThrow()
         if history.isEmpty then println("nothing to save: history is empty")
         else
+          val turns =
+            zio.Runtime.default.unsafe.run(ctx.ledgerRef.get).getOrThrow()
+          val checks =
+            zio.Runtime.default.unsafe.run(ctx.checksRef.get).getOrThrow()
           val session = SavedSession(
             id = name,
             messages = history,
-            model = model,
-            timestamp = java.time.Instant.now().toString
+            model = ctx.loop.model,
+            timestamp = java.time.Instant.now().toString,
+            turns = turns.toList,
+            checks = checks
           )
           zio.Runtime.default.unsafe
             .run(SessionStore.save(SessionStore.defaultBase, session)) match
             case zio.Exit.Success(path) =>
-              println(s"saved ${history.size} messages → $path")
+              println(
+                s"saved ${history.size} messages, ${turns.size} turn(s), " +
+                  s"${checks.size} check(s) → $path"
+              )
             case zio.Exit.Failure(cause) =>
               cause.failures.headOption.foreach: err =>
                 println(s"save failed [${err.code}]: ${err.detail.take(160)}")
@@ -638,11 +734,13 @@ object ChatLoop:
             println(s"list failed [${err.code}]: ${err.detail.take(160)}")
     }
 
-  /** :load <name> — replace the current conversation with a saved session. */
-  private def handleLoad(
-      historyRef: Ref[List[RequestMessage]],
-      name: String
-  ): Unit =
+  /** :load <name> — replace the current conversation with a saved session.
+    * RAI-155.b: the turn ledger and named checks are restored with it; a legacy
+    * conversation-only session loads read-only (empty ledger) and the reopen
+    * notices name that fact plus any saved-vs-active config mismatch explicitly
+    * (ADR-033 §5.3 — reopening never restores authority).
+    */
+  private def handleLoad(ctx: RunCtx, name: String): Unit =
     if name.isEmpty then println("usage: :load <name>")
     else
       zio.Unsafe.unsafe { implicit u =>
@@ -650,16 +748,84 @@ object ChatLoop:
           .run(SessionStore.load(SessionStore.defaultBase, name)) match
           case zio.Exit.Success(session) =>
             zio.Runtime.default.unsafe
-              .run(historyRef.set(session.messages))
+              .run(ctx.historyRef.set(session.messages))
+              .getOrThrow()
+            zio.Runtime.default.unsafe
+              .run(ctx.ledgerRef.set(session.turns.toVector))
+              .getOrThrow()
+            zio.Runtime.default.unsafe
+              .run(ctx.checksRef.set(session.checks))
+              .getOrThrow()
+            zio.Runtime.default.unsafe
+              .run(ctx.selectionRef.set(None))
               .getOrThrow()
             println(
-              s"loaded '$name': ${session.messages.size} messages " +
+              s"loaded '$name': ${session.messages.size} messages, " +
+                s"${session.turns.size} turn(s) " +
                 s"(saved ${session.timestamp}, model ${session.model})"
             )
+            TaskCommands
+              .restoreNotices(
+                session.turns,
+                ConfigRefs(ctx.workspacePath, ctx.provider, ctx.loop.model)
+              )
+              .foreach(n => println(s"  $n"))
           case zio.Exit.Failure(cause) =>
             cause.failures.headOption.foreach: err =>
               println(s"load failed [${err.code}]: ${err.detail.take(160)}")
       }
+
+  /** :task — explicit task marking and selection for workflow export
+    * (RAI-155.b, ADR-033 §4/§5/§11.1). Typeds refusals print with their
+    * structured detail; a successful select stores the immutable snapshot in
+    * `ctx.selectionRef` — the typed structure the renderer card consumes.
+    */
+  private def handleTask(ctx: RunCtx, rest: String): Unit =
+    zio.Unsafe.unsafe { implicit u =>
+      val runtime = zio.Runtime.default
+      def turns: Vector[TurnRecord] =
+        runtime.unsafe.run(ctx.ledgerRef.get).getOrThrow()
+      def checks: List[NamedCheck] =
+        runtime.unsafe.run(ctx.checksRef.get).getOrThrow()
+      // same bound formula as processMessageBody's model rounds
+      def maxRoundsBound: Int = math.min(ctx.limits.maxAttempts, 12)
+      TaskCommands.parse(rest) match
+        case TaskCommands.Usage(text) => println(text)
+        case TaskCommands.ListCmd     => println(TaskCommands.renderList(turns))
+        case TaskCommands.StatusCmd =>
+          val sel = runtime.unsafe.run(ctx.selectionRef.get).getOrThrow()
+          println(TaskCommands.renderStatus(turns, checks, sel))
+        case TaskCommands.Mark(n, kind) =>
+          runtime.unsafe
+            .run(TaskCommands.mark(ctx.ledgerRef, n, kind)) match
+            case zio.Exit.Success(()) =>
+              // selection (if any) predates this mark: it must be re-selected
+              // explicitly — never silently mutated
+              runtime.unsafe.run(ctx.selectionRef.set(None)).getOrThrow()
+              println(
+                s"marked turn #$n as ${kind.toLowerCase} (re-select the task to include it)"
+              )
+            case zio.Exit.Failure(cause) =>
+              cause.failures.headOption.foreach: err =>
+                println(s"task failed [${err.code}]: ${err.detail.take(160)}")
+        case TaskCommands.Check(name, argv) =>
+          runtime.unsafe
+            .run(TaskCommands.registerCheck(ctx.checksRef, name, argv)) match
+            case zio.Exit.Success(()) =>
+              println(s"check registered: $name = ${argv.mkString(" ")}")
+            case zio.Exit.Failure(cause) =>
+              cause.failures.headOption.foreach: err =>
+                println(s"task failed [${err.code}]: ${err.detail.take(160)}")
+        case TaskCommands.Select(n) =>
+          TaskCommands.select(turns.toList, checks, n, maxRoundsBound) match
+            case Left(err) =>
+              println(s"task refused [${err.code}]: ${err.detail.take(400)}")
+            case Right(sel) =>
+              runtime.unsafe
+                .run(ctx.selectionRef.set(Some(sel)))
+                .getOrThrow()
+              println(TaskCommands.renderSelection(sel))
+    }
 
   /** :fix — run the compile→errors→model-fix loop (Phase 4.1). */
   private def handleFix(
@@ -760,7 +926,7 @@ object ChatLoop:
       println(s"  tools: ${registry.names.mkString(", ")}")
       println(s"  workspace: ${workspace.getOrElse("CWD")}")
       println(
-        "  commands: :help :quit :clear :context :tools :trace :save :sessions :load"
+        "  commands: :help :quit :clear :context :tools :trace :save :sessions :load :task"
       )
       println()
 
@@ -779,6 +945,14 @@ object ChatLoop:
       |  :fix            run sbt compile; send errors to the model to fix (≤3 rounds)
       |  :pipe     sequential pipeline: :pipe scout("find") then worker("fix") then reviewer("check")
       |  :delegate fire-and-forget task: :delegate worker("fix the bug")
+      |  :task     explicit task marking/selection for workflow export:
+      |              :task list                          show the captured turn ledger
+      |              :task mark <n> <intent|refinement|ordinary>
+      |              :task select <n>                    select the last n turns (validated; typed refusals)
+      |              :task check <name> <argv tokens...> register a named trusted check (e.g. compile sbt --batch compile)
+      |              :task status                        export-readiness summary
+      |            (capture survives compaction and save/load; legacy
+      |            conversation-only sessions cannot be exported from)
       |Anything else is sent to the model with full conversation context.
       |The model can use tools (fs_read, fs_search, fs_edit, proc_run)
       |to work on files in your workspace.""".stripMargin)

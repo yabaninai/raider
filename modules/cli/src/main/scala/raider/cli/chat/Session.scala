@@ -16,6 +16,15 @@ import java.nio.file.{Files, Path, StandardCopyOption}
   * `label`. Documents without a `schemaVersion` field are v1 and are migrated
   * in memory on load (see [[SavedSession.decodeDocument]]). Newer documents are
   * never read silently — they fail with a typed error.
+  *
+  * Schema v3 (RAI-155.b, ADR-033 §5.2, ADDITIVE): the exportable turn ledger
+  * (`turns`) and user-registered named trusted checks (`checks`) are stored
+  * beside the message history. v1/v2 documents load unchanged with the new
+  * fields empty — they stay readable, but they carry no capture provenance, so
+  * export selection from them is a typed refusal (the ledger is the only
+  * export-provenance source; the product cannot invent absent execution
+  * records). A v3 document with a present-but-malformed ledger decodes as a
+  * typed corrupt-document error — never silently emptied.
   */
 final case class SavedSession(
     id: String,
@@ -24,7 +33,9 @@ final case class SavedSession(
     timestamp: String,
     schemaVersion: Int = SavedSession.SchemaVersion,
     workspace: Option[String] = None,
-    label: Option[String] = None
+    label: Option[String] = None,
+    turns: List[TurnRecord] = Nil,
+    checks: List[NamedCheck] = Nil
 )
 
 object SavedSession:
@@ -33,7 +44,7 @@ object SavedSession:
     * are migrated in memory to this version on load; writes always emit this
     * version.
     */
-  val SchemaVersion: Int = 2
+  val SchemaVersion: Int = 3
 
   given JsonCodec[RequestMessage] = DeriveJsonCodec.gen[RequestMessage]
   given JsonCodec[SavedSession] = DeriveJsonCodec.gen[SavedSession]
@@ -43,8 +54,9 @@ object SavedSession:
   /** Decode a stored session document with schema migration (RAI-077):
     *   - v1 documents (no `schemaVersion` field, or explicit `1`) are migrated
     *     in memory to the current version: `id`/`messages`/`model`/`timestamp`
-    *     are preserved and the newer optional fields default to `None`.
-    *   - current-version documents decode as-is.
+    *     are preserved and the newer optional fields default to empty/`None`.
+    *   - current-version documents decode as-is; a present-but-malformed turn
+    *     ledger is a typed decode error (never silently emptied).
     *   - any other `schemaVersion` (newer than this build understands, or not a
     *     positive integer) is a typed decode error — a document written by a
     *     different schema is never read silently.
@@ -63,6 +75,10 @@ object SavedSession:
           "upgrade Raider to load this session"
       )
       session <- ast.as[SavedSession]
+      _ <- TurnLedger
+        .validateTurnFields(session.turns)
+        .left
+        .map(err => s"corrupt turn ledger: $err")
     yield session.copy(schemaVersion = SchemaVersion)
 
   /** Schema version declared by the document; v1 documents predate the field
