@@ -115,7 +115,11 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
       url: String,
       server: HttpServer,
       requests: AtomicInteger,
-      hang: AtomicBoolean
+      hang: AtomicBoolean,
+      // Review round 1 (finding 3): the stand ASSERTS the credential on the
+      // wire — requests carrying exactly `Authorization: Bearer <StandKey>`
+      // are counted, and CWF-D01 asserts the per-launch delta.
+      authOk: AtomicInteger
   ):
     def stop(): Unit = server.stop(0)
     def requestCount: Int = requests.get
@@ -129,6 +133,7 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
   private def startStand(): StandHandle =
     val requests = new AtomicInteger(0)
     val hang = new AtomicBoolean(false)
+    val authOk = new AtomicInteger(0)
     val server = HttpServer.create(
       new InetSocketAddress(InetAddress.getLoopbackAddress, 0),
       0
@@ -140,6 +145,7 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
           requests.incrementAndGet()
           val auth =
             Option(ex.getRequestHeaders.getFirst("Authorization")).getOrElse("")
+          if auth == "Bearer " + StandKey then authOk.incrementAndGet()
           if hang.get then
             Thread.sleep(30000L)
             reply(ex, 200, sse(finalFrames))
@@ -160,7 +166,8 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
       "http://127.0.0.1:" + server.getAddress.getPort + "/v1",
       server,
       requests,
-      hang
+      hang,
+      authOk
     )
 
   private def reply(ex: HttpExchange, code: Int, body: Array[Byte]): Unit =
@@ -346,6 +353,7 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
         ZIO.serviceWithZIO[LaunchEnv] { env =>
           val build = env.build
           val countBefore = env.stand.requestCount
+          val authBefore = env.stand.authOk.get()
           val wsA = freshWorkspace()
           val wsB = freshWorkspace()
           val inA =
@@ -403,7 +411,12 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
               Files.exists(wsB.resolve("marker.txt")),
               // 2 model rounds x 2 launches through the SAME stand
               // (per-test delta: the stand is shared across the suite).
-              env.stand.requestCount - countBefore == 4
+              env.stand.requestCount - countBefore == 4,
+              // Review round 1 (finding 3): the key is ASSERTED on the wire —
+              // ALL 4 model rounds of BOTH launchers carried exactly
+              // `Authorization: Bearer stand-key-155d` (env -> credential ->
+              // backend header).
+              env.stand.authOk.get() - authBefore == 4
             )
         }
       },

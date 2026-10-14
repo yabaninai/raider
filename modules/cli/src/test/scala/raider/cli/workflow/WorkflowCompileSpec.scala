@@ -18,7 +18,7 @@ import raider.dsl.workflow.{
 }
 
 import java.nio.charset.StandardCharsets
-import java.nio.file.{Files, Path}
+import java.nio.file.{Files, Path, Paths}
 import scala.jdk.CollectionConverters.*
 
 /** RAI-155.d `raider compile` gate (CWF-D01/D02 compile leg):
@@ -36,6 +36,13 @@ import scala.jdk.CollectionConverters.*
   *     existing EMPTY --out is accepted; a tampered classes directory fails the
   *     identity verification; a stale --source (edited after compile) fails the
   *     stale-build check.
+  *   - Review round 1 (finding 2): the case-collision detector's refusal
+  *     branches are covered DETERMINISTICALLY at the package-private
+  *     `verifyMainNotCollided` seam (crafted staging `classes/` dirs — the real
+  *     collision shape cannot be produced through the public entry because
+  *     dotc's write order decides it), plus the positive no-collision path
+  *     through the public `compile` entry. The wrong-name crafted classfile
+  *     reproduces the on-disk shape the macOS collision leaves behind.
   *
   * Compile runs are real (each ~10-30 s); the suite keeps the dotc count at the
   * minimum that proves the contract (one green, one red).
@@ -103,6 +110,32 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
 
   private def sha256(path: Path): String =
     WorkflowBuildIdentity.sha256Hex(Files.readAllBytes(path))
+
+  /** A REAL compiled classfile from this run's classpath, for the collision
+    * seam: its bytes define a binary name different from any crafted
+    * `<stem>.class` name we copy it under — exactly the on-disk shape the macOS
+    * case collision leaves behind (deterministic; no reliance on dotc write
+    * order).
+    */
+  private def anyRealClassFile: Path =
+    val dir =
+      classOf[
+        WorkflowBuildIdentity
+      ].getProtectionDomain.getCodeSource.getLocation
+    val p = Paths
+      .get(dir.toURI)
+      .resolve("raider/cli/workflow/WorkflowBuildIdentity.class")
+    if !Files.isRegularFile(p) then
+      throw new IllegalStateException(s"expected a real classfile at $p")
+    p
+
+  private def seamStaging(work: Path, stem: String)(
+      populate: Path => Unit
+  ): Path =
+    val staging = work.resolve(stem + ".staging")
+    Files.createDirectories(staging.resolve("classes"))
+    populate(staging.resolve("classes"))
+    staging
 
   // ----- spec ----------------------------------------------------------------
 
@@ -301,6 +334,92 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
             fresh.isRight,
             tampered.fold(_.code == "RA-INP", _ => false),
             stale
+          )
+        }
+      },
+      test(
+        "review fix 2a: a collision-shaped <stem>.class (exact-case entry whose bytes define ANOTHER class) is a typed RA-COMPILE refusal — the branch the real case collision takes (seam; deterministic)"
+      ) {
+        // The real macOS collision leaves <stem>.class containing the OBJECT
+        // mirror (a different binary name). Class.forName then fails with
+        // NoClassDefFoundError (wrong name) — the JVM's defineClass name
+        // contract — so the refusal surfaces through verifyMainNotCollided's
+        // typed attempt-mapping. Crafted deterministically here: a real
+        // classfile copied under the derived main-class file name.
+        val work = Files.createTempDirectory("c155d-collide")
+        val staging = seamStaging(work, "wf155d_seam") { classes =>
+          Files.copy(anyRealClassFile, classes.resolve("wf155d_seam.class"))
+        }
+        WorkflowCompile
+          .verifyMainNotCollided(staging, "wf155d_seam")
+          .either
+          .map { r =>
+            assertTrue(
+              r.fold(_.code == "RA-COMPILE", _ => false),
+              r.fold(
+                _.detail.contains("cannot verify the launchable main"),
+                _ => false
+              )
+            )
+          }
+      },
+      test(
+        "review fix 2b: an exact-case <stem>.class entry that yields NO loadable class is the typed ClassNotFoundException refusal branch (seam; deterministic)"
+      ) {
+        // A broken symlink is listed by the exact-case scan but cannot be
+        // resolved to class bytes: URLClassLoader.findClass turns that into
+        // ClassNotFoundException, driving the typed "exists but does not
+        // define" refusal branch.
+        val work = Files.createTempDirectory("c155d-cnfe")
+        val staging = seamStaging(work, "wf155d_seam") { classes =>
+          Files.createSymbolicLink(
+            classes.resolve("wf155d_seam.class"),
+            classes.resolve("missing-target.class")
+          )
+        }
+        WorkflowCompile
+          .verifyMainNotCollided(staging, "wf155d_seam")
+          .either
+          .map { r =>
+            assertTrue(
+              r.fold(_.code == "RA-COMPILE", _ => false),
+              r.fold(
+                _.detail.contains("exists but does not define"),
+                _ => false
+              )
+            )
+          }
+      },
+      test(
+        "review fix 2c: NO collision — the compile proceeds (positive branch through the public entry): the exact-case main class is present, defines the derived name, and the build publishes"
+      ) {
+        val rendered = ChatWorkflowRenderer
+          .render(
+            probe,
+            RenderOptions("wf155d_pos")
+          )
+          .fold(e => throw new IllegalStateException(e.detail), identity)
+        // Fixture edit: rename the OBJECT away from the case pair (its token
+        // also covers the .runLauncher reference). The @main classfile
+        // wf155d_pos.class then has no colliding mirror, so the collision
+        // detector's POSITIVE path (exact entry found, class loads, name
+        // matches) must let the build publish.
+        val edited = rendered.source.replace("Wf155d_pos", "Wf155dPos")
+        if edited == rendered.source ||
+          !edited.contains("object Wf155dPos") ||
+          !edited.contains("Wf155dPos.runLauncher")
+        then throw new IllegalStateException("object rename edit did not apply")
+        val work = Files.createTempDirectory("c155d-pos")
+        val src = writeSource(work, "wf155d_pos.scala", edited)
+        val out = work.resolve("build")
+        WorkflowCompile.compile(WorkflowCompile.Args(src, out)).map { _ =>
+          val mainClassFile = out.resolve("classes").resolve("wf155d_pos.class")
+          assertTrue(
+            Files.isDirectory(out.resolve("classes")),
+            // The exact-case entry exists, so verifyMainNotCollided really
+            // executed its Class.forName name check (not the early-out).
+            Files.isRegularFile(mainClassFile),
+            Files.isRegularFile(out.resolve("build-identity.json"))
           )
         }
       }

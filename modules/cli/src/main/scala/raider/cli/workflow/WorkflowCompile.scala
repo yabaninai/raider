@@ -163,7 +163,15 @@ object WorkflowCompile:
     * source (the launcher main is then their own name; the run path derives
     * only the module class from the file stem).
     */
-  private def verifyMainNotCollided(
+  /** Package-private for the deterministic WorkflowCompileSpec seam (review
+    * round 1, finding 2): the collision-shaped staging directories the refusal
+    * branches need cannot be produced deterministically through the public
+    * `compile` entry (dotc's write order decides the real collision), so the
+    * spec drives this check directly with crafted `classes/` dirs. No behavior
+    * change: the positive no-collision path is additionally covered through the
+    * public entry.
+    */
+  private[workflow] def verifyMainNotCollided(
       staging: Path,
       mainClass: String
   ): ZIO[Any, RaiderError, Unit] =
