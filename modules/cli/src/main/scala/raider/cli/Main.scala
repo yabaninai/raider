@@ -98,6 +98,19 @@ object Main:
       )
     else None
 
+  /** RAI-155.d: `compile ...` / `workflow run ...` routing BEFORE the run/chat
+    * parsing (the plugin-command discipline: workflow arguments must never be
+    * interpreted as run/chat flags). Returns None when argv targets neither, so
+    * chat/run fall through unchanged.
+    */
+  def workflowCommand(argv: Array[String]): Option[Int] =
+    argv.toList match
+      case "compile" :: rest =>
+        Some(raider.cli.workflow.WorkflowCompile.command(rest))
+      case "workflow" :: rest =>
+        Some(raider.cli.workflow.WorkflowRun.command(rest))
+      case _ => None
+
   def main(argv: Array[String]): Unit =
     // RAI-083: `plugin ...` dispatch happens BEFORE the run/chat parsing.
     pluginCommand(argv, PluginCli.defaultPluginsDir()) match
@@ -105,6 +118,15 @@ object Main:
         System.out.println(line)
         // System.exit does not flush piped stdout: flush explicitly
         System.out.flush()
+        System.exit(code)
+      case None => () // fall through to the unchanged chat/run paths below
+
+    // RAI-155.d: `compile` / `workflow run` dispatch — same pre-parse slot.
+    workflowCommand(argv) match
+      case Some(code) =>
+        // System.exit does not flush piped stdout: flush explicitly
+        System.out.flush()
+        System.err.flush()
         System.exit(code)
       case None => () // fall through to the unchanged chat/run paths below
 
