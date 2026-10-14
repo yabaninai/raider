@@ -96,7 +96,12 @@ object ChatLoop:
       hub: EventHub,
       manager: JobManager,
       root: RootId,
-      sink: String => zio.UIO[Unit]
+      sink: String => zio.UIO[Unit],
+      // RAI-160: the session's non-secret transport base-URL reference
+      // (ADR-033 §5.1 configRefs discipline — a reference, never a credential);
+      // carried into the export origin. Defaulted so existing test
+      // constructions compile unchanged.
+      baseUrl: String = ""
   )
 
   def run(
@@ -231,7 +236,8 @@ object ChatLoop:
         hub,
         manager,
         root,
-        sink = line => ZIO.succeed(writer.statusLine(line))
+        sink = line => ZIO.succeed(writer.statusLine(line)),
+        baseUrl = baseUrl
       )
       exitCode <- repl(ctx)
     yield exitCode
@@ -343,6 +349,9 @@ object ChatLoop:
                 handleDelegate(ctx, spec)
               case cmd if cmd.startsWith(":task") =>
                 handleTask(ctx, cmd.drop(5).trim)
+              case cmd if cmd.startsWith(":export-workflow") =>
+                exportWorkflow(ctx, cmd.drop(":export-workflow".length).trim)
+                  .foreach(println)
               case ":clear" =>
                 zio.Runtime.default.unsafe
                   .run(ctx.historyRef.set(List.empty))
@@ -829,6 +838,31 @@ object ChatLoop:
               println(TaskCommands.renderSelection(sel))
     }
 
+  /** :export-workflow — wire the stored selection snapshot through the RAI-160
+    * adapter into `ChatWorkflowExport.exportTo` (RAI-155.c; ADR-033 §6 export
+    * semantics, §8 typed refusals). Console-adapter discipline: the handler is
+    * a thin blocking printer over `ExportWorkflowCommand.execute`, which
+    * returns the exact lines (the same path the fixtures drive). Export
+    * dispatches nothing agent-shaped — it renders text and writes files
+    * (staging + rename, R5 discipline inherited).
+    */
+  private[chat] def exportWorkflow(ctx: RunCtx, rest: String): Vector[String] =
+    zio.Unsafe.unsafe { implicit u =>
+      val runtime = zio.Runtime.default
+      val selection = runtime.unsafe.run(ctx.selectionRef.get).getOrThrow()
+      val ledgerSize =
+        runtime.unsafe.run(ctx.ledgerRef.get.map(_.size)).getOrThrow()
+      ExportWorkflowCommand.execute(
+        selection = selection,
+        ledgerSize = ledgerSize,
+        sessionId = ctx.root.value,
+        chatProvider = ctx.provider,
+        model = ctx.loop.model,
+        baseUrl = ctx.baseUrl,
+        argLine = rest
+      )
+    }
+
   /** :fix — run the compile→errors→model-fix loop (Phase 4.1). */
   private def handleFix(
       loop: AgentLoop,
@@ -928,7 +962,7 @@ object ChatLoop:
       println(s"  tools: ${registry.names.mkString(", ")}")
       println(s"  workspace: ${workspace.getOrElse("CWD")}")
       println(
-        "  commands: :help :quit :clear :context :tools :trace :save :sessions :load :task"
+        "  commands: :help :quit :clear :context :tools :trace :save :sessions :load :task :export-workflow"
       )
       println()
 
@@ -955,6 +989,11 @@ object ChatLoop:
       |              :task status                        export-readiness summary
       |            (capture survives compaction and save/load; legacy
       |            conversation-only sessions cannot be exported from)
+      |  :export-workflow [--out <dir>] [--name <name>] [--target-path <path>] [--summary <text>]
+      |            export the selected task snapshot as an editable workflow
+      |            (staging+rename, never overwrites; typed refusals; the
+      |            artifact compiles with 'raider compile' and runs with
+      |            'raider workflow run')
       |Anything else is sent to the model with full conversation context.
       |The model can use tools (fs_read, fs_search, fs_edit, proc_run)
       |to work on files in your workspace.""".stripMargin)
