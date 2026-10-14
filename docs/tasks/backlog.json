@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 170,
+  "raider_count": 171,
   "companion_count": 3,
   "cards": [
     {
@@ -5101,6 +5101,37 @@
       },
       "non_goals": "Exit-table changes beyond the honest RA-JOURNAL mapping, hub/wire changes, masking via catch-all exits.",
       "context": "RAI-155.d review round 2 (approve): 'the unwritable--out defect is live until the follow-up card lands — CI consumers keying on exit codes will misclassify'; limitations #8 documents the exact code path."
+    },
+    {
+      "id": "RAI-160",
+      "title": "Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.b",
+        "RAI-155.c"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/workflow/**",
+        "modules/dsl/src/main/scala/raider/dsl/workflow/**",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "Owner-flagged gap (2026-10-14): ChatWorkflowExport.exportTo (dsl) and :task select (cli, RAI-155.b) exist but NOTHING connects them — there is no export command and no TaskSelection-to-StsSelection adapter, so the chat cannot produce the editable workflow. Wire it: (1) cli-side adapter TaskSelection snapshot -> dsl StsSelection (pure mapping: intent/refinements/params/checks/agent stage; bounded request text flows as the payload-free reason/intent source per ADR-033 §2.5 discipline; no payloads inlined beyond the STS shape); (2) chat command :export-workflow [--out <dir>] (proposal now implemented) dispatching through the adapter to ChatWorkflowExport.exportTo — staging+rename discipline, R5 refusals inherited, typed errors surfaced; (3) the exported artifact compiles via the EXISTING raider compile (chain gate: select -> export -> compile -> workflow run smoke on a scripted policy); NO pre-written example stands in for the generated output; (4) deterministic export x2 byte-identical; escape/refusal disciplines inherited from the renderer (secret-bearing selection still refused R4 at the adapter boundary too).",
+      "acceptance": {
+        "normal": "EW-01: real chat capture fixture (TaskCaptureSpec pattern) -> :task mark/select -> :export-workflow -> the artifact compiles (pinned dotc) and is byte-identical on re-export; NO pre-baked example is involved (the fixture builds the selection from captured turns).",
+        "error": "EW-02: export refusals typed end-to-end (legacy session R2, secret-bearing R4, staging R5); no silent partial writes.",
+        "concurrency": "EW-03: export during active streaming does not corrupt the ledger or the artifact (staging+rename); concurrent exports to distinct out-dirs isolated; suites green x3."
+      },
+      "non_goals": "Renderer changes beyond what the adapter genuinely requires (contract-change request instead), compile/run behavior changes (RAI-155.d surface consumed as-is), live providers, wire changes.",
+      "context": "Owner directive 2026-10-14: 'export is not connected to ChatLoop... register a separate wiring card... execute it before RAI-155.e'. RAI-155.b (selection+ledger) and RAI-155.c (generator) accepted; the adapter+command are the missing link."
     }
   ]
 }

@@ -989,3 +989,27 @@ Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-160: Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c.
+
+**Scenario and contract.** Owner-flagged gap (2026-10-14): ChatWorkflowExport.exportTo (dsl) and :task select (cli, RAI-155.b) exist but NOTHING connects them — there is no export command and no TaskSelection-to-StsSelection adapter, so the chat cannot produce the editable workflow. Wire it: (1) cli-side adapter TaskSelection snapshot -> dsl StsSelection (pure mapping: intent/refinements/params/checks/agent stage; bounded request text flows as the payload-free reason/intent source per ADR-033 §2.5 discipline; no payloads inlined beyond the STS shape); (2) chat command :export-workflow [--out <dir>] (proposal now implemented) dispatching through the adapter to ChatWorkflowExport.exportTo — staging+rename discipline, R5 refusals inherited, typed errors surfaced; (3) the exported artifact compiles via the EXISTING raider compile (chain gate: select -> export -> compile -> workflow run smoke on a scripted policy); NO pre-written example stands in for the generated output; (4) deterministic export x2 byte-identical; escape/refusal disciplines inherited from the renderer (secret-bearing selection still refused R4 at the adapter boundary too).
+
+**Context.** Owner directive 2026-10-14: 'export is not connected to ChatLoop... register a separate wiring card... execute it before RAI-155.e'. RAI-155.b (selection+ledger) and RAI-155.c (generator) accepted; the adapter+command are the missing link.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/chat/**` `modules/cli/src/test/scala/raider/cli/chat/**` `modules/cli/src/test/scala/raider/cli/workflow/**` `modules/dsl/src/main/scala/raider/dsl/workflow/**` `modules/dsl/src/test/scala/raider/dsl/workflow/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: EW-01: real chat capture fixture (TaskCaptureSpec pattern) -> :task mark/select -> :export-workflow -> the artifact compiles (pinned dotc) and is byte-identical on re-export; NO pre-baked example is involved (the fixture builds the selection from captured turns).
+- Error/adversarial: EW-02: export refusals typed end-to-end (legacy session R2, secret-bearing R4, staging R5); no silent partial writes.
+- Cancellation/concurrency: EW-03: export during active streaming does not corrupt the ledger or the artifact (staging+rename); concurrent exports to distinct out-dirs isolated; suites green x3.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Renderer changes beyond what the adapter genuinely requires (contract-change request instead), compile/run behavior changes (RAI-155.d surface consumed as-is), live providers, wire changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
