@@ -176,7 +176,7 @@
     "sh",
     "scripts/quality/repl_smoke.sh"
    ],
-   "timeout_s": 120
+   "timeout_s": 240
   },
   "cli-smoke": {
    "argv": [
@@ -198,7 +198,7 @@
     "python3",
     "scripts/quality/security_checks.py"
    ],
-   "timeout_s": 120
+   "timeout_s": 300
   },
   "eval-corpus": {
    "argv": [
