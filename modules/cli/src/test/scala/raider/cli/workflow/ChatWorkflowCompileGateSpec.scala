@@ -52,6 +52,12 @@ import scala.util.control.NonFatal
   *     `\xHH` lexically inert inside `//` comments only, and a torn object
   *     header honestly does NOT compile (timeout/IO is never counted as
   *     non-compilation evidence).
+  *   - WNF-01 (RAI-158): the pinned-dotc compile emits ZERO class-overwrite
+  *     warnings on this case-insensitive filesystem (the log is read — the
+  *     warning does not fail compilation), no two emitted class files collide
+  *     ignoring case, and the generated @main launcher really LAUNCHES as a
+  *     plain main (typed RA-INP failure on a missing input — the local-launch
+  *     leg RAI-155.d found unreliable under the old case-mirror naming).
   *   - Behavior probes on the LOADED artifact (child classloader, parent = this
   *     test JVM, so raider/zio classes resolve from the same product classes
   *     the compiler ran against): (1) zero-dispatch laziness — an invalid input
@@ -572,11 +578,94 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
         assertTrue(
           rendered.source.contains("object Fix_widget_task:"),
           rendered.source.contains(
-            "@main def fix_widget_task(args: String*): Unit ="
+            "@main def runFix_widget_task(args: String*): Unit ="
           ),
           manifestOk,
           inputOk,
           Files.exists(path)
+        )
+      },
+      test(
+        "WNF-01 (RAI-158): pinned-dotc compile emits ZERO class-overwrite warnings on this case-insensitive FS, no two emitted classes collide ignoring case, and the @main launcher LAUNCHES (typed RA-INP on a missing input)"
+      ) {
+        val rendered = renderOrThrow(probe, probeOptions)
+        val path = requireRight(
+          writeRender("wnf01", rendered.source),
+          "write wnf01 render"
+        )
+        requireExit0(dotc("wnf01", path, "out-wnf01"), "wnf01 compile")
+        // ZERO class-overwrite warnings: the RAI-155.d finding was dotc's
+        // "Generated class X differs only in case from y" warning pair, which
+        // does NOT fail compilation — the gate must read the log, not the
+        // exit code.
+        val logLines =
+          Files
+            .readAllLines(
+              compileDir.resolve("wnf01.dotc.log"),
+              StandardCharsets.UTF_8
+            )
+            .asScala
+            .toVector
+        val caseWarnings =
+          logLines.filter(_.contains("differs only in case")).toVector
+        // Exact-case tripwire over the produced classes: no two emitted
+        // class files may collide ignoring case (a naive Files.exists check
+        // false-positives on this case-insensitive filesystem — the
+        // WorkflowCompile exact-case-scan discipline).
+        val outDir = compileDir.resolve("out-wnf01")
+        val walk = Files.list(outDir)
+        val classFiles =
+          try
+            walk
+              .iterator()
+              .asScala
+              .filter(p => p.toString.endsWith(".class"))
+              .toVector
+          finally walk.close()
+        val byLower =
+          classFiles.groupBy(p => p.getFileName.toString.toLowerCase)
+        val collided = byLower
+          .collect {
+            case (k, v) if v.sizeIs > 1 =>
+              k + " -> " + v.map(_.getFileName.toString).mkString(", ")
+          }
+          .toVector
+          .sorted
+        val launcherClassPresent =
+          classFiles.exists(_.getFileName.toString == "runCwf_gate_probe.class")
+        // Launch-the-main assertion (the leg RAI-155.d found unreliable under
+        // the collision): run the compiled @main entry as a PLAIN main. The
+        // input path does not exist, so the launcher must fail TYPED at the
+        // input boundary — exit 1 with the `raider RA-INP` line on the merged
+        // output — before any credential/provider contact. If the case pair
+        // had eaten the launcher class, the child dies untyped with
+        // "Could not find or load main class" and no raider line.
+        val missingInput =
+          compileDir.resolve("wnf01-no-such-input.json")
+        Files.deleteIfExists(missingInput)
+        val pb = new ProcessBuilder(
+          Vector(
+            "java",
+            "-cp",
+            userClasspath + File.pathSeparator + outDir,
+            "runCwf_gate_probe",
+            missingInput.toString
+          )*
+        )
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        val finished = proc.waitFor(120, TimeUnit.SECONDS)
+        val exit = if finished then proc.exitValue() else -1
+        val output =
+          new String(proc.getInputStream.readAllBytes, StandardCharsets.UTF_8)
+        if !finished then proc.destroyForcibly()
+        assertTrue(
+          caseWarnings.isEmpty,
+          collided.isEmpty,
+          launcherClassPresent,
+          finished,
+          exit == 1,
+          output.contains("raider RA-INP")
         )
       },
       test(

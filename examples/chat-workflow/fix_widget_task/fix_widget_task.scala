@@ -409,7 +409,7 @@ object Fix_widget_task:
         1
     }
 
-@main def fix_widget_task(args: String*): Unit =
+@main def runFix_widget_task(args: String*): Unit =
   // Option L launcher: explicit main binding CURRENT env/config at run
   // time; authority is never inherited from the exporting chat session
   // (ADR-033 §7). Exit 0 = checks green on the new workspace; nonzero =
