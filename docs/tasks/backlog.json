@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 169,
+  "raider_count": 170,
   "companion_count": 3,
   "cards": [
     {
@@ -5073,6 +5073,34 @@
       },
       "non_goals": "Launch route changes (RAI-155.d decided CLI-internal), wire changes, junit/model-round-event extensions (separate follow-ups), Task/Program changes.",
       "context": "RAI-155.d finding: `raider compile` detects and refuses the collision typed (RA-COMPILE) with actionable guidance; .d fixtures use the @main rename edit surface. Before .e freezes unedited-flow fixtures the renderer must emit non-colliding names."
+    },
+    {
+      "id": "RAI-159",
+      "title": "WorkflowRun unwritable-output typed failure (EventsJsonlWriter open ordering) + dead-branch simplification",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.d"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/workflow/**",
+        "modules/cli/src/test/scala/raider/cli/workflow/**",
+        "modules/cli/src/main/scala/raider/cli/run/EventsJsonlWriter.scala"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "RAI-155.d review round 2 surfaced two follow-ups: (1) LIVE DEFECT — `workflow run` with an unwritable parent --out dies untyped (in-process AccessDeniedException defect; subprocess exit 1 with raw stack, outside the §8 exit table, no truthful run.json/events): EventsJsonlWriter.open (:214) shadows the typed RA-JOURNAL probe (:278-287). Fix: open the events writer AFTER the typed createDirectories/write probe, add the named read-only-parent test asserting RA-JOURNAL/27 with truthful absence-of-artifacts; (2) simplify the dead defensive branch WorkflowCompile.scala:192-201 (defineClass name-contract makes it unreachable — RAI-155.d round-2 verified) or pin it with a comment; keep the reachable refusal tests green.",
+      "acceptance": {
+        "normal": "UO-01: read-only parent --out → typed RA-JOURNAL exit 27 with honest run.json absence documented; the named test green; x3.",
+        "error": "UO-02: writable path unchanged (existing workflow suites green); delegation-free v1 pins untouched.",
+        "concurrency": "UO-03: dead-branch disposition recorded (simplify or pin with justification); WorkflowCompileSpec suite green x3."
+      },
+      "non_goals": "Exit-table changes beyond the honest RA-JOURNAL mapping, hub/wire changes, masking via catch-all exits.",
+      "context": "RAI-155.d review round 2 (approve): 'the unwritable--out defect is live until the follow-up card lands — CI consumers keying on exit codes will misclassify'; limitations #8 documents the exact code path."
     }
   ]
 }

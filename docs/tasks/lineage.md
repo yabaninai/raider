@@ -965,3 +965,27 @@ Status: ready. Milestone: LIN. Dependencies: RAI-155.c, RAI-155.d.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-159: WorkflowRun unwritable-output typed failure (EventsJsonlWriter open ordering) + dead-branch simplification
+
+Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
+
+**Scenario and contract.** RAI-155.d review round 2 surfaced two follow-ups: (1) LIVE DEFECT — `workflow run` with an unwritable parent --out dies untyped (in-process AccessDeniedException defect; subprocess exit 1 with raw stack, outside the §8 exit table, no truthful run.json/events): EventsJsonlWriter.open (:214) shadows the typed RA-JOURNAL probe (:278-287). Fix: open the events writer AFTER the typed createDirectories/write probe, add the named read-only-parent test asserting RA-JOURNAL/27 with truthful absence-of-artifacts; (2) simplify the dead defensive branch WorkflowCompile.scala:192-201 (defineClass name-contract makes it unreachable — RAI-155.d round-2 verified) or pin it with a comment; keep the reachable refusal tests green.
+
+**Context.** RAI-155.d review round 2 (approve): 'the unwritable--out defect is live until the follow-up card lands — CI consumers keying on exit codes will misclassify'; limitations #8 documents the exact code path.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/workflow/**` `modules/cli/src/test/scala/raider/cli/workflow/**` `modules/cli/src/main/scala/raider/cli/run/EventsJsonlWriter.scala` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: UO-01: read-only parent --out → typed RA-JOURNAL exit 27 with honest run.json absence documented; the named test green; x3.
+- Error/adversarial: UO-02: writable path unchanged (existing workflow suites green); delegation-free v1 pins untouched.
+- Cancellation/concurrency: UO-03: dead-branch disposition recorded (simplify or pin with justification); WorkflowCompileSpec suite green x3.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Exit-table changes beyond the honest RA-JOURNAL mapping, hub/wire changes, masking via catch-all exits.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
