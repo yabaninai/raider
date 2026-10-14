@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "workspace": "/absolute/path/to/fresh-workspace-copy",
+  "task": {
+    "targetPath": "src/main/scala/widget/Widget.scala",
+    "summary": "Widget.scala does not compile after the 0.4 refactor"
+  }
+}

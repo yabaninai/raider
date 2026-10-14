@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "kind": "chat-workflow-export",
+  "generator": "raider 0.1.0-SNAPSHOT",
+  "launcherTemplate": "explicit-assembly",
+  "source": {
+    "sessionId": "sess-20261014-fix-widget",
+    "turnIds": ["t1", "t2", "t3"],
+    "specDigest": "sha256-97bf8c34ed9f01f7c38ccae750499e0270a1190fe41a4432ba2ada61a4362883"
+  },
+  "buildIdentity": {
+    "sourceDigest": "sha256-f9cf0b8db8674f8d1dfe0ca39aafd3d0d3aab203c38faa470cd8e4656a259a13"
+  },
+  "origin": {
+    "providerKind": "openai-compatible",
+    "model": "mock-coder",
+    "baseUrl": "http://127.0.0.1:8901/v1"
+  },
+  "params": {
+    "targetPath": "src/main/scala/widget/Widget.scala",
+    "summary": "Widget.scala does not compile after the 0.4 refactor"
+  },
+  "checks": [
+    {
+      "name": "compile",
+      "argv": ["sbt", "--batch", "compile"]
+    },
+    {
+      "name": "widget-tests",
+      "argv": ["sbt", "--batch", "widget/test"]
+    }
+  ],
+  "note": "manifest describes provenance only; it is never executed (ADR-033 §6.4)"
+}
