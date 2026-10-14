@@ -1,6 +1,8 @@
 # RAI-155.c: work record — deterministic chat-workflow GENERATOR
 
-Status: done (card-scope deliverable complete; independent review required).
+Status: done (card-scope deliverable complete; independent review returned
+changes-required — 1 MAJOR + 2 minor; all three fixes applied and re-gated,
+see "Review and next task").
 Date: 2026-10-14 UTC. Baseline: `b9f9c8f` (clean worktree `wt/rai-155c`,
 branch `lane/rai-155c`, matching main HEAD at start). Worker: visible lane
 spawn. No shared files, no wire changes, no ADR-031 renderer changes, no
@@ -112,7 +114,7 @@ package (new module-internal surface; frozen APIs untouched).
 | Criterion / test ID | Actual result | Evidence |
 | --- | --- | --- |
 | CWF-C01 (representative STS → deterministic editable Scala compiling under pinned dotc 3.9.0; second task/workspace input; identical spec renders stable output) | `ChatWorkflowCompileGateSpec` green: representative export compiles exit 0; repeat render byte-identical and re-compiles exit 0; loaded artifact runs an input-dependent check differently per workspace input; `ChatWorkflowRendererSpec` determinism tests green | `modules/cli/target/chat-workflow-compile/*.dotc.log`, gate spec `raider.cli.workflow.ChatWorkflowCompileGateSpec` |
-| packet CWF-C02 (edits to externalized parameters change runtime behavior WITHOUT regeneration; manifest documents the parameter surfaces) | Same compiled artifact, edited SOURCE constant `List("/usr/bin/true")` → `List("/usr/bin/false")` recompiles and flips the check outcome; same artifact, different input JSON flips the marker check (read at execution) | `ChatWorkflowCompileGateSpec` probe test (edit-without-regeneration + second-input assertions) |
+| packet CWF-C02 (edits to externalized parameters change runtime behavior WITHOUT regeneration; manifest documents the parameter surfaces) | Flip driven by the COMPILED constants (review-fix): generated `runAllChecks` over `trustedChecks` on a marker-present workspace — original artifact green, edited SOURCE constant `List("/usr/bin/true")` → `List("/usr/bin/false")` recompiles and fails its own "pass" check (typed `OutputValidation`, "exit code 1"); NEGATIVE CONTROL proven: with the edit temporarily reverted the probe FAILS (`editApplied` and `editedRed` false) — no hand-passed argv in this probe; same artifact, different input JSON flips the marker check (read at execution) | `ChatWorkflowCompileGateSpec` probe test (edit-without-regeneration + second-input assertions) |
 | packet CWF-C03 / canonical CWF-C02 (hostile strings compile; secret-bearing selection refused; zero implicit dispatch probe) | Hostile export (U+0001/U+0002/U+0003/U+0005, DEL, quotes, newlines, `rm -rf` injection text) compiles exit 0 with `\uXXXX` literals and `\xHH` only in `//` comments; R4 refusal never echoes the value; sentinel-backend probe: invalid input fails typed at the decode boundary with the backend NEVER touched, valid input reaches the agent stage (backend touched, typed `ProviderUnavailable`) | `ChatWorkflowCompileGateSpec` hostile + probe tests; `ChatWorkflowRendererSpec` R4 test |
 | canonical CWF-C03 (concurrent exports don't overwrite; interruption leaves identifiable incomplete output; export/compile cannot redispatch) | Target-keyed staging + rename: existing target refused, leftover staging refused with remnant message, missing parent refused; renderer/export are pure (no dispatch surface) and the sentinel probe proves no dispatch from construction | `ChatWorkflowRendererSpec` exportTo tests; `ChatWorkflowCompileGateSpec` probe test |
 | Required gates | `make quality-changed` exit 0; `make quality-changed QUALITY_EXECUTE=1` status=passed (all checks exit 0); `make quality-profile PROFILES="static unit contracts"` status=passed | artifacts/quality manifests listed under Commands |
@@ -126,25 +128,30 @@ package (new module-internal surface; frozen APIs untouched).
 | `make quality-changed QUALITY_EXECUTE=1` | 0 (status=passed; core-contracts-spec/compile-fixtures/plan-validate/sbt-compile/scalafmt-check/sbt-test all exit=0) | `artifacts/quality/20261014-024253-24207-0001/manifest.json` |
 | `make quality-profile PROFILES="static unit contracts"` | 0 (status=passed) | `artifacts/quality/20261014-024729-29342-0001/manifest.json` |
 | `sbt raiderDsl/Test/testOnly raider.dsl.workflow.ChatWorkflowRendererSpec` (post-format rerun) | 0 — 10 passed / 0 failed | lane terminal capture |
-| `sbt raiderCli/Test/testOnly raider.cli.workflow.ChatWorkflowCompileGateSpec` (post-format rerun) | 0 — 4 passed / 0 failed; dotc exit 0 ×3 (representative, repeat, hostile, probe, edited) and torn-header negative exit != 0 | `modules/cli/target/chat-workflow-compile/*.dotc.log`, lane terminal capture |
+| `sbt raiderCli/Test/testOnly raider.cli.workflow.ChatWorkflowCompileGateSpec` (post-format rerun) | 0 — 4 passed / 0 failed; dotc exit 0 ×5 (representative, repeat, hostile, probe, edited) and torn-header negative exit != 0 | `modules/cli/target/chat-workflow-compile/*.dotc.log`, lane terminal capture |
+| `sbt --batch "raiderCli/testOnly raider.cli.workflow.ChatWorkflowCompileGateSpec"` (review fix: probe 3 driven by compiled `trustedChecks` via generated `runAllChecks`) | 0 — 4 passed / 0 failed; dotc exit 0 ×5 + torn-header negative exit != 0 | lane terminal capture; `modules/cli/target/chat-workflow-compile/*.dotc.log` |
+| `sbt --batch "raiderCli/testOnly raider.cli.workflow.ChatWorkflowCompileGateSpec"` (NEGATIVE CONTROL: source edit temporarily reverted in the probe — replacement made a no-op) | 1 — 3 passed / 1 failed: probe test RED, `editApplied` and `editedRed` both false (run-level flip assertion catches the reverted edit); `originalAllGreen` stayed true | lane terminal capture (temporary patch reverted immediately after; not committed) |
+| `make quality-changed` (review-fix tree) | 0 — profiles `contracts, static, unit` | lane terminal capture |
+| `make quality-changed QUALITY_EXECUTE=1` (review-fix tree, final fingerprint) | 0 (status=passed; core-contracts-spec/compile-fixtures/sbt-compile/scalafmt-check/sbt-test all exit=0) | `artifacts/quality/20261014-032817-80324-0001/manifest.json` |
+| `sbt --batch "raiderCli/testOnly raider.cli.workflow.ChatWorkflowCompileGateSpec"` (final fingerprint) | 0 — 4 passed / 0 failed | lane terminal capture |
 
 Note: an earlier QUALITY_EXECUTE run failed on `scalafmt-check` (exit 1);
 `sbt scalafmtAll` reformatted the new sources and the full gate chain was
-rerun to green. All gate evidence applies to the current source fingerprint
-(no source change after the last passing run).
+rerun to green. The review-fix reruns (rows above) apply to the current
+source fingerprint (no product-input change after the last passing run).
 
 File hashes (this lane snapshot, sha256):
 
 - `modules/dsl/src/main/scala/raider/dsl/workflow/StsSelection.scala`
   `907e0135ccc99fcdbcaa19f41786a2daf1a1d08dc933273f9fca0068a895a507`
 - `modules/dsl/src/main/scala/raider/dsl/workflow/ChatWorkflowRenderer.scala`
-  `097da6f03307abc982e5fdecb7d4dd95966d173695832c7184b4bcd977107f22`
+  `ead34b4e59cb63c4f572011b8e7c7ac044c736995816b203a87af9429a9a4069`
 - `modules/dsl/src/main/scala/raider/dsl/workflow/ChatWorkflowExport.scala`
   `76e7474fc5ad231c679b0854eadd383cbf329a92c2a25ecdd00a972c5f119499`
 - `modules/dsl/src/test/scala/raider/dsl/workflow/ChatWorkflowRendererSpec.scala`
   `0862f61b6b9223eb52168bd5293b1abc63018036e17860669180c27fa5486dda`
 - `modules/cli/src/test/scala/raider/cli/workflow/ChatWorkflowCompileGateSpec.scala`
-  `b1622b2a8695ea72e35ebe32dc0584c47ea5cfe48f727f3bde610060f520c25b`
+  `bf9e62bd87ebe7f2eb2dfa3f78c10af2d399c683c1d99bedfc71f70ad50128b1`
 - `examples/chat-workflow/fix_widget_task/fix_widget_task.scala`
   `f9cf0b8db8674f8d1dfe0ca39aafd3d0d3aab203c38faa470cd8e4656a259a13`
 - `examples/chat-workflow/fix_widget_task/fix_widget_task-manifest.json`
@@ -173,12 +180,38 @@ File hashes (this lane snapshot, sha256):
   (`/bin/test`, `/usr/bin/true`); the representative fixture's `sbt` checks
   are proven to COMPILE only — executing real sbt/agent work is CWF-01/.d/.e
   territory.
+- Known renderer limitation (documented, NOT fixed — review finding 3):
+  `turnLine` builds the `specDigest` canonical turn line with an unescaped
+  `|` separator, so turn text containing `|` can make the line ambiguous to
+  a reader. Provenance identity only: the canonical text is hashed and never
+  rendered or executed, so behavior is unaffected. Escaping changes the
+  digest format (frozen contract surface) and is deferred to a separate
+  contract-change card; the limitation is marked in the renderer source.
 - No live/paid provider calls anywhere; the sentinel backend and local
   stands replace the transport (no-dispatch probes mandatory per K9).
 - Pricing stays unpriced/unknown through this path (K5/H3): generated code
   carries `CostEstimate.Unknown`; no observed-USD claims.
 
 ## Review and next task
+
+Independent review verdict: **changes-required** (1 MAJOR + 2 minor); all
+three fixes applied in this lane and re-gated on the final fingerprint:
+
+1. MAJOR (probe 3, `ChatWorkflowCompileGateSpec`): the "edit flips outcome"
+   proof passed argv BY HAND, so the red outcome proved nothing about the
+   edit. Fixed per review spec: on a marker-present workspace the probe now
+   reflectively invokes the GENERATED `runAllChecks` on BOTH artifacts —
+   original green via the compiled `trustedChecks`, edited red (typed
+   `OutputValidation` naming the flipped "pass" check, "exit code 1"). No
+   hand-passed argv remains in probe 3. Negative control stated in the test
+   comment and PROVEN: with the edit temporarily reverted the probe FAILS
+   (`editApplied` and `editedRed` false) — see the Commands table. Docstring
+   updated accordingly.
+2. Minor (this record): dotc compile-evidence count corrected ×3 → ×5.
+3. Minor (documented, not implemented): `turnLine` `|` separator ambiguity —
+   one-line comment added to `ChatWorkflowRenderer` and a Known-limitation
+   bullet added above; execution unaffected, escaping deferred to a separate
+   contract-change card.
 
 Next: coordinator review of this lane (canonical CWF-C01..03 against the
 evidence above), then RAI-155.d — compile/package + execution binding for

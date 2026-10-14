@@ -64,11 +64,16 @@ import scala.util.control.NonFatal
   *     task/workspace input"; externalized parameters are read at execution);
   *     (3) edit-without-regeneration — editing the rendered SOURCE text (the
   *     check parameter `List("/usr/bin/true")` → `List("/usr/bin/false")`),
-  *     recompiling and running shows the edited behavior (CWF-C01 "editing a
-  *     prompt/check parameter survives compilation and changes the later
-  *     result"). Editable constants are the source edit surface; the run-time
-  *     task/workspace input is the input-JSON surface — both externalized and
-  *     documented by the manifest.
+  *     recompiling, and running the GENERATED `runAllChecks` over the compiled
+  *     `trustedChecks` constants on a marker-present workspace: the original
+  *     artifact is green, the edited artifact fails its own "pass" check
+  *     (CWF-C01 "editing a prompt/check parameter survives compilation and
+  *     changes the later result"). NEGATIVE CONTROL: no check argv is passed by
+  *     hand in this probe — if the source edit were reverted, the edited
+  *     artifact would behave exactly like the original and the assertions would
+  *     fail, so a vacuous red cannot pass. Editable constants are the source
+  *     edit surface; the run-time task/workspace input is the input-JSON
+  *     surface — both externalized and documented by the manifest.
   *
   * No provider/tool dispatch happens anywhere in this gate: the sentinel
   * backend replaces the transport, and every run that would dispatch fails
@@ -717,6 +722,12 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
           case _ => false
 
         // -- (3) edit-without-regeneration -----------------------------------
+        // NEGATIVE CONTROL: the outcome flip below is driven ONLY by the
+        // COMPILED constants — the generated `runAllChecks` reads its argv
+        // from `trustedChecks`; no argv is passed by hand here. If the
+        // source edit were reverted, the edited artifact would behave
+        // exactly like the original on ws1 (both green) and the assertions
+        // below would FAIL, catching a vacuous red.
         val editedSource = rendered.source.replace(
           "List(\"/usr/bin/true\")",
           "List(\"/usr/bin/false\")"
@@ -735,25 +746,21 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
         )
         val edited =
           loadProbe(compileDir.resolve("out-probe-edited"), "Cwf_gate_probe")
-        val passArgv: AnyRef = List("/usr/bin/false")
-        val passArgvBefore: AnyRef = List("/usr/bin/true")
-        // The unedited parameter stays green on the ORIGINAL artifact…
-        val originalGreen = runTask(
+        // On ws1 (marker PRESENT) the ORIGINAL artifact's own compiled check
+        // set is fully green: marker green, `/usr/bin/true` green.
+        val originalAllGreen = runTask(
           loaded
-            .invoke(
-              "runNamedCheck",
-              Seq(newInput(loaded, ws2), "pass", passArgvBefore)
-            )
+            .invoke("runAllChecks", Seq(newInput(loaded, ws1)))
             .asInstanceOf[Task[?]]
         ).isRight
-        // …while the SAME check on the EDITED artifact fails red — the manual
-        // source edit changed run behavior WITHOUT any regeneration.
+        // The EDITED artifact — identical except `/usr/bin/true` →
+        // `/usr/bin/false` in the compiled `pass` constant — fails its OWN
+        // `runAllChecks` on the SAME input: the edit changed run behavior
+        // WITHOUT any regeneration, and the typed red names the flipped
+        // check.
         val editedRed = runTask(
           edited
-            .invoke(
-              "runNamedCheck",
-              Seq(newInput(edited, ws2), "pass", passArgv)
-            )
+            .invoke("runAllChecks", Seq(newInput(edited, ws1)))
             .asInstanceOf[Task[?]]
         ) match
           case Left(e: RaiderError.OutputValidation) =>
@@ -771,7 +778,7 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
           ws1Green,
           ws2Red,
           editApplied,
-          originalGreen,
+          originalAllGreen,
           editedRed
         )
         deleteRecursively(ws1)

@@ -529,6 +529,7 @@ object ChatWorkflowRenderer:
       .append('\n')
     sb.result()
 
+  // Known limitation: "|" is unescaped here, so turn text containing "|" makes this line ambiguous — specDigest is provenance identity only (hashed, never executed); escaping deferred to a separate contract change.
   private def turnLine(t: StsTurn): String =
     t.turnId + "|" + t.kind + "|" + t.status + "|" + t.text
 
