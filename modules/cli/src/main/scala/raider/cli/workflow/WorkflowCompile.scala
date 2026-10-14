@@ -193,7 +193,7 @@ object WorkflowCompile:
         else
           val loader = new java.net.URLClassLoader(
             Array(classesDir.toUri.toURL),
-            null // isolated: the name check needs no product classes; scalafix:ok DisableSyntax.null
+            null // scalafix:ok DisableSyntax.null
           )
           try
             val cls = Class.forName(mainClass, false, loader)
