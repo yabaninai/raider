@@ -7,10 +7,11 @@ import zio.test.*
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 
-/** Session schema v2 migration contract (RAI-077): v1 documents (no
-  * `schemaVersion` field) migrate in memory to v2 with the new optional fields
-  * empty; v2 documents roundtrip byte-stably; documents from a newer schema
-  * version fail with a typed error instead of being read silently.
+/** Session schema migration contract (RAI-077, extended by RAI-155.b schema
+  * v3): older documents (no `schemaVersion` field) migrate in memory to the
+  * current version with the newer optional fields empty; documents roundtrip
+  * byte-stably; documents from a newer schema version fail with a typed error
+  * instead of being read silently.
   */
 object SessionMigrationSpec extends ZIOSpecDefault:
 
@@ -35,14 +36,16 @@ object SessionMigrationSpec extends ZIOSpecDefault:
 
   override def spec: Spec[Any, Any] =
     suite("SessionMigration")(
-      test("v1 fixture (no schemaVersion) loads and migrates to v2 in memory") {
+      test(
+        "v1 fixture (no schemaVersion) loads and migrates to current in memory"
+      ) {
         for
           base <- tmpBase()
           _ <- writeRaw(base, "legacy", v1Doc)
           back <- SessionStore.load(base, "legacy")
         yield assertTrue(
           back.schemaVersion == SavedSession.SchemaVersion,
-          back.schemaVersion == 2,
+          back.schemaVersion == 3,
           back.id == "legacy",
           back.messages == List(
             RequestMessage("user", "old"),
@@ -51,7 +54,10 @@ object SessionMigrationSpec extends ZIOSpecDefault:
           back.model == "m1",
           back.timestamp == "2026-01-01T00:00:00Z",
           back.workspace.isEmpty,
-          back.label.isEmpty
+          back.label.isEmpty,
+          // legacy documents carry no capture provenance (RAI-155.b)
+          back.turns.isEmpty,
+          back.checks.isEmpty
         )
       },
       test(
@@ -66,7 +72,7 @@ object SessionMigrationSpec extends ZIOSpecDefault:
           _ <- writeRaw(base, "explicit-v1", doc)
           back <- SessionStore.load(base, "explicit-v1")
         yield assertTrue(
-          back.schemaVersion == 2,
+          back.schemaVersion == 3,
           back.model == "m1",
           back.workspace.isEmpty,
           back.label.isEmpty
@@ -95,7 +101,7 @@ object SessionMigrationSpec extends ZIOSpecDefault:
           bytes1.sameElements(bytes2)
         )
       },
-      test("a fresh save always writes schemaVersion 2 on disk") {
+      test("a fresh save always writes schemaVersion 3 on disk") {
         for
           base <- tmpBase()
           _ <- SessionStore.save(
@@ -105,19 +111,19 @@ object SessionMigrationSpec extends ZIOSpecDefault:
           text <- ZIO.succeed {
             Files.readString(base.resolve("fresh.json"), UTF_8)
           }
-        yield assertTrue(text.contains("\"schemaVersion\":2"))
+        yield assertTrue(text.contains("\"schemaVersion\":3"))
       },
-      test("future schemaVersion (3 > 2) is a typed error, never silent-read") {
+      test("future schemaVersion (4 > 3) is a typed error, never silent-read") {
         val doc =
-          """{"id":"future","messages":[{"role":"user","content":"x"}],"model":"m","timestamp":"t","schemaVersion":3}"""
+          """{"id":"future","messages":[{"role":"user","content":"x"}],"model":"m","timestamp":"t","schemaVersion":4}"""
         for
           base <- tmpBase()
           _ <- writeRaw(base, "future", doc)
           err <- SessionStore.load(base, "future").flip
         yield assertTrue(
           err.isInstanceOf[RaiderError.InputValidation],
-          err.detail.contains("schemaVersion 3"),
-          err.detail.contains("2")
+          err.detail.contains("schemaVersion 4"),
+          err.detail.contains("3")
         )
       },
       test("future-version file is skipped by list; readable sessions remain") {
