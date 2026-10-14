@@ -87,21 +87,12 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
     )
   )
 
-  /** The manual MAIN-RENAME edit (the same edit-surface workaround as
-    * WorkflowLaunchSpec): the as-is generated naming pair (object <Stem> +
-    * @main
-    *   def <stem>) produces classes that differ only in case and overwrite one
-    *   another on this case-insensitive filesystem (dotc warning); renaming the @main
-    *   is a legitimate manual edit, the module class (the only thing the run
-    *   path derives) is untouched.
+  /** The UNEDITED render is the compile surface since RAI-158: the renderer no
+    * longer emits the case-colliding `object <Stem>` + `@main def <stem>` pair
+    * (the launcher main is `run<Capitalized>`), so the as-is generated source
+    * compiles and publishes cleanly on this case-insensitive filesystem — no
+    * rename workaround needed.
     */
-  private def renameMain(source: String, name: String): String =
-    val edited =
-      source.replace("@main def " + name + "(", "@main def " + name + "_main(")
-    if edited == source then
-      throw new IllegalStateException("main rename edit did not apply")
-    edited
-
   private def writeSource(dir: Path, name: String, text: String): Path =
     Files.createDirectories(dir)
     val p = dir.resolve(name)
@@ -177,11 +168,13 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
         // the gate, so the compile path never depends on an example being
         // preloaded anywhere (CWF-D01). (The live edit -> recompile loop is
         // proven by WorkflowLaunchSpec, which rewrites the baseUrl constant.)
+        // RAI-158: the UNEDITED render compiles — the renderer naming fix
+        // removed the case-collision workaround this fixture used to need.
         val work = Files.createTempDirectory("c155d-build")
         val src = writeSource(
           work,
           "wf155d_probe.scala",
-          renameMain(rendered.source, "wf155d_probe")
+          rendered.source
         )
         val out = work.resolve("build")
         WorkflowCompile.compile(WorkflowCompile.Args(src, out)).map { _ =>
@@ -198,6 +191,11 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
               finally s.close()
             else 0
           val loaded = WorkflowBuildIdentity.load(out)
+          // RAI-158 note: `mainClass` is the STEM-DERIVED metadata name (the
+          // documented WorkflowBuildIdentity.deriveClassNames rule); the
+          // EMITTED launcher class is `runWf155d_probe` — the identity schema
+          // (frozen, CLI-owned) still records the derivation, the run path
+          // consumes only moduleClass.
           val identityOk = loaded.fold(
             e => throw new IllegalStateException(e.detail),
             i =>
@@ -239,7 +237,7 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
         val validSrc = writeSource(
           work,
           "wf155d_valid.scala",
-          renameMain(rendered.source, "wf155d_torn")
+          rendered.source
         )
         // A non-empty target must be refused BEFORE any compile work.
         val nonEmpty = work.resolve("full-out")
@@ -291,7 +289,7 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
         val src = writeSource(
           work,
           "wf155d_stale.scala",
-          renameMain(rendered.source, "wf155d_stale")
+          rendered.source
         )
         val out = work.resolve("build")
         WorkflowCompile.compile(WorkflowCompile.Args(src, out)).flatMap { _ =>
@@ -399,16 +397,23 @@ object WorkflowCompileSpec extends ZIOSpecDefault:
             RenderOptions("wf155d_pos")
           )
           .fold(e => throw new IllegalStateException(e.detail), identity)
-        // Fixture edit: rename the OBJECT away from the case pair (its token
-        // also covers the .runLauncher reference). The @main classfile
-        // wf155d_pos.class then has no colliding mirror, so the collision
-        // detector's POSITIVE path (exact entry found, class loads, name
-        // matches) must let the build publish.
-        val edited = rendered.source.replace("Wf155d_pos", "Wf155dPos")
+        // Since RAI-158 the as-is render emits NO `wf155d_pos.class` (the
+        // derived stem name is metadata only; the launcher main is
+        // `runWf155d_pos`), so the positive branch needs a fixture that
+        // recreates a REAL `<stem>` main: rename the @main onto the derived
+        // stem FIRST, then move the object token out of the case-mirror (its
+        // token also covers the .runLauncher reference). The classfile set is
+        // then {Wf155dPos, Wf155dPos$, wf155d_pos} — pairwise distinct
+        // ignoring case — and the collision detector's POSITIVE path (exact
+        // entry found, class loads, name matches) must let the build publish.
+        val edited = rendered.source
+          .replace("@main def runWf155d_pos(", "@main def wf155d_pos(")
+          .replace("Wf155d_pos", "Wf155dPos")
         if edited == rendered.source ||
           !edited.contains("object Wf155dPos") ||
-          !edited.contains("Wf155dPos.runLauncher")
-        then throw new IllegalStateException("object rename edit did not apply")
+          !edited.contains("Wf155dPos.runLauncher") ||
+          !edited.contains("@main def wf155d_pos(")
+        then throw new IllegalStateException("fixture edits did not apply")
         val work = Files.createTempDirectory("c155d-pos")
         val src = writeSource(work, "wf155d_pos.scala", edited)
         val out = work.resolve("build")

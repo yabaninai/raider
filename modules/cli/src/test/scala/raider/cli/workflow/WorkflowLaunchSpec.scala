@@ -34,14 +34,16 @@ import scala.jdk.CollectionConverters.*
   *     rewritten to the stand URL — the manual edit survives compilation) is
   *     compiled with the product `raider compile` and launched by BOTH
   *     launchers on SEPARATE fresh workspaces: A. the launcher artifact itself,
-  *     run LOCALLY as a plain main (`java -cp ... wf155d_launch inputA.json`);
-  *     B. the NON-TTY headless CLI launcher (the `raider workflow run`
-  *     discipline) with full ci-runtime §7 artifacts. Identical workflow logic
-  *     (the SAME compiled classes), equivalent normalized outputs (the checks
-  *     verdict line and the stand's final answer appear in both reports), REAL
-  *     tool effects (the agent stage's proc_run touch creates marker.txt on
-  *     each fresh workspace) and an INDEPENDENT check verdict (`/bin/test -f`
-  *     runs on the new workspace — "the agent said done" is never the verdict).
+  *     run LOCALLY as a plain main (`java -cp ... runWf155d_launch inputA.json`
+  *     — the RAI-158 renderer naming; the unedited shape now launches without
+  *     any rename workaround); B. the NON-TTY headless CLI launcher (the
+  *     `raider workflow run` discipline) with full ci-runtime §7 artifacts.
+  *     Identical workflow logic (the SAME compiled classes), equivalent
+  *     normalized outputs (the checks verdict line and the stand's final answer
+  *     appear in both reports), REAL tool effects (the agent stage's proc_run
+  *     touch creates marker.txt on each fresh workspace) and an INDEPENDENT
+  *     check verdict (`/bin/test -f` runs on the new workspace — "the agent
+  *     said done" is never the verdict).
   *   - D03: SIGTERM during active model work on the headless launcher (a real
   *     `java -cp ... raider.cli.Main workflow run` child, killed with SIGTERM
   *     once the stand sees the request) yields the bounded stop (143), a
@@ -207,20 +209,12 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
                 "val baseUrl: String = \"http://127.0.0.1:1/v1\"",
                 "val baseUrl: String = \"" + stand.url + "\""
               )
-              // The manual MAIN RENAME edit: the as-is generated naming pair
-              // (object <Stem> + @main def <stem>) collides on this
-              // case-insensitive filesystem (dotc: "Generated class ...
-              // differs only in case ..."), eating the launcher main's class
-              // file nondeterministically. Renaming the @main is exactly the
-              // kind of manual edit the export is designed for; the run path
-              // (module class) is untouched. The renderer defect itself is
-              // reported for a separate card.
-              .replace(
-                "@main def wf155d_launch(",
-                "@main def wf155d_launch_main("
-              )
+            // RAI-158: the renderer's launcher main is `runWf155d_launch`
+            // (case-insensitively distinct from the object) — the OLD manual
+            // main-rename workaround (the RAI-155.d collision mitigation) is
+            // gone; the fixture edit is now ONLY the baseUrl constant.
             if edited == rendered.source ||
-              !edited.contains("@main def wf155d_launch_main(")
+              !edited.contains("@main def runWf155d_launch(")
             then throw new IllegalStateException("fixture edits did not apply")
             Files.write(src, edited.getBytes(StandardCharsets.UTF_8))
             val out = work.resolve("build")
@@ -364,13 +358,13 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
           Files.writeString(inB, inputJson(wsB))
 
           // -- Launch A: the artifact ITSELF, locally, as a plain main. ----
-          // (The fixture's renamed @main: wf155d_launch_main.)
+          // (The renderer's launcher main: runWf155d_launch — RAI-158.)
           val outA = Files.createTempDirectory("l155d-local")
           val argvA = Vector(
             "-cp",
             userClasspath + java.io.File.pathSeparator + build
               .resolve("classes"),
-            "wf155d_launch_main",
+            "runWf155d_launch",
             inA.toString
           )
           val pA = spawnJava(Map("RAIDER_API_KEY" -> StandKey), argvA*)

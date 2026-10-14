@@ -165,7 +165,7 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
       assertTrue(
         r.name == "fix_widget_task",
         src.contains("object Fix_widget_task:"),
-        src.contains("@main def fix_widget_task(args: String*): Unit ="),
+        src.contains("@main def runFix_widget_task(args: String*): Unit ="),
         src.contains(
           "final case class Input(schemaVersion: Int, workspace: String, task: TaskParams)"
         ),
@@ -252,6 +252,72 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
         other.specDigest != base.specDigest,
         other.source.contains("val maxRounds: Int = 7"),
         other.source != base.source
+      )
+    },
+    test(
+      "WNF-02 (RAI-158): the object/@main naming pair is deterministic and pairwise case-insensitively distinct for every slug shape"
+    ) {
+      // Slug shapes that made the OLD scheme broken: lower-first (case-mirror
+      // of the object), mixed case, all-caps, a name already starting with
+      // `run`, and a digit-leading slug (old scheme: object and @main with
+      // the IDENTICAL name — a double definition).
+      val names = List(
+        "fix_widget_task",
+        "Fix_Widget",
+        "WF155D",
+        "run_some_thing",
+        "_123_task"
+      )
+      def topLevelNames(src: String): (String, String) =
+        val objectLine =
+          src.linesIterator.find(_.startsWith("object ")).getOrElse("")
+        val mainLine = src.linesIterator
+          .find(l => l.trim.startsWith("@main def "))
+          .getOrElse("")
+        val obj =
+          objectLine.stripPrefix("object ").stripSuffix(":").trim
+        val main =
+          mainLine.trim.stripPrefix("@main def ").takeWhile(_ != '(').trim
+        (obj, main)
+      // Black-box pins over the RENDERED source; the render itself must stay
+      // byte-identical across repeats (determinism, §4.3).
+      val pins = names.map { n =>
+        val opts = RenderOptions(n)
+        val first = renderOrThrow(fixture, opts)
+        val second = renderOrThrow(fixture, opts)
+        val cap = n.charAt(0).toUpper.toString + n.substring(1)
+        val (obj, main) = topLevelNames(first.source)
+        // The classes dotc actually EMITS for the pair (the derived CLI stem
+        // names are metadata, not emitted files): object + module mirror +
+        // @main class. Pairwise distinct ignoring case = no overwrite on a
+        // case-insensitive filesystem.
+        val emitted = Vector(cap + ".class", cap + "$.class", main + ".class")
+        val pairwiseDistinct =
+          emitted.map(_.toLowerCase).distinct.size == emitted.size
+        (n, cap, obj, main, first, second, pairwiseDistinct)
+      }
+      assertTrue(
+        pins.forall { case (n, cap, obj, main, first, second, pair) =>
+          first.source == second.source &&
+          first.manifestJson == second.manifestJson &&
+          obj == cap &&
+          main == "run" + cap &&
+          !obj.equalsIgnoreCase(main) &&
+          pair
+        },
+        // The committed-shape pair for the representative name:
+        pins
+          .find(_._1 == "fix_widget_task")
+          .exists { case (_, _, obj, main, first, _, _) =>
+            obj == "Fix_widget_task" &&
+            main == "runFix_widget_task" &&
+            first.source.contains("object Fix_widget_task:") &&
+            first.source.contains(
+              "@main def runFix_widget_task(args: String*): Unit ="
+            ) &&
+            // The launcher body still drives the SAME object:
+            first.source.contains("Fix_widget_task.runLauncher(args)")
+          }
       )
     },
     test(

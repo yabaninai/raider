@@ -547,8 +547,21 @@ object ChatWorkflowRenderer:
       options: RenderOptions,
       name: String
   ): String =
+    // Naming contract (RAI-158; RAI-155.d finding 1): the top-level
+    // definitions must be pairwise distinct CASE-INSENSITIVELY. dotc emits
+    // `object <objectName>` as <objectName>.class + <objectName>$.class and
+    // `@main def <launcherMain>` as <launcherMain>.class; a case-mirror pair
+    // overwrites itself on case-insensitive filesystems (macOS default) and
+    // the write order decides which class survives. The OBJECT therefore
+    // keeps `<Capitalized name>` — the CLI run path
+    // (WorkflowBuildIdentity.deriveClassNames) derives the module class
+    // `<Capitalized stem>$` from the source-file stem and loads the generated
+    // object reflectively by that name — while the @main launcher takes the
+    // `run` prefix: `run<Capitalized name>` differs from every other emitted
+    // class for ANY slug (the prefix adds length, so equality ignoring case
+    // is impossible).
     val objectName = capitalize(name)
-    val mainName = decapitalize(name)
+    val launcherMain = "run" + capitalize(name)
     val out = ArrayBuffer.empty[String]
 
     // ---- provenance / discipline header (comment-escaped) ----
@@ -819,7 +832,7 @@ object ChatWorkflowRenderer:
     out += "  */"
     out += "  def workflow(launch: Launch): Program[String, String] ="
     out += "    Program.fromFunction(\"" + escapeLiteral(
-      mainName + "-workflow"
+      decapitalize(name) + "-workflow"
     ) +
       "\"): rawInput =>"
     out += "      for"
@@ -987,8 +1000,10 @@ object ChatWorkflowRenderer:
     out += "  */"
     out += "  def runLauncher(args: Seq[String]): ZIO[Any, Nothing, Int] ="
     out += "    val inputPath ="
+    // The §6.2 layout publishes `<name>.input.json` next to the source (the
+    // slug AS GIVEN); the default input path is exactly that file.
     out += "      if args.isEmpty then \"" + escapeLiteral(
-      mainName + ".input.json"
+      name + ".input.json"
     ) +
       "\" else args.head"
     out += "    Task.zio(runOnce(inputPath)).either.map {"
@@ -998,7 +1013,7 @@ object ChatWorkflowRenderer:
     out += "        1"
     out += "    }"
     out += ""
-    out += "@main def " + mainName + "(args: String*): Unit ="
+    out += "@main def " + launcherMain + "(args: String*): Unit ="
     out += "  // Option L launcher: explicit main binding CURRENT env/config at run"
     out += "  // time; authority is never inherited from the exporting chat session"
     out += "  // (ADR-033 §7). Exit 0 = checks green on the new workspace; nonzero ="

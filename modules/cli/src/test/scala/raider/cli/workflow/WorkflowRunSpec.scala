@@ -87,17 +87,11 @@ object WorkflowRunSpec extends ZIOSpecDefault:
       .fold(e => throw new IllegalStateException(e.detail), identity)
     val work = Files.createTempDirectory("r155d-build")
     val src = work.resolve("wf155d_run.scala")
-    // The manual MAIN-RENAME edit (WorkflowCompileSpec/WorkflowLaunchSpec
-    // discipline): the as-is generated object/<main> case pair overwrites
-    // itself on this case-insensitive filesystem; the renamed @main keeps
-    // the module class (the only thing the run path derives) intact.
-    val edited = rendered.source.replace(
-      "@main def wf155d_run(",
-      "@main def wf155d_run_main("
-    )
-    if edited == rendered.source then
-      throw new IllegalStateException("main rename edit did not apply")
-    Files.write(src, edited.getBytes(StandardCharsets.UTF_8))
+    // RAI-158: the renderer no longer emits the case-colliding object/@main
+    // pair, so the UNEDITED render compiles and publishes on this
+    // case-insensitive filesystem (the old main-rename workaround is gone);
+    // the module class the run path derives is untouched by the naming fix.
+    Files.write(src, rendered.source.getBytes(StandardCharsets.UTF_8))
     val out = work.resolve("build")
     Unsafe.unsafe { implicit u =>
       zio.Runtime.default.unsafe
