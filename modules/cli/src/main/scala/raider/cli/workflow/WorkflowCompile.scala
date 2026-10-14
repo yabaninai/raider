@@ -196,17 +196,19 @@ object WorkflowCompile:
             null // scalafix:ok DisableSyntax.null
           )
           try
-            val cls = Class.forName(mainClass, false, loader)
-            if cls.getName == mainClass then Right(())
-            else
-              Left(
-                RaiderError.Compilation(
-                  s"launchable main lost to a class-name case collision: $classesDir/$mainClass.class defines '${cls.getName}', not '$mainClass' " +
-                    "(dotc: \"Generated class ... differs only in case ...\"). On this case-insensitive filesystem the " +
-                    "generated object/<main> pair overwrote one another; rename the @main definition in the edited " +
-                    "source (for example `@main def " + mainClass + "_main`) and recompile"
-                )
-              )
+            // Class.forName(name, ...) name contract (the JVM defineClass
+            // check): the method either returns the class whose binary name
+            // IS the requested one or throws — a "loaded a DIFFERENT name"
+            // outcome is impossible. The former defensive
+            // `cls.getName == mainClass` mismatch branch was therefore
+            // UNREACHABLE (verified in the RAI-155.d review round 2);
+            // simplified by RAI-159 (UO-03). The collision still surfaces
+            // through the two typed mappings below: a resolvable-but-wrong
+            // classfile raises NoClassDefFoundError (mapped by the outer
+            // attempt handler), a broken/unresolvable exact-case entry
+            // raises ClassNotFoundException (the catch here).
+            Class.forName(mainClass, false, loader)
+            Right(())
           catch
             case e: ClassNotFoundException =>
               Left(

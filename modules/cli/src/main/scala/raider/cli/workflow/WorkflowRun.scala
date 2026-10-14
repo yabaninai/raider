@@ -184,6 +184,28 @@ object WorkflowRun:
         (ExecutionStatus.Uncertain, JobStatus.Uncertain)
       case _ => (ExecutionStatus.Failed, JobStatus.Failed)
 
+  /** The TYPED output-dir probe (RAI-159): creating the run's work dir (and
+    * with it the whole `--out` parent chain) IS the create+write probe — a
+    * failure here maps to the honest [[RaiderError.JournalFailure]]
+    * (RA-JOURNAL, §8 exit 27). This must run BEFORE [[EventsJsonlWriter.open]]:
+    * the writer maps its own createDirectories/newBufferedWriter IO failures
+    * through `.orDie`, so an unwritable parent `--out` used to escape as a raw
+    * `AccessDeniedException` defect (subprocess exit 1 with a raw stack,
+    * outside the §8 table) and shadow this typed mapping.
+    */
+  private def ensureOutputWritable(
+      args: Args,
+      workDir: Path
+  ): ZIO[Any, RaiderError, Unit] =
+    ZIO
+      .attempt(Files.createDirectories(workDir))
+      .mapError(t =>
+        RaiderError.JournalFailure(
+          s"output directory is not writable: ${args.out} (${String.valueOf(t)})"
+        )
+      )
+      .unit
+
   // ------------------------------------------------------------------//
   // The launcher run                                                    //
   // ------------------------------------------------------------------//
@@ -211,6 +233,11 @@ object WorkflowRun:
           args.out.toString,
           s"work-${UUID.randomUUID().toString.take(8)}"
         )
+        // RAI-159 (UO-01): the typed output-dir probe runs BEFORE the events
+        // writer opens — an unwritable parent --out now fails TYPED
+        // (RA-JOURNAL, exit 27) with honest artifact absence (nothing was
+        // created under --out), never as the writer's raw open defect.
+        _ <- ensureOutputWritable(args, workDir)
         writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
         seq <- Ref.make(0L)
         emit = (payload: EventPayload) =>
@@ -275,16 +302,12 @@ object WorkflowRun:
       // ---- preflight (before ANY load/dispatch; ci-runtime §12 order) ----
       identity <- record(state, ZIO.fromEither(preflightBuild(args)))
       rawInput <- record(state, ZIO.fromEither(readInput(args.input)))
-      _ <- record(
-        state,
-        ZIO
-          .attempt(Files.createDirectories(workDir))
-          .mapError(t =>
-            RaiderError.JournalFailure(
-              s"output directory is not writable: ${args.out} (${String.valueOf(t)})"
-            )
-          )
-      )
+      // RAI-159: re-check of the output dir already created in `body` (the
+      // typed probe there now precedes the events-writer open). A failure
+      // HERE is recorded, so the finalizer still writes truthful failed
+      // artifacts and closes the writer (the TOCTOU case: the dir turned
+      // unwritable after the body probe).
+      _ <- record(state, ensureOutputWritable(args, workDir))
       _ <- state.update(
         _.copy(
           identity = Some(identity),
