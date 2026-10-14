@@ -132,7 +132,9 @@ object ChatLoop:
     for
       // RAI-155.b: one resolved workspace reference shared by the toolset and
       // the capture configRefs (non-secret path reference, §5.1)
-      wsPath = workspace.getOrElse(Paths.get("").toAbsolutePath.toString)
+      wsPath <- ZIO.succeed(
+        workspace.getOrElse(Paths.get("").toAbsolutePath.toString)
+      )
       registry <- makeRegistry(wsPath)
       limits <- ZIO.succeed(
         BudgetLimits

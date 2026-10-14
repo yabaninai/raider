@@ -319,10 +319,10 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
       val r = new java.io.BufferedReader(
         new java.io.InputStreamReader(p.getInputStream, StandardCharsets.UTF_8)
       )
-      var line = r.readLine()
-      while line != null do
-        lines.add(line)
-        line = r.readLine()
+      var line = Option(r.readLine())
+      while line.isDefined do
+        lines.add(line.get)
+        line = Option(r.readLine())
     )
     t.setDaemon(true)
     t.start()

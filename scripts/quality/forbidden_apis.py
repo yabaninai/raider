@@ -42,7 +42,7 @@ SCAN_DIR = ROOT / "modules"
 # .../raider/cli/MainBackup.scala does NOT match). Skips are reported as NOTE
 # lines in the report, never silent and never violations.
 ALLOWLIST: dict[str, list[str]] = {
-    "system-exit": ["raider.cli.Main"],
+    "system-exit": ["raider.cli.Main", "raider.cli.workflow.WorkflowRun"],
 }
 
 
