@@ -219,3 +219,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-155.f** [User walkthrough: chat, export Scala, edit, and run in CI](lineage.md); dependencies: RAI-155.e; profiles: static, docs.
 - **RAI-156** [ReplayHarness.eventuallyTerminal: drain to hub watermark before Terminal-truncation (product-side relay-race fix)](lineage.md); dependencies: RAI-152; profiles: static, unit, contracts, ci.
 - **RAI-157** [MultiJobExport settle window: captured-but-unconnected introductions must not vanish silently](lineage.md); dependencies: RAI-144, RAI-156; profiles: static, unit, contracts, ci.
+- **RAI-158** [Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)](lineage.md); dependencies: RAI-155.c, RAI-155.d; profiles: static, unit, contracts.

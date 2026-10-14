@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 168,
+  "raider_count": 169,
   "companion_count": 3,
   "cards": [
     {
@@ -5044,6 +5044,35 @@
       },
       "non_goals": "Hub forwarding-order semantics changes, unbounded waits, wire format changes, masking via test retries.",
       "context": "RAI-146/156 adjudication (2026-10-14): 'in a live run, a mid-campaign introduction whose capture fiber has not delivered by drain+close is dropped with no wire trace — register a settle-window relay-race card (the RAI-156 pattern).'"
+    },
+    {
+      "id": "RAI-158",
+      "title": "Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.c",
+        "RAI-155.d"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/workflow/**",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**",
+        "modules/cli/src/test/scala/raider/cli/workflow/**",
+        "examples/chat-workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "RAI-155.d contract-change request: the .c generator emits `object <Name>` + `@main def <name>` — on case-INSENSITIVE filesystems (macOS default) dotc emits class-file overwrite warnings and the produced classes are nondeterministic (the .c compile gate never launched the main so it never surfaced). Fix the renderer naming scheme (e.g. object <Name> + @main def run<Name>, or launcher object separation) so object/top-level definition names are pairwise distinct case-insensitively; update goldens/examples (regenerate through the pipeline — never hand-edit); extend the .c gate with a launch-the-main assertion so the class collision is caught at gate time; keep determinism (render x2 byte-identical) and all existing pins green after regeneration.",
+      "acceptance": {
+        "normal": "WNF-01: rendered workflow compiles under pinned dotc with ZERO class-overwrite warnings on a case-insensitive FS; launching the @main works.",
+        "error": "WNF-02: naming scheme deterministic (render x2 byte-identical) and pairwise case-insensitively distinct (unit pin over the name construction).",
+        "concurrency": "WNF-03: goldens/examples regenerated through the pipeline (sha pins updated via RAI-146-style lineage, never hand-edited); existing renderer suites green x3."
+      },
+      "non_goals": "Launch route changes (RAI-155.d decided CLI-internal), wire changes, junit/model-round-event extensions (separate follow-ups), Task/Program changes.",
+      "context": "RAI-155.d finding: `raider compile` detects and refuses the collision typed (RA-COMPILE) with actionable guidance; .d fixtures use the @main rename edit surface. Before .e freezes unedited-flow fixtures the renderer must emit non-colliding names."
     }
   ]
 }

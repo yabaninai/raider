@@ -941,3 +941,27 @@ Status: ready. Milestone: LIN. Dependencies: RAI-144, RAI-156.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-158: Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)
+
+Status: ready. Milestone: LIN. Dependencies: RAI-155.c, RAI-155.d.
+
+**Scenario and contract.** RAI-155.d contract-change request: the .c generator emits `object <Name>` + `@main def <name>` — on case-INSENSITIVE filesystems (macOS default) dotc emits class-file overwrite warnings and the produced classes are nondeterministic (the .c compile gate never launched the main so it never surfaced). Fix the renderer naming scheme (e.g. object <Name> + @main def run<Name>, or launcher object separation) so object/top-level definition names are pairwise distinct case-insensitively; update goldens/examples (regenerate through the pipeline — never hand-edit); extend the .c gate with a launch-the-main assertion so the class collision is caught at gate time; keep determinism (render x2 byte-identical) and all existing pins green after regeneration.
+
+**Context.** RAI-155.d finding: `raider compile` detects and refuses the collision typed (RA-COMPILE) with actionable guidance; .d fixtures use the @main rename edit surface. Before .e freezes unedited-flow fixtures the renderer must emit non-colliding names.
+
+**Allowed paths.** `modules/dsl/src/main/scala/raider/dsl/workflow/**` `modules/dsl/src/test/scala/raider/dsl/workflow/**` `modules/cli/src/test/scala/raider/cli/workflow/**` `examples/chat-workflow/**` Tests live inside the same modules/contract areas. Narrow concrete files before assignment; extending the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: WNF-01: rendered workflow compiles under pinned dotc with ZERO class-overwrite warnings on a case-insensitive FS; launching the @main works.
+- Error/adversarial: WNF-02: naming scheme deterministic (render x2 byte-identical) and pairwise case-insensitively distinct (unit pin over the name construction).
+- Cancellation/concurrency: WNF-03: goldens/examples regenerated through the pipeline (sha pins updated via RAI-146-style lineage, never hand-edited); existing renderer suites green x3.
+
+**Required gates.** After foundation: make quality-changed; make quality-changed QUALITY_EXECUTE=1; applicable profiles per metadata; evidence verification with each required profile. full/release aggregates allowed only if they actually include the whole list. External prerequisites explicit; unavailable is not passed.
+
+**Non-goals.** Launch route changes (RAI-155.d decided CLI-internal), wire changes, junit/model-round-event extensions (separate follow-ups), Task/Program changes.
+
+**Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
