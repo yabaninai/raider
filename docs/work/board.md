@@ -37,6 +37,46 @@ until .e is accepted. RAI-155.f, RAI-123 (conditional), LIN-04, and 129.b/c
 registration queue behind their dependencies. Merges land in batches of 3–5
 by dependency cluster; full main gates run once per batch.
 
+## 2026-10-16 — Wave 1 under the new capacity (8 Luna lanes)
+
+Spawned per the capacity revision above; all lanes are Luna task-tool workers
+with §3 assignment packets; baseline cd7032f (post-reconciliation). Status
+after the first integration batch (main 0870045):
+
+- Merged with review approve: RAI-117 (ADR-030 SDLC draft, Proposed), RAI-134
+  (guide refresh; round-2 approve after scope reverts), RAI-156
+  (eventuallyTerminal hub-watermark drain; EXECUTE 0, replay ×3, full sbt
+  427+9; lane includes merge 5527a70 of integration fix c04aae9).
+- Integration fix on main: c04aae9 — synthetic EW token literal split in
+  ChatExportChainGateSpec (pattern of 54b54f2); the forbidden-apis clean-tree
+  full scan had been failing ON MAIN since RAI-160 and blocked lane EXECUTE
+  gates (RAI-156/136).
+- Pending lanes: RAI-137 (round-2 finding: transcripts/classpath mkdir sites
+  still outside the exit-2 path; final fix round in flight); RAI-157 (phantom
+  ToolCall.id compile error reproduces after clean ONLY in its worktree —
+  sources identical to compiling main; dedicated investigation queued);
+  RAI-155.e (partial WIP 4704dea: E01/E02/corpus green in targeted runs;
+  real-stand capture, E03 SIGTERM case, legacy-spec mismatch remain);
+  RAI-136 (storm soak green 184/0 + 18× PlanPanel clean, RAI-123 NOT
+  triggered — stays conditional; sustained soak + 2 full sbt passes owed);
+  LIN-03 (incremental projection fold + tests green; live-stream wiring owed).
+- Reviews: 117 approve; 134 approve (round 2); 156 approve + gates-complete;
+  137 changes-required (round 2, one finding); 136/155.e/LIN-03/157 not yet
+  reviewed (lanes incomplete).
+- Integrated gates on main 0870045: `make quality-changed` exit 0 (classification
+  only; no manifest); first `make quality-changed QUALITY_EXECUTE=1` attempt
+  timed out at 120s (terminated, not a pass), retry exit 0, passed; manifest
+  `artifacts/quality/20261016-072042-40503-0001/manifest.json` SHA-256
+  `b6eaeec13be587d327030605bf188427ef63e8865f215913ee1432ce7795a3d9`.
+  `make quality-profile PROFILES="static unit contracts docs"` exit 1,
+  manifest `artifacts/quality/20261016-072639-53185-0001/manifest.json` SHA-256
+  `b4dd36d0e45172057e54ae79f35b38ec38b2a67bdfe6bc283b040cc2f72a6b3e`; sbt-test
+  failed in `raider.cli.run.MultiJobExportSpec` (MJE-03c, detached child with no
+  Terminal was reduced successfully by the strict entry instead of the expected
+  typed refusal). `make quality-profile PROFILES="repl runtime"` exit 0,
+  manifest `artifacts/quality/20261016-073347-65305-0001/manifest.json` SHA-256
+  `fb2078f1c6e077f5f595b565b63a4ecaff8aa0d2460cd71bc7aa852b3936557c`.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
