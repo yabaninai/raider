@@ -1,5 +1,49 @@
 # LIN-03: work record
 
+## Wiring continuation (2026-10-16)
+
+Status: partial. Branch baseline after requested refresh: `a62a5a2b05d34a0107a1c7bed021fe4ec63c5fb8` (merge of main `963d584`).
+
+Implemented an ordered live fold in `MultiJobExport`: each committed export batch updates `LiveLineageProjection` under the existing export lock, after the bytes are appended to the export stream. HeadlessRunner reads that final incremental projection only after its existing drain and watermark barrier and uses its graph when it matches strict settled reduction. Existing reducer fallback and graph hash canonicalization are unchanged.
+
+This does **not** complete LIN-03. In particular, this pass does not continuously persist projection snapshots, does not add an atomic source/data pair commit protocol or readers that honor one, and does not validate generated source by compiling it during the live session. Projection fold errors are retained by the exporter but are not yet surfaced as a dedicated summary diagnostic. Consequently LIN3-02's required visible invalid status and LIN3-03's paired crash checkpoint are not met. The frozen schema was not changed. No contract-change request is needed for this gap; the remaining implementation can fit the existing CLI path boundary, but the two-file readers need an explicitly integrated snapshot-manifest reader contract before zero-torn-pair can be claimed.
+
+### Continuation evidence
+
+| Criterion / test ID | Actual result | Evidence |
+| --- | --- | --- |
+| LIN3-01 | Partial: existing scripted 200-round fold test passes; production exporter now feeds the same fold in serialized append order and HeadlessRunner reads it after drain. No end-to-end 200-round production stream fixture was added. | `LiveLineageProjectionSpec`; targeted command below |
+| LIN3-02 | Not met: compile failure/status visibility and session-exit invariance are not wired. | No acceptance test |
+| LIN3-03 | Not met: no crash-consistent paired lineage artifact checkpoint/commit protocol. | No acceptance test |
+| GraphHash | No canonicalization change. | `GraphHash.scala` unchanged |
+
+### Continuation commands
+
+| argv / command | Exit | Log / manifest |
+| --- | --- | --- |
+| `git -C <worktree> merge main` | 0 | Merge commit `a62a5a2`; no conflicts |
+| `sbt --batch 'raiderCli/testOnly raider.cli.run.LiveLineageProjectionSpec'` | 0 | 2 tests passed; compile of 2 changed Scala sources succeeded |
+| `sbt --batch scalafmtAll` | 0 | Formatted the two changed Scala files |
+| `make quality-changed` | 0 | Classified `contracts`, `docs`, `static`, `unit` |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261016-163325-64064-0001/manifest.json`; SHA-256 `7bc5e85f33a7d39d12fe679371f6c061bc6989aae54abbb063c44cd53cfe0cb4`; compile, formatting, contracts, plan validation, and tests passed |
+| `make quality-profile PROFILES="static unit contracts runtime"` | 0 | `artifacts/quality/20261016-164354-10005-0001/manifest.json`; SHA-256 `d3dcce5f652507ed51bcd47088fc01265b50df1ffbecfb71fe2889a38775b9b7`; selected profiles passed |
+| `make quality-changed QUALITY_EXECUTE=1` | 1 | `artifacts/quality/20261016-165350-25842-0001/manifest.json`; existing `MultiJobExportSpec` MJE-02 interleave/hash property failed (1 failure); all other gates passed |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261016-170348-38327-0001/manifest.json`; SHA-256 `abf6e453f8bf6d5bcc7cf07ffc8b6bd10b483629102f4eca6f8e77f6bb0df870`; full changed profile set passed on retry |
+| `make quality-changed` (including final record update) | 0 | Classified `contracts`, `docs`, `static`, `unit` |
+| `make quality-changed QUALITY_EXECUTE=1` (including final record update) | 1 | `artifacts/quality/20261016-171247-54420-0001/manifest.json`; MJE-03c detached-child test failed (`childId = <none>`); all other listed test suites and gates passed |
+
+Product source SHA-256 at the successful run: `MultiJobExport.scala` `ac8a84bf5830ccd419e4a2a1a87e5be61722bea55d62e62fcbb81f2aed770a40`; `HeadlessRunner.scala` `463afccb7f1d660e152dc034675fb76aedf3aeb31a966f96255d384fa12ed4c6`.
+
+The required changed and static/unit/contracts/runtime gates ran and passed for this implementation. These green checks do not close the unmet functional criteria above. No paid calls were made.
+
+### Changed paths in continuation
+
+- `modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala`
+- `modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala`
+- `docs/work/records/LIN-03.md`
+
+Next action: complete the frozen-schema-preserving pair snapshot/commit reader protocol, persist each valid incremental checkpoint, expose compile/projection status without affecting run exit, then add production-wiring and crash/race acceptance before gates/review. LIN-04 remains dependent on full LIN-03 acceptance.
+
 Status: partial. Date: 2026-10-16. Baseline commit/source: `7c03213` on `lane/lin-03`, initially clean; refreshed by merging `main` at `0870045` (merge commit `69a8fc1`).
 
 ## Continuation and merge refresh
