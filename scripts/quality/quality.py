@@ -89,6 +89,8 @@ def load_policy() -> dict:
         "self", "static", "unit", "contracts", "docs", "fast",
         "runtime", "tools", "transport", "repl", "ci",
         "security",  # RAI-069 (addition only; gate refs validated like the rest)
+        "eval",      # RAI-135 (component-stage deterministic corpus)
+        "perf",      # RAI-137 (component-stage measured UX baseline)
     )
     for name in policy["profiles"]:
         if name not in component_profiles:

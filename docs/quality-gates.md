@@ -70,15 +70,21 @@ Snapshot lanes may not contain `.git`. RAI-004 implements a second baseline sour
 
 `fast = self + static + scoped unit + minimal contracts`; `full = self/static/unit/contracts/runtime/transport/ci/repl/tools/docs/security/eval + compatibility for enabled adapters + performance smoke`. `release` adds integration for declared supported capabilities. Real LLMs are separate, never implicit in full.
 
-Component-stage registration status (2026-10-13, RAI-135): `eval` is registered
+Component-stage registration status (2026-10-16, RAI-135/RAI-137): `eval` is registered
 in the component-stage registry and runs the deterministic plan-mode corpus
 (`raider.runtime.loop.corpus.PlanScenarioCorpusSpec`, RAI-114) as the
 `eval-corpus` gate. The full protected task-corpus eval (RAI-081 fixtures,
 hidden verifiers) remains a working-product stage obligation and is NOT
-claimed by the component profile. `performance`/`perf` is NOT yet registered:
-the UX baseline harness currently exits 0 even when measurements are recorded
-as skipped, which would violate the skip-is-never-passed gate discipline;
-registration follows a harness exit-semantics hardening card first.
+claimed by the component profile. The additive `perf` component profile runs
+the UX baseline harness and writes `artifacts/ux-baseline/quality-profile.json`;
+it has no thresholds and makes no machine-independent performance claim. The
+gate exits 0 only when both latency and start measurements completed. An
+unavailable classpath or other documented skip returns 3, writes the report,
+and explains the reason on stderr. `--allow-skip` is informational-only for
+manual use and is deliberately absent from the gate command. Measurement
+failures return nonzero; report-write failures return 2. The separate
+`performance` milestone profile remains a broader obligation and is not
+implied by `perf`.
 
 ## 4. Tools and Versions
 
