@@ -27,18 +27,23 @@ spawned agent — no background `opencode run` loops.
 4. Spawn a **raider-worker** subagent (task tool) for each card, passing an
    assignment packet per `docs/parallel-development.md` §3: card ID, absolute
    worktree path, branch, baseline hash, allowed paths, acceptance IDs,
-   required gates, and frozen signatures. Limit: up to 8 concurrent workers
-   (RAM/CPU: 18 cores/128 GB); reduce this if performance degrades and explain
-   why.
+   required gates, and frozen signatures. Capacity (owner decision
+   2026-10-16): up to 20 task-tool workers per wave (Luna pool). Classify
+   each lane heavy (runs sbt/full gates) or light; at most 8–10 heavy
+   lanes run concurrently (RAM/CPU: 18 cores/128 GB; gate timeouts are load-calibrated)
+   — queue further heavy lanes until build slots free, and reduce heavy
+   concurrency if performance degrades, explaining why.
 5. While workers run, keep the session active: report status to the owner as
    results arrive. Do not finish after spawning agents.
 
 ## INTEGRATION
 
 6. When a worker returns, spawn a **raider-reviewer** (task tool) with its
-   branch/baseline. `changes-required` → one new raider-worker spawn with the
-   findings (no endless iterations; if two rounds do not close the findings,
-   return the work to the owner with a reproducer).
+   branch/baseline IMMEDIATELY — reviews pipeline in parallel with the
+   remaining workers; do not batch reviews. `changes-required` → one new
+   raider-worker spawn with the findings (no endless iterations; if two
+   rounds do not close the findings, return the work to the owner with a
+   reproducer).
 7. On `approve`, sequentially run `git merge --no-ff lane/<card-id>` into main.
    After each merge batch on main run:
    `make quality-changed` → `make quality-changed QUALITY_EXECUTE=1` plus

@@ -8,10 +8,18 @@ checked separately against runtime scopes/workspaces. Goal: [working product](wo
 
 ## 1. Roles and concurrency limit
 
-By default, one coordinator/integrator and up to three active implementers in
-total. A reviewer occupies a free slot; do not add a fourth writer beyond the
-limit. Reduce the number of workers when RAM/CPU, available tasks, or truly
-isolated directories are insufficient. Split a large card before coding.
+Owner decision 2026-10-16 (supersedes the earlier "up to three implementers"
+default and the 2026-10-12 "8–10 active workers" ceiling for agent count):
+capacity is the primary coordinator session plus up to 20 spawned Luna
+agents. The primary session remains the single coordinator/integrator and
+sole owner of the integration checkout; spawned agents may lead heavy
+worktree lanes under its assignment packets. Agent count is no longer the
+binding limit — build capacity is: at most 8–10 concurrent heavy
+(sbt-running) lanes on 18 cores / 128 GB, with light lanes (docs, contracts,
+review, research, fixture preparation without full builds) filling the
+remaining slots. A reviewer is always available; do not occupy all writer
+slots at the cost of review. Reduce heavy concurrency when RAM/CPU degrade,
+and split a large card before coding.
 
 The coordinator solely owns the integration checkout, shared `build.sbt`/`project/**`,
 public core/DSL signatures, gate registry/thresholds, dependency graph, board,
@@ -43,8 +51,13 @@ the fallback when Git is unavailable.
   (`git merge --no-ff`), resolves conflicts, and runs full gates on main after
   each merge batch. Green lane ≠ final acceptance: main gates are required.
 - REVIEW lane occupies one worktree slot (read-only, verdict file).
-- Limit: at least 8, bounded upward only by RAM/CPU (empirically 8–10 sbt JVMs
-  are stable on 18 cores / 128 GB) and the number of independent ready cards.
+- Limit (owner decision 2026-10-16): the primary coordinator session plus up
+  to 20 spawned Luna agents may be active, but concurrent heavy lanes that
+  run sbt/full gates stay capped at 8–10 (empirically stable on 18 cores /
+  128 GB; gate timeouts are load-calibrated). Additional capacity goes to
+  light lanes, immediate per-lane reviewers, and queued heavy lanes that
+  start as build slots free; it does not lift the build cap or invent ready
+  cards.
 
 ## 1b. Visible spawn agents (owner decision 2026-10-12 — primary execution mode)
 
@@ -55,6 +68,9 @@ not as background processes. The owner opens OpenCode, enters `/raider-wave`
 - Coordinator is the primary session with the owner. Workers are `raider-worker`
   subagents and the reviewer is `raider-reviewer` (`.opencode/agents/*.md`);
   dispatch is `.opencode/command/raider-wave.md`. Spawn using the task tool.
+  Worker/reviewer routing uses the configured Luna agent pool (owner decision
+  2026-10-16, replacing the earlier worker provider routing). Record routing
+  in the board when it deviates from the default.
 - Isolation in §1a is not weakened: the worker receives an ABSOLUTE worktree
   path + branch in the assignment packet and directs every tool call there.
   Default worktree is `wt/<card-id>` inside the repository (gitignored), so the
@@ -72,10 +88,12 @@ not as background processes. The owner opens OpenCode, enters `/raider-wave`
   evidence, risks) in the agent deliverable format; coordinator integrates and
   updates records/board. Do not require the owner to read logs to learn lane
   status: it is visible in the TUI and coordinator report.
-- Fallback, in order: (1) task tool unavailable in installed version → workers
-  execute sequentially in primary session, review in parallel; (2) separate
-  explicit owner decision for night loop. Record the fallback reason in the
-  board. Do not invent API fields (`cwd` on task, etc.).
+- Fallback, in order: (1) task tool unavailable in the installed version, or a
+  provider/pool failure kills spawns mid-work (wave-3 and RAI-121 incidents)
+  → workers execute sequentially in the primary session, review in parallel
+  when the pool recovers, preserving uncommitted lane work; (2) separate
+  explicit owner decision for the night loop. Record the fallback reason in
+  the board. Do not invent API fields (`cwd` on task, etc.).
 
 ## 2. Prove isolation first
 

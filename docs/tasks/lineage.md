@@ -8,7 +8,7 @@ is in the [index](README.md); gates follow [quality-gates](../quality-gates.md).
 
 ## LIN-01: SessionGraph model and events → graph reducer
 
-Status: ready. Milestone: LIN. Dependencies: RAI-004.
+Status: accepted. Milestone: LIN. Dependencies: RAI-004.
 
 **Scenario and contract.** Event-sourced session graph with ModelCall/ToolCall(kind, RecoveryClass)/Delegation/Phase nodes; the events.jsonl → graph reducer is deterministic; node kinds can be extended without changing the contract.
 
@@ -32,7 +32,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-004.
 
 ## LIN-02: Project the graph into a valid Scala program
 
-Status: todo. Milestone: LIN. Dependencies: LIN-01, RAI-017.
+Status: accepted. Milestone: LIN. Dependencies: LIN-01, RAI-017.
 
 **Scenario and contract.** Deterministically project the graph into lineage.scala: nodes become Program/Task compositions (RAI-017 is frozen), delegations become nested blocks, phases become defs; data is written to lineage-data.json.
 
@@ -272,7 +272,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-02.
 
 ## RAI-109: Add replay to the raider product command (CLI wiring for LIN-10)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-09, LIN-10.
+Status: accepted. Milestone: LIN. Dependencies: LIN-09, LIN-10.
 
 **Scenario and contract.** Shared CLI subcommand: `raider replay <run-dir> --workspace <dir> [--data <file>]` matches LIN-10 flags and exit codes (0/10/20/21/22/23/24/26) by delegating to ReplayCli.exec without duplicating logic; docs/lineage.md §10 is updated to use the product entry point; standalone ReplayCliMain is retained as a transitional entry point.
 
@@ -296,7 +296,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-09, LIN-10.
 
 ## LIN-12: Tree catalog persistence (LIN-08 remainder)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-09, LIN-10.
+Status: accepted. Milestone: LIN. Dependencies: LIN-08, LIN-09, LIN-10.
 
 **Scenario and contract.** Add persistence to LineageCatalog: scan records (run-dir, graph-hash, verifyPartial verdict, pinned-env summary) are atomically saved (tmp+move/single-writer LineageDataStore pattern) in campaign catalog; concurrent appends are atomic without loss; reload roundtrip is consistent; chat==headless format; malformed persisted file yields typed error, not silent handling.
 
@@ -320,7 +320,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-09, LIN-10.
 
 ## LIN-13: Sync docs/lineage.md §9.2 — truthful implementation status
 
-Status: ready. Milestone: LIN. Dependencies: LIN-09, RAI-108, RAI-109.
+Status: accepted. Milestone: LIN. Dependencies: LIN-09, RAI-108, RAI-109.
 
 **Scenario and contract.** Bring §9.2 in line with integrated state at lane base commit: TabShell wiring complete (RAI-108 --tabs), run artifact writing complete (LIN-09: lineage.scala/lineage-data.json beside events.jsonl/summary), verify product raider replay entry point (RAI-109); every item links to evidence (record or file:line); open items (live-wire, multi-job export, phase/recovery schema-card, LIN2-03 coverage, LIN-12 persistence) remain honestly open with card links; claim nothing beyond integrated state.
 
@@ -344,7 +344,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-09, RAI-108, RAI-109.
 
 ## LIN-14: LIN2-03 remainder: concurrent projection reads — snapshot coverage
 
-Status: ready. Milestone: LIN. Dependencies: LIN-02.
+Status: accepted. Milestone: LIN. Dependencies: LIN-02.
 
 **Scenario and contract.** Test coverage for LIN2-03 (“concurrent read — snapshot”): property spec verifies concurrent LineageDataStore/projection reads during atomic tmp+move writes see either the old or new COMPLETE document, never partial; reads do not mask a race as Missing/Corrupt; deterministic seed, ≥100 iterations, 3 repetitions without flakes. Do not silently fix a discovered defect here: typed reproducer + contract-change request (fix is a separate card).
 
@@ -368,7 +368,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-02.
 
 ## LIN-15: LIN-06 scripted acceptance — LIN6-01/02/03 (budget/isolation/cancellation)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-06.
+Status: accepted. Milestone: LIN. Dependencies: LIN-06.
 
 **Scenario and contract.** Deterministic offline LIN-06 acceptance using existing mechanics (IsolatedRerun/WorkspaceIsolation/RunDiffReport/ReplayHarness/Admission), with backend EXPLICITLY labeled scripted: LIN6-01 isolated rerun completes with per-phase live-vs-recorded diff; LIN6-02 budget exhaustion stops rerun with typed error (RerunError.Replay over Admission), mutating node outside isolation rejected BEFORE execution; LIN6-03 interrupt during rerun leaves copy classified/consistent and retry does not duplicate side effects. Minimal typed fixes to product files in allowed paths are permitted if acceptance reveals a defect; each fix needs a reproducer in record.
 
@@ -392,7 +392,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-06.
 
 ## RAI-120: IsolatedRerun canonical-path guard (requireIsolatedTarget alias bypass)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-15.
+Status: accepted. Milestone: LIN. Dependencies: LIN-15.
 
 **Scenario and contract.** LIN-15 review finding (minor, blocker for future live-rerun CLI): requireIsolatedTarget compares target==original syntactically (Path equality); original alias (ws.resolve("..").resolve(ws.getFileName), symlink) passes byte check as “faithful copy,” so mutating replay would run IN-PLACE. Fix: canonical comparison (Files.isSameFile/toRealPath with MissingFile handling) BEFORE execution, typed rejection using existing MutatingUnisolated; reproducer tests for alias and symlink alias; do not weaken verifyUntouched discipline or LIN6 fixtures.
 
@@ -416,7 +416,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-15.
 
 ## RAI-140: ADR-031: lineage projection runtime contract — typed dry-run description (LIN-02 completion contract)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-02.
+Status: accepted. Milestone: LIN. Dependencies: LIN-02.
 
 **Scenario and contract.** LIN-02 audit finding: the renderer emits model/tool calls as COMMENTS and ()-bodies — compiling proves syntax, not the promised Program/Task composition. This contract card designs the missing public contract (ADR-031, independent review required): (1) a small projection runtime in dsl.lineage.proj.runtime — typed step constructors the GENERATED code references (model/tool step, inputs, dataRef) whose Task evaluates to a DRY structural report (Task.succeed/fail ONLY — no provider call, no tool dispatch at construction OR execution); (2) NodeView gains inputs: Vector[String] (graph dataflow edges) so dependencies are expressible; (3) explicit semantics table distinguishing: rendering vs typed description vs recorded replay (ReplayHarness, graph-based, existing) vs live rerun (IsolatedRerun, graph-based, existing) — the generated source is NOT a rerun entrypoint and must say so; (4) failure paths: a recorded-failed node projects to Task.fail(typed) so sequencing short-circuits honestly. Frozen API consumption only: Task (succeed/fail/map/flatMap), Program (fromFunction/andThen). No second execution semantics.
 
@@ -440,7 +440,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-02.
 
 ## RAI-141: Renderer emits real Program/Task composition (LIN-02 implementation)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-140.
+Status: accepted. Milestone: LIN. Dependencies: RAI-140.
 
 **Scenario and contract.** Implementation against ADR-031 (RAI-140): the renderer emits, per node, REAL composition referencing the projection runtime — model/tool steps with dataRef keys and threaded inputs (sequencing = declaration order = graph child order; dependencies = NodeView.inputs threaded as values), delegations/phases as nested defs building sub-Programs, failure nodes as Task.fail. Payloads stay in lineage-data.json (dataRef keys only). Deterministic byte-identical output preserved (LIN2-C-01 discipline); unknown kind still typed-rejected (LIN2-02). Golden projections regenerated; the pinned-dotc compile gate (LIN2-01) now compiles EXECUTABLE projections; comment-only bodies disappear (a projection with zero executable statements is a renderer bug). Comparator and recorded interpreter (graph-based) must be verified unaffected.
 
@@ -464,7 +464,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-140.
 
 ## RAI-142: LIN-02 acceptance: executed projection semantics (sequencing, inputs, delegation, phases, failures)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-141.
+Status: accepted. Milestone: LIN. Dependencies: RAI-141.
 
 **Scenario and contract.** Acceptance card: EXECUTE the generated projections (via Task.zio on the built Program) and pin MEANINGFUL semantics — model/tool sequencing equals graph order; input dependencies observable in the report (threaded values match NodeView.inputs); delegation nests (sub-program execution inside parent report tree); supported phases appear as named sub-programs; recorded-failure nodes short-circuit with the typed error; execution is deterministic (identical report vector on repeat); ZERO provider/tool dispatch during execution (scripted-backend probe asserts no calls — the projection is dry by construction). Fixture: a representative graph covering all node kinds + a failed node + a phase + a delegation, rendered, compiled (pinned dotc), executed.
 
@@ -488,7 +488,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-141.
 
 ## RAI-143: Schema card: versioned phase/recovery events + cross-run provenance contract (wave-2 wire extension)
 
-Status: ready. Milestone: LIN. Dependencies: LIN-05.
+Status: accepted. Milestone: LIN. Dependencies: LIN-05.
 
 **Scenario and contract.** Owner-authorized schema card (2026-10-13, P2): extend the FROZEN 13-payload event wire with VERSIONED additions — (1) phase/recovery payloads (phase enter/exit with recovery metadata) so Phase nodes are wire-native instead of model-derived; (2) multi-job correlation fields (invocationId/jobId on envelopes or a header record) so delegate children can join one provenance tree; (3) cross-run provenance record (parent run id, native artifact pointers). Versioning: schemaVersion 2 documents additive fields; v1 documents decode unchanged (back-compat pinned); the reducer accepts both. GraphHash canonicalization: new fields enter the canonical form in a VERSIONED way (hash version bump, documented BREAKING-for-comparators note) or are excluded by contract — decide and pin. PROTECTED change: independent review required; hidden fixtures untouched.
 
@@ -512,7 +512,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
 ## RAI-144: Multi-job lineage export: delegate children join one events stream with provenance
 
-Status: ready. Milestone: LIN. Dependencies: RAI-143.
+Status: accepted. Milestone: LIN. Dependencies: RAI-143.
 
 **Scenario and contract.** Runtime/export card on the RAI-143 contract: delegate CHILD jobs (DelegationToolset forks) emit their envelopes into the RUN's events.jsonl with the correlation fields (invocationId/jobId), so the reducer builds ONE tree with real parent-child edges — no invented edges between separate native roots. Preserve provenance: each child segment carries a pointer to its original per-job native artifacts (work dir, events.jsonl). Ordering: envelopes interleave by emission time with monotonic per-job seq; the reducer's canonical order remains deterministic (documented interleave policy). The application-owned index (BillingCi pattern) is NOT an edge source: separate native roots stay separate unless the correlation contract (RAI-143) links them.
 
@@ -536,7 +536,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-143.
 
 ## RAI-145: Unified CI pipeline graph → DSL projection (BillingCi shape)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-142, RAI-144.
+Status: accepted. Milestone: LIN. Dependencies: RAI-142, RAI-144.
 
 **Scenario and contract.** Projection card: the unified multi-job graph (repair → checks → reviews → boundary batch with REAL edges) projects through the ADR-031 runtime into an executable dry-run composition: phase defs (baseline/repair/final-check/reviews/boundary), delegation blocks where the contract links jobs, batch fan-out as the DSL batch/all composition the loop ACTUALLY used. The illustrative pipeline/parallel/batch syntax is NOT an approved API: the projection uses the existing frozen DSL verbs (andThen/all/batch + Task sequencing) or a reviewed contract addition — choose and pin in the card record. No invented parallelism: edges only from provenance/correlation.
 
@@ -560,7 +560,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-142, RAI-144.
 
 ## RAI-146: Independent acceptance/verifier coverage for unified lineage (multi-root corpus + verifier)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-145.
+Status: accepted. Milestone: LIN. Dependencies: RAI-145.
 
 **Scenario and contract.** Independent acceptance card: a frozen multi-root corpus (golden unified graphs: billing-shape repair+reviews+boundary, delegation tree, unlinked-roots case) + a verifier that checks projected reports against the corpus (exact trees, hash pins, provenance resolution) and NEGATIVE controls (corrupted correlation → typed; invented edge → detected). Corpus is versioned; verifier is the protected acceptance surface for the unified lineage feature — future changes go through this card's review.
 
@@ -584,7 +584,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-145.
 
 ## RAI-147: User guide + complete BillingCi example with actual generated lineage (unified)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-146.
+Status: accepted. Milestone: LIN. Dependencies: RAI-146.
 
 **Scenario and contract.** Documentation card: update user-guide-ci.md and the BillingCi example for the UNIFIED lineage — the guide shows the ACTUAL generated lineage artifacts (lineage.scala + lineage-data.json from a real recorded/scripted run) and the actual unified projection for the pipeline shape; every DSL syntax claim matches the shipped API (andThen/all/batch; NO pipeline/parallel/batch unless a reviewed contract added it — cite the exact card if so); honest limitations (live-wire gated, provenance of unlinked roots separate); lineage.md §cross-run section updated to the RAI-143 contract. Examples must compile (compile-fixtures gate) and quoted lineage outputs must be real (copied from executed runs, path-cited).
 
@@ -608,7 +608,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-146.
 
 ## RAI-148: RecoveryClass taxonomy fix: fs_patch/proc_run are Mutating; single taxonomy source
 
-Status: ready. Milestone: LIN. Dependencies: LIN-06.
+Status: accepted. Milestone: LIN. Dependencies: LIN-06.
 
 **Scenario and contract.** Owner-flagged defect (2026-10-13): the static taxonomy (LineageReducer private sets, duplicated in IsolatedRerun) misses `fs_patch` (a real mutating patch tool — captured repairs labeled ReadOnly despite modifying source) and `proc_run` (a real command-execution tool — labeled ReadOnly). Fix: (1) add fs_patch to WriteTools and proc_run to ExecTools in the CANONICAL source; (2) deduplicate: IsolatedRerun consumes the canonical taxonomy (one public source, e.g. RecoveryTaxonomy in runtime.lineage) instead of a private copy — the duplication was flagged by two reviews as a silent-drift hazard; (3) recorded fixtures containing fs_patch/proc_run tool calls re-verify (isolated-rerun guard now refuses mutating-without-isolation for these); (4) ADR-027 §6.2 doc updated. This is classification correctness, not a relabel.
 
@@ -632,7 +632,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-06.
 
 ## RAI-150: LIN-02.b: populate SessionGraphView inputs/outcome for product export
 
-Status: ready. Milestone: LIN. Dependencies: RAI-141.
+Status: accepted. Milestone: LIN. Dependencies: RAI-141.
 
 **Scenario and contract.** RAI-141 flagged: the product CLI view adapter (SessionGraphView) renders empty `inputs` and no failed markers until this one-file card — the compile-gate test adapter already pins the populated contract. Populate NodeView.inputs from SessionGraph dataflow edges and NodeView.outcome from the recorded ToolCall outcome class; keep the view pure (no IO); deterministic ordering; SessionGraphViewSpec updated to pin populated fields for a representative graph (model/tool sequencing, a failed tool, cross-node inputs).
 
@@ -656,7 +656,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-141.
 
 ## RAI-151: Projection literal escaping: \uXXXX for C0 controls inside generated string literals + hostile-literal compile negative
 
-Status: ready. Milestone: LIN. Dependencies: RAI-141.
+Status: accepted. Milestone: LIN. Dependencies: RAI-141.
 
 **Scenario and contract.** RAI-141 review minor finding: the escape discipline renders C0 controls (other than \n/\r/\t) and DEL as \xHH inside generated STRING literals — pinned dotc 3.9.0 rejects \xHH escapes in string literals (reproduced: model name with U+0001 → compile failure). Pre-RAI-141 the payload landed in a // comment (lexically inert) so it compiled; the W9F4-01 fixture pins this non-compiling shape but never compile-checks it. Fix: emit \uXXXX for control characters inside string literals (\xHH stays only where lexically inert, e.g. comments); add a hostile-literal compile NEGATIVE-to-POSITIVE: a graph with a U+0001 model name must render AND compile (pinned dotc) AND execute; update the W9F4-01 pin to the compiling shape.
 
@@ -680,7 +680,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-141.
 
 ## RAI-153: Live phase emission: wire v2 phase payloads from the loop (replaces corpus stand-ins)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-143, RAI-144.
+Status: accepted. Milestone: LIN. Dependencies: RAI-143, RAI-144.
 
 **Scenario and contract.** The ADR-032 v2 wire carries phase payloads, but no live emitter exists — RAI-145's fixture inserts campaign stage phases as stand-ins (disclosed). Card: add a phase-emission surface to the loop (LoopEvents phase hooks or the ADR-024 seam per the ADR-032 contract), emit PhaseStarted/phase payloads with recovery metadata at real phase boundaries (plan phases per RAI-107 semantics; pipeline stages where the runtime knows them), wire through HeadlessRunner's export (RAI-144), and update the RAI-146 corpus/verifier ONLY where stand-in positions are replaced by live emission (corpus review lineage). Generator needs zero changes (RAI-145 pinned emission-agnostic).
 
@@ -704,7 +704,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-143, RAI-144.
 
 ## RAI-154: Headless coder-agent delegation wiring + per-level fork anchoring + unified lineage-data writer
 
-Status: ready. Milestone: LIN. Dependencies: RAI-144.
+Status: accepted. Milestone: LIN. Dependencies: RAI-144.
 
 **Scenario and contract.** Three carried gaps from RAI-144/145/146/147 reviews, one card: (1) headless coder-agent delegation wiring — the export path is proven via DelegationToolset fixtures but `raider run --agent coder` cannot delegate yet (agent-policy surface); wire delegation tools per the agent policy with tests; (2) per-level fork anchoring — MultiJobExport anchors fork records in the campaign (root) stream; nested delegation chains need per-level anchoring before grandchild edges are correct (typed reproducer first); (3) unified lineage-data writer — RunLineageArtifacts refuses phase-bearing graphs typed; extend to write the unified lineage-data (v2) beside the run when phases/correlation exist, keeping v1 output for delegation-free runs byte-identical.
 
@@ -752,7 +752,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b, RAI-155.c, RAI
 
 ## RAI-155.a: Contract for explicit chat capture and executable workflow export
 
-Status: todo. Milestone: LIN. Dependencies: RAI-116, RAI-140.
+Status: accepted. Milestone: LIN. Dependencies: RAI-116, RAI-140.
 
 **Scenario and contract.** Freeze a separate reviewed ADR/contract after the existing RAI-116 authoring/launch boundary. Define selection of session/turns, completed/incomplete boundaries, supported task specification, proposed export command and output layout, human-editable Scala plus versioned metadata, input schema, redaction/environment references, export versus compile versus execution, and compatibility with BundleWorkflow v1 Program[String,String]. Reserve command names only after source audit; no current :export-workflow or raider compile support is assumed. Decide binding of workflow input/provider/workspace/limits to the existing runtime. First slice supports sequential coding intent, explicit prompt refinements, named trusted check commands, and reusable task/workspace inputs. Define refusal for unrepresentable history and uncertainty; do not infer concurrency, skip missing context, or silently compile/run generated code. Coordinate with RAI-117 for future checkpoints/external effects without expanding this slice to them. Prepare a remaining-work estimate and proposed hour allocation/tradeoff in the ADR; the coordinator records the allocation in the roadmap before implementation.
 
@@ -776,7 +776,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-116, RAI-140.
 
 ## RAI-155.b: Persist exportable chat turns and explicit task selection
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.a.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.a.
 
 **Scenario and contract.** Implement the reviewed chat capture and selection contract through the actual chat entry. Persist turn/job identity, user intent/refinements, relevant workspace/provider configuration references, tool outcomes and pending/completed/interrupted boundaries required to explain the proposed workflow. Keep sensitive values out of export/logs and use environment/helper names. Preserve usable source turns across history compaction and save/reopen; legacy conversation-only saves remain readable but cannot invent absent execution records. Reopening does not restore authority or silently change active backend/workspace; validate or show explicit mismatch. Export takes a bounded immutable selection and performs no model/tool execution.
 
@@ -800,7 +800,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.a.
 
 ## RAI-155.c: Generate editable executable Scala from the selected chat task
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b.
 
 **Scenario and contract.** Generate normal editable Scala using the accepted runtime binding, Program/Task and existing composition verbs. Target an executable BundleWorkflow v1 definition with validated JSON decoded inside the String input boundary, explicit task/workspace/checks/limits, output validation, and bounded agent work. The source must request new agent work on new input, not embed recorded final answers or blindly repeat tool calls. Export source, manifest/input example and non-secret origin metadata; preserve source/turn references separately from subsequent execution lineage. Known workflow structure renders deterministically from the supported task specification. If optional LLM synthesis is needed, make it an explicit configured operation and validate its proposal; do not execute arbitrary chat text. Reject unsupported constructs rather than emitting misleading runnable-looking stubs.
 
@@ -824,7 +824,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b.
 
 ## RAI-155.d: Compile edited chat workflows and launch them locally and in generic CI
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.c.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.c.
 
 **Scenario and contract.** Provide the reviewed explicit build/package path for user-edited source and execute the same resulting workflow locally and through existing headless bundle launch. Reuse one runner/loop, policy/budget and cancellation ownership. Record the actual source/input/build identity so a manual edit invalidates earlier result claims. Generated code is trusted Scala; initial construction/loading of generated supported output must not start agent/tool work. Execution resolves current credentials and policy rather than inheriting chat authority. No published SDK or selected forge is required. CLI syntax must reflect implementation; currently no --ci or compile command may be assumed. Restrict the first end-to-end path to sequential chat tasks; unified phases/delegation additionally require RAI-153/154.
 
@@ -944,7 +944,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-144, RAI-156.
 
 ## RAI-158: Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-155.c, RAI-155.d.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.c, RAI-155.d.
 
 **Scenario and contract.** RAI-155.d contract-change request: the .c generator emits `object <Name>` + `@main def <name>` — on case-INSENSITIVE filesystems (macOS default) dotc emits class-file overwrite warnings and the produced classes are nondeterministic (the .c compile gate never launched the main so it never surfaced). Fix the renderer naming scheme (e.g. object <Name> + @main def run<Name>, or launcher object separation) so object/top-level definition names are pairwise distinct case-insensitively; update goldens/examples (regenerate through the pipeline — never hand-edit); extend the .c gate with a launch-the-main assertion so the class collision is caught at gate time; keep determinism (render x2 byte-identical) and all existing pins green after regeneration.
 
@@ -968,7 +968,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-155.c, RAI-155.d.
 
 ## RAI-159: WorkflowRun unwritable-output typed failure (EventsJsonlWriter open ordering) + dead-branch simplification
 
-Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.d.
 
 **Scenario and contract.** RAI-155.d review round 2 surfaced two follow-ups: (1) LIVE DEFECT — `workflow run` with an unwritable parent --out dies untyped (in-process AccessDeniedException defect; subprocess exit 1 with raw stack, outside the §8 exit table, no truthful run.json/events): EventsJsonlWriter.open (:214) shadows the typed RA-JOURNAL probe (:278-287). Fix: open the events writer AFTER the typed createDirectories/write probe, add the named read-only-parent test asserting RA-JOURNAL/27 with truthful absence-of-artifacts; (2) simplify the dead defensive branch WorkflowCompile.scala:192-201 (defineClass name-contract makes it unreachable — RAI-155.d round-2 verified) or pin it with a comment; keep the reachable refusal tests green.
 
@@ -992,7 +992,7 @@ Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
 
 ## RAI-160: Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c.
 
 **Scenario and contract.** Owner-flagged gap (2026-10-14): ChatWorkflowExport.exportTo (dsl) and :task select (cli, RAI-155.b) exist but NOTHING connects them — there is no export command and no TaskSelection-to-StsSelection adapter, so the chat cannot produce the editable workflow. Wire it: (1) cli-side adapter TaskSelection snapshot -> dsl StsSelection (pure mapping: intent/refinements/params/checks/agent stage; bounded request text flows as the payload-free reason/intent source per ADR-033 §2.5 discipline; no payloads inlined beyond the STS shape); (2) chat command :export-workflow [--out <dir>] (proposal now implemented) dispatching through the adapter to ChatWorkflowExport.exportTo — staging+rename discipline, R5 refusals inherited, typed errors surfaced; (3) the exported artifact compiles via the EXISTING raider compile (chain gate: select -> export -> compile -> workflow run smoke on a scripted policy); NO pre-written example stands in for the generated output; (4) deterministic export x2 byte-identical; escape/refusal disciplines inherited from the renderer (secret-bearing selection still refused R4 at the adapter boundary too).
 
