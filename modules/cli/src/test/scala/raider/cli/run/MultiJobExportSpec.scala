@@ -493,6 +493,34 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     }
 
   def spec = suite("multi-job lineage export (RAI-144)")(
+    test(
+      "SW-01: drain settles captured introductions through the hub watermark before close"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            dir <- ZIO.attempt(tempDir("rai-157-sw01")).orDie
+            (hub, manager, join) <- harness(dir)
+            release <- Promise.make[Nothing, Unit]
+            child <- forkChild(hub, manager, release)(_ => ZIO.unit)
+            // Publish only after the child capture was installed by the
+            // Running transition. The hub watermark is authoritative even
+            // when its forwarding fiber has not delivered this introduction.
+            _ <- publishIntroduction(hub, child.id)
+            _ <- pollUntil(
+              hub.snapshot(child.id).map(_.exists(_.lastSeq >= 2L)),
+              5000L
+            )
+            _ <- join.drain(2000L)
+            segments <- join.segmentsView
+            _ <- release.succeed(()).unit
+            _ <- manager.awaitSettled(child)
+          yield assertTrue(
+            segments.exists(_.childJobId == child.id)
+          )
+        }
+      }
+    },
     // -- MJE-01 ---------------------------------------------------------------
     test(
       "MJE-01: a scripted delegation run exports ONE events.jsonl; the reducer builds one tree; child provenance pointers resolve"
