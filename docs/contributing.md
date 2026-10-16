@@ -112,9 +112,22 @@ historical evidence values intact when documenting later changes.
   limitations.
 - [API reference](api.md): current module and API contracts.
 - [Architecture](architecture.md): modules, runtime flow, and resource control.
+- [TUI guide](user-guide-tui.md): tabs, drafts, command palette, and scrollback.
+- [Lineage guide](user-guide-lineage.md): run artifacts and recorded replay.
 - [Working product acceptance](working-product.md) and
   [development plan](PLAN.md): target behavior and roadmap; read alongside the
   current code and board.
+
+When documenting a newly shipped surface, check its command parser/dispatcher
+and behavioral test, then use a runnable example only if the example's working
+directory, setup, and expected output match that code. The `docs` profile also
+checks links and examples; `scripts/quality/user_examples.py` exercises the
+checked-in REPL and CLI example corpus, but it does not prove every prose
+example in every guide. For example, do not describe `:approve` as a general
+Scala REPL command: it is routed by the tabs shell's plan panel. Likewise,
+`raider resume` recovers recorded observable state; it does not restart a run or
+replay mutations. Keep exported workflow support distinct from downstream
+verification and walkthrough work that is not yet delivered.
 
 ## Trust and execution boundaries
 
