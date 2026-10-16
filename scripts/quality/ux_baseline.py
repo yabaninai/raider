@@ -152,6 +152,22 @@ def stats_block(samples_ms: list[float]) -> dict:
     }
 
 
+def incomplete_exit_code(measurements: dict, required: tuple[str, ...],
+                         allow_skip: bool) -> int:
+    """Choose the failure exit, giving failed measurements precedence."""
+    skipped = [key for key in required
+               if measurements.get(key, {}).get("status") == "skipped"]
+    incomplete = [key for key in required
+                  if measurements.get(key, {}).get("status") != "measured"]
+    if not incomplete:
+        return 0
+    if skipped and allow_skip and len(skipped) == len(incomplete):
+        return 0
+    failed = any(measurements.get(key, {}).get("status") == "failed"
+                 for key in incomplete)
+    return 1 if failed or not skipped else 3
+
+
 def run_capture(argv: list[str], timeout: float) -> tuple[int, str, str]:
     try:
         res = subprocess.run(argv, capture_output=True, text=True,
@@ -669,8 +685,8 @@ def main() -> int:
         report["gate_status"] = "incomplete"
 
     # ---- atomic write; gate status is decided only after report persistence ----
-    out.parent.mkdir(parents=True, exist_ok=True)
     try:
+        out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(out.suffix + ".tmp")
         tmp.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n",
                        encoding="utf-8")
@@ -694,7 +710,7 @@ def main() -> int:
                for key in incomplete]
     print("[ux-baseline] required measurements incomplete: " + "; ".join(reasons),
           file=sys.stderr)
-    return 3 if skipped else 1
+    return incomplete_exit_code(measurements, required, args.allow_skip)
 
 
 if __name__ == "__main__":
