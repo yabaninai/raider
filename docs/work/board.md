@@ -77,6 +77,44 @@ after the first integration batch (main 0870045):
   manifest `artifacts/quality/20261016-073347-65305-0001/manifest.json` SHA-256
   `fb2078f1c6e077f5f595b565b63a4ecaff8aa0d2460cd71bc7aa852b3936557c`.
 
+## 2026-10-16 — ADR-030 owner decisions; MJE-03c known-red
+
+- **ADR-030 accepted (owner mandate, interactive session 2026-10-16; contract
+  only):**
+  - D1: `NeedsApproval` writes an approval request (checkpoint ID, candidate
+    digest, expiry); human decision is separate; a fresh invocation rereads
+    policy/state/digest, with no resumed fiber.
+  - D2: Scala workflow config is authoritative for required checks/review and
+    target branch; read-only forge reconcile precedes each mutation, with typed
+    refusal on divergence.
+  - D3: Full generic forge stand protocol includes commit, PR status, merge,
+    stale-ref, conflict, duplicate, and unknown-outcome; real forges are
+    separately accepted adapters.
+  - D4: Typed Scala schemas in `contracts/` for check-result, review-verdict,
+    candidate-identity, integration-result, represented as JSON in run artifacts.
+  - D5: SemVer + Keep a Changelog, local `v<semver>` tag, checksummed
+    `artifacts/release/<version>/`; strictly local, with no push/publish/deploy.
+  - D6 (**explicit non-default owner budget decision**): SDLC hours expand
+    beyond the 13,100h envelope; refine the 128–200h estimate per implementation
+    packet before spend, and record the budget decision on the board.
+  - D7 (**explicit non-default owner choice**): public effects-API, with ADR-029
+    H8 design and consumer migration discipline in the first implementation
+    card; no signature freeze before review.
+  - Coordinator registers implementation cards after the .e/.f critical path.
+- **MJE-03c adjudication (fresh independent reviewer, read-only):** scope is
+  RAI-157 — the captured-but-unconnected introduction is silently lost at
+  `MultiJobExport.scala:63–65/435–448`; this is **not** an RAI-156 regression
+  (`0870045` changes ReplayHarness replay drain only). MJE-03c expectation stays
+  unchanged; RAI-156 stays. Main carries a recorded **INTERMITTENT KNOWN-RED**
+  on the static/unit/contracts/docs profile until the RAI-157 fix merges and
+  passes integrated verification. Failed manifest
+  `20261016-072639-53185-0001` is retained; the successful targeted rerun is
+  noted separately and does not clear the integrated known-red.
+- **RAI-157 lane note:** original `wt/rai-157` had corrupt build state (phantom
+  `ToolCall.id` compile error; a fresh worktree of the same branch compiles).
+  The lane continues in `wt/rai-157-fresh`; the original is detached and
+  retained for forensics.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
