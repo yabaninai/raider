@@ -222,4 +222,5 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-158** [Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)](lineage.md); dependencies: RAI-155.c, RAI-155.d; profiles: static, unit, contracts.
 - **RAI-159** [WorkflowRun unwritable-output typed failure (EventsJsonlWriter open ordering) + dead-branch simplification](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-160** [Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)](lineage.md); dependencies: RAI-155.b, RAI-155.c; profiles: static, unit, contracts, ci.
+- **RAI-162** [WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-161** [Quality runner: implement the documented operational-record exclusion](m0.md); dependencies: none; profiles: self, docs.

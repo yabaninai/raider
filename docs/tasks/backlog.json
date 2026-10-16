@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 172,
+  "raider_count": 173,
   "companion_count": 3,
   "cards": [
     {
@@ -5155,6 +5155,34 @@
       },
       "non_goals": "Threshold changes, excluding any other paths, weakening skip/timeout semantics, or changing gate policy without independent review.",
       "context": "docs/quality-gates.md operational-record exclusion policy; RAI-137 round 2 freshness invalidation observed when a work record was written after gates."
+    },
+    {
+      "id": "RAI-162",
+      "title": "WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs",
+      "milestone": "LIN",
+      "dependencies": [
+        "RAI-155.d"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/workflow/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/workflow/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
+      "behavior": "The RAI-155.e E03 reproducer (ChatWorkflowVerifierE03Spec; work record docs/work/records/RAI-155e.md) sends SIGTERM during an in-flight chat-exported workflow run against a delayed local stand. The child exits 143 but leaves neither a run artifact nor an interrupted marker, violating ci-runtime.md §§6 and 8 interruption honesty. Implement bounded-stop cleanup/reporting in the WorkflowRun/chat-workflow launch path so SIGTERM leaves truthful interruption evidence (run.json or an interruption marker per the existing §7–8 contracts), preserving interruption exit semantics. RAI-155.d CWF-D03 proves the direct CLI child path; this closes the chat-workflow-path gap. The E03 expectations are acceptance and must not change.",
+      "acceptance": {
+        "normal": "WRI-01: Normal chat-exported workflow runs retain existing result/artifact behavior and exit status.",
+        "error": "WRI-02: SIGTERM during an in-flight run against the delayed local stand leaves a truthful interrupted run.json or interruption marker, without fabricated success or durable-resume claims.",
+        "concurrency": "WRI-03: Unchanged RAI-155.e E03 verifier passes with bounded cleanup, truthful exit/artifact evidence, and no orphan child; direct CLI CWF-D03 remains green."
+      },
+      "non_goals": "Changes to RAI-155.e E03 verifier expectations, durable-resume or exactly-once claims, changes to frozen artifact schemas/exit contracts, and changes to the direct CLI child path beyond regression coverage.",
+      "context": "RAI-155.e E03 reproducer and docs/work/records/RAI-155e.md: ChatWorkflowVerifierE03Spec observes exit 143 with no run artifact/interrupted marker on SIGTERM against the delayed local stand. This blocks RAI-155.e and the .e → .f critical path; ci-runtime.md §§6–8 define bounded cleanup and interruption/artifact honesty."
     }
   ]
 }
