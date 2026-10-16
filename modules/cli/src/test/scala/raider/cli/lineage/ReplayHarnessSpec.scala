@@ -1,9 +1,12 @@
 package raider.cli.lineage
 
+import raider.core.{JobId, RootId, SessionId}
+import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
+import raider.runtime.jobs.JobStatus
 import raider.runtime.lineage.model.NodeId
 import raider.runtime.lineage.replay.{DivergenceReason, GraphComparator}
 import zio.test.*
-import zio.{Scope, ZIO}
+import zio.{Ref, Scope, ZIO}
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
@@ -58,6 +61,43 @@ object ReplayHarnessSpec extends ZIOSpecDefault:
     "Nothing to read; the workspace stays untouched."
 
   def spec: Spec[TestEnvironment & Scope, Any] = suite("ReplayHarness")(
+    test("terminal is not settled until every committed sequence reaches the sink") {
+      live {
+        val job = JobId("watermark-job")
+        val root = RootId("watermark-root")
+        val session = SessionId("watermark-session")
+        for
+          hub <- EventHub.make()
+          _ <- hub.publish(job, root, session, EventPayload.Diagnostics("tail"))
+          _ <- hub.publish(job, root, session, EventPayload.Terminal(JobStatus.Succeeded))
+          terminal = EventEnvelope(
+            1,
+            2L,
+            job,
+            root,
+            session,
+            0L,
+            EventPayload.Terminal(JobStatus.Succeeded)
+          )
+          diagnostic = EventEnvelope(
+            1,
+            1L,
+            job,
+            root,
+            session,
+            0L,
+            EventPayload.Diagnostics("tail")
+          )
+          sink <- Ref.make(Vector(terminal))
+          release <- (ZIO.sleep(zio.Duration.fromMillis(120)) *>
+            sink.update(_ :+ diagnostic)).fork
+          started = System.nanoTime()
+          _ <- ReplayHarness.eventuallyTerminal(hub, job, 0L, sink)
+          elapsedMs = (System.nanoTime() - started) / 1000000L
+          _ <- release.join
+        yield assertTrue(elapsedMs >= 80L)
+      }
+    },
     test(
       "LIN5-01-H: replay of the recorded document reproduces the recorded graph (normalized Match)"
     ) {
