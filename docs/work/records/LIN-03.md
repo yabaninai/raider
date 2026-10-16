@@ -1,6 +1,25 @@
 # LIN-03: work record
 
-Status: partial. Date: 2026-10-16. Baseline commit/source: `cd7032f` (worktree `lane/lin-03`, initially clean).
+Status: partial. Date: 2026-10-16. Baseline commit/source: `7c03213` on `lane/lin-03`, initially clean; refreshed by merging `main` at `0870045` (merge commit `69a8fc1`).
+
+## Continuation and merge refresh
+
+The required baseline refresh completed without conflicts. RAI-156's ReplayHarness drain change is adjacent only to replay and its downstream ChatExport chain gate; it does not change the lineage envelope exporter or HeadlessRunner path. Its terminal-watermark drain semantics reinforce the requirement that final lineage reduction occurs only after the stream is caught up. No RAI-156 files were edited in this continuation.
+
+This continuation did not implement the remaining live-export wiring. Inspection confirmed that HeadlessRunner currently serializes the exported stream through `MultiJobExport`, then reduces its final `exportedWire` snapshot; `LiveLineageProjection.append` remains a standalone pure fold. Likewise, `RunLineageArtifacts.write` atomically replaces each file independently, not as one atomic source/data pair. No code was changed to imply that these gaps are closed.
+
+## Continuation checks
+
+| argv / command | Exit | Log / manifest |
+| --- | --- | --- |
+| `git merge main` (worktree; main at `0870045`) | 0 | Merge commit `69a8fc1`; no conflicts |
+| `make quality-changed` | 0 | Clean tree classification: minimum `fast` profile |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261016-141647-17048-0001/manifest.json`; self, compile, formatting, contracts, plan validation, and tests passed |
+| `make quality-profile PROFILES="static unit contracts runtime ci"` | 0 | `artifacts/quality/20261016-142459-32470-0001/manifest.json`; all selected checks passed |
+| `make quality-changed` (after this record update) | 0 | Classified operational-record-only change as `docs` |
+| `make quality-changed QUALITY_EXECUTE=1` (after this record update) | 0 | `artifacts/quality/20261016-143330-38577-0001/manifest.json`; SHA-256 `16ebefc844c233ad7f051e507ad900786a334724da1d583928c6cb73a25a18d6`; plan validation passed |
+
+These executions verify the refreshed, unchanged candidate; they do not establish the missing LIN-03 implementation acceptance or replace integrated-candidate checks after implementation.
 
 ## Resulting behavior
 
@@ -45,10 +64,10 @@ An earlier full changed run passed compile/format but failed once in existing `M
 
 ## Limitations / blockers
 
-This is not complete LIN-03 acceptance. The new pure snapshot fold is not connected to the live export stream or filesystem artifacts. Consequently it does not yet persist `lineage.scala`/`lineage-data.json` at each round/crash checkpoint, does not atomically coordinate the two artifact files, and does not compile the live projection or report/continue after a compile failure. The targeted fixture uses scripted local events only. No paid calls were made.
+This is not complete LIN-03 acceptance. The pure snapshot fold is not connected to the live export stream or filesystem artifacts. Consequently it does not yet persist `lineage.scala`/`lineage-data.json` at each round/crash checkpoint, does not atomically coordinate the two artifact files, and does not compile the live projection or report/continue after a compile failure. The targeted fixture uses scripted local events only. The requested atomic publication of two separately named files also needs a reader-visible commit/snapshot protocol if consumers must never observe a mixed generation; the current frozen artifact readers resolve the two fixed paths independently. That interface question must be resolved narrowly without changing the frozen lineage schema. No paid calls were made.
 
 ## Review and next task
 
-Independent review is pending. Continue LIN-03 by integrating this state into the single ordered export stream and artifact lifecycle, then implement a safe artifact commit/checkpoint strategy and periodic compile validation with typed invalid status that does not change the session exit. Rerun the full acceptance gates after that work. Next dependent card is LIN-04 after LIN-03 acceptance.
+Independent review is pending. Remaining LIN-03 work: feed the serialized live export stream into the incremental fold, persist a crash-consistent projection/data snapshot, report validation failure without affecting session exit, and prove LIN3-01/02/03 plus GraphHash canonicalization regression. Resolve whether artifact-pair atomicity requires a versioned reader-visible pointer/manifest before implementation; no wire/schema change is authorized here. Next dependent card remains LIN-04, but it is not ready for acceptance until LIN-03 closes.
 
 Product-input hash and operational-record hash differ under the reviewed policy. Changes to code/spec/build/fixtures require affected reruns; updating a board/record line does not rebind an old manifest to the new source tree. A lane report applies to its snapshot; final acceptance applies to the integrated candidate.
