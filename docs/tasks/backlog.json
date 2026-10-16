@@ -3033,7 +3033,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "ready"
+      "status": "accepted"
     },
     {
       "id": "LIN-02",
@@ -3061,7 +3061,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "accepted"
     },
     {
       "id": "LIN-03",
@@ -3487,7 +3487,7 @@
         "RAI-102",
         "RAI-062"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -3515,7 +3515,7 @@
         "LIN-09",
         "LIN-10"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/main/scala/raider/cli/lineage/**",
@@ -3545,7 +3545,7 @@
       "dependencies": [
         "RAI-107"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -3574,7 +3574,7 @@
         "RAI-106",
         "RAI-068"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -3602,7 +3602,7 @@
         "LIN-09",
         "LIN-10"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/**",
         "modules/runtime/src/main/scala/raider/runtime/lineage/**",
@@ -3631,7 +3631,7 @@
       "dependencies": [
         "RAI-099"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/work/records/**"
       ],
@@ -3656,7 +3656,7 @@
         "RAI-108",
         "RAI-109"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/lineage.md"
       ],
@@ -3679,7 +3679,7 @@
       "dependencies": [
         "LIN-02"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/test/scala/raider/dsl/lineage/**",
         "modules/cli/src/test/scala/raider/cli/lineage/**"
@@ -3705,7 +3705,7 @@
       "dependencies": [
         "LIN-06"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/lineage/**",
         "modules/cli/src/main/scala/raider/cli/lineage/**"
@@ -3733,7 +3733,7 @@
         "RAI-104",
         "RAI-108"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -3759,7 +3759,7 @@
       "dependencies": [
         "RAI-107"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/test/scala/raider/repl/**",
         "modules/runtime/src/test/scala/raider/runtime/**"
@@ -3806,7 +3806,7 @@
       "dependencies": [
         "RAI-115"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/ADR-029-workflow-sdk.md",
         "docs/runtime-contracts.md",
@@ -3859,7 +3859,7 @@
         "RAI-105",
         "RAI-113"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/test/scala/raider/repl/**"
       ],
@@ -3885,7 +3885,7 @@
       "dependencies": [
         "LIN-15"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/**",
         "modules/cli/src/test/scala/raider/cli/lineage/**"
@@ -3912,7 +3912,7 @@
       "dependencies": [
         "RAI-113"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -3939,7 +3939,7 @@
         "RAI-112",
         "RAI-062"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/tabs_pty_probe.py",
         "docs/work/records/**"
@@ -3993,7 +3993,7 @@
       "dependencies": [
         "RAI-068"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -4019,7 +4019,7 @@
       "dependencies": [
         "RAI-122"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/tabs_pty_probe.py",
         "scripts/quality/renderer_pty_probe.py",
@@ -4045,7 +4045,7 @@
       "dependencies": [
         "RAI-013"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/provider-anthropic/src/main/scala/raider/provider/anthropic/**",
         "modules/core/src/main/scala/raider/core/**",
@@ -4074,7 +4074,7 @@
       "dependencies": [
         "RAI-009"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/test/scala/raider/runtime/**"
       ],
@@ -4099,7 +4099,7 @@
       "dependencies": [
         "RAI-027"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/**",
@@ -4128,7 +4128,7 @@
       "dependencies": [
         "RAI-124"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/test/scala/raider/repl/**",
         "modules/repl/src/main/scala/raider/repl/**"
@@ -4155,7 +4155,7 @@
         "RAI-100",
         "RAI-078"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/**"
@@ -4182,7 +4182,7 @@
       "dependencies": [
         "RAI-074"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**",
@@ -4211,7 +4211,7 @@
       "dependencies": [
         "RAI-127"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/provider-anthropic/src/main/scala/raider/provider/anthropic/**",
         "modules/provider-anthropic/src/test/scala/**",
@@ -4268,7 +4268,7 @@
       "dependencies": [
         "RAI-114"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality-policy/registry.json",
         "scripts/quality/quality.py",
@@ -4349,7 +4349,7 @@
       "dependencies": [
         "LIN-02"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/ADR-031-lineage-projection-runtime.md",
         "modules/dsl/src/main/scala/raider/dsl/lineage/proj/**",
@@ -4377,7 +4377,7 @@
       "dependencies": [
         "RAI-140"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/lineage/proj/**",
         "modules/dsl/src/test/scala/raider/dsl/lineage/**",
@@ -4405,7 +4405,7 @@
       "dependencies": [
         "RAI-141"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/lineage/**",
         "modules/dsl/src/test/scala/raider/dsl/lineage/**"
@@ -4432,7 +4432,7 @@
       "dependencies": [
         "LIN-05"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/ADR-032-phase-recovery-multijob.md",
         "contracts/lineage/lineage-data.schema.json",
@@ -4462,7 +4462,7 @@
       "dependencies": [
         "RAI-143"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/**",
@@ -4492,7 +4492,7 @@
         "RAI-142",
         "RAI-144"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/lineage/**",
         "modules/dsl/src/test/scala/raider/dsl/lineage/**",
@@ -4520,7 +4520,7 @@
       "dependencies": [
         "RAI-145"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/lineage/**",
         "modules/cli/src/test/scala/raider/cli/lineage/**",
@@ -4547,7 +4547,7 @@
       "dependencies": [
         "RAI-146"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/user-guide-ci.md",
         "docs/examples/ci-pipeline/**",
@@ -4574,7 +4574,7 @@
       "dependencies": [
         "LIN-06"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/lineage/**",
         "modules/runtime/src/test/scala/raider/runtime/**",
@@ -4603,7 +4603,7 @@
       "dependencies": [
         "RAI-141"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/SessionGraphView.scala",
         "modules/cli/src/test/scala/raider/cli/lineage/SessionGraphViewSpec.scala"
@@ -4629,7 +4629,7 @@
       "dependencies": [
         "RAI-148"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/tools/src/main/scala/raider/tools/**",
         "modules/tools/src/test/scala/**",
@@ -4658,7 +4658,7 @@
       "dependencies": [
         "RAI-141"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/lineage/proj/**",
         "modules/dsl/src/test/scala/raider/dsl/lineage/**",
@@ -4685,7 +4685,7 @@
       "dependencies": [
         "RAI-119"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/**",
         "modules/ui/src/test/**",
@@ -4714,7 +4714,7 @@
         "RAI-143",
         "RAI-144"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/ADR-024-events.md",
         "modules/runtime/src/main/scala/raider/runtime/events/**",
@@ -4746,7 +4746,7 @@
       "dependencies": [
         "RAI-144"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/**",
@@ -4810,7 +4810,7 @@
         "RAI-116",
         "RAI-140"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "docs/runtime-contracts.md",
@@ -4839,7 +4839,7 @@
       "dependencies": [
         "RAI-155.a"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/cli/src/main/scala/raider/cli/Main.scala",
@@ -4869,7 +4869,7 @@
         "RAI-155.a",
         "RAI-155.b"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/workflow/**",
         "modules/dsl/src/test/scala/raider/dsl/workflow/**",
@@ -4899,7 +4899,7 @@
       "dependencies": [
         "RAI-155.c"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/workflow/**",
         "modules/cli/src/main/scala/raider/cli/run/**",
@@ -5053,7 +5053,7 @@
         "RAI-155.c",
         "RAI-155.d"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/workflow/**",
         "modules/dsl/src/test/scala/raider/dsl/workflow/**",
@@ -5081,7 +5081,7 @@
       "dependencies": [
         "RAI-155.d"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/workflow/**",
         "modules/cli/src/test/scala/raider/cli/workflow/**",
@@ -5110,7 +5110,7 @@
         "RAI-155.b",
         "RAI-155.c"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/cli/src/test/scala/raider/cli/chat/**",

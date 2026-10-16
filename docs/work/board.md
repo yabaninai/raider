@@ -1,5 +1,42 @@
 # Raider Execution Board
 
+## 2026-10-16 — Capacity revision: 20 spawned Luna agents
+
+Owner decision (interactive session, 2026-10-16, refined the same day):
+execution capacity is the **primary coordinator session plus up to 20
+spawned Luna agents** (the primary session is the coordinator/integrator and
+sole owner of the root checkout). Reason: remove the provider rate-limit
+bottleneck that killed
+parallel spawns twice after work had started (wave 3 incident; RAI-121) and
+pipeline independent review instead of queueing it. The build ceiling is
+unchanged: at most 8–10 concurrent heavy (sbt-running) lanes on 18 cores /
+128 GB with load-calibrated gate timeouts; additional capacity goes to light
+lanes (docs, contracts, research, fixture preparation, board/backlog/worktree
+hygiene) and immediate per-lane reviewers. Mechanics updated this date in
+parallel-development.md §1/§1a/§1b, roadmap §5, and the raider-wave command.
+No gate thresholds, protected verifiers, or acceptance rules changed.
+
+First wave under the new capacity (composition corrected 2026-10-16 after the
+read-only research lanes L1–L4; each lane opens only after its dependencies
+are verified against accepted main and a clean main commit): heavy —
+RAI-155.e (critical path: .a/.b/.c/.d and RAI-158/159/160 are merged with
+approved reviews on main; RESUME the existing dirty worktree wt/rai-155e —
+uncommitted verifier files E01–E03/Harness/CorpusSpec — per
+parallel-development §8, do not duplicate it), RAI-156, RAI-157, RAI-137,
+RAI-136, LIN-03 (dependencies LIN-01/LIN-02 close via the reconciliation
+below); light — RAI-134 (guide refresh), RAI-117 SDLC ADR draft (RAI-116
+accepted; outline prepared by research lane L4). Coordinator-executed
+hygiene: backlog reconciliation with per-card merge-commit evidence — the
+drift is larger than the L1 first pass reported (verified examples merged
+with approved reviews but still ready/todo in backlog.json: RAI-112,
+RAI-119–122, RAI-124, RAI-126–130, RAI-131–133, RAI-135, RAI-140–154,
+LIN-01/02, RAI-155.a–d, RAI-158–160); merged-worktree cleanup under wt/
+(112 clean removable worktrees inventoried; keep 55 unmerged branches and 12
+dirty worktrees); RAI-155.f walkthrough preparation is parked read-only
+until .e is accepted. RAI-155.f, RAI-123 (conditional), LIN-04, and 129.b/c
+registration queue behind their dependencies. Merges land in batches of 3–5
+by dependency cluster; full main gates run once per batch.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.

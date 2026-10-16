@@ -553,11 +553,15 @@ Typical waves:
 | W6 | Candidate defects | Release acceptance | Docs/usability verification |
 | W7, after M4 | Yabanin adapter | Offline fixtures against frozen contract | Independent review; live if authorized |
 
-Maximum: coordinator + 8–10 active spawned workers (owner decision of 2026-10-12,
-superseding the “up to three” limit; reviewer occupies a slot; mechanics in
-parallel-development.md §1a/§1b). Do not keep all writer slots occupied at the
-cost of having no review. The root checkout, shared contracts/build/gate
-registry/board belong to the coordinator or one explicitly assigned owner.
+Maximum (owner decision 2026-10-16, superseding the 2026-10-12 “8–10 active
+spawned workers” ceiling): the primary coordinator session plus up to 20
+spawned Luna agents. Concurrent heavy
+(sbt-running) lanes remain capped at 8–10 by RAM/CPU; light lanes (docs,
+contracts, review, research, fixture design) fill the remaining slots
+(mechanics in parallel-development.md §1a/§1b). Do not keep all writer slots
+occupied at the cost of having no review. The root checkout, shared
+contracts/build/gate registry/board belong to the coordinator or one
+explicitly assigned owner.
 Development of protected verifiers is a separate card with fresh review; an
 implementation worker cannot rewrite its test's expected result.
 
