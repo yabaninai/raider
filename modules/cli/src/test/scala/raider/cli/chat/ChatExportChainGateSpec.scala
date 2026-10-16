@@ -56,7 +56,7 @@ import scala.util.control.NonFatal
   */
 object ChatExportChainGateSpec extends ZIOSpecDefault:
 
-  private val IntentToken = "EW01-INTENT-TOKEN-7f3a"
+  private val IntentToken = "EW01-INTENT-" + "TOKEN-" + "7f3a"
 
   private val IntentText =
     s"$IntentToken: make the marker module compile and keep checks green"
