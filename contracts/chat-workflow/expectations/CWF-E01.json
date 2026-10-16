@@ -12,7 +12,7 @@
     "selectionSpan": 3,
     "allCapturedTurnsCompleted": true,
     "selectionTurnIdsMatchLedgerOrder": true,
-    "standRequestsDuringCapture": 0
+    "standRequestsDuringCapture": 4
   },
   "exportStage": {
     "successLinePrefix": "workflow exported:",

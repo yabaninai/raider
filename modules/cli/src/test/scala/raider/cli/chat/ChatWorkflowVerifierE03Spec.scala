@@ -170,9 +170,9 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
             // nothing re-dispatches
             _ <- fiber.interrupt
             afterInterrupt <- cap.ctx.ledgerRef.get
-            callsAtInterrupt = cap.backend.callCount
+            callsAtInterrupt = cap.callCount()
             _ <- ZIO.yieldNow.repeatN(100_000)
-            callsAfterWait = cap.backend.callCount
+            callsAfterWait = cap.callCount()
             interruptedOk =
               afterInterrupt.size == 4 &&
                 afterInterrupt(3).status != TurnLedger.Status.Completed &&
@@ -215,7 +215,7 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
         "fresh-process SIGTERM: bounded truthful outcome (exit per corpus, incomplete artifact or interrupted marker, never Succeeded, no retry); deterministic repeats: re-export byte-identical + normalized-equal repeat runs"
       ) {
         loadE03.flatMap { exp =>
-          ZIO.acquireReleaseWith(startStand(StandMode.Delay(60000)))(h =>
+          ZIO.acquireReleaseWith(startStand(StandMode.Delay(15000)))(h =>
             ZIO.succeed(h.stop())
           ) { delayStand =>
             ZIO.acquireReleaseWith(startStand(StandMode.Normal))(h =>
@@ -296,6 +296,23 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
           (!exp.deterministicRepeat.normalizedResultsEqual ||
             observablyEqual(norm1, norm2))
 
+      // The delayed stand must be the endpoint bound into this independently
+      // compiled SIGTERM artifact; the repeat artifact remains on the normal
+      // stand and is not reused for the interruption case.
+      sigSrc = outRoot.resolve("sigterm-source").resolve("cwf_e03_sig.scala")
+      sigText = Files
+        .readString(srcPath, UTF_8)
+        .replace(stand.url, delayStand.url)
+      _ <- ZIO.attempt:
+        Files.createDirectories(sigSrc.getParent)
+        Files.writeString(sigSrc, sigText, UTF_8)
+      sigBuild = outRoot.resolve("cwf_e03_sigterm-build")
+      sigCompileExit <- ZIO.attemptBlocking(
+        raider.cli.workflow.WorkflowCompile.command(
+          List(sigSrc.toString, "--out", sigBuild.toString)
+        )
+      )
+
       // --- fresh-process SIGTERM: start the CI launcher subprocess, wait
       //     until the stand received the run's request (the run STARTED,
       //     per corpus runStartedBeforeSignal), then SIGTERM
@@ -303,20 +320,20 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
       sigInput <- writeInput(sigWs, "marker.txt", Summary1)
       sigOut = outRoot.resolve("sigterm-out")
       proc <- sigtermProcess(
-        ciLauncherArgv(buildDir, sigInput, sigOut, Some(srcPath)),
+        ciLauncherArgv(sigBuild, sigInput, sigOut, Some(sigSrc)),
         Some(StandKey)
       )
-      started <- pollUntil(delayStand.counts.delayHits.get >= 1)
-      _ <- ZIO.sleep(500.millis)
+      started <- pollUntil(delayStand.counts.delayHits.get >= 1, 1_000)
+      _ <- ZIO.attemptBlocking(Thread.sleep(100L))
       requestsAtKill = delayStand.totalRequests
       _ <- ZIO.succeed(proc.destroy()) // SIGTERM semantics on POSIX
-      exited = proc.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)
+      exited = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS)
       exitCode =
         if exited then proc.exitValue()
         else
           proc.destroyForcibly()
           -1
-      _ <- ZIO.sleep(300.millis)
+      _ <- ZIO.attemptBlocking(Thread.sleep(300L))
 
       workDirs <- ZIO.attempt:
         if !Files.isDirectory(sigOut) then List.empty[java.nio.file.Path]
@@ -356,6 +373,8 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
         sigStatus.forall(_ != "Succeeded") && runVerdict(runArtifact).isEmpty
       noRetry = delayStand.totalRequests == requestsAtKill
       sigtermOk = assertTrue(
+        sigCompileExit == 0,
+        sigText.contains(delayStand.url) && !sigText.contains(stand.url),
         started, // the run was mid-flight when the signal arrived
         exp.sigterm.expectedExitCodes.contains(exitCode),
         !exp.sigterm.freshProcessLaunch || true, // by construction: subprocess
@@ -367,13 +386,13 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
 
   private def pollUntil(
       cond: => Boolean,
-      tries: Int = 100_000
+      tries: Int = 1_000
   ): ZIO[Any, Nothing, Boolean] =
     def loop(i: Int): ZIO[Any, Nothing, Boolean] =
       ZIO.succeed(cond).flatMap { ok =>
         if ok then ZIO.succeed(true)
         else if i <= 0 then ZIO.succeed(false)
-        else ZIO.yieldNow *> loop(i - 1)
+        else ZIO.attemptBlocking(Thread.sleep(10L)).ignore *> loop(i - 1)
       }
     loop(tries)
 

@@ -1,83 +1,95 @@
 # RAI-155.e: work record
 
-Status: partial. Date: 2026-10-16. Baseline commit: `facbe76`.
+Status: partial. Date: 2026-10-16. Assigned base: `4704dea`; actual worktree HEAD at start: `56496b8` (already contained `4704dea`). Refreshed by merging current `main` at `963d584` cleanly (merge commit `7676af0`).
 
 ## Resulting behavior
 
-Resumed the existing in-flight verifier implementation without resetting the
-worktree. The current lane contains a three-scenario Scala acceptance suite
-(CWF-E01..E03), a Scala local HTTP/SSE stand, and a JSON expectation corpus.
-The E01 end-to-end matrix completed successfully in targeted runs. The new
-E02 export-refusal, fresh-process preflight, hostile-text, invalid-source,
-stale-build, and corrupt-build tests completed successfully when run
-individually as a suite. The work is not complete: the legacy verifier spec
-fails on mismatched paths/assertions, and the E03 SIGTERM/repeat test timed
-out.
+- E01 now routes all four captured chat turns through the real
+  `OpenAIChatStreamingBackend` to the local Scala OpenAI-compatible SSE stand.
+  The stand checks four capture requests; export/compile remain zero-provider
+  operations. The full two-input/two-launcher plus unedited control passes.
+- The E03 timeout was caused by test-clock `ZIO.sleep` calls that never advanced
+  in this test context. The waits are now bounded wall-clock sleeps on blocking
+  threads. SIGTERM runs in a fresh subprocess, has an independently bound delayed
+  stand, terminates with the expected 143 exit, and does not retry. The test
+  reproduces a product gap: SIGTERM leaves a `Failed` run with no artifact and no
+  interrupted marker. That truthfulness criterion still fails; no product code
+  was changed.
+- The old `ChatWorkflowVerifierSpec` was retired. It duplicated E01/E02/E03 but
+  depended on nonexistent `contracts/chat-workflow/verifier-expected.json` and
+  contained contradictory legacy assertions. The replacement suites consume the
+  unchanged `expectations/CWF-E01..03.json` corpus through the shared harness.
+  The minimal protected expectation update changes only
+  `CWF-E01.capture.standRequestsDuringCapture` from 0 to 4, because the real
+  stand is now called for each of four turns; the red-to-green E01 run is the
+  reproducer. The corpus-integrity suite passes.
+- The merged `main` change in `ReplayHarness` was retained as-is. The adjacent
+  drain/watermark behavior is unrelated to this lane's chat verifier; no conflict
+  or force-resolution was needed.
+- The worktree did not begin at the packet's stated tip `4704dea`; it already
+  had a clean `56496b8` HEAD and contained the assigned tip. A first `main`
+  refresh was already present at that point; the requested current `main`
+  (`963d584`) was merged separately as `7676af0`.
 
 ## Changed paths
 
-- `contracts/chat-workflow/README.md`
 - `contracts/chat-workflow/expectations/CWF-E01.json`
-- `contracts/chat-workflow/expectations/CWF-E02.json`
-- `contracts/chat-workflow/expectations/CWF-E03.json`
 - `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE01Spec.scala`
-- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE02Spec.scala`
 - `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE03Spec.scala`
 - `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierHarness.scala`
-- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierSpec.scala`
-- `modules/dsl/src/test/scala/raider/dsl/workflow/ChatWorkflowVerifierCorpusSpec.scala`
+- Deleted `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierSpec.scala`
 - `docs/work/records/RAI-155e.md`
 
-No product implementation, build, gate policy, board, or task-card files were
-changed.
+No product runtime, public contract, build, gate policy, or task-card code was
+changed. No paid provider calls were made.
 
 ## Acceptance evidence
 
 | Criterion / test ID | Actual result | Evidence |
 | --- | --- | --- |
-| CWF-E01 matrix | Passed in targeted test run; actual four-turn harness currently uses scripted chat replies, so it does not meet the card's real local-stand chat-capture requirement. | Targeted sbt output (console); quality manifest below |
-| CWF-E02 export refusals and preflight negatives | Passed in targeted test run. | Targeted sbt output (console) |
-| CWF-E02 hostile text / invalid source / stale and corrupt build (new E02 suite) | Passed (suite run); the separate legacy spec still raises `NoSuchFileException` for `.../vrf-inj.../vrf_inj.scala` after export. | Targeted sbt output (console) |
-| CWF-E03 interrupted capture and snapshot/concurrent export | Passed in targeted test run. | Targeted sbt output (console) |
-| CWF-E03 fresh-process SIGTERM and deterministic repeats | Failed: test exceeded its 600-second timeout. | Targeted sbt output (console) |
-| Legacy `ChatWorkflowVerifierSpec` | Failed: reads absent `contracts/chat-workflow/verifier-expected.json`; also has a pre-repair effects assertion mismatch and a missing injection source path. | Targeted sbt output (console) |
-| quality execute | Failed: `scalafmt-check` exit 1 and `sbt-test` timed out. | `artifacts/quality/20261016-060534-39372-0001/manifest.json` |
+| Merge baseline | Passed; current `main` merged cleanly with no conflicts | `7676af0` merges `963d584`; earlier `56496b8` already contained assigned `4704dea` |
+| CWF-E01 real chat capture and matrix | Passed: all four capture turns traverse the local OpenAI-compatible stand; export/compile do not call it | Targeted verifier command below; the same E01 case passed in the complete targeted run |
+| CWF-E02 negative corpus | Passed: 3 CLI cases | `raiderCli/testOnly ...E01Spec ...E02Spec`; 4 CLI tests passed total |
+| CWF-E03 interrupted capture/export and concurrency | Passed in targeted test process | Complete targeted verifier command: first E03 test passed |
+| CWF-E03 deterministic repeat + SIGTERM | Overall failed: bounded child reached delayed stand and exited 143, but product emitted neither a run artifact nor an interrupted marker. The combined repeat/SIGTERM test therefore remains red; do not report the repeat subassertion as an independent pass from this run. | Complete targeted verifier command below; failure at `truthyArtifacts` |
+| Corpus integrity | Passed: 4 tests | `raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec` |
+| Legacy verifier mismatch | Resolved by retiring the duplicate suite; protected expectation corpus remains at its documented `expectations/CWF-E0*.json` layout | Deleted old spec; replacement suite + corpus integrity pass |
+| `make quality-changed` | Passed; classified `contracts`, `static`, `unit` | Command output; no execution requested in this mode |
+| `make quality-changed QUALITY_EXECUTE=1` | Failed: core contracts, compile fixtures, compile, formatting passed; project `sbt-test` failed, including the expected E03 product gap | `artifacts/quality/20261016-151649-7694-0001/manifest.json` |
 
 ## Commands
 
 | argv / command | Exit | Log / manifest |
 | --- | --- | --- |
-| `git -C <worktree> log --oneline -1` and `git -C <worktree> status --short` | 0; baseline `facbe76`, only the assigned initial untracked verifier/corpus paths | Console |
-| `make quality-changed` | 0; classified `contracts`, `static`, `unit` | Console |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec raider.cli.chat.ChatWorkflowVerifierE03Spec raider.cli.chat.ChatWorkflowVerifierSpec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 1; 5 tests passed, 1 failed before the sbt command timed out; E03 timeout and legacy failures detailed above | Console |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE03Spec"` | 1; first E03 test passed, SIGTERM/repeat test timed out at 600 seconds | Console |
-| `make quality-changed QUALITY_EXECUTE=1` | 2; core contracts, compile fixtures, sbt compile passed; scalafmt-check failed; sbt-test failed on timeout | `artifacts/quality/20261016-060534-39372-0001/manifest.json` |
-| `sbt --batch "raiderCli/Test/scalafmt" "raiderDsl/Test/scalafmt"` | 0; one Scala source reformatted | Console; affected checks must be rerun after this source change |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0; E01/E02: 4 tests passed; corpus integrity: 4 tests passed | Console |
-| `make quality-changed QUALITY_EXECUTE=1` (after formatting) | 2; core contracts, compile fixtures, plan validation, sbt compile, and scalafmt-check passed; `sbt-test` timed out | `artifacts/quality/20261016-062226-60649-0001/manifest.json` |
+| `git merge main` | 0 | First refresh already in lane: `56496b8`; requested current-main refresh produced `7676af0` from `963d584`, no conflicts |
+| `sbt --batch "raiderCli/Test/scalafmt" "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec raider.cli.chat.ChatWorkflowVerifierE03Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 1; 5 passed, 1 failed. CWF-E01, E02, E03 capture/export passed; SIGTERM's truthful-artifact assertion failed. Sbt stopped before the trailing corpus command. | Console; explicit red retained |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0; 4 CLI tests and 4 corpus tests passed | Console |
+| `make quality-changed` | 0 | Classified `contracts`, `docs`, `static`, `unit`; planning only |
+| `make quality-changed QUALITY_EXECUTE=1` | 2 | `artifacts/quality/20261016-163323-63946-0001/manifest.json`; `sbt-test` failed (not timed out) on CWF-E03 SIGTERM truthful artifact. `sbt-compile`, formatter, fixture compile, plan validation, core contracts passed. Manifest SHA-256 `23aef3c448d3da488ec1385aa88463c8d3a7110a448d870577c3ce2a3d8c9530`; `sbt-test.log` SHA-256 `b71f8e59ce584e51a671f6dfd682728f424c42dc29321d89135f4cdd44187445`. |
 
 ## Limitations / blockers
 
-- CWF-E01's chat capture uses a scripted `ModelBackend`, rather than routing
-  captured chat through the local OpenAI-compatible stand. It is not an
-  independent completion of the required live-entrypoint fixture.
-- The `ChatWorkflowVerifierSpec` legacy suite references a corpus filename
-  that does not exist; its no-repair and injection checks also fail as
-  implemented. The corpus README and test sources do not agree on the
-  expectation document layout.
-- E03 fails to finish inside its declared timeout. No passing SIGTERM evidence
-  is claimed.
-- The required gate execution is red because the full `sbt-test` timed out;
-  the latest manifest records the post-format source. No paid/live provider
-  call was made.
+- Product-side SIGTERM cleanup/reporting is outside RAI-155.e's verifier-only
+  authorization. The independent E03 test is a minimal reproducer: start a real
+  CLI subprocess on the local delayed stand, wait for its first HTTP request,
+  send SIGTERM, wait for exit 143, and inspect its run directory. The process
+  exits boundedly but writes neither an incomplete artifact nor the required
+  interrupted marker. Track/fix under an authorized product card, then rerun E03.
+- The expected SIGTERM gap makes the complete E03 and `quality-changed
+  QUALITY_EXECUTE=1` gates red. The all-test gate ran approximately 605 seconds
+  and ended with an assertion failure (`timed_out: false`), not a runner timeout.
+  No checks were waived.
+- No independent review has been performed. No evidence is promoted to final
+  integrated-candidate acceptance.
 
 ## Review and next task
 
-No independent review has been performed. Next: repair the verifier-side
-path/corpus issues without touching product code, replace scripted capture with
-actual chat capture through the loopback stand, make the SIGTERM case bounded
-and assert the required truthful exit/artifact behavior, then rerun the
-targeted suite, `make quality-changed`, `make quality-changed
-QUALITY_EXECUTE=1`, and the RAI-155.e static/unit/contracts/runtime/ci
-profiles. Product defects must be returned as reproducers, not fixed in this
-verifier lane.
+Next available work is the product-side bounded SIGTERM/artifact fix under its
+own authorized card. After that fix, rerun E03, the targeted E01/E02/corpus
+suites, both quality-changed commands, and the card-required `runtime`/`ci`
+profiles. RAI-155.f remains blocked on accepted RAI-155.e.
+
+Product-input hash and operational-record hash differ under the reviewed policy.
+The command registry excludes `docs/work/records/**` from the product fingerprint;
+the test/source/corpus are included. Changes to those product inputs require
+fresh affected gates. This record does not turn the failed E03 gate green.

@@ -60,7 +60,7 @@ object ChatWorkflowVerifierE01Spec extends ZIOSpecDefault:
         "chat -> select -> export x2 -> meaningful manual edit -> pinned compile -> 2x2 launcher matrix on fresh copies + unedited control, pairwise-equal normalized results"
       ) {
         loadE01.flatMap { exp =>
-          ZIO.acquireReleaseWith(startStand(StandMode.Normal))(h =>
+          ZIO.acquireReleaseWith(startStand(StandMode.Capture))(h =>
             ZIO.succeed(h.stop())
           ) { stand => runMatrix(stand, exp) }
         }
@@ -73,7 +73,11 @@ object ChatWorkflowVerifierE01Spec extends ZIOSpecDefault:
   ): ZIO[Any, Throwable, TestResult] =
     for
       // ---- 1. multi-turn capture through the REAL chat loop ----
-      cap <- makeCaptureCtx(baseUrl = stand.url, model = "verifier-model-e01")
+      cap <- makeCaptureCtx(
+        baseUrl = stand.url,
+        model = "verifier-model-e01",
+        useOpenAiStand = true
+      )
       _ <- chat(cap, OrdinaryText) // turn 1: Ordinary, never selected
       _ <- chat(cap, IntentText) // turn 2
       _ <- chat(cap, Refinement1) // turn 3
@@ -84,7 +88,7 @@ object ChatWorkflowVerifierE01Spec extends ZIOSpecDefault:
           ledger.forall(_.status == TurnLedger.Status.Completed) &&
           ledger.head.request.contains(OrdinaryToken) &&
           ledger(1).request.contains(IntentToken) &&
-          cap.backend.callCount == exp.capture.capturedTurns &&
+          stand.captureRequests == exp.capture.capturedTurns &&
           stand.totalRequests == exp.capture.standRequestsDuringCapture
 
       // ---- 2. explicit :task selection (the real commands) ----

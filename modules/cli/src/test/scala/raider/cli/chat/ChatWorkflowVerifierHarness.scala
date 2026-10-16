@@ -324,16 +324,21 @@ object ChatWorkflowVerifierHarness:
       */
     case Delay(delayMs: Long)
 
+    /** Text-only responses for actual ChatLoop capture over the OpenAI wire. */
+    case Capture
+
   final case class Stand(url: String, server: HttpServer, counts: StandCounts):
     def stop(): Unit = server.stop(0)
     def totalRequests: Int = counts.total.get
+    def captureRequests: Int = counts.captureHits.get
 
   final case class StandCounts(
       total: AtomicInteger = AtomicInteger(0),
       toolRounds: AtomicInteger = AtomicInteger(0),
       finals: AtomicInteger = AtomicInteger(0),
       bogusClaims: AtomicInteger = AtomicInteger(0),
-      delayHits: AtomicInteger = AtomicInteger(0)
+      delayHits: AtomicInteger = AtomicInteger(0),
+      captureHits: AtomicInteger = AtomicInteger(0)
   )
 
   val PublishTokenPrefix = "PUBLISH-TARGET: "
@@ -384,22 +389,19 @@ object ChatWorkflowVerifierHarness:
             )
             counts.total.incrementAndGet()
             mode match
-              case StandMode.Delay(ms) =>
-                counts.delayHits.incrementAndGet()
-                Thread.sleep(ms)
-                val frames = sse(finalFrames("late answer after delay"))
-                writeSse(ex, frames)
-              case StandMode.Bogus =>
-                counts.bogusClaims.incrementAndGet()
-                writeSse(
-                  ex,
-                  sse(
-                    finalFrames(
-                      "done: the marker is published as requested (bogus agent claim, no tool call)"
-                    )
-                  )
-                )
-              case StandMode.Normal =>
+              case StandMode.Capture if !body.contains("Task input: ") =>
+                val n = counts.captureHits.getAndIncrement()
+                val prompt =
+                  if n < 4 then
+                    List(
+                      "[fixture] ordinary ack",
+                      "[fixture] intent ack",
+                      "[fixture] refinement ack 1",
+                      "[fixture] refinement ack 2"
+                    )(n)
+                  else "[fixture] additional capture ack"
+                writeSse(ex, sse(finalFrames(prompt)))
+              case StandMode.Capture | StandMode.Normal =>
                 val target = publishTargetOf(body)
                 if body.contains("\"role\":\"tool\"") then
                   counts.finals.incrementAndGet()
@@ -415,6 +417,21 @@ object ChatWorkflowVerifierHarness:
                 else
                   counts.toolRounds.incrementAndGet()
                   writeSse(ex, sse(toolRoundFrames(target)))
+              case StandMode.Delay(ms) =>
+                counts.delayHits.incrementAndGet()
+                Thread.sleep(ms)
+                val frames = sse(finalFrames("late answer after delay"))
+                writeSse(ex, frames)
+              case StandMode.Bogus =>
+                counts.bogusClaims.incrementAndGet()
+                writeSse(
+                  ex,
+                  sse(
+                    finalFrames(
+                      "done: the marker is published as requested (bogus agent claim, no tool call)"
+                    )
+                  )
+                )
           finally ex.close()
       )
       server.start()
@@ -436,13 +453,14 @@ object ChatWorkflowVerifierHarness:
 
   final case class CaptureCtx(
       ctx: ChatLoop.RunCtx,
-      backend: ScriptedCapture
+      callCount: () => Int
   )
 
   def makeCaptureCtx(
       baseUrl: String,
       model: String,
-      hangAfter: Option[Int] = None
+      hangAfter: Option[Int] = None,
+      useOpenAiStand: Boolean = false
   ): ZIO[Any, Nothing, CaptureCtx] =
     for
       limits <- ZIO.succeed(
@@ -457,7 +475,7 @@ object ChatWorkflowVerifierHarness:
       ledgerRef <- Ref.make(Vector.empty[TurnRecord])
       checksRef <- Ref.make(List.empty[NamedCheck])
       selectionRef <- Ref.make(Option.empty[TaskSelection])
-      backend = ScriptedCapture(
+      scriptedBackend = ScriptedCapture(
         List(
           "[fixture] ordinary ack",
           "[fixture] intent ack",
@@ -466,6 +484,15 @@ object ChatWorkflowVerifierHarness:
         ),
         hangAfter
       )
+      backend: ModelBackend <-
+        if useOpenAiStand then
+          raider.provider.chat.stream.OpenAIChatStreamingBackend
+            .make(
+              raider.provider.chat.OpenAIChatBackend.Config
+                .make(baseUrl, "verifier-local-key")
+            )
+            .orDie
+        else ZIO.succeed(scriptedBackend)
       loop <- ZIO.succeed(
         AgentLoop(
           backend,
@@ -493,7 +520,10 @@ object ChatWorkflowVerifierHarness:
         sink = _ => ZIO.unit,
         baseUrl = baseUrl
       )
-    yield CaptureCtx(ctx, backend)
+    yield CaptureCtx(
+      ctx,
+      if useOpenAiStand then () => 0 else () => scriptedBackend.callCount
+    )
 
   /** Sends one user message through the REAL chat capture path. */
   def chat(ctx: CaptureCtx, text: String): ZIO[Any, RaiderError, String] =
@@ -704,7 +734,6 @@ object ChatWorkflowVerifierHarness:
         case None =>
           pb.environment().remove(Credentials.EnvKey)
           pb.environment().remove(Credentials.EnvHelper)
-      pb.redirectErrorStream(false)
       val proc = pb.start()
       val outReader =
         new java.io.BufferedReader(
@@ -840,7 +869,8 @@ object ChatWorkflowVerifierHarness:
       val pb = new java.lang.ProcessBuilder(argv*)
       pb.environment().put("PATH", sys.env.getOrElse("PATH", "/usr/bin:/bin"))
       envKey.foreach(k => pb.environment().put(Credentials.EnvKey, k))
-      pb.redirectErrorStream(false)
+      pb.redirectOutput(ProcessBuilder.Redirect.DISCARD)
+      pb.redirectError(ProcessBuilder.Redirect.DISCARD)
       pb.start()
 
   def ciLauncherArgv(
