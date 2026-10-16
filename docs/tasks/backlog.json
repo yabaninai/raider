@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 171,
+  "raider_count": 172,
   "companion_count": 3,
   "cards": [
     {
@@ -5132,6 +5132,29 @@
       },
       "non_goals": "Renderer changes beyond what the adapter genuinely requires (contract-change request instead), compile/run behavior changes (RAI-155.d surface consumed as-is), live providers, wire changes.",
       "context": "Owner directive 2026-10-14: 'export is not connected to ChatLoop... register a separate wiring card... execute it before RAI-155.e'. RAI-155.b (selection+ledger) and RAI-155.c (generator) accepted; the adapter+command are the missing link."
+    },
+    {
+      "id": "RAI-161",
+      "title": "Quality runner: implement the documented operational-record exclusion",
+      "milestone": "M0",
+      "dependencies": [],
+      "status": "todo",
+      "allowed_paths": [
+        "scripts/quality/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "self",
+        "docs"
+      ],
+      "behavior": "Implement the documented exact operational-record exclusion for docs/work/records/** in the quality runner's product fingerprint, while retaining excluded-file revisions and hashes in manifest audit entries. Reproduce the RAI-137 round-2 freshness failure by writing a record after gates, and verify freshness stays valid without treating excluded files as fingerprint inputs.",
+      "acceptance": {
+        "normal": "OPREC-01: quality self-check passes and the manifest lists each excluded record revision/hash as audit metadata outside its fingerprint inputs.",
+        "error": "OPREC-02: only docs/work/records/** is excluded; all other paths remain fingerprint inputs, registry JSON validates, and skip/timeout semantics are unchanged.",
+        "concurrency": "OPREC-03: quality-changed QUALITY_EXECUTE=1 remains green when a record is written after gates; RAI-137 freshness re-verification passes."
+      },
+      "non_goals": "Threshold changes, excluding any other paths, weakening skip/timeout semantics, or changing gate policy without independent review.",
+      "context": "docs/quality-gates.md operational-record exclusion policy; RAI-137 round 2 freshness invalidation observed when a work record was written after gates."
     }
   ]
 }
