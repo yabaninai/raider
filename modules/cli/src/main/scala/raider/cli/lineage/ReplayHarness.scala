@@ -320,7 +320,7 @@ object ReplayHarness:
       backend = ReplayModelBackend(RecordedSource(doc), doc)
       // Subscribe BEFORE the campaign starts (no loss window): the fresh
       // manager's first job is deterministically `j_1` (re-checked below).
-      (_, stream) <- hub.subscribe(ReplayJob)
+      (initialSnapshot, stream) <- hub.subscribe(ReplayJob)
       sink <- Ref.make(Vector.empty[EventEnvelope])
       fiber <- stream.runForeach(e => sink.update(_ :+ e)).fork
       jobs <- JobManager.make(
@@ -355,7 +355,8 @@ object ReplayHarness:
         )
       )
       answer <- jobs.await(job)
-      _ <- eventuallyTerminal(sink).mapError(RaiderError.InputValidation(_))
+      _ <- eventuallyTerminal(hub, ReplayJob, initialSnapshot.lastSeq, sink)
+        .mapError(RaiderError.InputValidation(_))
       envs <- sink.get
       _ <- fiber.interrupt
       dropped <- hub.droppedDiagnostics
@@ -378,20 +379,30 @@ object ReplayHarness:
     * duration is scheduling noise; the bound only converts a defective hang
     * into a failure (same discipline as the emission specs).
     */
-  private def eventuallyTerminal(
+  private[cli] def eventuallyTerminal(
+      hub: EventHub,
+      jobId: JobId,
+      startAfter: Long,
       sink: Ref[Vector[EventEnvelope]]
   ): ZIO[Any, String, Unit] =
     val deadline = System.nanoTime() + ZDuration.fromSeconds(10).toNanos
     def loop: ZIO[Any, String, Unit] =
-      sink.get.flatMap { envs =>
-        if envs.exists(
-            _.payload.isInstanceOf[raider.runtime.events.EventPayload.Terminal]
-          )
-        then ZIO.unit
-        else if System.nanoTime() >= deadline then
-          ZIO.fail("terminal envelope not delivered within the outer bound")
-        else ZIO.sleep(ZDuration.fromMillis(20)) *> loop
-      }
+      for
+        envs <- sink.get
+        watermark <- hub.snapshot(jobId).map(_.fold(startAfter)(_.lastSeq))
+        observed = envs.iterator.map(_.seq).toSet
+        terminalSeen = envs.exists(
+          _.payload.isInstanceOf[raider.runtime.events.EventPayload.Terminal]
+        )
+        caughtUp = (startAfter + 1L to watermark).forall(observed.contains)
+        result <-
+          if terminalSeen && caughtUp then ZIO.unit
+          else if System.nanoTime() >= deadline then
+            ZIO.fail(
+              s"terminal stream did not reach hub watermark $watermark within the outer bound"
+            )
+          else ZIO.sleep(ZDuration.fromMillis(20)) *> loop
+      yield result
     loop
 
 end ReplayHarness

@@ -57,6 +57,24 @@ scout.ask("Explain what a failed check means in one sentence")
 
 The first three lines run through the Scala compiler. The `scout` reply is fixed mock text, not an answer based on your project. Enter `:help` for REPL commands and `:quit` to exit. More examples are in the [REPL guide](user-guide-repl.md).
 
+The compiler-backed REPL also supports `:type <expression>`, which compiles
+the expression against the current bindings and prints its type without
+evaluating it. For example, `:type scout("Review the parser")` reports
+`AgentAsk[String]`; it does not make a provider request. Tab completion uses
+the Scala compiler's live bindings. In `--tabs` mode, type `:scrollback <tab>`
+to show retained event lines and the eviction count, and press Tab on a command
+prefix to open the command palette. Tab-shell drafts remain local text, not
+submitted prompts. The [TUI guide](user-guide-tui.md) documents the command
+surface and its current limits.
+
+Tabs mode also exposes a read-only plan phase: a proposed plan is displayed in
+the Plan tab before execution. Review it, then enter `:approve` to start the
+execution once or `:reject` to cancel the live plan phase. The plan phase is
+read-only by tool recovery classification; approval is the explicit transition
+to execution. The deterministic plan-scenario corpus is an offline evaluation
+fixture, not a claim of live model quality. See [ADR-028](adr/ADR-028-plan-mode.md)
+and the [plan-mode evaluation notes](quality-gates.md#3-profiles).
+
 ### Command line
 
 The CLI runs an agent task without an interactive prompt. Its `--out` path is a parent directory; Raider creates a `work-<id>` folder inside it. A mock task uses fixed responses, so use it to learn the command shape rather than to expect a real code change:
@@ -69,6 +87,24 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 ```
 
 The command prints a result line with the work directory. Look there for `run.json` and `summary.md`; when produced, `transcript.json` contains the run trace. The built-in `coder` has file and process tools. Use a disposable workspace for tasks that may edit files.
+
+Each completed headless run writes `events.jsonl`, the event journal used by
+`raider resume`. Given a printed work directory, run:
+
+```sh
+RUN_DIR='artifacts/first-run/work-<id>'  # Replace <id> with the printed directory name.
+java -cp "$RAIDER_CP" raider.cli.Main resume "$RUN_DIR"
+```
+
+Replace `<id>` with the actual directory suffix; this is a read-only recovery
+report, not a continuation. It folds the journal into observable state and
+reports artifact hashes without invoking the model, tools, or workspace writes.
+Exit 0 means the journal is consistent (the run may be terminal or interrupted);
+26 means a valid prefix was recovered but the final journal line is uncertain;
+21 means usage or an unreadable/missing journal; 20 means the recovered prefix
+could not be folded. Preserve the original run directory, including any torn
+tail. Resume reads `events.jsonl` specifically; it does not look for or resume
+from a file named `segments.jsonl`.
 
 <a id="connect-a-model"></a>
 
@@ -99,6 +135,19 @@ java -cp "$RAIDER_CP" raider.cli.Main run \
 ```
 
 The REPL reads `RAIDER_PROVIDER`, `RAIDER_BASE_URL`, `RAIDER_MODEL`, and the credential from its environment. A `[scripted-fixture]` marker means the response is mock content; do not treat it as model output.
+
+The Anthropic-compatible transport sends tool definitions with `name`,
+`description`, and `input_schema`; tool results are returned as structured
+`tool_result.content` text blocks containing the rendered JSON result. Offline
+local-stand and cross-wire tests cover this mapping. Normal onboarding examples
+remain mock or configured provider examples; they do not make a live Anthropic
+request unless explicitly configured.
+
+For a CI run, `--require-provenance <manifest.json>` makes provenance
+verification a preflight requirement before dispatch. A successful run writes
+`checks.junit.xml` alongside the run artifacts. A preflight refusal is a
+failure, not a direct-provider fallback; consult [CI usage](user-guide-ci.md)
+for trusted bundle and artifact details.
 
 ## 4. Try a coding task
 
