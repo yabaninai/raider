@@ -462,7 +462,7 @@ an earlier selection, so select again after marking. For example:
 :task check compile sbt --batch compile
 :task select 3
 :task status
-:export-workflow --out artifacts/workflows --name inspect
+:export-workflow --out artifacts/workflows --name inspect --target-path src/main.scala --summary Inspect the project and document its entry point
 ```
 
 Turn numbers refer to the displayed chat-turn list; selection is validated and

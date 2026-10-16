@@ -162,32 +162,6 @@ The run directory also contains `run.json`, `summary.md`, and `transcript.json`.
 
 `raider replay <run-dir> --workspace <dir>` is implemented for recorded replay. It uses recorded model responses, runs the shared agent loop with budget admission, and compares the resulting graph with the recorded graph. A matching graph returns the match verdict; a mismatch reports the first divergent node. The product replay command does not make live provider calls. Live rerun with a model, unified multi-job event export, and wire schema additions for phase and recovery-class data remain outside the implemented replay path. For the full status and artifact layout, see [`lineage.md`](lineage.md), [`RunLineageArtifacts.scala`](../modules/cli/src/main/scala/raider/cli/run/RunLineageArtifacts.scala), [`LineageReducer.scala`](../modules/runtime/src/main/scala/raider/runtime/lineage/reduce/LineageReducer.scala), [`LineageProjection.scala`](../modules/dsl/src/main/scala/raider/dsl/lineage/proj/LineageProjection.scala), and [`ReplayCli.scala`](../modules/cli/src/main/scala/raider/cli/lineage/ReplayCli.scala).
 
-`raider resume <run-dir>` is a different, read-only recovery command. It folds
-the run's `events.jsonl` journal into observable state, reports whether the
-recorded run was terminal or interrupted, and lists hashes for recognized
-artifacts. It never re-executes tools or model calls and never modifies the
-past run directory. A malformed or torn final record is reported rather than
-silently discarded; exit codes are 0 (consistent journal), 26 (recovered
-prefix with uncertain tail), 21 (usage/missing/unreadable journal), and 20
-(prefix reduction failure). `events.jsonl` is the exported run event stream,
-not a `segments.jsonl` input. The two commands therefore have
-different purposes: `resume` inspects recorded state, while `replay` executes
-the recorded replay harness against an isolated workspace copy.
-
-The tab shell's `:aux` surface hosts the `LineageTab` read model when one is
-attached; it presents lineage information and does not launch a separate
-runtime. The replay CLI is available as `raider replay <run-dir> --workspace
-<dir>`. The lineage catalog persists run-tree summaries for catalog consumers;
-catalog persistence does not mean that all catalog/replay views are exposed as
-interactive commands. See [`LineageTab.scala`](../modules/ui/src/main/scala/raider/ui/LineageTab.scala),
-[`ReplayCommand.scala`](../modules/cli/src/main/scala/raider/cli/run/ReplayCommand.scala),
-and [`CatalogStore.scala`](../modules/cli/src/main/scala/raider/cli/lineage/CatalogStore.scala).
-
-CI preflight can require provenance with `--require-provenance
-<manifest.json>`. This validates supplied provenance before run dispatch; it is
-not a guarantee that arbitrary workspace code is sandboxed. The runner writes
-`checks.junit.xml` as a test-check artifact alongside the run output.
-
 ## 8. Further reading
 
 | Topic | Guide or implementation |
