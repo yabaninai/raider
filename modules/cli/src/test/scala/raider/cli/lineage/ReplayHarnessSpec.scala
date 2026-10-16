@@ -61,7 +61,9 @@ object ReplayHarnessSpec extends ZIOSpecDefault:
     "Nothing to read; the workspace stays untouched."
 
   def spec: Spec[TestEnvironment & Scope, Any] = suite("ReplayHarness")(
-    test("terminal is not settled until every committed sequence reaches the sink") {
+    test(
+      "terminal is not settled until every committed sequence reaches the sink"
+    ) {
       live {
         val job = JobId("watermark-job")
         val root = RootId("watermark-root")
@@ -69,7 +71,12 @@ object ReplayHarnessSpec extends ZIOSpecDefault:
         for
           hub <- EventHub.make()
           _ <- hub.publish(job, root, session, EventPayload.Diagnostics("tail"))
-          _ <- hub.publish(job, root, session, EventPayload.Terminal(JobStatus.Succeeded))
+          _ <- hub.publish(
+            job,
+            root,
+            session,
+            EventPayload.Terminal(JobStatus.Succeeded)
+          )
           terminal = EventEnvelope(
             1,
             2L,
