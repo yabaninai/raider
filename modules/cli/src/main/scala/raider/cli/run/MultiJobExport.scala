@@ -386,7 +386,16 @@ final class MultiJobExport private (
     * carries the run_provenance record BEFORE it when segments were joined.
     */
   def exportParent(env: EventEnvelope): UIO[Unit] =
-    joinLock.withPermit {
+    // Settle captured child streams BEFORE exporting the campaign Terminal.
+    // Otherwise a child introduction delivered while the terminal is being
+    // exported is correctly classified as post-terminal/native-only, and its
+    // completed prefix can disappear from the joined stream. The settle is
+    // bounded by drain's budget and runs outside joinLock so capture delivery
+    // can append the connected segment.
+    val settle = env.payload match
+      case _: EventPayload.Terminal => drain()
+      case _                        => ZIO.unit
+    settle *> joinLock.withPermit {
       val campaignEnvelope = env.payload match
         case _: EventPayload.Terminal => true
         case _                        => false
