@@ -267,7 +267,6 @@ def resolve_classpath(out: pathlib.Path, args) -> dict:
              if l.strip() and not l.startswith("[")]
     cp = lines[-1].strip() if lines else ""
     if res.returncode == 0 and cp:
-        out.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(cp + "\n")
         fail_path.unlink(missing_ok=True)
         return {**info, "status": "ok", "source": "sbt export (cached now)",
@@ -280,7 +279,6 @@ def resolve_classpath(out: pathlib.Path, args) -> dict:
                      if l.strip()]
     reason = (f"sbt export failed rc={res.returncode}; last error: "
               f"{err_lines[-1][:300] if err_lines else '(no output)'}")
-    out.parent.mkdir(parents=True, exist_ok=True)
     fail_path.write_text(json.dumps(
         {"reason": reason, "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
          "sbt_timeout_s": SBT_TIMEOUT_S}, ensure_ascii=False))
@@ -576,24 +574,40 @@ def main() -> int:
                         f"TERM={CHILD_TERM} (probe-owned)")
 
     # ---- classpath ----------------------------------------------------------
+    # Create the report directory before any classpath cache writes so directory
+    # failures use the same fatal report-write contract as the final report.
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[fatal] cannot write report {out}: {e}", file=sys.stderr)
+        return 2
     try:
         cp_info = resolve_classpath(out, args)
     except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
         reason = f"{type(e).__name__}: {e}"
         cp_info = {"status": "unavailable", "source": "none",
                    "classpath": None, "reason": reason}
-        out.parent.mkdir(parents=True, exist_ok=True)
-        (out.parent / (out.name + ".classpath-fail.json")).write_text(
-            json.dumps({"reason": reason,
-                        "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-                        "sbt_timeout_s": SBT_TIMEOUT_S}), encoding="utf-8")
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            (out.parent / (out.name + ".classpath-fail.json")).write_text(
+                json.dumps({"reason": reason,
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                            "sbt_timeout_s": SBT_TIMEOUT_S}), encoding="utf-8")
+        except OSError as write_error:
+            print(f"[fatal] cannot write report {out}: {write_error}",
+                  file=sys.stderr)
+            return 2
     report["classpath"] = {k: v for k, v in cp_info.items() if k != "classpath"}
     cp = cp_info.get("classpath") if cp_info["status"] == "ok" else None
 
     # ---- measurements --------------------------------------------------------
     measurements: dict = {}
     transcripts = out.parent / (out.stem + "-transcripts")
-    transcripts.mkdir(parents=True, exist_ok=True)
+    try:
+        transcripts.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[fatal] cannot write report {out}: {e}", file=sys.stderr)
+        return 2
     if cp is None:
         skip = ("skipped: no classpath (documented skip, not passed); "
                 "reason: " + cp_info.get("reason", "unknown"))
