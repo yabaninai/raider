@@ -182,6 +182,44 @@ after the first integration batch (main 0870045):
 - Concurrent context: the same integrated run passed MJE-03c; its known-red is
   intermittent and remains RAI-157-owned.
 
+## 2026-10-17 — Batch merge: RAI-137 + RAI-162; E03 unblocked on main
+
+- **RAI-137 merged** as `d7318f9` (round-3 approve): honest `ux-baseline` exit
+  semantics; additive `perf`/`ux-baseline`; freshness through RAI-161 schema-v2.
+- **RAI-162 merged** as `b3dda3f`: marker bound to invocation `workDir`; E03
+  RED-first, 3/3, with negative sibling coverage; review-fix round closed. The
+  RAI-155.e verifier corpus (E01/E02/E03, Harness, corpus spec, and records) is
+  now on main. E03 green there makes the .e lane re-gate a formality away:
+  merge main into `lane/rai-155e`, rerun EXECUTE, and review.
+- **Untracked-collision resolution:** the stale root copy of
+  `contracts/chat-workflow/` (old README and superseded
+  `verifier-expected.json`) was backed up to
+  `/var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/opencode/chat-workflow-untracked-backup-20261017`
+  and superseded by the tracked merge; nothing was lost.
+- **Integrated gates on main `b3dda3f`:** `make quality-changed` exit 0
+  (clean-tree classification: minimum `fast`); `make quality-changed
+  QUALITY_EXECUTE=1` exit 0, passed on first attempt (no timeout);
+  `make quality-profile PROFILES="static unit contracts ci"` exit 0,
+  passed; `make quality-profile PROFILES="repl runtime"` exit 0, passed;
+  `python3 scripts/quality/quality.py self-check` exit 0; plan validator exit 0
+  (191 cards). Executed-run manifests share input fingerprint
+  `87aa17ee285bc555af8e6a98124046ab0c5bce5db6b410766ba0b73b67f09546` and
+  policy hash `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`:
+  - EXECUTE fast: `artifacts/quality/20261017-181902-39730-0001/manifest.json`,
+    SHA-256 `5f08191bfb922f014aaba42703f074274863f7e21c053df809b29fb4dc56c5ab`.
+  - static/unit/contracts/ci: `artifacts/quality/20261017-183239-46718-0001/manifest.json`,
+    SHA-256 `2daeacc7318064ea290d8c9b5edda45ba26ed43ceb04fbac5627b706ba301697`.
+  - repl/runtime: `artifacts/quality/20261017-184250-52167-0001/manifest.json`,
+    SHA-256 `f6b5afbc7c206d7e30ab644c9516217be1fbc2c7d7ca25bdab5cc6bf0d353be7`.
+  MJE-03c (intermittent KNOWN-RED, RAI-157-owned) and TAB-02 (diagnosed
+  load-race; conditional determinism card) were **not observed** in these runs;
+  both requested profiles passed without failures. This is not a claim that
+  either historical issue is fixed.
+- **Queue:** RAI-155.e re-gate + review (critical path to .f); RAI-157
+  full-spec ×10 matrix (wait for lower load; load 76 today); RAI-136 final storm
+  (same); LIN-03 LIN3-02/03; TAB-02 conditional determinism card; SDLC
+  RAI-163..171; live-wire RAI-171 (owner budget pending).
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
