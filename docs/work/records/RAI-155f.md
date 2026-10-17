@@ -43,6 +43,7 @@ Commands already executed before this record was finalized:
 | `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec"` | 0 | `artifacts/rai-155f/e01.log`; 1 passed, 0 failed |
 | `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE02Spec"` | 0 | `artifacts/rai-155f/e02.log`; 4 passed, 0 failed |
 | `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE03Spec"` | 0 | `artifacts/rai-155f/e03.log`; 2 passed, 0 failed |
+| `make raider-jar` | 0 | Packaged CLI at `modules/cli/target/scala-3.9.0/raider-cli.jar`; hash `7044355f11e688d1261400a887560ef2502aa6c0` |
 | `make quality-changed` | 0 | Classified the added walkthrough files; docs fast check passed; manifest `artifacts/quality/20261017-234843-56297-0001/manifest.json` |
 | `make quality-changed QUALITY_EXECUTE=1` | 0 | Static+docs passed; manifest `artifacts/quality/20261017-234844-56510-0001/manifest.json` |
 | `make quality-profile PROFILES="static docs"` | 0 | Static+docs passed in same manifest above |

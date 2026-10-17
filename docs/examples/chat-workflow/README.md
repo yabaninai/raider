@@ -155,7 +155,7 @@ java -jar modules/cli/target/scala-3.9.0/raider-cli.jar workflow run \
 The local-main route used in the verifier is equivalent to:
 
 ```sh
-java -cp "artifacts/cwf-e01-build/classes:$RAIDER_RUNTIME_CLASSPATH" \
+java -cp "artifacts/cwf-e01-build/classes:modules/cli/target/scala-3.9.0/raider-cli.jar" \
   runCwf_e01 /absolute/path/input-1.json
 ```
 
