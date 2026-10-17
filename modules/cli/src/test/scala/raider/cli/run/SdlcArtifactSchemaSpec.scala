@@ -77,14 +77,30 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
         decoded.toOption.exists(_.apply(1) == Right(records.head))
       )
     },
+    test("SDLC-WIRE-03c: mixed stream refuses unknown record kinds") {
+      val unknownKind =
+        """{"schemaVersion":2,"type":"future-record","id":"future-1","data":{}}"""
+      assertTrue(
+        decodeMixed(Vector(v1Line, unknownKind)) ==
+          Left(DecodeError.UnknownKind("future-record"))
+      )
+    },
     test(
-      "SDLC-WIRE-02: typed record refuses unknown fields and unsupported versions"
+      "SDLC-WIRE-02: typed record refuses unknown envelope/payload fields and unsupported versions"
     ) {
       val unknown = encode(records.head).dropRight(1) + ",\"unexpected\":true}"
       val version = encode(records.head)
         .replace("\"schemaVersion\":2", "\"schemaVersion\":3")
+      val unknownPayload = encode(records.head).replace(
+        "\"digest\":\"sha-0\"",
+        "\"digest\":\"sha-0\",\"unexpected\":true"
+      )
       assertTrue(
         decode(unknown) == Left(DecodeError.UnknownField("unexpected")),
+        decode(unknownPayload) ==
+          Left(
+            DecodeError.UnknownPayloadField(records.head.kind, "unexpected")
+          ),
         decode(version) == Left(DecodeError.UnsupportedVersion(3L))
       )
     }

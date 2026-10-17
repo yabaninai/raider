@@ -11,7 +11,13 @@
       "enum": ["check-result", "review-verdict", "candidate-identity", "integration-result"]
     },
     "id": { "type": "string", "minLength": 1 },
-    "data": { "type": "object" }
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "digest": { "type": "string" }
+      }
+    }
   },
-  "$comment": "data is the typed record defined by the core SDLC contracts (RAI-164, ADR-034 §5). This schema versions the additive artifact carrier only; it does not redefine evidence fields."
+  "$comment": "This lane's provisional carrier accepts only the digest string field used by its fixtures. RAI-164-owned evidence fields and their evolution policy are not available here; this narrow boundary does not claim validation of the eventual domain records."
 }

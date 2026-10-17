@@ -24,6 +24,7 @@ object SdlcArtifactSchema:
     case UnsupportedVersion(found: Long)
     case UnknownKind(found: String)
     case UnknownField(field: String)
+    case UnknownPayloadField(kind: Kind, field: String)
     case MissingField(field: String)
 
   def encode(record: Record): String =
@@ -114,7 +115,23 @@ object SdlcArtifactSchema:
                     Left(DecodeError.Malformed("id must be a non-empty string"))
                 dataJson <- required("data")
                 data <- dataJson match
-                  case obj: Json.Obj => Right(obj)
+                  case obj: Json.Obj =>
+                    obj.fields
+                      .find(_._1 != "digest")
+                      .map(kv =>
+                        Left(DecodeError.UnknownPayloadField(kind, kv._1))
+                      )
+                      .getOrElse {
+                        obj.fields.find(_._1 == "digest") match
+                          case Some((_, Json.Str(_))) => Right(obj)
+                          case Some(_) =>
+                            Left(
+                              DecodeError.Malformed(
+                                s"${kind.wireName}.data.digest must be a string"
+                              )
+                            )
+                          case None => Right(obj)
+                      }
                   case _ =>
                     Left(DecodeError.Malformed("data must be an object"))
               yield Record(kind, id, data)
@@ -191,6 +208,26 @@ object SdlcArtifactSchema:
                   case Some(Json.Str(t))
                       if Kind.values.exists(_.wireName == t) =>
                     decode(line).map(r => records :+ Right(r))
+                  case Some(Json.Str(t)) =>
+                    fields.get("schemaVersion") match
+                      case Some(Json.Num(v)) =>
+                        scala.util.Try(v.longValueExact()).toEither match
+                          case Right(1L) => Right(records :+ Left(line))
+                          case Right(CurrentVersion) =>
+                            Left(DecodeError.UnknownKind(t))
+                          case Right(version) =>
+                            Left(DecodeError.UnsupportedVersion(version))
+                          case Left(_) =>
+                            Left(
+                              DecodeError.Malformed(
+                                "schemaVersion must be an integer"
+                              )
+                            )
+                      case _ =>
+                        Left(
+                          DecodeError
+                            .Malformed("event line lacks schemaVersion")
+                        )
                   case _ =>
                     fields.get("schemaVersion") match
                       case Some(Json.Num(v)) =>
