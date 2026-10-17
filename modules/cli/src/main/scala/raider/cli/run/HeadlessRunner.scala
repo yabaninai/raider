@@ -383,6 +383,9 @@ object HeadlessRunner:
       // RAI-144: quiesce the exporter FIRST (capture fibers interrupted,
       // segments closed) so the fold buffer is final before the reduction.
       exported <- join.exportedWire
+      // LIN-03: this snapshot is maintained as each ordered export line lands.
+      // The exporter drain above guarantees it covers the settled stream.
+      live <- join.currentProjection
       // LIN-03B + RAI-144: settled — reduce the folded prefix through the
       // versioned entries. Preflight-failure families produce NO lineage line
       // (the run never formed a campaign); anything else attempts the
@@ -392,8 +395,8 @@ object HeadlessRunner:
         e =>
           if isPreflightFailure(e) then
             ZIO.succeed(Option.empty[Either[ReduceError, LineageOutcome]])
-          else unifiedLineage(join, exported).map(Some(_)),
-        _ => unifiedLineage(join, exported).map(Some(_))
+          else unifiedLineage(join, exported, live).map(Some(_)),
+        _ => unifiedLineage(join, exported, live).map(Some(_))
       )
     yield (result, lines, lineage)
 
@@ -405,7 +408,8 @@ object HeadlessRunner:
     */
   private def unifiedLineage(
       join: MultiJobExport,
-      wire: Vector[LineageEnvelope]
+      wire: Vector[LineageEnvelope],
+      live: (Option[LiveLineageProjection], Option[String])
   ): UIO[Either[ReduceError, LineageOutcome]] =
     join.invocations.flatMap { invs =>
       val reduced: Either[ReduceError, LineageOutcome] =
@@ -425,7 +429,11 @@ object HeadlessRunner:
           case other =>
             other.map(red =>
               LineageOutcome(
-                red.graph,
+                live match
+                  case (Some(snapshot), None)
+                      if snapshot.graphHash == GraphHash(red.graph) =>
+                    snapshot.graph
+                  case _ => red.graph,
                 partial = false,
                 red.provenance,
                 invs,
