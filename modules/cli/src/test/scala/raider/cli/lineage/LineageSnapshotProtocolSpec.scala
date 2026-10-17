@@ -13,6 +13,15 @@ object LineageSnapshotProtocolSpec extends ZIOSpecDefault:
     Files.readAllBytes(path)
 
   def spec = suite("lineage snapshot commit protocol")(
+    test("LIN3B-02: readers receive typed Missing before the initial commit") {
+      val dir = Files.createTempDirectory("lineage-commit-not-yet-published")
+      val missing = LineageSnapshot.read(dir)
+      assertTrue(
+        missing == Left(
+          LineageSnapshot.Error.Missing(dir.resolve(LineageSnapshot.CommitName))
+        )
+      )
+    },
     test(
       "LIN3B-02: missing, malformed, and incomplete commit pointers fail explicitly"
     ) {
@@ -36,6 +45,16 @@ object LineageSnapshotProtocolSpec extends ZIOSpecDefault:
       try
         (1 to 3).foreach { repetition =>
           val dir = Files.createTempDirectory(s"lineage-commit-$repetition")
+          val initial = new String(base, UTF_8)
+          val seeded = LineageSnapshot.publish(
+            dir,
+            base,
+            initial.getBytes(UTF_8)
+          )
+          if seeded.isLeft then
+            throw new AssertionError(
+              "could not seed initial committed snapshot: " + seeded
+            )
           val go = new CountDownLatch(1)
           val done = new CountDownLatch(1)
           val writer = pool.submit(
@@ -79,7 +98,10 @@ object LineageSnapshotProtocolSpec extends ZIOSpecDefault:
         val source = Files.readString(snapshot.sourcePath, UTF_8)
         if !source.contains(snapshot.document.runId) then
           throw new AssertionError("committed pair generation mismatch")
-      case Left(LineageSnapshot.Error.Missing(_)) => ()
+      case Left(LineageSnapshot.Error.Missing(_)) =>
+        throw new AssertionError(
+          "commit pointer disappeared during replacement"
+        )
       case Left(error) =>
         throw new AssertionError("invalid committed snapshot: " + error)
 
