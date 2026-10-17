@@ -1,0 +1,41 @@
+{
+  "expectationId": "CWF-E03",
+  "title": "Cancellation/concurrency: interrupted capture, consistent export snapshot, export remnant, fresh-process SIGTERM with truthful bounded outcome, no replay of ambiguous mutations, deterministic repeats",
+  "derivedFrom": [
+    "docs/tasks/lineage.md RAI-155.e (CWF-E03)",
+    "docs/adr/ADR-033-chat-workflow-export.md section 9 (snapshot/cancellation/restart), section 5.4 (incomplete turns)",
+    "ci-runtime section 6/8 (SIGTERM ownership, exit 143)"
+  ],
+  "interruptedCapture": {
+    "inFlightTurnStatus": "Unknown",
+    "inFlightTurnRequestPreserved": true,
+    "selectRefusalPrefix": "CWF-R3",
+    "selectRefusalNamesOffendingTurn": true,
+    "completedPrefixStillSelectable": true,
+    "noRedispatchAfterInterrupt": true
+  },
+  "exportSnapshot": {
+    "exportDuringStreamingSucceeds": true,
+    "artifactEqualsQuiescentReference": true,
+    "ledgerUntouchedByExport": true,
+    "inFlightTurnOutsideSnapshot": true,
+    "concurrentExportsToDistinctTargets": {
+      "bothSucceed": true,
+      "byteIdentical": true
+    },
+    "stagingRemnantRefused": true
+  },
+  "sigterm": {
+    "freshProcessLaunch": true,
+    "expectedExitCodes": [143],
+    "truthfulIncompleteArtifact": true,
+    "neverReportsSucceeded": true,
+    "noAutomaticRetry": true,
+    "runStartedBeforeSignal": true
+  },
+  "deterministicRepeat": {
+    "repeatedRuns": 2,
+    "normalizedResultsEqual": true,
+    "reExportByteIdentical": true
+  }
+}

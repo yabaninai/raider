@@ -415,7 +415,7 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
         }
       },
       test(
-        "CWF-D03: SIGTERM during active model work -> bounded stop (143), truthful Interrupted artifact, no automatic retry"
+        "WRI-02/WRI-03: SIGTERM during WorkflowRun model work -> bounded stop (143), truthful interruption evidence, no fake completion"
       ) {
         ZIO.serviceWithZIO[LaunchEnv] { env =>
           val build = env.build

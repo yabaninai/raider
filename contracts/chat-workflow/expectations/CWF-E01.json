@@ -1,0 +1,70 @@
+{
+  "expectationId": "CWF-E01",
+  "title": "Full product-entry chain: multi-turn capture -> explicit select -> export -> meaningful manual edit -> pinned compile -> 2 inputs x 2 launchers on four fresh copies + fifth unedited control",
+  "derivedFrom": [
+    "docs/tasks/lineage.md RAI-155.e (CWF-E01)",
+    "docs/adr/ADR-033-chat-workflow-export.md sections 4, 6, 7, 9",
+    "docs/prompts/opencode-chat-to-workflow.txt demonstration requirements"
+  ],
+  "capture": {
+    "capturedTurns": 4,
+    "ordinaryTurnsNotSelected": 1,
+    "selectionSpan": 3,
+    "allCapturedTurnsCompleted": true,
+    "selectionTurnIdsMatchLedgerOrder": true,
+    "standRequestsDuringCapture": 4
+  },
+  "exportStage": {
+    "successLinePrefix": "workflow exported:",
+    "artifactCount": 3,
+    "artifactSuffixes": [".scala", "-manifest.json", ".input.json"],
+    "manifestKind": "chat-workflow-export",
+    "manifestSchemaVersion": 1,
+    "reExportByteIdentical": true,
+    "capturedIntentTokenPresentInSource": true,
+    "intentTokenAbsentOnDiskBeforeExport": true,
+    "standRequestsDuringExportDelta": 0
+  },
+  "manualEdit": {
+    "promptTokenBefore": "PUBLISH-TARGET: marker.txt",
+    "promptTokenAfter": "PUBLISH-TARGET: marker2.txt",
+    "checkArgvBefore": ["/bin/test", "-f", "marker.txt"],
+    "checkArgvAfter": ["/bin/test", "-f", "marker2.txt"],
+    "replacementsCount": 2
+  },
+  "compile": {
+    "expectedExitCode": 0,
+    "buildIdentityFile": "build-identity.json",
+    "pinnedToolchainVersion": "3.9.0",
+    "standRequestsDuringCompileDelta": 0
+  },
+  "stsRepairPattern": {
+    "independentCheckFailsBeforeAgentWork": true,
+    "independentCheckPassesAfterAgentWork": true,
+    "realToolEffectPerRun": true,
+    "minNewStandRequestsPerRun": 2
+  },
+  "matrix": {
+    "inputCases": 2,
+    "launchers": ["local-main", "raider-workflow-run"],
+    "freshWorkspaceCopies": 4,
+    "expectedExitCode": 0,
+    "expectedCiStatus": "Succeeded",
+    "expectedCiTaskVerdict": "trusted-checks-passed",
+    "expectedCiArtifacts": ["run.json", "summary.md", "events.jsonl"],
+    "pairwiseNormalizedEqualForSameInput": true,
+    "differentInputsObservablyDiffer": true,
+    "controlRunsUneditedSourceOnInput1": true
+  },
+  "editIsolation": {
+    "editedPublishTarget": "marker2.txt",
+    "uneditedPublishTarget": "marker.txt",
+    "editedReportDiffersFromControl": true,
+    "bothControlAndEditedSucceed": true
+  },
+  "identity": {
+    "ciSourceDigestMatchesCompiledSource": true,
+    "sameClassesDirUsedByBothLaunchers": true,
+    "manifestSourceDigestEqualsPreEditExport": true
+  }
+}
