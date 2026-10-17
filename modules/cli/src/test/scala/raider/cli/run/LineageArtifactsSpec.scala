@@ -10,6 +10,7 @@ import raider.dsl.lineage.data.{
 import raider.dsl.lineage.proj.{LineageRenderer}
 import raider.dsl.lineage.store.LineageDataStore
 import raider.cli.lineage.SessionGraphView
+import raider.cli.lineage.LineageSnapshot
 import raider.runtime.events.{EventEnvelope, EventCodecs, ToolOutcome}
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.lineage.model.{DataRef, NodeId, SessionGraph, SessionNode}
@@ -458,17 +459,24 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
             .orDie
           exit <- ZIO.attempt {
             written match
-              case Right(w) =>
-                dotcCompile(w.source) match
+              case Right(_) =>
+                val committed = LineageSnapshot
+                  .read(work)
+                  .fold(
+                    e => throw new IllegalStateException(e.toString),
+                    identity
+                  )
+                dotcCompile(committed.sourcePath) match
                   case Right(0) => Right(0)
                   case Right(code) =>
-                    Left(s"dotc exit $code for ${w.source}")
+                    Left(s"dotc exit $code for ${committed.sourcePath}")
                   case Left(err) => Left(err)
               case Left(e) => Left("writer refused: " + e)
           }.orDie
           doc <- ZIO.attempt(documentOf(work)).orDie
         yield assertTrue(
           written.isRight,
+          Files.isRegularFile(work.resolve(LineageSnapshot.CommitName)),
           exit == Right(0),
           doc.isRight,
           doc.map(_.nodes.size) == Right(2),

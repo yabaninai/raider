@@ -6,6 +6,7 @@ import raider.dsl.lineage.data.LineageDataDocument
 import raider.dsl.lineage.store.LineageDataStore
 import raider.runtime.lineage.replay.GraphComparator
 import zio.test.*
+import zio.json.EncoderOps
 import zio.test.live
 import zio.{Scope, ZIO}
 
@@ -67,7 +68,11 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
   ): ZIO[Any, Nothing, Unit] =
     ZIO
       .attempt(
-        LineageDataStore.write(runDir.resolve(ReplayCli.DataFileName), doc)
+        LineageSnapshot.publish(
+          runDir,
+          doc.toJson.getBytes(UTF_8),
+          doc.runId.getBytes(UTF_8)
+        )
       )
       .orDie
       .flatMap {
@@ -78,8 +83,8 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
 
   private def corruptDataFile(runDir: Path): ZIO[Any, Nothing, Path] =
     ZIO.attempt {
-      val p = runDir.resolve(ReplayCli.DataFileName)
-      Files.writeString(p, "{ this is not a lineage-data document", UTF_8)
+      val p = runDir.resolve(LineageSnapshot.CommitName)
+      Files.writeString(p, "broken manifest\n", UTF_8)
       p
     }.orDie
 
@@ -283,7 +288,7 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
       }
     },
     test(
-      "LIN13-02: `raider replay` — corrupt lineage-data.json is a typed error, exit 21"
+      "LIN3B-02: `raider replay` — malformed commit pointer is typed, exit 21"
     ) {
       live {
         ZIO.scoped {
@@ -300,7 +305,7 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
                 code == ExitCodes.ConfigInvalid,
                 code == 21,
                 err.contains("typed-error:"),
-                err.contains("StoreError.Corrupt")
+                err.contains("lineage snapshot invalid")
               )
             case Left(failure) =>
               throw new IllegalStateException(
@@ -310,7 +315,7 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
       }
     },
     test(
-      "LIN13-02: `raider replay` — missing lineage-data.json is a typed error, exit 21"
+      "LIN3B-02: `raider replay` — missing commit pointer is typed, exit 21"
     ) {
       live {
         ZIO.scoped {
@@ -325,7 +330,7 @@ object ReplayProductCliSpec extends ZIOSpecDefault:
               assertTrue(
                 code == 21,
                 err.contains("typed-error:"),
-                err.contains("StoreError.Missing")
+                err.contains("lineage snapshot invalid")
               )
             case Left(failure) =>
               throw new IllegalStateException(
