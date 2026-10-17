@@ -121,6 +121,14 @@ owns job DAG/retries/runner/secrets/manual gates/artifact upload; Raider owns
 one workflow in one job. External orchestrator retry must not replay a run whose
 record shows a mutation may have happened.
 
+Credentials may be supplied only through environment variables or helper
+references; secret values must never appear in command-line arguments (argv),
+logs, evidence, or artifacts. This is an inherited constraint from the
+[AGENTS.md trust boundaries](../../AGENTS.md#trust-boundaries),
+[ci-runtime §§5–6](../ci-runtime.md#5-policy-and-execution-of-repository-code),
+and [ADR-029 H-rules](ADR-029-workflow-sdk.md#4-honesty-obligations-acceptance-sdkadr-02--each-addressed), not a new
+credential-handling design in this proposal.
+
 ## 4. Proposed refusals, uncertainty, and reconciliation
 
 This taxonomy is a review proposal; exact sealed types, fields and exit mapping
