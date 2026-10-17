@@ -4782,7 +4782,7 @@
         "RAI-155.e",
         "RAI-155.f"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/work/records/RAI-155.md"
       ],
@@ -4965,7 +4965,7 @@
       "dependencies": [
         "RAI-155.e"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "README.md",
         "docs/onboarding.md",
