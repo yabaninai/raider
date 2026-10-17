@@ -44,8 +44,10 @@ Tests recorded in-report:
           for every measurement; run twice back-to-back and compare the
           recursive key structure (protocol doc §UXB-03).
 
-Exit codes: 0 = report written (skips and failed measurements included and
-recorded honestly); 2 = the report could not be written. No network is used
+Exit codes: 0 = report written and both required measurements completed, or
+an informational skip was explicitly allowed; 1 = a measurement failed; 2 =
+the report could not be written; 3 = a measurement was skipped without
+--allow-skip. No network is used
 by the measurements themselves; the optional sbt export may resolve
 dependencies through the local coursier cache only.
 
@@ -150,6 +152,22 @@ def stats_block(samples_ms: list[float]) -> dict:
     }
 
 
+def incomplete_exit_code(measurements: dict, required: tuple[str, ...],
+                         allow_skip: bool) -> int:
+    """Choose the failure exit, giving failed measurements precedence."""
+    skipped = [key for key in required
+               if measurements.get(key, {}).get("status") == "skipped"]
+    incomplete = [key for key in required
+                  if measurements.get(key, {}).get("status") != "measured"]
+    if not incomplete:
+        return 0
+    if skipped and allow_skip and len(skipped) == len(incomplete):
+        return 0
+    failed = any(measurements.get(key, {}).get("status") == "failed"
+                 for key in incomplete)
+    return 1 if failed or not skipped else 3
+
+
 def run_capture(argv: list[str], timeout: float) -> tuple[int, str, str]:
     try:
         res = subprocess.run(argv, capture_output=True, text=True,
@@ -249,7 +267,6 @@ def resolve_classpath(out: pathlib.Path, args) -> dict:
              if l.strip() and not l.startswith("[")]
     cp = lines[-1].strip() if lines else ""
     if res.returncode == 0 and cp:
-        out.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(cp + "\n")
         fail_path.unlink(missing_ok=True)
         return {**info, "status": "ok", "source": "sbt export (cached now)",
@@ -262,7 +279,6 @@ def resolve_classpath(out: pathlib.Path, args) -> dict:
                      if l.strip()]
     reason = (f"sbt export failed rc={res.returncode}; last error: "
               f"{err_lines[-1][:300] if err_lines else '(no output)'}")
-    out.parent.mkdir(parents=True, exist_ok=True)
     fail_path.write_text(json.dumps(
         {"reason": reason, "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
          "sbt_timeout_s": SBT_TIMEOUT_S}, ensure_ascii=False))
@@ -480,6 +496,8 @@ def main() -> int:
                     help="never attempt `sbt export` (cache/env only)")
     ap.add_argument("--refresh-classpath", action="store_true",
                     help="retry sbt export even if a cached failure exists")
+    ap.add_argument("--allow-skip", action="store_true",
+                    help="return success for unavailable/skipped measurements; informational only")
     args = ap.parse_args()
     if args.samples < 1 or args.start_samples < 1:
         ap.error("--samples and --start-samples must be >= 1")
@@ -556,14 +574,40 @@ def main() -> int:
                         f"TERM={CHILD_TERM} (probe-owned)")
 
     # ---- classpath ----------------------------------------------------------
-    cp_info = resolve_classpath(out, args)
+    # Create the report directory before any classpath cache writes so directory
+    # failures use the same fatal report-write contract as the final report.
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[fatal] cannot write report {out}: {e}", file=sys.stderr)
+        return 2
+    try:
+        cp_info = resolve_classpath(out, args)
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as e:
+        reason = f"{type(e).__name__}: {e}"
+        cp_info = {"status": "unavailable", "source": "none",
+                   "classpath": None, "reason": reason}
+        try:
+            out.parent.mkdir(parents=True, exist_ok=True)
+            (out.parent / (out.name + ".classpath-fail.json")).write_text(
+                json.dumps({"reason": reason,
+                            "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                            "sbt_timeout_s": SBT_TIMEOUT_S}), encoding="utf-8")
+        except OSError as write_error:
+            print(f"[fatal] cannot write report {out}: {write_error}",
+                  file=sys.stderr)
+            return 2
     report["classpath"] = {k: v for k, v in cp_info.items() if k != "classpath"}
     cp = cp_info.get("classpath") if cp_info["status"] == "ok" else None
 
     # ---- measurements --------------------------------------------------------
     measurements: dict = {}
     transcripts = out.parent / (out.stem + "-transcripts")
-    transcripts.mkdir(parents=True, exist_ok=True)
+    try:
+        transcripts.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        print(f"[fatal] cannot write report {out}: {e}", file=sys.stderr)
+        return 2
     if cp is None:
         skip = ("skipped: no classpath (documented skip, not passed); "
                 "reason: " + cp_info.get("reason", "unknown"))
@@ -642,9 +686,21 @@ def main() -> int:
         "(target/, artifacts/, .git/, ... — see environment.repo_fingerprint)",
     ]
 
-    # ---- atomic write; exit 0 iff the report is on disk -----------------------
-    out.parent.mkdir(parents=True, exist_ok=True)
+    required = ("ux03_event_visible_latency", "ux04_repl_start")
+    skipped = [key for key in required
+               if measurements.get(key, {}).get("status") == "skipped"]
+    incomplete = [key for key in required
+                  if measurements.get(key, {}).get("status") != "measured"]
+    if not incomplete:
+        report["gate_status"] = "measured"
+    elif skipped and args.allow_skip and len(skipped) == len(incomplete):
+        report["gate_status"] = "informational-skip"
+    else:
+        report["gate_status"] = "incomplete"
+
+    # ---- atomic write; gate status is decided only after report persistence ----
     try:
+        out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(out.suffix + ".tmp")
         tmp.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n",
                        encoding="utf-8")
@@ -657,7 +713,18 @@ def main() -> int:
     print(f"[ux-baseline] report -> {out}")
     print(f"[ux-baseline] classpath={report['classpath']['status']} "
           f"terminal={term_info['status']} measurements={measured}")
-    return 0
+    if not incomplete:
+        return 0
+    if skipped and args.allow_skip and len(skipped) == len(incomplete):
+        print("[ux-baseline] informational skip allowed: " + "; ".join(
+            measurements[key].get("skip_reason", "measurement skipped")
+            for key in skipped), file=sys.stderr)
+        return 0
+    reasons = [f"{key}: {measurements.get(key, {}).get('reason') or measurements.get(key, {}).get('skip_reason') or measurements.get(key, {}).get('status', 'missing')}"
+               for key in incomplete]
+    print("[ux-baseline] required measurements incomplete: " + "; ".join(reasons),
+          file=sys.stderr)
+    return incomplete_exit_code(measurements, required, args.allow_skip)
 
 
 if __name__ == "__main__":
