@@ -1,85 +1,66 @@
 # RAI-155.e: work record
 
-Status: review-fix implemented; final gates passed. Date: 2026-10-17. Lane: `lane/rai-155e`. Review-fix baseline: `808bdcd44320abf9c20a98896363d478de627ed4`.
+Status: review-fix implemented; required lane gates passed. Date: 2026-10-17. Lane: `lane/rai-155e`. Round-2 fix baseline: `5feae95`.
 
 ## Resulting behavior
 
-- Merged `main` with a clean fast-forward (no conflicts). This brought RAI-162's WorkflowRun SIGTERM cleanup, updated E01/E02/E03 expectations/specs, the tracked verifier corpus, and RAI-137/161 quality runner changes. No product files were changed by this re-gate.
-- E01, E02, E03, and corpus tests pass; E03 passed in the complete verifier run and in three further consecutive standalone executions.
-- All requested quality commands pass. Neither documented exception (MJE-03c or TAB-02) failed in the profile run; no exception was needed. There were no skips or timeouts.
-- No paid provider calls. E01 uses the explicitly local scripted OpenAI-compatible stand.
-- Closed the High finding: E02 now includes `changed-verifier-input`. The exact CWF-E02 expectation file is pinned by a verifier-code SHA-256 anchor, independent of the JSON expectation document. A mutation changing the `bogus-success` expected exit from 10 to 0 produces `Left("verifier input digest mismatch")` before the modified expected value can be used. This is narrowly tamper-evidence for these expectation bytes, not a claim that verifier source/anchor cannot be modified.
-- Combined E01/E02/E03/corpus run passed: 6 CLI tests and 5 DSL corpus tests; no failures/skips. The new negative case passed in three consecutive standalone corpus runs (5 tests passed each run).
-- Required change gates and the static/unit/contracts/ci profile passed with no skipped checks. Current final manifests and their post-gate verification output are recorded in the final handoff; quality gates ran after this record's final content was prepared.
+- `ChatWorkflowVerifierHarness.loadE02` now reads the expectation bytes once, verifies their SHA-256 against the independently pinned verifier-code anchor, and only then decodes and returns `E02Doc`. A mismatch returns a typed `IllegalStateException` failure with `verifier input digest mismatch`; expectations are not used by verifier cases first.
+- `ChatWorkflowVerifierE02Spec` mutates the real E02 expectation bytes and sends them through the same byte-loader called by `loadE02`. The test asserts the typed refusal. `ChatWorkflowVerifierCorpusSpec` retains its independent expectation-byte anchor and separate in-memory integrity assertion. This is narrow tamper evidence for verifier input bytes, not a sandbox or protection from changing verifier code/anchor.
+- The prior record's claim that changed-verifier detection remained missing is removed. Round-1 corpus coverage and the round-2 real-load-path wiring are both resolved in this lane; independent round-3 review remains outstanding.
+- Initial quality execution found formatting issues in both changed Scala files (manifest `artifacts/quality/20261017-205444-68392-0001/manifest.json`, failed only `scalafmt-check`; compile, tests, contracts and compile fixtures passed). Ran `sbt --batch scalafmtAll`, which reformatted only the two changed Scala test sources, then reran the required corpus, E02 ×3, E01 and E03 cases successfully. This failed pre-format manifest is retained as an honest trail and is not final evidence.
+- No product APIs, public contracts, or frozen expectations were changed. No paid provider calls or root-checkout changes were made.
 
 ## Changed paths
 
-- `docs/work/records/RAI-155e.md` (this evidence and completeness record only).
-- `contracts/chat-workflow/expectations/CWF-E02.json` (added contract-derived changed-verifier-input case).
-- `contracts/chat-workflow/README.md` (anchor scope and tamper-evidence limitation).
-- `modules/dsl/src/test/scala/raider/dsl/workflow/ChatWorkflowVerifierCorpusSpec.scala` (independent digest anchor and tampered-expectation refusal test).
+- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierHarness.scala` — digest check in actual E02 load path.
+- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE02Spec.scala` — negative mutation through the E02 byte-loading path.
+- `docs/work/records/RAI-155e.md` — this coherent round-2 record.
 
-## Acceptance evidence and completeness matrix
+## Acceptance evidence
 
-| Card / roadmap obligation | Current coverage and result | Remaining issue |
+| Criterion / test ID | Actual result | Evidence |
 | --- | --- | --- |
-| CWF-E01: real chat capture, explicit selected multi-turn task, export, manual source edit, pinned compile | Green. Four captured turns traverse the local Scala SSE stand; the three-turn selection excludes the ordinary turn. Export and compile make zero stand requests. Export re-exports byte-identically. Both prompt token and trusted check argv are edited. | None observed in the frozen CWF-E01 assertions. |
-| CWF-E01: independent failure before agent work / success after repair; real effect | Green. Independent check fails before agent work and passes after; scripted stand causes actual tool effects. | None observed. |
-| CWF-E01: four-cell 2-input × 2-launcher matrix on fresh copies | Green. Two inputs and `local-main` / `raider-workflow-run`, four fresh workspaces; normalized outcomes match per input and inputs differ observably. Same edited workflow/build identity is checked. | None observed. |
-| CWF-E01: fifth unedited control | Green. Fifth fresh workspace runs unedited source for input 1; both runs succeed and report/effect/source identity distinguish the manual edit. | None observed. |
-| CWF-E02: negative corpus | Existing cases remain; additionally `changed-verifier-input` rejects a changed `bogus-success` expected exit using the independently pinned digest. The mutation is refused before the modified verifier input can convert a failed acceptance result to pass. | No weakening; anchor is in the corpus verifier and expectation does not define its own digest. |
-| CWF-E03: interrupted capture/export snapshot/concurrent export/no retry | Green. In-flight turn is Unknown and retained, completed prefix is selectable, no redispatch; streaming export matches quiescent snapshot; concurrent distinct-target exports match and staging remnants are refused. | None observed. |
-| CWF-E03: fresh-process SIGTERM, bounded truthful artifact, exit 143, no success/retry; deterministic repeat | Green. Expected exit, incomplete artifact/interrupted state, never Succeeded, no auto retry; deterministic run/export comparison. Full verifier plus three additional passes. | None observed in test runs. |
-| Corpus integrity | Green; exactly frozen expected files, documented normalization/prerequisites, E02 negative corpus declaration, all expectation IDs parse. | None observed. |
-| Independent review / integrated acceptance | Not performed by this worker. | Required before acceptance. Lane evidence is not integrated-candidate evidence. |
-
-Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat entrypoints/local stand, four fresh matrix copies, fifth unedited control, independent pre-repair failure, post-repair passing checks, and same edited program on local and non-TTY CI launchers. CWF-E02 includes independently anchored verifier-input tamper detection distinct from stale workflow build detection; E03 adds cancellation/concurrency checks. RAI-155.f walkthrough remains downstream and is not this card's acceptance.
+| E02 expectation digest is checked before decode/use | Passed | `ChatWorkflowVerifierHarness.loadE02` routes bytes through `loadE02Bytes`; mismatch is typed failure. |
+| Tampered expectation negative uses real E02 loader path | Passed ×3 | E02 test suite includes `changed verifier expectation is refused by the real E02 loader`; present in all three E02 runs. |
+| Independent E02 corpus integrity | Passed | Corpus suite: 5 tests passed, 0 failed, 0 ignored. |
+| E02 verifier cases | Passed ×3 | Each run: 4 tests passed, 0 failed, 0 ignored. |
+| E01 regression | Passed | 1 test passed, 0 failed, 0 ignored. |
+| E03 regression | Passed | 2 tests passed, 0 failed, 0 ignored. |
+| Final quality gates and manifest verification | Passed | `artifacts/quality/20261017-211259-3659-0001/manifest.json` and `artifacts/quality/20261017-212405-16935-0001/manifest.json`; verifier output below. |
 
 ## Commands
 
-Final gate sequence (record finalized before this sequence):
+These verifier runs were executed before the record was finalized:
+
+| argv / command | Exit | Result |
+| --- | ---: | --- |
+| `sbt --batch "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0 | 5 passed; independent corpus mutation assertion remains green. |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE02Spec"` (run 1) | 0 | 4 passed, including tampered bytes rejected by real loader. |
+| Same standalone E02 command (run 2) | 0 | 4 passed, including real-loader negative. |
+| Same standalone E02 command (run 3) | 0 | 4 passed, including real-loader negative. |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec"` | 0 | 1 passed. |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE03Spec"` | 0 | 2 passed. |
+| `make quality-changed QUALITY_EXECUTE=1` (pre-format attempt) | 2 | `artifacts/quality/20261017-205444-68392-0001/manifest.json`; failed `scalafmt-check`, other 4 gates passed. Fixed by formatting and reran all requested verifier tests. Not final evidence. |
+| `sbt --batch scalafmtAll` | 0 | Reformatted the 2 changed CLI test sources. |
+
+Final gate sequence (required order; record finalized before first command):
 
 | argv / command | Exit | Log / manifest |
 | --- | ---: | --- |
-| `make quality-changed` | 0 | Classified contracts/static/unit. |
-| `make quality-changed QUALITY_EXECUTE=1` | 0 | Passed, 5 gates, 0 failures/skips; `artifacts/quality/20261017-201412-25122-0001/manifest.json`. |
-| `make quality-profile PROFILES="static unit contracts ci"` | 0 | Passed, 6 gates, 0 failures/skips; `artifacts/quality/20261017-202051-26386-0001/manifest.json`. |
-| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-201412-25122-0001/manifest.json --require contracts,static,unit` | 0 | `[verify] OK` — policy/toolchain/log hashes checked, fingerprint fresh. |
-| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-202051-26386-0001/manifest.json --require static,unit,contracts,ci` | 0 | `[verify] OK` — policy/toolchain/log hashes checked, fingerprint fresh. |
-
-The exact post-gate verifier output is: `[verify] OK: manifest <path> satisfies <required profiles> (policy/toolchain/logs hashes checked, fingerprint fresh)` for both manifests above. No skip or timeout was treated as a pass.
-
-| argv / command | Exit | Log / manifest |
-| --- | ---: | --- |
-| `git merge main` | 0 | Fast-forward `1598861` → `46dc140`; no conflicts. |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec raider.cli.chat.ChatWorkflowVerifierE03Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0 | E01/E02/E03: 6 tests passed, 0 failed; corpus: 4 passed, 0 failed. |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE03Spec"` (run 1) | 0 | 2 tests passed, 0 failed. |
-| Same standalone E03 command (run 2) | 0 | 2 tests passed, 0 failed. |
-| Same standalone E03 command (run 3) | 0 | 2 tests passed, 0 failed. |
-| `make quality-changed` | 0 | Clean tree vs HEAD; minimum `fast` selected. |
-| `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261017-193605-94770-0001/manifest.json`; status passed, 10 passed/0 failed/0 skipped. SHA-256 `d551bd19fef275df0560050f397bd973e91e9999892b2ee41d9a5788b513d72e`. |
-| `make quality-profile PROFILES="static unit contracts ci"` | 0 | `artifacts/quality/20261017-194401-4214-0001/manifest.json`; status passed, 6 passed/0 failed/0 skipped. SHA-256 `6c5ef1925769eecab4c6985bcce3153bce0272ebd989b5800fcc454bf1f4a9a6`. |
-| `python3 scripts/quality/quality.py evidence <manifest> --require ...` (attempted per docs/quality-gates.md) | 2 | Runner has no `evidence` subcommand; exact usage reports supported commands `{changed, inventory, execute, verify, self-check}`. |
-| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-193605-94770-0001/manifest.json --require fast` | 1 | `[verify] FAIL: excluded operational record changed since gate: docs/work/records/RAI-155e.md`. |
-| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-194401-4214-0001/manifest.json --require static,unit,contracts,ci` | 1 | Same audit-hash failure: record content changed after gate execution. |
-
-## Fingerprint and gate hashes
-
-- Both quality manifests record the same product-input fingerprint: `86f5f04449098ccca74de692854fbadb6754e91378643dd490e5b4076b2a4483`.
-- Gate policy SHA-256: `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`.
-- Execute-fast manifest gate log SHA-256s: self-registry `cf0ce866958eb6147d1a4892b071f5480bacfa0f9a7998de69e1555635c59afa`; compile `1dff74a02137e467ba55b6a2bc74a4b20852774f5b6f107d0e753e793825b484`; formatter `b5ed0f5203a34bc4e93917a5cd7529a5cef41ce83ed131e55457b6775231a290`; scalafix `02b7e8433550fed617c52559cc5665c130bd78dc1167baee5d9a2aea6ea0c5e3`; forbidden APIs `ec7800dcf7787193885fbaeb11904947eb943d85d3056d1683ad2a473c2665`; license `63ff8c55793c0f21f6a90b807a904c5181009d370ba8286d70386d70ad1b84df`; core contracts `b52122ecec408e645e8c3fc76cf51b1a58d400e3facb59976b8698f541c72f38`; compile fixtures `ec0ed8968c74df8169e9257b47406cf26decf8e0436f12ded8f3779f3fbabd42`; plan validation `ff0807c1d15997221ccf0f8b4a45aaf510abb05d0d279215b0ae5a266194be69`; tests `db7b92b5520860cd7e671117a07ab181d899bb3b07b6498d1e377be32816d394`.
-- Static/unit/contracts/ci profile log SHA-256s: tests `1c169a812666a04d3827c61f696b6e36b2e54cbc9d598ddbfab98cae70bfa64f`; CLI smoke `f29248cbceed28199489537a717a32008dd0919b46fe126f93731ec373be17c1`; core contracts `b47e122c3521f657ad9b9d7e004ce621670b3230e6e41d9716bbdd18369f5d`; compile fixtures `ec0ed8968c74df8169e9257b47406cf26decf8e0436f12ded8f3779f3fbabd42`; compile `8c58886c0c0528082d8cd7821448b0a4c81e96b82baf72656d0df8d996968fe3`; formatter `9135107ae365a87a5ca86c13b50b3bb187d667acb9ed020c2179d304897205ad`.
-- Included verifier/corpus SHA-256s: E01 expectations `b992824261bb5d130f769cbe3f7318c4ccb042ddede9751d30afda55477fa470`; E02 expectations `38b80225699cdd20b0682d3122b71131db726ef0c032f67989d08ac2d479e0b9`; E03 expectations `8ef121409a757a24a76f23d156d803ce2aa4154568f34a33b36302a8d0098611`; E01 spec `c71b02e018be64cb74cc63dd468a283130dd812e87e1a8b4700a5dd540fdcdf1`; E02 spec `844c94e5fc2e580f7b2c8b7cd529b0edadbbcde51a5e50213e5bd0228e04184c`; E03 spec `533d8a23bbcbd584767745e1f77049d737ab9f9c3d2551879658404e4f67b6a9`; harness `f5570e707b39309a26f9382d34fde516d053a07bc53ece2b3737c1c055bcd29b`; corpus spec `86587329db96c11ee3a97e04e54feca0cfedf4970108290919f928f8d5fc9551`.
+| `make quality-changed` | 0 | Classified the two modified CLI test files; selected contracts, static, unit. |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | Passed all 5 gates, 0 failures/skips; `artifacts/quality/20261017-211259-3659-0001/manifest.json`. |
+| `make quality-profile PROFILES="static unit contracts ci"` | 0 | Passed all 6 gates, 0 failures/skips; `artifacts/quality/20261017-212405-16935-0001/manifest.json`. |
+| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-212405-16935-0001/manifest.json --require static,unit,contracts,ci` | 0 | `[verify] OK: manifest artifacts/quality/20261017-212405-16935-0001/manifest.json satisfies ['static', 'unit', 'contracts', 'ci'] (policy/toolchain/logs hashes checked, fingerprint fresh)` |
 
 ## Limitations / blockers
 
-- No test failed, skipped, or timed out. MJE-03c/TAB-02 documented exceptions did not occur; no checks were waived.
-- Explicit changed-verifier/test tamper detection is not shown by the corpus case inventory (stale workflow source/build identity is tested). This is the concrete acceptance gap pending reviewer disposition or a separate authorized verifier change.
-- Fresh independent review is still required. These manifests belong to the lane snapshot, not the eventual integrated candidate.
-- The runner's current `verify` rejects the manifest audit because this required work record was updated after the gate runs. Product-input fingerprint is unchanged (operational record excluded), but a fresh success from `verify` was not obtained; the supported `evidence` command named in the docs is not implemented.
+- Quality manifest verification was run successfully before recording its output here. As with all lane evidence, it applies to the checked product-input fingerprint and gate configuration; the subsequent operational-record update is not a product-input change.
+- Fresh independent round-3 review is outstanding. Lane evidence is not integrated-candidate acceptance.
+- Test output included ZIO test-clock warnings in existing EventHub calls and JDK/Scala `sun.misc.Unsafe` deprecation notices; these were warnings, not skipped/failed checks.
+- No paid calls were made; E01/E02/E03 used local fixtures/stands only.
 
 ## Review and next task
 
-Verdict: **gaps remain** — explicit changed-verifier/test detection and independent review are outstanding. Next: reviewer should disposition the E02 scope gap; if confirmed, register/authorize a narrow verifier case change (do not change expectations without evidence), then rerun affected verifier and gates. After RAI-155.e is independently accepted, RAI-155.f is the next chain card.
+Round-2 findings resolved by this lane; reviewer verdict pending. After review/acceptance of RAI-155.e, the next chain card is RAI-155.f. No push or merge to `main` is authorized.
 
-Operational record is excluded from the product-input fingerprint per the reviewed allowlist; the record itself has changed, so its audit hash is recorded by Git at commit. Product code, acceptance fixtures, and gate policy were not edited during this re-gate. Any subsequent verifier/corpus change requires fresh affected evidence. No push or merge to `main` performed.
+Product-input hash and operational-record hash differ under the reviewed policy. Changes to code/spec/build/fixtures require affected reruns; updating a board/record line does not rebind an old manifest to the new source tree. A lane report applies to its snapshot; final acceptance applies to the integrated candidate.
