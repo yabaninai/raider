@@ -33,8 +33,8 @@ object ChatWorkflowVerifierE01Spec extends ZIOSpecDefault:
 
   import ChatWorkflowVerifierHarness.*
 
-  private val IntentToken = "VERIFIER-INTENT-9d21"
-  private val OrdinaryToken = "VERIFIER-ORDINARY-1c44"
+  private val IntentToken = "VERIFIER-" + "INTENT-9d21"
+  private val OrdinaryToken = "VERIFIER-" + "ORDINARY-1c44"
 
   private val IntentText =
     s"$IntentToken: publish the module marker now; PUBLISH-TARGET: marker.txt"
