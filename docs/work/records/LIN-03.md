@@ -1,5 +1,34 @@
 # LIN-03: work record
 
+## Completion attempt (2026-10-17)
+
+Status: blocked. Baseline commit: `4bc5b0d` (`lane/lin-03`); merged `main` at `46dc140` as requested (merge completed without conflicts). The worktree was clean before the merge. No product source was changed in this attempt.
+
+### Blocker
+
+The required zero-torn-read guarantee cannot be truthfully implemented within LIN-03's authorized source paths as written. The existing run artifacts are two independently named files (`lineage.scala` and `lineage-data.json`); existing readers such as `ReplayCli` resolve the fixed data-file path. Publishing a generation directory plus an atomic manifest/pointer only protects readers that resolve and honor that pointer. Updating those readers is outside LIN-03's allowed `modules/cli/src/main/scala/raider/cli/run/**` path, and leaving them unchanged would make the required concurrent-reader proof irrelevant to actual consumers. Preserving the legacy fixed paths alongside the new pointer would still allow mixed generations to be observed. I did not add a manifest, claim atomic pair publication, or present a synthetic fixture as proof.
+
+Also, this checkout has no authorized implementation interface for compiling a projection during an active session: `LiveLineageProjection` renders in-process but does not run the pinned dotc compile gate. Wiring a compiler invocation requires an agreed product mechanism (and its lifecycle/resource/error contract) rather than silently adding a process/dependency to this card. The requested invalid-projection status must remain observable while preserving the session result, and cannot be claimed from the existing render-only status.
+
+These are implementation-scope/interface blockers, not a frozen schema or GraphHash defect. No frozen lineage schema, GraphHash canonicalization, gate policy, shared build files, board, or task-card files were changed. A narrowly scoped authorization/contract should identify the pair reader API and all consumer paths, then define how live compilation is provided without adding an unauthorized runtime dependency. LIN3-01's existing live fold wiring remains; LIN3-02 and LIN3-03 are not met by this completion attempt. LIN-04 remains blocked on LIN-03 acceptance.
+
+### Acceptance and execution evidence
+
+| Criterion / test ID | Actual result | Evidence |
+| --- | --- | --- |
+| LIN3-01 | Partial; existing production fold wiring is present from baseline, but no new end-to-end checkpoint fixture was added. | Baseline `4bc5b0d`; existing `LiveLineageProjectionSpec` |
+| LIN3-02 | Not met; no live pinned-compiler validation or new non-exit-changing diagnostic behavior. | Blocker above |
+| LIN3-03 | Not met; no persisted atomic source/data snapshot or concurrent-reader fixture. | Blocker above |
+| Torn reads | Not verified; no fixture run and no zero-torn-read claim. | Blocker above |
+
+| Command | Exit | Evidence |
+| --- | --- | --- |
+| `git status --short && git branch --show-current && git log -1 --oneline && git merge main` | 0 | Clean pre-merge worktree; branch `lane/lin-03`; merge of `main` at `46dc140` succeeded |
+
+No quality gates, test profiles, or manifests were run in this attempt; they would not establish the missing behavior. No paid calls were made. No implementation commit was created. This record reports the blocker only and is not acceptance evidence.
+
+## Prior work records
+
 ## Wiring continuation (2026-10-16)
 
 Status: partial. Branch baseline after requested refresh: `a62a5a2b05d34a0107a1c7bed021fe4ec63c5fb8` (merge of main `963d584`).
