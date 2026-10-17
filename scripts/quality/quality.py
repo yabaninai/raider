@@ -63,6 +63,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 POLICY = ROOT / "scripts/quality-policy/registry.json"
 EVIDENCE_DIR = ROOT / "artifacts/quality"
+OPERATIONAL_RECORDS = "docs/work/records"
 
 
 def fail(msg: str) -> "None":
@@ -113,6 +114,70 @@ def _excluded(rel: str, excludes: set[str]) -> bool:
 def inventory(root: pathlib.Path, excludes: set[str]) -> dict[str, dict]:
     """Hash inventory of the tree at `root` (fingerprint excludes applied)."""
     current: dict[str, dict] = {}
+    for p in root.rglob("*"):
+        if not p.is_file() and not p.is_symlink():
+            continue
+        rel = p.relative_to(root).as_posix()
+        if _excluded(rel, excludes) or _is_operational_record(rel):
+            continue
+        if p.is_symlink():
+            current[rel] = {"mode": "symlink", "target": os.readlink(p)}
+        else:
+            st = p.stat()
+            current[rel] = {"sha256": sha256_file(p), "mode": oct(st.st_mode & 0o777)}
+    return current
+
+
+def _is_operational_record(rel: str) -> bool:
+    """Only docs/work/records/** is excluded by this additive policy."""
+    return rel.startswith(OPERATIONAL_RECORDS + "/")
+
+
+def operational_record_audit(root: pathlib.Path) -> list[dict]:
+    """Visible hashes/revisions for excluded operational records, not inputs."""
+    entries = []
+    records = root / OPERATIONAL_RECORDS
+    if not records.exists():
+        return entries
+    for path in sorted(records.rglob("*")):
+        if not path.is_file() and not path.is_symlink():
+            continue
+        rel = path.relative_to(root).as_posix()
+        entry = {"path": rel}
+        if path.is_symlink():
+            entry.update({"mode": "symlink", "target": os.readlink(path)})
+        else:
+            entry.update({"mode": oct(path.stat().st_mode & 0o777), "sha256": sha256_file(path)})
+        try:
+            revision = subprocess.run(["git", "rev-parse", f"HEAD:{rel}"], cwd=root,
+                                      capture_output=True, text=True, timeout=10)
+            entry["revision"] = revision.stdout.strip() if revision.returncode == 0 else None
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            entry["revision"] = None
+        entries.append(entry)
+    return entries
+
+
+def validate_operational_record_audit(stored: list[dict], current: list[dict]
+                                      ) -> tuple[list[str], list[dict]]:
+    """Compare gate-time record identity metadata and report post-gate additions."""
+    before = {entry["path"]: entry for entry in stored}
+    after = {entry["path"]: entry for entry in current}
+    problems = []
+    for rel, entry in before.items():
+        now = after.get(rel)
+        if now is None:
+            problems.append(f"excluded operational record missing since gate: {rel}")
+        elif any(entry.get(key) != now.get(key) for key in ("sha256", "mode", "target")):
+            problems.append(f"excluded operational record changed since gate: {rel}")
+    additions = [after[rel] for rel in sorted(after.keys() - before.keys())]
+    return problems, additions
+
+
+def legacy_inventory(root: pathlib.Path) -> dict[str, dict]:
+    """Schema-v1 fingerprint, which included operational records."""
+    current: dict[str, dict] = {}
+    excludes = fingerprint_excludes()
     for p in root.rglob("*"):
         if not p.is_file() and not p.is_symlink():
             continue
@@ -212,7 +277,7 @@ def git_changes(root: pathlib.Path, excludes: set[str]) -> list[dict]:
                 old_path = tokens[i].decode("utf-8", errors="surrogateescape")
                 i += 1
         for rel, kind in _status_entry(xy, path, old_path):
-            if rel and not _excluded(rel, excludes):
+            if rel and not _excluded(rel, excludes) and not _is_operational_record(rel):
                 changes.append({"path": rel, "kind": kind})
     changes.sort(key=lambda c: (c["path"], c["kind"]))
     return changes
@@ -436,12 +501,13 @@ def cmd_execute(args) -> int:
     results = [run_gate(g, policy["gates"][g], log_dir) for g in gates_needed]
     status = "passed" if all(r["status"] == "passed" for r in results) else "failed"
     manifest = {
-        "schema_version": 1,
+        "schema_version": 2,
         "run_id": run_id,
         "status": status,
         "mode": "manifest-diff" if env_base(args) else "git-status",
         "source": {"files": files, "fingerprint_sha256": hashlib.sha256(
             json.dumps(files, sort_keys=True).encode()).hexdigest()},
+        "audit": {"excluded_operational_records": operational_record_audit(ROOT)},
         "policy_sha256": sha256_file(POLICY),
         "toolchain": toolchain_snapshot(),
         "profiles": selected,
@@ -482,13 +548,27 @@ def cmd_verify(args) -> int:
             problems.append(f"gate {g['id']} log hash stale")
     if m["policy_sha256"] != sha256_file(POLICY):
         problems.append("policy registry changed since run (stale evidence)")
-    files_now = current_inventory()
+    schema_version = m.get("schema_version", 1)
+    if schema_version not in (1, 2):
+        problems.append(f"unsupported manifest schema_version={schema_version}")
+    files_now = legacy_inventory(ROOT) if schema_version == 1 else current_inventory()
     fp_now = hashlib.sha256(json.dumps(files_now, sort_keys=True).encode()).hexdigest()
     if not args.allow_stale and fp_now != m["source"]["fingerprint_sha256"]:
         changed = sum(1 for k in files_now
                       if m["source"]["files"].get(k, {}).get("sha256") != files_now[k].get("sha256"))
         problems.append(f"source fingerprint changed ({changed} files differ) — rerun affected gates "
                         "(--allow-stale overrides, evidence is then historical)")
+    if schema_version == 2:
+        stored_records = m.get("audit", {}).get("excluded_operational_records")
+        if not isinstance(stored_records, list):
+            problems.append("schema-v2 manifest is missing excluded operational record audit")
+        else:
+            audit_problems, additions = validate_operational_record_audit(
+                stored_records, operational_record_audit(ROOT))
+            problems.extend(audit_problems)
+            for entry in additions:
+                print(f"[verify] post-gate operational record addition: "
+                      f"{entry['path']} {entry.get('sha256', entry.get('target'))}")
     if problems:
         for p in problems:
             print(f"[verify] FAIL: {p}", file=sys.stderr)
@@ -573,6 +653,9 @@ def _self_test_manifest_fingerprint(policy: dict) -> None:
         (td / "docs" / "a.md").write_text("x\n")
         (td / "keep.txt").write_text("k\n")
         (td / "gone.txt").write_text("g\n")
+        (td / "docs" / "work" / "records").mkdir(parents=True)
+        (td / "docs" / "work" / "records" / "before.md").write_text("record before\n")
+        (td / "docs" / "work" / "ordinary.md").write_text("ordinary docs\n")
         (td / "link.txt").symlink_to("keep.txt")
         base = inventory(td, excludes)
         mpath = outer / "base-manifest.json"  # OUTSIDE the inventoried tree
@@ -582,17 +665,60 @@ def _self_test_manifest_fingerprint(policy: dict) -> None:
             fail(f"self-check: manifest fingerprint of an unmodified tree must be "
                  f"empty (got {changes})")
         (td / "docs" / "a.md").write_text("x changed\n")  # hash -> modified
+        (td / "docs" / "work" / "records" / "after.md").write_text("record after\n")
+        (td / "docs" / "work" / "records" / "before.md").write_text("record changed\n")
+        (td / "docs" / "work" / "ordinary.md").write_text("ordinary docs changed\n")
         (td / "gone.txt").unlink()                        # -> deleted
         (td / "new.txt").write_text("n\n")                # -> added
         (td / "link.txt").unlink()
         (td / "link.txt").symlink_to("new.txt")           # symlink target -> modified
         _cur, changes = fingerprint(str(mpath), root=td)
         kinds = {c["path"]: c["kind"] for c in changes}
-        expected = {"docs/a.md": "modified", "gone.txt": "deleted", "new.txt": "added",
+        expected = {"docs/a.md": "modified", "docs/work/ordinary.md": "modified",
+                    "gone.txt": "deleted", "new.txt": "added",
                     "link.txt": "modified"}
         if kinds != expected or len(changes) != len(expected):
             fail(f"self-check: manifest fingerprint kinds mismatch: {kinds} "
                  f"(changes={changes}, expected {expected})")
+        audit = operational_record_audit(td)
+        audited = {item["path"] for item in audit}
+        if audited != {"docs/work/records/before.md", "docs/work/records/after.md"}:
+            fail(f"self-check: record audit entries mismatch: {sorted(audited)}")
+        if any(path in ("docs/work/records/before.md", "docs/work/records/after.md")
+               for path in inventory(td, excludes)):
+            fail("self-check: operational records leaked into fingerprint inventory")
+
+        # Gate-time audit is immutable: tampering with a listed excluded record
+        # must fail, while a post-gate addition is visible without refreshing it.
+        gate_root = outer / "gate-tree"
+        records = gate_root / OPERATIONAL_RECORDS
+        records.mkdir(parents=True)
+        listed = records / "listed.md"
+        listed.write_text("gate-time record\n")
+        gate_inventory = inventory(gate_root, excludes)
+        gate_fp = hashlib.sha256(json.dumps(gate_inventory, sort_keys=True).encode()).hexdigest()
+        gate_audit = operational_record_audit(gate_root)
+        listed.write_text("tampered after gate\n")
+        problems, additions = validate_operational_record_audit(
+            gate_audit, operational_record_audit(gate_root))
+        if not problems or additions:
+            fail(f"self-check: tampered excluded record must fail audit validation "
+                 f"(problems={problems}, additions={additions})")
+        listed.write_text("gate-time record\n")
+        added = records / "added.md"
+        added.write_text("post-gate addition\n")
+        current_fp = hashlib.sha256(json.dumps(
+            inventory(gate_root, excludes), sort_keys=True).encode()).hexdigest()
+        problems, additions = validate_operational_record_audit(
+            gate_audit, operational_record_audit(gate_root))
+        if problems or len(additions) != 1 or additions[0]["path"] != f"{OPERATIONAL_RECORDS}/added.md" \
+                or additions[0].get("sha256") != sha256_file(added) or current_fp != gate_fp:
+            fail(f"self-check: post-gate record addition must pass audit without changing "
+                 f"fingerprint (problems={problems}, additions={additions}, "
+                 f"fingerprints={gate_fp}/{current_fp})")
+        print(f"[self-check] schema-v2 operational audit: tampered listed record fails; "
+              f"post-gate addition passes with sha256={additions[0]['sha256']}; "
+              f"fingerprint unchanged ({gate_fp})")
     finally:
         shutil.rmtree(outer, ignore_errors=True)
 
@@ -676,7 +802,8 @@ def cmd_self_check(args) -> int:
           "(docs/scala/unmapped cases); git-mode fingerprint: clean temp tree empty, "
           "dirty temp tree kinds correct (rename=delete+add); manifest-mode "
           "fingerprint (temp tree, no git): unmodified -> empty, modify/delete/add/"
-          "symlink-repoint -> exactly added/modified/deleted kinds; execute decision: "
+          "symlink-repoint -> exactly added/modified/deleted kinds; operational records "
+          "excluded from inputs but present in audit; execute decision: "
           "docs-only -> ['docs'], unmapped file refuses; run_id: successive calls "
           "unique + filesystem-safe; verify rejects "
           "incoherent/tampered manifests (tamper-evidence: hashes/statuses/policy/"

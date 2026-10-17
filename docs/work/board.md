@@ -37,6 +37,131 @@ until .e is accepted. RAI-155.f, RAI-123 (conditional), LIN-04, and 129.b/c
 registration queue behind their dependencies. Merges land in batches of 3–5
 by dependency cluster; full main gates run once per batch.
 
+## 2026-10-16 — Wave 1 under the new capacity (8 Luna lanes)
+
+Spawned per the capacity revision above; all lanes are Luna task-tool workers
+with §3 assignment packets; baseline cd7032f (post-reconciliation). Status
+after the first integration batch (main 0870045):
+
+- Merged with review approve: RAI-117 (ADR-030 SDLC draft, Proposed), RAI-134
+  (guide refresh; round-2 approve after scope reverts), RAI-156
+  (eventuallyTerminal hub-watermark drain; EXECUTE 0, replay ×3, full sbt
+  427+9; lane includes merge 5527a70 of integration fix c04aae9).
+- Integration fix on main: c04aae9 — synthetic EW token literal split in
+  ChatExportChainGateSpec (pattern of 54b54f2); the forbidden-apis clean-tree
+  full scan had been failing ON MAIN since RAI-160 and blocked lane EXECUTE
+  gates (RAI-156/136).
+- Pending lanes: RAI-137 (round-2 finding: transcripts/classpath mkdir sites
+  still outside the exit-2 path; final fix round in flight); RAI-157 (phantom
+  ToolCall.id compile error reproduces after clean ONLY in its worktree —
+  sources identical to compiling main; dedicated investigation queued);
+  RAI-155.e (partial WIP 4704dea: E01/E02/corpus green in targeted runs;
+  real-stand capture, E03 SIGTERM case, legacy-spec mismatch remain);
+  RAI-136 (storm soak green 184/0 + 18× PlanPanel clean, RAI-123 NOT
+  triggered — stays conditional; sustained soak + 2 full sbt passes owed);
+  LIN-03 (incremental projection fold + tests green; live-stream wiring owed).
+- Reviews: 117 approve; 134 approve (round 2); 156 approve + gates-complete;
+  137 changes-required (round 2, one finding); 136/155.e/LIN-03/157 not yet
+  reviewed (lanes incomplete).
+- Integrated gates on main 0870045: `make quality-changed` exit 0 (classification
+  only; no manifest); first `make quality-changed QUALITY_EXECUTE=1` attempt
+  timed out at 120s (terminated, not a pass), retry exit 0, passed; manifest
+  `artifacts/quality/20261016-072042-40503-0001/manifest.json` SHA-256
+  `b6eaeec13be587d327030605bf188427ef63e8865f215913ee1432ce7795a3d9`.
+  `make quality-profile PROFILES="static unit contracts docs"` exit 1,
+  manifest `artifacts/quality/20261016-072639-53185-0001/manifest.json` SHA-256
+  `b4dd36d0e45172057e54ae79f35b38ec38b2a67bdfe6bc283b040cc2f72a6b3e`; sbt-test
+  failed in `raider.cli.run.MultiJobExportSpec` (MJE-03c, detached child with no
+  Terminal was reduced successfully by the strict entry instead of the expected
+  typed refusal). `make quality-profile PROFILES="repl runtime"` exit 0,
+  manifest `artifacts/quality/20261016-073347-65305-0001/manifest.json` SHA-256
+  `fb2078f1c6e077f5f595b565b63a4ecaff8aa0d2460cd71bc7aa852b3936557c`.
+
+## 2026-10-16 — ADR-030 owner decisions; MJE-03c known-red
+
+- **ADR-030 accepted (owner mandate, interactive session 2026-10-16; contract
+  only):**
+  - D1: `NeedsApproval` writes an approval request (checkpoint ID, candidate
+    digest, expiry); human decision is separate; a fresh invocation rereads
+    policy/state/digest, with no resumed fiber.
+  - D2: Scala workflow config is authoritative for required checks/review and
+    target branch; read-only forge reconcile precedes each mutation, with typed
+    refusal on divergence.
+  - D3: Full generic forge stand protocol includes commit, PR status, merge,
+    stale-ref, conflict, duplicate, and unknown-outcome; real forges are
+    separately accepted adapters.
+  - D4: Typed Scala schemas in `contracts/` for check-result, review-verdict,
+    candidate-identity, integration-result, represented as JSON in run artifacts.
+  - D5: SemVer + Keep a Changelog, local `v<semver>` tag, checksummed
+    `artifacts/release/<version>/`; strictly local, with no push/publish/deploy.
+  - D6 (**explicit non-default owner budget decision**): SDLC hours expand
+    beyond the 13,100h envelope; refine the 128–200h estimate per implementation
+    packet before spend, and record the budget decision on the board.
+  - D7 (**explicit non-default owner choice**): public effects-API, with ADR-029
+    H8 design and consumer migration discipline in the first implementation
+    card; no signature freeze before review.
+  - Coordinator registers implementation cards after the .e/.f critical path.
+- **MJE-03c adjudication (fresh independent reviewer, read-only):** scope is
+  RAI-157 — the captured-but-unconnected introduction is silently lost at
+  `MultiJobExport.scala:63–65/435–448`; this is **not** an RAI-156 regression
+  (`0870045` changes ReplayHarness replay drain only). MJE-03c expectation stays
+  unchanged; RAI-156 stays. Main carries a recorded **INTERMITTENT KNOWN-RED**
+  on the static/unit/contracts/docs profile until the RAI-157 fix merges and
+  passes integrated verification. Failed manifest
+  `20261016-072639-53185-0001` is retained; the successful targeted rerun is
+  noted separately and does not clear the integrated known-red.
+- **RAI-157 lane note:** original `wt/rai-157` had corrupt build state (phantom
+  `ToolCall.id` compile error; a fresh worktree of the same branch compiles).
+  The lane continues in `wt/rai-157-fresh`; the original is detached and
+  retained for forensics.
+
+## 2026-10-17 — RAI-161 merged; SDLC cards registered; phantom-compile root cause; cleanup
+
+- **RAI-161 merged** on main as `ee2186f` (round-2 gate-policy review:
+  approve). Schema-v2 manifests retain gate-time audit metadata for
+  `docs/work/records/**`; tampering fails verification, post-gate additions are
+  listed without changing the fingerprint, and v1 legacy manifests remain
+  supported.
+- **Integrated gates on main:** `make quality-changed` exit 0 (classification
+  only; the pre-existing untracked `contracts/chat-workflow/` files classify as
+  `contracts`, `static`, `unit`; no manifest). First
+  `make quality-changed QUALITY_EXECUTE=1` attempt timed out at 120s (terminated,
+  not a pass); retry exit 0, passed. Manifest
+  `artifacts/quality/20261017-161805-70800-0001/manifest.json`, SHA-256
+  `aa1ecbca498f129831623b240b5c0794d0cbfdde0cf23e5bdeffd4ba4b2fd37b`.
+  `make quality-profile PROFILES="static unit contracts docs"` exit 1,
+  manifest `artifacts/quality/20261017-162616-83255-0001/manifest.json`,
+  SHA-256 `d06451bd393482e12aff1993f8c835ad492f718f827a760987234948696277a2`;
+  its `sbt-test.log` SHA-256 is
+  `8cd808c9c5c2850d1a6c06185855ecc1226b7911fb31b6e910cf5f2dd00bbe36`.
+  The failure is a **real red**, not the documented MJE-03c known-red:
+  `SessionRegistry ... TAB-02` reported `hist.evicted == 252L`, actual
+  `.evicted = 251` (38 passed, 1 failed). MJE-03c itself passed in this run.
+  `python3 scripts/quality/quality.py self-check` exit 0; it verified the
+  tampered-record failure, post-gate record addition with unchanged fingerprint,
+  registry/classification/manifest checks. Self-check does not emit a manifest.
+- **SDLC implementation package registered** at baseline `ff29b01` (plan
+  validator: 191 cards): RAI-163..170 implement ADR-030 D1–D7, with RAI-163
+  effects-API design first and H8 discipline; RAI-171 prepares live-wire work.
+  No paid execution without a separate owner budget.
+- **Phantom `ToolCall.id` compile error — root cause:** corrupt zinc/build state
+  is created when a worktree's first compile runs under heavy parallel load;
+  zinc then reuses stale partial core analysis and reports `value id is not a
+  member` against a class missing the `def`. Remedy: purge affected modules'
+  `target/` (and `.bsp`) and recompile; verified green in `wt/rai-162` with a
+  26s clean compile. Cases: `wt/rai-157` was superseded by
+  `wt/rai-157-fresh`, with the original retained detached for forensics;
+  `wt/rai-162` was purged and compiled green. Runbook implication: on phantom
+  member errors under load, purge targets before diagnosing sources.
+- **External worktree cleanup executed** per owner decision: 91 → 79 registered
+  worktrees. Merged/clean external worktrees under `../raider-english` and
+  `../raider-wt` were removed with per-entry re-verification; unmerged English,
+  handbook, and docs branches were preserved.
+- **Queue:** RAI-162 lane verification (environment fixed); RAI-137 round-3 after
+  this merge (freshness gap closed by RAI-161); RAI-157 full-spec ×10 matrix and
+  RAI-136 final storm deferred while machine load is high; LIN-03 LIN3-02/03
+  pending.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.

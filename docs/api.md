@@ -360,6 +360,9 @@ logs.
   `tool_result.content` array with a `text` block containing the rendered JSON
   payload (RAI-133). Local stands and cross-wire agent-loop checks exercise this
   mapping; the documented live examples use the OpenAI-compatible path.
+
+  The structured `tool_result.content` is an Anthropic wire representation; it
+  does not introduce a different public `Tool.invoke` result type.
 - HTTP 401/403 map to `ProviderAuth`, 429 to `ProviderRateLimit`, 5xx to
   `ProviderUnavailable`, and other unexpected responses to `StreamProtocol`.
 
@@ -398,6 +401,24 @@ through `raider.dsl.composition`. `openSession(agent)` returns a multi-turn
 Foreground facade calls block the REPL thread. Workflow fibers should use the
 asynchronous runtime APIs instead.
 
+The REPL command `:type <expression>` compiles the expression in the current
+interpreter state and prints its type without evaluating it, dispatching tools,
+or adding a binding. For example, after `val ask = scout("Inspect the parser")`,
+`:type ask` reports `AgentAsk[String]`; `:type ask.map(_.length)` reports
+`AgentAsk[Int]`. The engine also provides compiler-backed completion over
+current bindings and member expressions. These are REPL-engine features, not
+members of `Task` or `Program`.
+
+`--tabs` starts the UI shell rather than the Scala interpreter. Its command
+palette and Tab completion expose registered shell commands. `:scrollback
+<tabId>` renders the selected tab's retained event lines and reports its
+eviction count; the registry bounds retained scrollback to 500 lines. A tab
+draft is local shell text, and typing it does not submit an agent request.
+Plan-mode commands are scoped to this shell: `:approve` starts the proposed
+plan once, while `:reject` cancels the active plan phase. The model's plan phase
+is read-only; approval transitions to execution under
+[ADR-028](adr/ADR-028-plan-mode.md).
+
 ## CLI entry points
 
 Headless run:
@@ -426,6 +447,42 @@ The chat surface includes `:help`, `:quit`, `:clear`, `:context`, `:tools`,
 renders real event status on stderr. `EventExport` provides ordered event
 consumption and canonical JSONL output; `awaitCaughtUp` is bounded best effort,
 not an acceptance gate.
+
+In chat, steering and task capture are explicit commands. `:send <jobId> <text>`
+returns a typed `Queued` or `Rejected` receipt; a queued message is consumed at
+a later model-turn boundary and its `settled` result may report `Applied` (or
+no application if the job terminates first). Task-capture commands
+include `:task status`, `:task mark <n> <intent|refinement|ordinary>`,
+`:task check <name> <argv tokens...>`, and `:task select <n>`. A mark invalidates
+an earlier selection, so select again after marking. For example:
+
+```text
+:task status
+:task mark 1 intent
+:task check compile sbt --batch compile
+:task select 3
+:task status
+:export-workflow --out artifacts/workflows --name inspect --target-path src/main.scala --summary Inspect the project and document its entry point
+```
+
+Turn numbers refer to the displayed chat-turn list; selection is validated and
+captures a snapshot of eligible turns and registered checks. `:export-workflow`
+exports that selected snapshot as editable Scala. The independent `.e` verifier
+and `.f` end-to-end walkthrough are not claimed as complete here.
+
+For run recovery, `raider resume <run-dir>` reads that run's `events.jsonl`,
+re-folds its consistent event prefix, reports status/jobs/artifact hashes, and
+does not execute or write anything. Its exit codes are 0 (consistent journal),
+26 (recovered prefix with uncertain truncated tail), 21 (usage/missing or
+unreadable journal), and 20 (prefix cannot be folded). `events.jsonl` is the
+headless run event stream; resume does not read a `segments.jsonl` file.
+This recovery surface is separate from `raider replay`, which runs the recorded
+replay path.
+
+The headless CI preflight option `--require-provenance <manifest.json>` requires
+a valid provenance manifest before dispatch. CI run artifacts include
+`checks.junit.xml`; see the [CI guide](user-guide-ci.md) for invocation and
+trust boundaries.
 
 ## Related references
 

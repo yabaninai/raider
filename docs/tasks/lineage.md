@@ -1013,3 +1013,27 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c.
 **Compatibility/rollback.** Frozen schemas/APIs and downstream fixtures are not changed silently; versioned migration/ADR separately. Rolling back a feature does not replay side effects; persistent incomplete/uncertain artifacts are kept for reconciliation.
 
 **Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
+
+## RAI-162: WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs
+
+Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
+
+**Scenario and contract.** The RAI-155.e E03 reproducer (ChatWorkflowVerifierE03Spec; work record docs/work/records/RAI-155e.md) sends SIGTERM during an in-flight chat-exported workflow run against a delayed local stand. The child exits 143 but leaves neither a run artifact nor an interrupted marker, violating ci-runtime.md §§6 and 8 interruption honesty. Implement bounded-stop cleanup/reporting in the WorkflowRun/chat-workflow launch path so SIGTERM leaves truthful interruption evidence (run.json or an interruption marker per the existing §7–8 contracts), preserving interruption exit semantics. RAI-155.d CWF-D03 proves the direct CLI child path; this closes the chat-workflow-path gap. The E03 expectations are acceptance and must not change.
+
+**Context.** RAI-155.e E03 reproducer and docs/work/records/RAI-155e.md: ChatWorkflowVerifierE03Spec observes exit 143 with no run artifact/interrupted marker on SIGTERM against the delayed local stand. This blocks RAI-155.e and the .e → .f critical path; ci-runtime.md §§6–8 define bounded cleanup and interruption/artifact honesty.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/workflow/**` `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/workflow/**` Tests live within the same modules/contract areas. Confirm concrete files before assignment; expanding the path boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: WRI-01: Normal chat-exported workflow runs retain existing result/artifact behavior and exit status.
+- Error/adversarial: WRI-02: SIGTERM during an in-flight run against the delayed local stand leaves a truthful interrupted run.json or interruption marker, without fabricated success or durable-resume claims.
+- Cancellation/concurrency: WRI-03: Unchanged RAI-155.e E03 verifier passes with bounded cleanup, truthful exit/artifact evidence, and no orphan child; direct CLI CWF-D03 remains green.
+
+**Required gates.** After foundation: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable profiles per metadata (static, unit, contracts, ci); verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed. Execute the RAI-155.e E03 verifier and the real-process SIGTERM case; do not modify its expectations.
+
+**Non-goals.** Changes to RAI-155.e E03 verifier expectations, durable-resume or exactly-once claims, changes to frozen artifact schemas/exit contracts, and changes to the direct CLI child path beyond regression coverage.
+
+**Compatibility/rollback.** Preserve existing §7–8 artifact and exit contracts; do not silently change frozen schemas/APIs or downstream fixtures. Use a separate versioned migration/ADR if a contract change is required. Rolling back must not erase interruption evidence or present an interrupted run as successful.
+
+**Deliverables.** Minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example only if needed without altering E03 expectations, an actual work record per template with current evidence/log hashes. Real paid calls/publishing are not implied. If the task is too large, split into independent child cards before coding; the parent accepts their joint contract gate.
