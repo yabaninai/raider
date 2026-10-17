@@ -42,6 +42,9 @@ Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat 
 | `make quality-changed` | 0 | Clean tree vs HEAD; minimum `fast` selected. |
 | `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261017-193605-94770-0001/manifest.json`; status passed, 10 passed/0 failed/0 skipped. SHA-256 `d551bd19fef275df0560050f397bd973e91e9999892b2ee41d9a5788b513d72e`. |
 | `make quality-profile PROFILES="static unit contracts ci"` | 0 | `artifacts/quality/20261017-194401-4214-0001/manifest.json`; status passed, 6 passed/0 failed/0 skipped. SHA-256 `6c5ef1925769eecab4c6985bcce3153bce0272ebd989b5800fcc454bf1f4a9a6`. |
+| `python3 scripts/quality/quality.py evidence <manifest> --require ...` (attempted per docs/quality-gates.md) | 2 | Runner has no `evidence` subcommand; exact usage reports supported commands `{changed, inventory, execute, verify, self-check}`. |
+| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-193605-94770-0001/manifest.json --require fast` | 1 | `[verify] FAIL: excluded operational record changed since gate: docs/work/records/RAI-155e.md`. |
+| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-194401-4214-0001/manifest.json --require static,unit,contracts,ci` | 1 | Same audit-hash failure: record content changed after gate execution. |
 
 ## Fingerprint and gate hashes
 
@@ -56,6 +59,7 @@ Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat 
 - No test failed, skipped, or timed out. MJE-03c/TAB-02 documented exceptions did not occur; no checks were waived.
 - Explicit changed-verifier/test tamper detection is not shown by the corpus case inventory (stale workflow source/build identity is tested). This is the concrete acceptance gap pending reviewer disposition or a separate authorized verifier change.
 - Fresh independent review is still required. These manifests belong to the lane snapshot, not the eventual integrated candidate.
+- The runner's current `verify` rejects the manifest audit because this required work record was updated after the gate runs. Product-input fingerprint is unchanged (operational record excluded), but a fresh success from `verify` was not obtained; the supported `evidence` command named in the docs is not implemented.
 
 ## Review and next task
 
