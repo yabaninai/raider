@@ -121,6 +121,31 @@ object SdlcStagesSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SDLC-STG-05 candidate digest is deterministic and binds every identity field; unknown artifact fields refuse"
+    ) {
+      val same = candidate.copy()
+      val extended = SdlcEvidence
+        .artifact("check-result", "record")
+        .dropRight(1) + ",\"futureField\":true}"
+      assertTrue(
+        CandidateIdentity.digest(candidate) == CandidateIdentity.digest(same),
+        CandidateIdentity.digest(candidate) != CandidateIdentity.digest(
+          candidate.copy(treeDigest = "tree-other")
+        ),
+        CandidateIdentity.digest(candidate) != CandidateIdentity.digest(
+          candidate.copy(baseRevision = None)
+        ),
+        SdlcEvidence.decodeArtifact(extended) == Left(
+          ArtifactDecodeError.UnknownFields(List("futureField"))
+        ),
+        SdlcEvidence
+          .decodeArtifact(
+            SdlcEvidence.artifact("check-result", "record")
+          )
+          .isRight
+      )
+    },
+    test(
       "SDLC-STG-03 invalid stage order, over-budget loops, and failed stages refuse or stop without retry"
     ) {
       val required = List(
