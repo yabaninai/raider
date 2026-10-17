@@ -1,0 +1,18 @@
+--- docs/examples/chat-workflow/cwf_e01.generated.scala	2026-10-17 23:49:40
++++ docs/examples/chat-workflow/cwf_e01.edited.scala	2026-10-17 23:49:40
+@@ -48,13 +48,13 @@
+   // placeholders substituted from the input at run time.
+
+   val promptTemplate: String =
+-    "Task: VERIFIER-INTENT-9d21: publish the module marker now; PUBLISH-TARGET: marker.txt\nRefinement: create only the publish target file and nothing else\nRefinement: verify the publish target exists before reporting done\n\nRun in the workspace {workspace}.\nTask input: {task}\nTarget path: {targetPath}"
++    "Task: VERIFIER-INTENT-9d21: publish the module marker now; PUBLISH-TARGET: marker2.txt\nRefinement: create only the publish target file and nothing else\nRefinement: verify the publish target exists before reporting done\n\nRun in the workspace {workspace}.\nTask input: {task}\nTarget path: {targetPath}"
+
+   // Named trusted checks (ADR-033 §4.1): validated argv, executed WITHOUT a
+   // shell in the workspace. Model text can never add or alter a check —
+   // checks exist only here; the input JSON can never inject one.
+
+-  val checkMarker: List[String] = List("/bin/test", "-f", "marker.txt")
++  val checkMarker: List[String] = List("/bin/test", "-f", "marker2.txt")
+
+   val trustedChecks: List[(String, List[String])] = List(
+     ("marker", checkMarker),
