@@ -255,6 +255,39 @@ after the first integration batch (main 0870045):
 - **RAI-172** (conditional TAB-02 determinism follow-up) is registered at
   baseline `eb4d3a4`.
 
+## 2026-10-17 — RAI-155.e ACCEPTED; critical path open to .f
+
+- **RAI-155.e accepted and merged** as `37911dc` (merge commit). Three
+  independent review rounds closed: round 3 confirmed code and coverage closed;
+  the only remaining freshness blocker was resolved by fresh verified manifest
+  `20261017-214247-62757` (record remained untouched after its gate). Lesson:
+  verifier output must not be written into the record after verification; keep
+  evidence records frozen and run gates LAST to avoid verify-output-in-record
+  self-reference.
+- **RAI-155.f is UNBLOCKED** and is next on the owner's critical path: user
+  walkthrough from chat through export/edit to local execution and generic CI.
+- **Integrated gates on `37911dc`:** `make quality-changed` exit 0 (clean-tree
+  classification, minimum fast); `make quality-changed QUALITY_EXECUTE=1`
+  first attempt was terminated by the 1200-second outer runner timeout (not a
+  gate result), then the single longer-budget retry passed exit 0 with all 10
+  checks green and no gate timeout. Manifest
+  `artifacts/quality/20261017-230452-73967-0001/manifest.json`, SHA-256
+  `b5467cc9282cf9c4b4a5399f8cc2a57044018d5e999be8e5e942defc29096be2`,
+  fingerprint `9101b38dfde32d119097d5de68684befa386341133078fbaf7b9d0d3beac42c1`,
+  policy `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`.
+  `make quality-profile PROFILES="static unit contracts ci"` passed (manifest
+  `20261017-231849-25048-0001`, SHA-256
+  `a428050a99e334426d4224b73a4df3ade7bfeb0f8bb296ce637b4a63cf64a788`);
+  `make quality-profile PROFILES="docs repl runtime"` passed (manifest
+  `20261017-233235-34465-0001`, SHA-256
+  `39d6d082a904bbfed4d3289a7a6db588ef1062f28afa5aae358ec426e26ec8c0`).
+  Both profile manifests use the same product fingerprint and policy above.
+  MJE-03c passed in the successful runs and was not observed red; its historical
+  RAI-157-owned known-red status is not claimed fixed by this. TAB-02 passed and
+  was not observed red; its diagnosed load race and conditional RAI-172 follow-up
+  remain, not reclassified as fixed. The ADR-034 EXECUTE timeout debt is repaid
+  by the successful retry; the first timeout remains recorded as a non-pass.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
