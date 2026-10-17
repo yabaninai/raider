@@ -220,6 +220,41 @@ after the first integration batch (main 0870045):
   (same); LIN-03 LIN3-02/03; TAB-02 conditional determinism card; SDLC
   RAI-163..171; live-wire RAI-171 (owner budget pending).
 
+## 2026-10-17 — ADR-034 merged (Proposed); RAI-155.e round-2; LIN-03 blocker
+
+- **RAI-163 merged** as `d7dbd4d` (round-2 review approve). ADR-034 is a
+  **proposed** effects-API design under ADR-030 D7: typed effect descriptions
+  are separate from executors; capability and reconcile boundaries, D1 approval
+  artifacts, typed refusals, D4 evidence schemas, H8 consumer migration, and
+  the §3 environment/helper-only credential boundary are documented. No public
+  signature freeze or API acceptance is claimed; H8 consumer migration is
+  required before any future freeze.
+- **Integrated RAI-163 gates on main:** `make quality-changed` exit 0
+  (clean-tree classification; minimum `fast`); `make quality-changed
+  QUALITY_EXECUTE=1` timed out and was terminated on both attempts (first at
+  120s, retry at 600s; neither is a pass); `make quality-profile
+  PROFILES="docs"` exit 0 (docs profile manifest passed). `python3
+  scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exit 0 (192 cards). The execute timeout
+  did not yield an adjudicable test result: neither MJE-03c nor TAB-02 can be
+  reported as observed or cleared by this integration run. The previous
+  recorded states remain: MJE-03c known-red (RAI-157-owned); TAB-02 diagnosed
+  load-race with conditional RAI-172 follow-up.
+- **RAI-155.e re-gate:** verifiers E01–E03 and corpus are green; EXECUTE and
+  required profiles are green (post-gate verification passes are recorded in
+  the .e work record). Review round 1 is closed after the changed-verifier-input
+  case and digest anchor. Round 2 found that the digest check is not wired into
+  `ChatWorkflowVerifierHarness.loadE02` (standalone proof only), plus stale
+  record lines. Final fix round is in flight; .f remains blocked until round-3
+  approval.
+- **LIN-03 blocker:** pair-snapshot consistency requires readers to honor a
+  commit pointer, but `ReplayCli` resolves `lineage-data.json` directly, outside
+  LIN-03's allowed paths. A follow-up must authorize the reader protocol across
+  `ReplayCli`, `HeadlessRunner`, and export. Live pinned-compiler validation
+  also needs an authorized mechanism. Coordinator registers LIN-03.b next cycle.
+- **RAI-172** (conditional TAB-02 determinism follow-up) is registered at
+  baseline `eb4d3a4`.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
