@@ -1,95 +1,64 @@
 # RAI-155.e: work record
 
-Status: partial. Date: 2026-10-16. Assigned base: `4704dea`; actual worktree HEAD at start: `56496b8` (already contained `4704dea`). Refreshed by merging current `main` at `963d584` cleanly (merge commit `7676af0`).
+Status: partial — re-gates green; acceptance completeness requires reviewer confirmation. Date: 2026-10-17. Lane: `lane/rai-155e`. Pre-merge HEAD: `1598861f827dbcb6c4bb12fca7e2b2e2d1070e62`; requested `main`: `46dc1401596e9fb8b3b1a3b331aedee93c9bbb55`.
 
 ## Resulting behavior
 
-- E01 now routes all four captured chat turns through the real
-  `OpenAIChatStreamingBackend` to the local Scala OpenAI-compatible SSE stand.
-  The stand checks four capture requests; export/compile remain zero-provider
-  operations. The full two-input/two-launcher plus unedited control passes.
-- The E03 timeout was caused by test-clock `ZIO.sleep` calls that never advanced
-  in this test context. The waits are now bounded wall-clock sleeps on blocking
-  threads. SIGTERM runs in a fresh subprocess, has an independently bound delayed
-  stand, terminates with the expected 143 exit, and does not retry. The test
-  reproduces a product gap: SIGTERM leaves a `Failed` run with no artifact and no
-  interrupted marker. That truthfulness criterion still fails; no product code
-  was changed.
-- The old `ChatWorkflowVerifierSpec` was retired. It duplicated E01/E02/E03 but
-  depended on nonexistent `contracts/chat-workflow/verifier-expected.json` and
-  contained contradictory legacy assertions. The replacement suites consume the
-  unchanged `expectations/CWF-E01..03.json` corpus through the shared harness.
-  The minimal protected expectation update changes only
-  `CWF-E01.capture.standRequestsDuringCapture` from 0 to 4, because the real
-  stand is now called for each of four turns; the red-to-green E01 run is the
-  reproducer. The corpus-integrity suite passes.
-- The merged `main` change in `ReplayHarness` was retained as-is. The adjacent
-  drain/watermark behavior is unrelated to this lane's chat verifier; no conflict
-  or force-resolution was needed.
-- The worktree did not begin at the packet's stated tip `4704dea`; it already
-  had a clean `56496b8` HEAD and contained the assigned tip. A first `main`
-  refresh was already present at that point; the requested current `main`
-  (`963d584`) was merged separately as `7676af0`.
+- Merged `main` with a clean fast-forward (no conflicts). This brought RAI-162's WorkflowRun SIGTERM cleanup, updated E01/E02/E03 expectations/specs, the tracked verifier corpus, and RAI-137/161 quality runner changes. No product files were changed by this re-gate.
+- E01, E02, E03, and corpus tests pass; E03 passed in the complete verifier run and in three further consecutive standalone executions.
+- All requested quality commands pass. Neither documented exception (MJE-03c or TAB-02) failed in the profile run; no exception was needed. There were no skips or timeouts.
+- No paid provider calls. E01 uses the explicitly local scripted OpenAI-compatible stand.
 
 ## Changed paths
 
-- `contracts/chat-workflow/expectations/CWF-E01.json`
-- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE01Spec.scala`
-- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE03Spec.scala`
-- `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierHarness.scala`
-- Deleted `modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierSpec.scala`
-- `docs/work/records/RAI-155e.md`
+- `docs/work/records/RAI-155e.md` (this evidence and completeness record only).
+- Product and verifier changes are from the fast-forward merge of `main`, not edits in this lane.
 
-No product runtime, public contract, build, gate policy, or task-card code was
-changed. No paid provider calls were made.
+## Acceptance evidence and completeness matrix
 
-## Acceptance evidence
-
-| Criterion / test ID | Actual result | Evidence |
+| Card / roadmap obligation | Current coverage and result | Remaining issue |
 | --- | --- | --- |
-| Merge baseline | Passed; current `main` merged cleanly with no conflicts | `7676af0` merges `963d584`; earlier `56496b8` already contained assigned `4704dea` |
-| CWF-E01 real chat capture and matrix | Passed: all four capture turns traverse the local OpenAI-compatible stand; export/compile do not call it | Targeted verifier command below; the same E01 case passed in the complete targeted run |
-| CWF-E02 negative corpus | Passed: 3 CLI cases | `raiderCli/testOnly ...E01Spec ...E02Spec`; 4 CLI tests passed total |
-| CWF-E03 interrupted capture/export and concurrency | Passed in targeted test process | Complete targeted verifier command: first E03 test passed |
-| CWF-E03 deterministic repeat + SIGTERM | Overall failed: bounded child reached delayed stand and exited 143, but product emitted neither a run artifact nor an interrupted marker. The combined repeat/SIGTERM test therefore remains red; do not report the repeat subassertion as an independent pass from this run. | Complete targeted verifier command below; failure at `truthyArtifacts` |
-| Corpus integrity | Passed: 4 tests | `raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec` |
-| Legacy verifier mismatch | Resolved by retiring the duplicate suite; protected expectation corpus remains at its documented `expectations/CWF-E0*.json` layout | Deleted old spec; replacement suite + corpus integrity pass |
-| `make quality-changed` | Passed; classified `contracts`, `static`, `unit` | Command output; no execution requested in this mode |
-| `make quality-changed QUALITY_EXECUTE=1` | Failed: core contracts, compile fixtures, compile, formatting passed; project `sbt-test` failed, including the expected E03 product gap | `artifacts/quality/20261016-151649-7694-0001/manifest.json` |
+| CWF-E01: real chat capture, explicit selected multi-turn task, export, manual source edit, pinned compile | Green. Four captured turns traverse the local Scala SSE stand; the three-turn selection excludes the ordinary turn. Export and compile make zero stand requests. Export re-exports byte-identically. Both prompt token and trusted check argv are edited. | None observed in the frozen CWF-E01 assertions. |
+| CWF-E01: independent failure before agent work / success after repair; real effect | Green. Independent check fails before agent work and passes after; scripted stand causes actual tool effects. | None observed. |
+| CWF-E01: four-cell 2-input × 2-launcher matrix on fresh copies | Green. Two inputs and `local-main` / `raider-workflow-run`, four fresh workspaces; normalized outcomes match per input and inputs differ observably. Same edited workflow/build identity is checked. | None observed. |
+| CWF-E01: fifth unedited control | Green. Fifth fresh workspace runs unedited source for input 1; both runs succeed and report/effect/source identity distinguish the manual edit. | None observed. |
+| CWF-E02: negative corpus | Green for frozen corpus cases: absent/lost selection context, secrets at select/export, unsafe export paths/targets/remnants, invalid edited source and input, symlink workspace, missing credentials, bogus success/failed check on both launchers, hostile prompt content inert as data, stale source/build identity, corrupted classes. | **Card's “changed verifier/test” negative is not independently established by the visible CWF-E02 case: the stale-build test establishes edited workflow source/build mismatch, not an explicit mutation/change to a verifier/test input.** Requires independent reviewer disposition or a scoped verifier addition; expectations have not been weakened. |
+| CWF-E03: interrupted capture/export snapshot/concurrent export/no retry | Green. In-flight turn is Unknown and retained, completed prefix is selectable, no redispatch; streaming export matches quiescent snapshot; concurrent distinct-target exports match and staging remnants are refused. | None observed. |
+| CWF-E03: fresh-process SIGTERM, bounded truthful artifact, exit 143, no success/retry; deterministic repeat | Green. Expected exit, incomplete artifact/interrupted state, never Succeeded, no auto retry; deterministic run/export comparison. Full verifier plus three additional passes. | None observed in test runs. |
+| Corpus integrity | Green; exactly frozen expected files, documented normalization/prerequisites, E02 negative corpus declaration, all expectation IDs parse. | None observed. |
+| Independent review / integrated acceptance | Not performed by this worker. | Required before acceptance. Lane evidence is not integrated-candidate evidence. |
+
+Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat entrypoints/local stand, four fresh matrix copies, fifth unedited control, independent pre-repair failure, post-repair passing checks, and same edited program on local and non-TTY CI launchers. CWF-E02 and E03 add the negative and cancellation/concurrency checks. The only identified acceptance subcase gap is explicit changed-verifier/test detection (distinct from stale edited-source detection); CWF-E01..E03 are otherwise green. RAI-155.f walkthrough remains downstream and is not this card's acceptance.
 
 ## Commands
 
 | argv / command | Exit | Log / manifest |
-| --- | --- | --- |
-| `git merge main` | 0 | First refresh already in lane: `56496b8`; requested current-main refresh produced `7676af0` from `963d584`, no conflicts |
-| `sbt --batch "raiderCli/Test/scalafmt" "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec raider.cli.chat.ChatWorkflowVerifierE03Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 1; 5 passed, 1 failed. CWF-E01, E02, E03 capture/export passed; SIGTERM's truthful-artifact assertion failed. Sbt stopped before the trailing corpus command. | Console; explicit red retained |
-| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0; 4 CLI tests and 4 corpus tests passed | Console |
-| `make quality-changed` | 0 | Classified `contracts`, `docs`, `static`, `unit`; planning only |
-| `make quality-changed QUALITY_EXECUTE=1` | 2 | `artifacts/quality/20261016-163323-63946-0001/manifest.json`; `sbt-test` failed (not timed out) on CWF-E03 SIGTERM truthful artifact. `sbt-compile`, formatter, fixture compile, plan validation, core contracts passed. Manifest SHA-256 `23aef3c448d3da488ec1385aa88463c8d3a7110a448d870577c3ce2a3d8c9530`; `sbt-test.log` SHA-256 `b71f8e59ce584e51a671f6dfd682728f424c42dc29321d89135f4cdd44187445`. |
+| --- | ---: | --- |
+| `git merge main` | 0 | Fast-forward `1598861` → `46dc140`; no conflicts. |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec raider.cli.chat.ChatWorkflowVerifierE02Spec raider.cli.chat.ChatWorkflowVerifierE03Spec" "raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec"` | 0 | E01/E02/E03: 6 tests passed, 0 failed; corpus: 4 passed, 0 failed. |
+| `sbt --batch "raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE03Spec"` (run 1) | 0 | 2 tests passed, 0 failed. |
+| Same standalone E03 command (run 2) | 0 | 2 tests passed, 0 failed. |
+| Same standalone E03 command (run 3) | 0 | 2 tests passed, 0 failed. |
+| `make quality-changed` | 0 | Clean tree vs HEAD; minimum `fast` selected. |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | `artifacts/quality/20261017-193605-94770-0001/manifest.json`; status passed, 10 passed/0 failed/0 skipped. SHA-256 `d551bd19fef275df0560050f397bd973e91e9999892b2ee41d9a5788b513d72e`. |
+| `make quality-profile PROFILES="static unit contracts ci"` | 0 | `artifacts/quality/20261017-194401-4214-0001/manifest.json`; status passed, 6 passed/0 failed/0 skipped. SHA-256 `6c5ef1925769eecab4c6985bcce3153bce0272ebd989b5800fcc454bf1f4a9a6`. |
+
+## Fingerprint and gate hashes
+
+- Both quality manifests record the same product-input fingerprint: `86f5f04449098ccca74de692854fbadb6754e91378643dd490e5b4076b2a4483`.
+- Gate policy SHA-256: `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`.
+- Execute-fast manifest gate log SHA-256s: self-registry `cf0ce866958eb6147d1a4892b071f5480bacfa0f9a7998de69e1555635c59afa`; compile `1dff74a02137e467ba55b6a2bc74a4b20852774f5b6f107d0e753e793825b484`; formatter `b5ed0f5203a34bc4e93917a5cd7529a5cef41ce83ed131e55457b6775231a290`; scalafix `02b7e8433550fed617c52559cc5665c130bd78dc1167baee5d9a2aea6ea0c5e3`; forbidden APIs `ec7800dcf7787193885fbaeb11904947eb943d85d3056d1683ad2a473c2665`; license `63ff8c55793c0f21f6a90b807a904c5181009d370ba8286d70386d70ad1b84df`; core contracts `b52122ecec408e645e8c3fc76cf51b1a58d400e3facb59976b8698f541c72f38`; compile fixtures `ec0ed8968c74df8169e9257b47406cf26decf8e0436f12ded8f3779f3fbabd42`; plan validation `ff0807c1d15997221ccf0f8b4a45aaf510abb05d0d279215b0ae5a266194be69`; tests `db7b92b5520860cd7e671117a07ab181d899bb3b07b6498d1e377be32816d394`.
+- Static/unit/contracts/ci profile log SHA-256s: tests `1c169a812666a04d3827c61f696b6e36b2e54cbc9d598ddbfab98cae70bfa64f`; CLI smoke `f29248cbceed28199489537a717a32008dd0919b46fe126f93731ec373be17c1`; core contracts `b47e122c3521f657ad9b9d7e004ce621670b3230e6e41d9716bbdd18369f5d`; compile fixtures `ec0ed8968c74df8169e9257b47406cf26decf8e0436f12ded8f3779f3fbabd42`; compile `8c58886c0c0528082d8cd7821448b0a4c81e96b82baf72656d0df8d996968fe3`; formatter `9135107ae365a87a5ca86c13b50b3bb187d667acb9ed020c2179d304897205ad`.
+- Included verifier/corpus SHA-256s: E01 expectations `b992824261bb5d130f769cbe3f7318c4ccb042ddede9751d30afda55477fa470`; E02 expectations `38b80225699cdd20b0682d3122b71131db726ef0c032f67989d08ac2d479e0b9`; E03 expectations `8ef121409a757a24a76f23d156d803ce2aa4154568f34a33b36302a8d0098611`; E01 spec `c71b02e018be64cb74cc63dd468a283130dd812e87e1a8b4700a5dd540fdcdf1`; E02 spec `844c94e5fc2e580f7b2c8b7cd529b0edadbbcde51a5e50213e5bd0228e04184c`; E03 spec `533d8a23bbcbd584767745e1f77049d737ab9f9c3d2551879658404e4f67b6a9`; harness `f5570e707b39309a26f9382d34fde516d053a07bc53ece2b3737c1c055bcd29b`; corpus spec `86587329db96c11ee3a97e04e54feca0cfedf4970108290919f928f8d5fc9551`.
 
 ## Limitations / blockers
 
-- Product-side SIGTERM cleanup/reporting is outside RAI-155.e's verifier-only
-  authorization. The independent E03 test is a minimal reproducer: start a real
-  CLI subprocess on the local delayed stand, wait for its first HTTP request,
-  send SIGTERM, wait for exit 143, and inspect its run directory. The process
-  exits boundedly but writes neither an incomplete artifact nor the required
-  interrupted marker. Track/fix under an authorized product card, then rerun E03.
-- The expected SIGTERM gap makes the complete E03 and `quality-changed
-  QUALITY_EXECUTE=1` gates red. The all-test gate ran approximately 605 seconds
-  and ended with an assertion failure (`timed_out: false`), not a runner timeout.
-  No checks were waived.
-- No independent review has been performed. No evidence is promoted to final
-  integrated-candidate acceptance.
+- No test failed, skipped, or timed out. MJE-03c/TAB-02 documented exceptions did not occur; no checks were waived.
+- Explicit changed-verifier/test tamper detection is not shown by the corpus case inventory (stale workflow source/build identity is tested). This is the concrete acceptance gap pending reviewer disposition or a separate authorized verifier change.
+- Fresh independent review is still required. These manifests belong to the lane snapshot, not the eventual integrated candidate.
 
 ## Review and next task
 
-Next available work is the product-side bounded SIGTERM/artifact fix under its
-own authorized card. After that fix, rerun E03, the targeted E01/E02/corpus
-suites, both quality-changed commands, and the card-required `runtime`/`ci`
-profiles. RAI-155.f remains blocked on accepted RAI-155.e.
+Verdict: **gaps remain** — explicit changed-verifier/test detection and independent review are outstanding. Next: reviewer should disposition the E02 scope gap; if confirmed, register/authorize a narrow verifier case change (do not change expectations without evidence), then rerun affected verifier and gates. After RAI-155.e is independently accepted, RAI-155.f is the next chain card.
 
-Product-input hash and operational-record hash differ under the reviewed policy.
-The command registry excludes `docs/work/records/**` from the product fingerprint;
-the test/source/corpus are included. Changes to those product inputs require
-fresh affected gates. This record does not turn the failed E03 gate green.
+Operational record is excluded from the product-input fingerprint per the reviewed allowlist; the record itself has changed, so its audit hash is recorded by Git at commit. Product code, acceptance fixtures, and gate policy were not edited during this re-gate. Any subsequent verifier/corpus change requires fresh affected evidence. No push or merge to `main` performed.
