@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 173,
+  "raider_count": 182,
   "companion_count": 3,
   "cards": [
     {
@@ -5183,6 +5183,159 @@
       },
       "non_goals": "Changes to RAI-155.e E03 verifier expectations, durable-resume or exactly-once claims, changes to frozen artifact schemas/exit contracts, and changes to the direct CLI child path beyond regression coverage.",
       "context": "RAI-155.e E03 reproducer and docs/work/records/RAI-155e.md: ChatWorkflowVerifierE03Spec observes exit 143 with no run artifact/interrupted marker on SIGTERM against the delayed local stand. This blocks RAI-155.e and the .e → .f critical path; ci-runtime.md §§6–8 define bounded cleanup and interruption/artifact honesty."
+    },
+    {
+      "id": "RAI-163",
+      "title": "Design the public SDLC effects API and consumer migration",
+      "milestone": "M1",
+      "dependencies": ["RAI-117"],
+      "status": "todo",
+      "allowed_paths": ["docs/adr/ADR-034-sdlc-effects-api.md", "docs/tasks/m1.md"],
+      "profiles": ["docs"],
+      "behavior": "Separate reviewed public API ADR for ADR-030 D7; specify effect/capability ownership, semantics, compatibility/versioning and ADR-029 H8 consumer migration; map SDLC-01–05 without freezing signatures. Independent design review must precede any signature freeze. Estimate 8–12 h, within packet A1's 32–48 h.",
+      "acceptance": {
+        "normal": "SDLC-API-01: independent review approves effects contract, H8 migration plan, versioning and case mapping.",
+        "error": "SDLC-API-02: unresolved risks remain explicit; no signature freeze or unreviewed implementation is approved.",
+        "concurrency": "SDLC-API-03: construction/dispatch and capability rechecks are specified; review precedes downstream signature freeze."
+      },
+      "non_goals": "Implementing or freezing signatures/schemas, changing ADR-029 without reviewed migration, selecting a real forge/provider.",
+      "context": "ADR-030 §§6, 8–9 (H8, D7); roadmap-12k §6c."
+    },
+    {
+      "id": "RAI-164",
+      "title": "Implement SDLC stages and typed evidence schemas",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-163"],
+      "status": "todo",
+      "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "examples/workflows/sdlc/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "ci"],
+      "behavior": "ADR-030 §2 stage model and §2.1 evidence identity using reviewed RAI-163 contract. Typed Scala schemas in contracts/ for check-result, review-verdict, candidate-identity and integration-result; versioned JSON in run.json/events.jsonl. Estimate 24–36 h, allocated with RAI-163 within packet A1's 32–48 h.",
+      "acceptance": {
+        "normal": "SDLC-STG-01: stage inputs/results and typed evidence roundtrip through versioned JSON with source/candidate/policy/toolchain/verifier identity.",
+        "error": "SDLC-STG-02: changed task/rules/base/candidate invalidates dependent evidence; unknown identity is explicit; bounded repair exhaustion is non-success.",
+        "concurrency": "SDLC-STG-03: immutable evidence is isolated across concurrent runs; partial/interrupted evidence is truthful."
+      },
+      "non_goals": "Approval processing, forge mutations/adapters, local release, second scheduler/daemon, unreviewed BundleWorkflow v1 changes.",
+      "context": "ADR-030 §§2, 2.1, 7 SDLC-01; roadmap-12k §6c SDLC-01."
+    },
+    {
+      "id": "RAI-165",
+      "title": "Implement approval artifacts and new-invocation recheck",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-163", "RAI-164"],
+      "status": "todo",
+      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "contracts/sdlc/approval/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "ci"],
+      "behavior": "ADR-030 §3/D1 approval request artifact (checkpoint ID, candidate digest, expiry), separate decision file, headless NeedsApproval without stdin wait/auto-approval, and a new invocation re-reading current policy/repository/task/base/candidate/expiry/evidence. No fiber resume. Estimate 16–24 h (packet A2).",
+      "acceptance": {
+        "normal": "SDLC-APR-01: request and decision bind checkpoint, digest and expiry; fresh invocation proceeds only under current state and owner capabilities.",
+        "error": "SDLC-APR-02: absent/denied/malformed/expired/stale decision returns typed refusal or NeedsApproval without waiting or authorizing stale evidence.",
+        "concurrency": "SDLC-APR-03: termination leaves truthful artifacts; no fiber resume or reusable bearer approval across invocations."
+      },
+      "non_goals": "Durable resume, headless prompting, approval as capability creation, unreviewed exit mapping changes.",
+      "context": "ADR-030 §§3, 7 SDLC-02/03; roadmap-12k §6c SDLC-02."
+    },
+    {
+      "id": "RAI-166",
+      "title": "Build the generic forge protocol stand",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-163", "RAI-164"],
+      "status": "todo",
+      "allowed_paths": ["modules/testkit/src/main/scala/raider/testkit/sdlc/forge/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**", "modules/runtime/src/main/scala/raider/runtime/sdlc/forge/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/forge/**", "contracts/sdlc/forge/**", "examples/sdlc/forge-stand/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "integration"],
+      "behavior": "Full local Scala generic protocol stand plus disposable Git: commit, PR status, merge, stale-ref, conflict, duplicate and unknown/uncertain outcome, with read-only reconciliation and all ADR-030 §4 outcome distinctions. No real forge. Estimate 20–30 h, allocated with RAI-167 within packet A3's 32–48 h.",
+      "acceptance": {
+        "normal": "SDLC-FORGE-01: stand/disposable Git exercise commit, PR status and merge with identity-bound outcomes and reconcile.",
+        "error": "SDLC-FORGE-02: stale/conflict/duplicate/timeout-after-effect/unknown stay typed non-success; reconcile never blindly retries.",
+        "concurrency": "SDLC-FORGE-03: competing owners serialize/conflict; explicit retry only after reconcile proves no effect and fresh policy/preconditions."
+      },
+      "non_goals": "Real forge adapters/credentials, push, second scheduler, exactly-once claims.",
+      "context": "ADR-030 §§4, 4.1–4.2, 7 SDLC-03/04; roadmap-12k §6c SDLC-03/04."
+    },
+    {
+      "id": "RAI-167",
+      "title": "Enforce configured integration rules and reconcile before mutation",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-163", "RAI-164", "RAI-165", "RAI-166"],
+      "status": "todo",
+      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/sdlc/integration/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/integration/**", "contracts/sdlc/integration/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**"],
+      "profiles": ["static", "unit", "contracts", "runtime"],
+      "behavior": "ADR-030 D2: Scala workflow config is authoritative for required checks/review and target; read-only forge reconcile before every mutation compares repo/target/head/base/candidate/evidence/current policy/capabilities; divergence is typed refusal, never blind retry. Estimate 12–18 h, allocated with RAI-166 within packet A3's 32–48 h.",
+      "acceptance": {
+        "normal": "SDLC-INT-01: configured rules govern required checks/review and target; only matching fresh preconditions authorize a mutation.",
+        "error": "SDLC-INT-02: divergence, changed target/head, failed/stale evidence or denied/expired capability refuses before mutation; repository text cannot widen authority.",
+        "concurrency": "SDLC-INT-03: stale race is detected/reconciled; one owner serializes and changed candidate reruns affected checks/review."
+      },
+      "non_goals": "Forge-specific adapter, remote publication, repository-text policy inference, retries without reconcile, capability expansion.",
+      "context": "ADR-030 §§4.1, 6, 7 SDLC-03/04; roadmap-12k §6c SDLC-03/04."
+    },
+    {
+      "id": "RAI-168",
+      "title": "Create strictly local SemVer release artifacts",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-163", "RAI-164", "RAI-165", "RAI-167"],
+      "status": "todo",
+      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/release/**", "modules/cli/src/test/scala/raider/cli/release/**", "contracts/release/**", "docs/release/**", "examples/release/**", "artifacts/release/**"],
+      "profiles": ["static", "unit", "contracts", "release"],
+      "behavior": "ADR-030 §5/D5 and SDLC-05: SemVer, Keep a Changelog, local v<semver> tag, checksummed/provenance-linked artifacts under artifacts/release/<version>/. Existing version/tag refuses without overwrite. Strictly local; no push/publish/deploy. Estimate 16–24 h (packet A4).",
+      "acceptance": {
+        "normal": "SDLC-REL-01: disposable repository produces SemVer/changelog, local tag and versioned checksummed artifacts with source identity.",
+        "error": "SDLC-REL-02: existing version/tag, failed build, missing capability/checkpoint or changed source is typed non-success without overwrite/success marker.",
+        "concurrency": "SDLC-REL-03: interruption reconciles read-only before explicit action; integrity holds and no push/publish/deploy occurs."
+      },
+      "non_goals": "Tag push, package/image publish, deployment, overwriting an existing version/tag, hosted-release claims.",
+      "context": "ADR-030 §§5, 7 SDLC-05; roadmap-12k §6c SDLC-05."
+    },
+    {
+      "id": "RAI-169",
+      "title": "Independently verify SDLC-01–04 stages, approval, and integration",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-164", "RAI-165", "RAI-166", "RAI-167"],
+      "status": "todo",
+      "allowed_paths": ["modules/cli/src/test/scala/raider/cli/sdlc/acceptance/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/verification/**", "contracts/acceptance/sdlc/**", "docs/acceptance/sdlc/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "ci", "integration"],
+      "behavior": "Independent deterministic verifier SDLC-01–04 against local Scala stand/disposable Git. Verify evidence/invalidation, approval recheck, owner/capability limits, full generic protocol/reconciliation/no-blind-retry, and capture target source identity/commands/TokenRouter recheck procedure; target-specific evidence is pending until actually supplied. Estimate 24–40 h (packet V1).",
+      "acceptance": {
+        "normal": "SDLC-V-01: deterministic local task-to-review and authorized generic integration cases retain source/candidate/policy/toolchain/verifier identity.",
+        "error": "SDLC-V-02: injected stale candidate/ref/approval, failed checks, expired/denied capability, conflict/duplicate/unknown outcome and divergence assert typed non-success and read-only reconcile before explicit retry.",
+        "concurrency": "SDLC-V-03: non-TTY NeedsApproval/new invocation, competing owners/target race, changed-candidate checks, no policy expansion/second scheduler/blind retry; TokenRouter values are never invented."
+      },
+      "non_goals": "Runtime implementation, TokenRouter mutation, changing protected expected results, real forge claims, live provider execution.",
+      "context": "ADR-030 §§7, 7.1–8; roadmap-12k §6c SDLC-01–04. Independent verifier packet V1."
+    },
+    {
+      "id": "RAI-170",
+      "title": "Independently verify the local-only release contract",
+      "milestone": "M1",
+      "dependencies": ["RAI-117", "RAI-168"],
+      "status": "todo",
+      "allowed_paths": ["modules/cli/src/test/scala/raider/cli/release/verification/**", "contracts/acceptance/sdlc/release/**", "docs/acceptance/sdlc/release/**"],
+      "profiles": ["static", "unit", "contracts", "release"],
+      "behavior": "Independent SDLC-05 verifier in disposable repositories: SemVer/changelog/local tag/artifacts/checksums/provenance, existing version/tag, build failure, interruption/reconcile; assert absence of push/publish/deploy. Estimate 8–16 h (packet V2).",
+      "acceptance": {
+        "normal": "SDLC-VREL-01: clean disposable release yields matching local v<semver>, changelog, checksums and provenance.",
+        "error": "SDLC-VREL-02: existing version/tag and build failure are typed non-success, no overwrite or false success marker.",
+        "concurrency": "SDLC-VREL-03: uncertain completion is read-only reconciled; no blind retry or push/publish/deploy appears in operation evidence."
+      },
+      "non_goals": "Implementing release behavior, remote release, publication/deployment, weakening protected verifier expectations.",
+      "context": "ADR-030 §§5, 7–8; roadmap-12k §6c SDLC-05. Independent verifier packet V2."
+    },
+    {
+      "id": "RAI-171",
+      "title": "Live-wire provider verification — scoped preparation",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "todo",
+      "allowed_paths": ["docs/tasks/m1.md", "docs/provider-protocols.md"],
+      "profiles": ["docs"],
+      "behavior": "Prepare a scoped execution-card text with credential-free endpoint identities, model/build, explicit mode and per-profile/total budget cap, isolation/data handling, stop conditions and acceptance mapped to all seven provider-protocols §5 gates. Endpoint/budget values remain OWNER-GATED per the board Open Obligations row. Preparation only: no paid/live call; separate explicit owner budget authorization and endpoint configuration are required before any call.",
+      "acceptance": {
+        "normal": "LIVE-PREP-01: scoped card enumerates the seven §5 scenarios: clean no-YABANIN dual-wire acceptance; equivalent normalized semantics; header/session-mint separation; unknown price versus usage; mixed-provider root accounting/role; doctor unavailable with explicit model and pre-spend tool refusal; optional Yabanin separate profile/base release independence.",
+        "error": "LIVE-PREP-02: endpoint/model/build/mode/cap fields are explicit and owner-gated when unavailable; no credentials/assumed values or mock-as-live claims.",
+        "concurrency": "LIVE-PREP-03: stop-on-cap/uncertainty/cancellation, per-attempt evidence without secret values, and separate explicit owner budget authorization are stated."
+      },
+      "non_goals": "Any live/paid call, real project secrets/data, provider code changes, declaring a gate passed, resolving owner-gated endpoint/budget.",
+      "context": "provider-protocols.md §5; docs/work/board.md Open Obligations, live-wire verification (OWNER endpoint/budget)."
     }
   ]
 }

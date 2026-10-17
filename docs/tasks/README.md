@@ -12,6 +12,8 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | M1 027–040 | [Extensibility and optional integrations](m1.md) |
 | M2 041–047 / P2 048–053 | [Release/P2](m2-p2.md) |
 | YB-RAI-01–03 | [Changes in Yabanin](yabanin.md) |
+| RAI-163–170 | [SDLC effects API, stages, approval, integration, release, and independent verification](m1.md) |
+| RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -177,6 +179,18 @@ Markdown contains the full contract; JSON is canonical for ID/title/dependency/p
 - **RAI-126** [PTY probes COURSIER_CACHE: env.setdefault instead of hardcoded override](m1.md); dependencies: RAI-122; profiles: static, docs.
 
 See [backlog.json](backlog.json) for cards added in later revisions, including LIN and P2 work.
+
+## SDLC and live-wire preparation cards registered 2026-10-16
+
+- **RAI-163** [Design the public SDLC effects API and consumer migration](m1.md); dependencies: RAI-117; profiles: docs.
+- **RAI-164** [Implement SDLC stages and typed evidence schemas](m1.md); dependencies: RAI-117, RAI-163; profiles: static, unit, contracts, runtime, ci.
+- **RAI-165** [Implement approval artifacts and new-invocation recheck](m1.md); dependencies: RAI-117, RAI-163, RAI-164; profiles: static, unit, contracts, runtime, ci.
+- **RAI-166** [Build the generic forge protocol stand](m1.md); dependencies: RAI-117, RAI-163, RAI-164; profiles: static, unit, contracts, runtime, integration.
+- **RAI-167** [Enforce configured integration rules and reconcile before mutation](m1.md); dependencies: RAI-117, RAI-163, RAI-164, RAI-165, RAI-166; profiles: static, unit, contracts, runtime.
+- **RAI-168** [Create strictly local SemVer release artifacts](m1.md); dependencies: RAI-117, RAI-163, RAI-164, RAI-165, RAI-167; profiles: static, unit, contracts, release.
+- **RAI-169** [Independently verify SDLC-01–04 stages, approval, and integration](m1.md); dependencies: RAI-117, RAI-164, RAI-165, RAI-166, RAI-167; profiles: static, unit, contracts, runtime, ci, integration.
+- **RAI-170** [Independently verify the local-only release contract](m1.md); dependencies: RAI-117, RAI-168; profiles: static, unit, contracts, release.
+- **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
 
 ## Existing obligations added on 2026-10-13
 
