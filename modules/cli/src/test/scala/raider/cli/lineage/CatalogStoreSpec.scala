@@ -6,7 +6,6 @@ import zio.test.*
 import zio.{Chunk, Ref, Scope, ZIO}
 
 import raider.core.{JobId, RootId, SessionId}
-import raider.dsl.lineage.store.LineageDataStore
 import raider.runtime.budget.MicroUsd
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.events.{
@@ -330,11 +329,12 @@ object CatalogStoreSpec extends ZIOSpecDefault:
               runDir <- ZIO.attempt {
                 val dir =
                   writeRun(runsRoot, "work-replay", seed = 1, mtimeMs = 1000L)
-                // the replay surface (lineage-data.json) lives NEXT TO the
-                // catalog surface (events.jsonl) in the same run directory
-                LineageDataStore.write(
-                  dir.resolve(ReplayCli.DataFileName),
-                  ReplayHarness.document
+                // Replay uses the committed data/source pair alongside the
+                // catalog surface (events.jsonl) in the same run directory.
+                LineageSnapshot.publish(
+                  dir,
+                  ReplayHarness.document.toJson.getBytes(UTF_8),
+                  ReplayHarness.document.runId.getBytes(UTF_8)
                 ) match
                   case Right(()) => dir
                   case Left(err) =>
