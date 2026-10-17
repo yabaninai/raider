@@ -1,0 +1,3 @@
+{"schemaVersion":1,"seq":1,"jobId":"workflow-run","rootId":"wf_9ac3e838","sessionId":"wf_9ac3e838","atMs":1792270049538,"payload":{"type":"JobStatusChanged","from":"Queued","to":"Running"}}
+{"schemaVersion":1,"seq":2,"jobId":"workflow-run","rootId":"wf_9ac3e838","sessionId":"wf_9ac3e838","atMs":1792270049614,"payload":{"type":"Diagnostics","text":"build identity: source sha256-0a749727e10a... classes sha256-0f4a066206c3..."}}
+{"schemaVersion":1,"seq":3,"jobId":"workflow-run","rootId":"wf_9ac3e838","sessionId":"wf_9ac3e838","atMs":1792270049906,"payload":{"type":"Terminal","outcome":"Succeeded"}}

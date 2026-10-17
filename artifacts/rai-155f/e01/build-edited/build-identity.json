@@ -1,0 +1,1 @@
+{"schemaVersion":1,"kind":"chat-workflow-build","sourceFileName":"cwf_e01.scala","mainClass":"cwf_e01","moduleClass":"Cwf_e01$","sourceDigest":"2090e877480196a533c257b9b8d126d3e279cbea547e53cde9aba80b88dc089a","classDigest":"07800fa536a67b1114af43cdb18d1352d827603b719761ba6814279a96b8ec47","toolchain":{"scalaVersion":"3.9.0","compiler":"dotty.tools.dotc.Main"}}

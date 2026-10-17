@@ -288,6 +288,52 @@ after the first integration batch (main 0870045):
   remain, not reclassified as fixed. The ADR-034 EXECUTE timeout debt is repaid
   by the successful retry; the first timeout remains recorded as a non-pass.
 
+## 2026-10-18 — RAI-155.f accepted; RAI-155 parent accepted
+
+- **RAI-155.f merged and accepted** from `lane/rai-155f` after approved review.
+  The English walkthrough is at `docs/examples/chat-workflow/README.md`; lane
+  evidence reports the §6d five-run fresh-copy matrix (two inputs × two
+  launchers plus the unedited control), with checks failing before repair and
+  passing after. Its recorded real run IDs are `wf_955e397c`, `wf_4236a29f`,
+  and `wf_9ac3e838`.
+- **Artifact transfer fix:** copied and force-staged the complete lane evidence
+  tree `wt/rai-155f/artifacts/rai-155f/` into `artifacts/rai-155f/` after
+  scanning content for credentials. The walkthrough's five previously missing
+  references now resolve: `e01.log`, `e02.log`, `e03.log`,
+  `e01/cwf-e01-a/cwf_e01-manifest.json`, and
+  `e01/cwf-e01-a/cwf_e01.input.json`.
+- **Integrated gates on root:** `python3 scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exited 0 twice (193 cards, zero missing
+  links; first before gates, second after the parent status flip).
+  `make quality-changed` exited 0 (clean-tree minimum-fast classification);
+  `make quality-changed QUALITY_EXECUTE=1` exited 0 with manifest
+  `artifacts/quality/20261018-005950-74492-0001/manifest.json` (all fast gates
+  passed); `make quality-profile PROFILES="static unit contracts ci docs"`
+  exited 0 with manifest
+  `artifacts/quality/20261018-010710-83008-0001/manifest.json` (all listed
+  profiles passed). No timeout or real red remained. MJE-03c (RAI-157 known-red)
+  and TAB-02 (diagnosed load-race) remain documented exceptions, not failures
+  observed in this gate run and not claimed fixed.
+- **Integrated parent verifier:** the exact requested `sbt --batch
+  'raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec
+  raider.cli.chat.ChatWorkflowVerifierE02Spec
+  raider.cli.chat.ChatWorkflowVerifierE03Spec'
+  'raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec'`
+  exited 0. CLI verifiers: 7 tests passed, 0 failed; DSL corpus: 5 passed,
+  0 failed.
+- **RAI-155 parent accepted** with basis: accepted children a `23bbc36`, b
+  `fee77dd`, c `29ad1b4`, d `3a4e91d`, e `37911dc`, and f `088ee3d`; integrated
+  verifier green; integrated gates green. Scope remains the first-slice path
+  with explicit sequential task selection; SDLC/PR/merge/release remain in the
+  RAI-163..170/173 chain. No live-model quality claim is made.
+- **Parallel lanes / next work:** RAI-164 is partial (stages, typed evidence,
+  SDLC-STG-01..04 green; artifact-writer wiring owed). RAI-173 is partial
+  (reader protocol and 0-torn-reads ×3; `sbt-test` gate red with truncated
+  diagnostic, which is owed). RAI-157 matrix and RAI-136 storm remain held
+  until load is below 10 (today: 16–37). Next: complete LIN-03 through the
+  RAI-173 merge after its gate diagnostic; continue RAI-165+ chain; resume
+  RAI-157/136 under the load threshold.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
