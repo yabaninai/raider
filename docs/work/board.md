@@ -162,6 +162,26 @@ after the first integration batch (main 0870045):
   RAI-136 final storm deferred while machine load is high; LIN-03 LIN3-02/03
   pending.
 
+## 2026-10-17 — TAB-02 eviction-count race diagnosis (integrated-gate red explained)
+
+- The `20261017-162616` profile red (`SessionRegistrySpec` TAB-02: 252 evictions
+  expected, 251 actual) is a **load-sensitive test race**, not a product
+  regression. `SessionRegistry.scala:453–466` publishes the folded snapshot
+  before `appendHistory` updates the history vector/eviction counter
+  (`:470–483`). TAB-02 waits for `lastSeq == 451`
+  (`SessionRegistrySpec.scala:205–210`), which does not imply history-accounting
+  quiescence; history can be one event behind.
+- Reproduction attempts: 10/10 isolated and 10/10 under system load 47–76 were
+  green, with the correctly filtered `-t TAB-02`; logs are in
+  `artifacts/tab02-diag/`. The failure was not reproduced; bisect is not
+  indicated.
+- Disposition: conditional determinism follow-up (RAI-123 pattern)—make the test
+  wait for the history/accounting condition; do **not** weaken the exact eviction
+  assertion. Register the conditional card when convenient; no product change
+  now.
+- Concurrent context: the same integrated run passed MJE-03c; its known-red is
+  intermittent and remains RAI-157-owned.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
