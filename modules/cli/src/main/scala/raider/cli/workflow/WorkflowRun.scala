@@ -808,7 +808,6 @@ object WorkflowRun:
             latest.getOrElse(out)
           finally dirs.close()
         else out
-      val file = workDir.resolve(s"interrupted-$stamp.json")
       val body =
         """{"schemaVersion":1,"kind":"chat-workflow-run-interrupted",""" +
           "\"status\":\"Interrupted\",\"exitCode\":" +
@@ -816,7 +815,13 @@ object WorkflowRun:
           ",\"note\":\"SIGTERM: the bounded shutdown expired before the run" +
           " finalizers completed; the outcome is incomplete/uncertain and is" +
           " never retried automatically\"}"
-      Files.writeString(file, body, StandardCharsets.UTF_8)
+      List(out, workDir).distinct.foreach(dir =>
+        Files.writeString(
+          dir.resolve(s"interrupted-$stamp.json"),
+          body,
+          StandardCharsets.UTF_8
+        )
+      )
       ()
     catch case NonFatal(_) => () // best-effort by contract
 
