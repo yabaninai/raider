@@ -156,6 +156,22 @@ def operational_record_audit(root: pathlib.Path) -> list[dict]:
     return entries
 
 
+def validate_operational_record_audit(stored: list[dict], current: list[dict]
+                                      ) -> tuple[list[str], list[dict]]:
+    """Compare gate-time record identity metadata and report post-gate additions."""
+    before = {entry["path"]: entry for entry in stored}
+    after = {entry["path"]: entry for entry in current}
+    problems = []
+    for rel, entry in before.items():
+        now = after.get(rel)
+        if now is None:
+            problems.append(f"excluded operational record missing since gate: {rel}")
+        elif any(entry.get(key) != now.get(key) for key in ("sha256", "mode", "target")):
+            problems.append(f"excluded operational record changed since gate: {rel}")
+    additions = [after[rel] for rel in sorted(after.keys() - before.keys())]
+    return problems, additions
+
+
 def legacy_inventory(root: pathlib.Path) -> dict[str, dict]:
     """Schema-v1 fingerprint, which included operational records."""
     current: dict[str, dict] = {}
@@ -540,11 +556,17 @@ def cmd_verify(args) -> int:
                       if m["source"]["files"].get(k, {}).get("sha256") != files_now[k].get("sha256"))
         problems.append(f"source fingerprint changed ({changed} files differ) — rerun affected gates "
                         "(--allow-stale overrides, evidence is then historical)")
-    if schema_version == 2 and not problems:
-        # Audit metadata is deliberately live and outside the fingerprint. Refresh
-        # it during verification so records written after execution are visible.
-        m["audit"] = {"excluded_operational_records": operational_record_audit(ROOT)}
-        mpath.write_text(json.dumps(m, indent=2))
+    if schema_version == 2:
+        stored_records = m.get("audit", {}).get("excluded_operational_records")
+        if not isinstance(stored_records, list):
+            problems.append("schema-v2 manifest is missing excluded operational record audit")
+        else:
+            audit_problems, additions = validate_operational_record_audit(
+                stored_records, operational_record_audit(ROOT))
+            problems.extend(audit_problems)
+            for entry in additions:
+                print(f"[verify] post-gate operational record addition: "
+                      f"{entry['path']} {entry.get('sha256', entry.get('target'))}")
     if problems:
         for p in problems:
             print(f"[verify] FAIL: {p}", file=sys.stderr)
@@ -663,6 +685,38 @@ def _self_test_manifest_fingerprint(policy: dict) -> None:
         if any(path in ("docs/work/records/before.md", "docs/work/records/after.md")
                for path in inventory(td, excludes)):
             fail("self-check: operational records leaked into fingerprint inventory")
+
+        # Gate-time audit is immutable: tampering with a listed excluded record
+        # must fail, while a post-gate addition is visible without refreshing it.
+        gate_root = outer / "gate-tree"
+        records = gate_root / OPERATIONAL_RECORDS
+        records.mkdir(parents=True)
+        listed = records / "listed.md"
+        listed.write_text("gate-time record\n")
+        gate_inventory = inventory(gate_root, excludes)
+        gate_fp = hashlib.sha256(json.dumps(gate_inventory, sort_keys=True).encode()).hexdigest()
+        gate_audit = operational_record_audit(gate_root)
+        listed.write_text("tampered after gate\n")
+        problems, additions = validate_operational_record_audit(
+            gate_audit, operational_record_audit(gate_root))
+        if not problems or additions:
+            fail(f"self-check: tampered excluded record must fail audit validation "
+                 f"(problems={problems}, additions={additions})")
+        listed.write_text("gate-time record\n")
+        added = records / "added.md"
+        added.write_text("post-gate addition\n")
+        current_fp = hashlib.sha256(json.dumps(
+            inventory(gate_root, excludes), sort_keys=True).encode()).hexdigest()
+        problems, additions = validate_operational_record_audit(
+            gate_audit, operational_record_audit(gate_root))
+        if problems or len(additions) != 1 or additions[0]["path"] != f"{OPERATIONAL_RECORDS}/added.md" \
+                or additions[0].get("sha256") != sha256_file(added) or current_fp != gate_fp:
+            fail(f"self-check: post-gate record addition must pass audit without changing "
+                 f"fingerprint (problems={problems}, additions={additions}, "
+                 f"fingerprints={gate_fp}/{current_fp})")
+        print(f"[self-check] schema-v2 operational audit: tampered listed record fails; "
+              f"post-gate addition passes with sha256={additions[0]['sha256']}; "
+              f"fingerprint unchanged ({gate_fp})")
     finally:
         shutil.rmtree(outer, ignore_errors=True)
 
