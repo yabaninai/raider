@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "kind": "chat-workflow-export",
+  "generator": "raider 0.1.0-SNAPSHOT",
+  "launcherTemplate": "explicit-assembly",
+  "source": {
+    "sessionId": "loop_1",
+    "turnIds": ["t-2-b08b8e05", "t-3-7b043f40", "t-4-20d7b2ef"],
+    "specDigest": "sha256-1ff4d96842cb8d28b5e60af1aef3cc58c0accb8b38573654f63f10cbbb1316be"
+  },
+  "buildIdentity": {
+    "sourceDigest": "sha256-0a749727e10ac4213ab3c119026f59e569745c5e0e82e1d5cecbe39cb3d2a68e"
+  },
+  "origin": {
+    "providerKind": "openai-compatible",
+    "model": "verifier-model-e01",
+    "baseUrl": "http://127.0.0.1:49403/v1"
+  },
+  "params": {
+    "targetPath": "marker.txt",
+    "summary": "first-input-summary-token"
+  },
+  "checks": [
+    {
+      "name": "marker",
+      "argv": ["/bin/test", "-f", "marker.txt"]
+    }
+  ],
+  "note": "manifest describes provenance only; it is never executed (ADR-033 §6.4)"
+}

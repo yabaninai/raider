@@ -1,0 +1,28 @@
+[info] welcome to sbt 1.11.4 (Homebrew Java 27)
+[info] loading global plugins from /Users/reireirei/.sbt/1.0/plugins
+[info] loading settings for project rai-155f-build from plugins.sbt...
+[info] loading project definition from /Users/reireirei/PycharmProjects/PythonProject/startup/scalaagent/wt/rai-155f/project
+[info] loading settings for project root from build.sbt...
+[info] resolving key references (14350 settings) ...
+[info] set current project to raider (in build file:/Users/reireirei/PycharmProjects/PythonProject/startup/scalaagent/wt/rai-155f/)
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by scala.runtime.LazyVals$ (file:/Users/reireirei/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.9.0/scala-library-3.9.0.jar)
+WARNING: Please consider reporting this to the maintainers of class scala.runtime.LazyVals$
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+[32m+[0m ChatWorkflowVerifierE02 (CWF-E02 negative corpus)
+  [32m+[0m changed verifier expectation is refused by the real E02 loader
+  [32m+[0m export refusals: lost context (R2), no selection (R1), secrets at select and adapter boundaries (R4, value never echoed), nonexistent parent, symlink target, staging remnant, never-overwrite (R5)
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-run-negatives9932861277900527385/cwf_e02-build
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-injection12785602140295259753/cwf_e02-build
+message="Warning: A test is using time, but is not advancing the test clock, which may result in the test hanging. Use TestClock.adjust to manually advance the time." location=raider.runtime.events.EventHub.Live.publishLocked file=hub.scala line=296
+raider RA-COMPILE: compilation failed (dotc exit 1) for /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-injection12785602140295259753/broken/cwf_e02.scala; diagnostics: [31m[31m-- [E006] Not Found Error: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-injection12785602140295259753/broken/cwf_e02.scala:402:13 [0m[0m | [31m402 |[0m    [33mTask[0m.zio(runOnce(inputPath)).either.map { | [31m[31m    |[0m             ^^^^^^^[0m | [31m    |[0m             Not found: runOnce | [31m    |[0m | [31m    |[0m longer explanation available when compiling with `-explain` | 1 error found
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-run-negatives9932861277900527385/cwf_e02_bogus-build
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e02-injection12785602140295259753/cwf_e02_inj-build
+  [32m+[0m invalid edited source is a typed compile failure; hostile captured text stays DATA end-to-end; stale and corrupted builds are detected (a changed source never rides an old identity)
+  [32m+[0m run preflight negatives on fresh-process launchers: invalid input JSON, symlink workspace, missing credential (all zero-dispatch) + bogus success fails the independent check on BOTH launchers (R9)
+4 tests passed. 0 tests failed. 0 tests ignored.
+
+Executed in 10 s 91 ms
+
+[info] Completed tests
+[success] Total time: 11 s, completed Oct 17, 2026, 11:46:45 PM
