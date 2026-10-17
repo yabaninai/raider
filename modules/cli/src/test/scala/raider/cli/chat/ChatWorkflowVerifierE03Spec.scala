@@ -319,6 +319,8 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
       sigWs <- freshWorkspaceCopy("e03-sigterm-ws")
       sigInput <- writeInput(sigWs, "marker.txt", Summary1)
       sigOut = outRoot.resolve("sigterm-out")
+      olderWorkDir = sigOut.resolve("work-older-existing-run")
+      _ <- ZIO.attempt(Files.createDirectories(olderWorkDir))
       proc <- sigtermProcess(
         ciLauncherArgv(sigBuild, sigInput, sigOut, Some(sigSrc)),
         Some(StandKey)
@@ -367,8 +369,20 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
             .toList
         finally listing.close()
       }
+      markerDirs = workDirs.filter { w =>
+        val listing = Files.list(w)
+        try
+          listing
+            .iterator()
+            .asScala
+            .exists(_.getFileName.toString.startsWith("interrupted-"))
+        finally listing.close()
+      }
+      currentRunDirs = workDirs.filterNot(_ == olderWorkDir)
       sigStatus = runStatus(runArtifact)
       truthyArtifacts = runArtifact.isDefined || markerNames.nonEmpty
+      markerInCurrentRun = markerDirs.exists(currentRunDirs.contains) &&
+        !markerDirs.contains(olderWorkDir)
       neverSucceeded =
         sigStatus.forall(_ != "Succeeded") && runVerdict(runArtifact).isEmpty
       noRetry = delayStand.totalRequests == requestsAtKill
@@ -379,6 +393,7 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
         exp.sigterm.expectedExitCodes.contains(exitCode),
         !exp.sigterm.freshProcessLaunch || true, // by construction: subprocess
         !exp.sigterm.truthfulIncompleteArtifact || truthyArtifacts,
+        markerInCurrentRun,
         !exp.sigterm.neverReportsSucceeded || neverSucceeded,
         !exp.sigterm.noAutomaticRetry || noRetry
       )
