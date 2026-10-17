@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 182,
+  "raider_count": 183,
   "companion_count": 3,
   "cards": [
     {
@@ -5336,6 +5336,29 @@
       },
       "non_goals": "Any live/paid call, real project secrets/data, provider code changes, declaring a gate passed, resolving owner-gated endpoint/budget.",
       "context": "provider-protocols.md §5; docs/work/board.md Open Obligations, live-wire verification (OWNER endpoint/budget)."
+    },
+    {
+      "id": "RAI-172",
+      "title": "SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)",
+      "milestone": "M2",
+      "dependencies": [],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/ui/src/test/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit"
+      ],
+      "behavior": "CONDITIONAL card (trigger: recurrence of the integrated red): TAB-02 failed once on an integrated run (manifest artifacts/quality/20261017-162616-53185-0001, evicted 252≠251). Diagnosis (board 2026-10-17): SessionRegistry.scala:453–466 publishes the folded snapshot before appendHistory (:470–483) updates the history vector/eviction counter; TAB-02 gates on lastSeq==451 (SessionRegistrySpec.scala:205–210), which does not imply history quiescence, so history can lag one event under load. It was not reproduced: 10/10 isolated and 10/10 loaded GREEN (artifacts/tab02-diag/). On recurrence only, wait for the relevant history/accounting condition (for example, history's last observed sequence/evicted count stabilizes at the expected fold). Do NOT weaken the exact eviction assertion.",
+      "acceptance": {
+        "normal": "TAB-02-01: only if the integrated red recurs, fix test synchronization on history/accounting quiescence; focused SessionRegistrySpec TAB-02 is green ×10 post-fix and the exact eviction assertion remains intact.",
+        "error": "TAB-02-02: if no recurrence, record observations and do not change tests or product code; the conditional card remains not-triggered.",
+        "concurrency": "- Cancellation/concurrency: TAB-02-03: static and unit profiles pass after any test-only fix; retain evidence of the integrated recurrence and post-fix repetitions."
+      },
+      "non_goals": "Weakening the exact eviction assertion; product change to SessionRegistry publish order without a captured reproducer showing user-visible harm; unrelated changes.",
+      "context": "RAI-123 conditional-determinism pattern. Recurrence evidence: artifacts/quality/20261017-162616-53185-0001; diagnosis and non-reproduction runs: artifacts/tab02-diag/."
     }
   ]
 }

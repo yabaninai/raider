@@ -191,6 +191,7 @@ See [backlog.json](backlog.json) for cards added in later revisions, including L
 - **RAI-169** [Independently verify SDLC-01–04 stages, approval, and integration](m1.md); dependencies: RAI-117, RAI-164, RAI-165, RAI-166, RAI-167; profiles: static, unit, contracts, runtime, ci, integration.
 - **RAI-170** [Independently verify the local-only release contract](m1.md); dependencies: RAI-117, RAI-168; profiles: static, unit, contracts, release.
 - **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
+- **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
 
 ## Existing obligations added on 2026-10-13
 
