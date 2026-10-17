@@ -78,6 +78,30 @@ Status: todo. Milestone: LIN. Dependencies: LIN-01, LIN-02.
 
 **Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
+## RAI-173: LIN-03.b: Lineage snapshot commit protocol across readers
+
+Status: ready. Milestone: LIN. Dependencies: LIN-03.
+
+**Problem and scope.** LIN-03 pair-snapshot atomicity is effective only when readers honor its commit pointer. Authorize ReplayCli, HeadlessRunner, and live export to read a shared snapshot commit manifest or use equivalent write-then-rename discipline for the data/source pair. Prove zero torn reads with a concurrent-reader fixture aligned to LIN-14 expectations. Define the authorized mechanism for required live pinned-compiler validation. Parallel-safe reader changes only, after LIN-03 fold wiring merges.
+
+**Context.** Board 2026-10-17 LIN-03 blocker: ReplayCli resolves lineage-data.json outside LIN-03 allowed paths, and HeadlessRunner/live export must honor the commit pointer. LIN-14 concurrent projection-read expectations apply; lineage contracts require an authorized live pinned-compiler validation mechanism.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/run/**` `contracts/lineage/**`
+
+**Acceptance.**
+
+- Normal: LIN3B-01: ReplayCli, HeadlessRunner, and live export resolve one committed data/source snapshot through the shared reader protocol; a concurrent writer/reader fixture proves zero torn reads across repeated updates, using LIN-14 snapshot expectations.
+- Error/adversarial: LIN3B-02: missing, malformed, mismatched, or incomplete commit metadata is reported as an explicit invalid/incomplete snapshot; readers do not fall back to directly resolving lineage-data.json or combine generations.
+- Cancellation/concurrency: LIN3B-03: concurrent readers observe only complete committed pairs while writer publication is interrupted at each boundary; the pinned-compiler validation path is explicitly authorized by the lineage contracts and exercised without a live paid provider call.
+
+**Required gates.** After the LIN-03 fold wiring merge: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable static/unit/contracts/CI profiles; run the concurrent-reader fixture against the LIN-14 expectations and verify evidence for each required profile. The live pinned-compiler validation mechanism must be authorized and actually exercised; a mock compiler is not a substitute. Missing tools or unavailable validation are not passes.
+
+**Non-goals.** Changing LIN-03-owned fold wiring or writer paths before they merge; unrelated lineage schema changes; weakening LIN-14 expectations; paid provider calls.
+
+**Compatibility/rollback.** Existing lineage consumers must either use the committed pair protocol or fail explicitly on missing/incomplete snapshots; never silently read one side of a pair or fall back to an older/direct path. Preserve source/data generation identity. Rollback must leave incomplete evidence explicit and must not claim a valid snapshot.
+
+**Deliverables.** Reader-protocol implementation for ReplayCli, HeadlessRunner, and live export; concurrent-reader fixture proving zero torn reads; authorized pinned-compiler validation mechanism and evidence; work record with exact commands, exits, and evidence hashes.
+
 ## LIN-04: Lineage tab in the TUI
 
 Status: todo. Milestone: LIN. Dependencies: LIN-03.
@@ -848,7 +872,7 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-155.c.
 
 ## RAI-155.e: Independent end-to-end verifier for chat to edited Scala to CI
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c, RAI-155.d.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c, RAI-155.d.
 
 **Scenario and contract.** Independent reviewer-owned acceptance packet for CWF-01..03 and all child cases. Freeze Scala fixtures and a local OpenAI-compatible Scala stand that drives actual multi-turn chat, export, manual source edit, pinned compile/package, local execution and non-TTY generic CI. Include a second fresh task/repo input and assert new actual model/tool calls, changed source, independent checker results and matching artifact/source identities. A fixed successful report, lineage-only program, prewritten replacement workflow, or re-execution of the original chat is a negative case. Review protected fixtures separately from implementation; no product implementation edits are allowed in this verifier card.
 
@@ -872,7 +896,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c, RAI-155.d.
 
 ## RAI-155.f: User walkthrough: chat, export Scala, edit, and run in CI
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.e.
+Status: ready. Milestone: LIN. Dependencies: RAI-155.e.
 
 **Scenario and contract.** Document the accepted user path in English with a real small conversation, exact shipped export command, complete exported Scala source, a meaningful user edit/diff, exact compile/package/local/CI commands and actual result/artifact locations. Make the edited generated workflow the main example; distinguish authoring source from dry-run lineage and later run history in plain language. Keep acceptance/internal planning detail out of the user tutorial. Preserve old captures and link the new source/result to the candidate that produced them.
 
@@ -896,7 +920,7 @@ Status: todo. Milestone: LIN. Dependencies: RAI-155.e.
 
 ## RAI-156: ReplayHarness.eventuallyTerminal: drain to hub watermark before Terminal-truncation (product-side relay-race fix)
 
-Status: ready. Milestone: LIN. Dependencies: RAI-152.
+Status: accepted. Milestone: LIN. Dependencies: RAI-152.
 
 **Scenario and contract.** RAI-152 mechanism analysis (review-approved): the replay child's event capture terminates on Terminal PRESENCE in the sink, but the hub relays reliable vs diagnostics envelopes via two independent forwarder fibers with unspecified relative order (hub.scala:235-245, :50-53). Under CPU starvation the diagnostics-class tail (seq < Terminal) is still in flight -> sink misses seqs -> typed SeqGap -> exit 20. Discriminator: a diagnostics drop consumes no sequence, so gap + droppedDiagnostics==0 is the relay race by construction (typed reproducer exists: dropped=0 envelopes=9 Left(SeqGap(j_1,8,10)), missing seqs exactly the diagnostics tail). Fix the PRODUCT: drain to the hub watermark (committed-vs-consumed) before deciding truncation — diagnostics quiescence — not Terminal presence. Test-side retry wrappers (RAI-152) stay as defense; the product raider replay becomes load-robust itself.
 
@@ -1016,7 +1040,7 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c.
 
 ## RAI-162: WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs
 
-Status: ready. Milestone: LIN. Dependencies: RAI-155.d.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.d.
 
 **Scenario and contract.** The RAI-155.e E03 reproducer (ChatWorkflowVerifierE03Spec; work record docs/work/records/RAI-155e.md) sends SIGTERM during an in-flight chat-exported workflow run against a delayed local stand. The child exits 143 but leaves neither a run artifact nor an interrupted marker, violating ci-runtime.md §§6 and 8 interruption honesty. Implement bounded-stop cleanup/reporting in the WorkflowRun/chat-workflow launch path so SIGTERM leaves truthful interruption evidence (run.json or an interruption marker per the existing §7–8 contracts), preserving interruption exit semantics. RAI-155.d CWF-D03 proves the direct CLI child path; this closes the chat-workflow-path gap. The E03 expectations are acceptance and must not change.
 

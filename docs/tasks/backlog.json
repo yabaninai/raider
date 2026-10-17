@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 183,
+  "raider_count": 184,
   "companion_count": 3,
   "cards": [
     {
@@ -3831,7 +3831,7 @@
       "dependencies": [
         "RAI-116"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/ADR-030-sdlc-workflow.md",
         "docs/ci-runtime.md",
@@ -4244,7 +4244,7 @@
         "RAI-113",
         "RAI-110"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/onboarding.md",
         "docs/api.md"
@@ -4322,7 +4322,7 @@
       "dependencies": [
         "RAI-135"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/ux_baseline.py",
         "scripts/quality-policy/registry.json",
@@ -4935,7 +4935,7 @@
         "RAI-155.c",
         "RAI-155.d"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/chat-workflow/**",
         "modules/cli/src/test/scala/raider/cli/**",
@@ -4965,7 +4965,7 @@
       "dependencies": [
         "RAI-155.e"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "README.md",
         "docs/onboarding.md",
@@ -4997,7 +4997,7 @@
       "dependencies": [
         "RAI-152"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala",
         "modules/cli/src/test/scala/raider/cli/lineage/**"
@@ -5138,7 +5138,7 @@
       "title": "Quality runner: implement the documented operational-record exclusion",
       "milestone": "M0",
       "dependencies": [],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/**",
         "docs/work/records/**"
@@ -5163,7 +5163,7 @@
       "dependencies": [
         "RAI-155.d"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/workflow/**",
         "modules/cli/src/main/scala/raider/cli/run/**",
@@ -5189,7 +5189,7 @@
       "title": "Design the public SDLC effects API and consumer migration",
       "milestone": "M1",
       "dependencies": ["RAI-117"],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": ["docs/adr/ADR-034-sdlc-effects-api.md", "docs/tasks/m1.md"],
       "profiles": ["docs"],
       "behavior": "Separate reviewed public API ADR for ADR-030 D7; specify effect/capability ownership, semantics, compatibility/versioning and ADR-029 H8 consumer migration; map SDLC-01–05 without freezing signatures. Independent design review must precede any signature freeze. Estimate 8–12 h, within packet A1's 32–48 h.",
@@ -5206,7 +5206,7 @@
       "title": "Implement SDLC stages and typed evidence schemas",
       "milestone": "M1",
       "dependencies": ["RAI-117", "RAI-163"],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "examples/workflows/sdlc/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "ci"],
       "behavior": "ADR-030 §2 stage model and §2.1 evidence identity using reviewed RAI-163 contract. Typed Scala schemas in contracts/ for check-result, review-verdict, candidate-identity and integration-result; versioned JSON in run.json/events.jsonl. Estimate 24–36 h, allocated with RAI-163 within packet A1's 32–48 h.",
@@ -5359,6 +5359,29 @@
       },
       "non_goals": "Weakening the exact eviction assertion; product change to SessionRegistry publish order without a captured reproducer showing user-visible harm; unrelated changes.",
       "context": "RAI-123 conditional-determinism pattern. Recurrence evidence: artifacts/quality/20261017-162616-53185-0001; diagnosis and non-reproduction runs: artifacts/tab02-diag/."
+    },
+    {
+      "id": "RAI-173",
+      "title": "LIN-03.b: Lineage snapshot commit protocol across readers",
+      "milestone": "LIN",
+      "dependencies": ["LIN-03"],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "contracts/lineage/**"
+      ],
+      "profiles": ["static", "unit", "contracts", "ci"],
+      "behavior": "LIN-03 pair-snapshot atomicity is effective only when readers honor its commit pointer. Authorize ReplayCli, HeadlessRunner, and live export to read a shared snapshot commit manifest or use equivalent write-then-rename discipline for the data/source pair. Prove zero torn reads with a concurrent-reader fixture aligned to LIN-14 expectations. Define the authorized mechanism for required live pinned-compiler validation. Parallel-safe reader changes only, after LIN-03 fold wiring merges.",
+      "acceptance": {
+        "normal": "LIN3B-01: ReplayCli, HeadlessRunner, and live export resolve one committed data/source snapshot through the shared reader protocol; a concurrent writer/reader fixture proves zero torn reads across repeated updates, using LIN-14 snapshot expectations.",
+        "error": "LIN3B-02: missing, malformed, mismatched, or incomplete commit metadata is reported as an explicit invalid/incomplete snapshot; readers do not fall back to directly resolving lineage-data.json or combine generations.",
+        "concurrency": "LIN3B-03: concurrent readers observe only complete committed pairs while writer publication is interrupted at each boundary; the pinned-compiler validation path is explicitly authorized by the lineage contracts and exercised without a live paid provider call."
+      },
+      "non_goals": "Changing LIN-03-owned fold wiring or writer paths before they merge; unrelated lineage schema changes; weakening LIN-14 expectations; paid provider calls.",
+      "context": "Board 2026-10-17 LIN-03 blocker: ReplayCli resolves lineage-data.json outside LIN-03 allowed paths, and HeadlessRunner/live export must honor the commit pointer. LIN-14 concurrent projection-read expectations apply; lineage contracts require an authorized live pinned-compiler validation mechanism."
     }
   ]
 }

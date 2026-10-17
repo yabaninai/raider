@@ -14,6 +14,7 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | YB-RAI-01–03 | [Changes in Yabanin](yabanin.md) |
 | RAI-163–170 | [SDLC effects API, stages, approval, integration, release, and independent verification](m1.md) |
 | RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
+| RAI-173 | [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -192,6 +193,7 @@ See [backlog.json](backlog.json) for cards added in later revisions, including L
 - **RAI-170** [Independently verify the local-only release contract](m1.md); dependencies: RAI-117, RAI-168; profiles: static, unit, contracts, release.
 - **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
 - **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
+- **RAI-173** [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
 
 ## Existing obligations added on 2026-10-13
 
