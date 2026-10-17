@@ -1,5 +1,49 @@
 # Raider Execution Board
 
+## 2026-10-18 — RAI-173 merged; LIN-03 integration staged
+
+- **RAI-173 merged** from `lane/rai-173` as
+  `8aa1c11488fd55cf9f4b9f95512869559e9b96a0` (merge commit; source
+  `cd32cff`), round-2 review approved. The lineage snapshot protocol pins the
+  data/source digests behind `lineage-commit.json` and atomically replaces the
+  pointer. The 8-reader × 120-update × 3 repetitions proof seeds pre-state and
+  uses strict Missing discipline; the prior race-masking fixture is closed by
+  reviewer-verified handling.
+- **LIN-03 wiring merged** from `lane/lin-03` as
+  `23c06924fe6e95981790dae6dad691b18e9c2a39` (merge commit; source
+  `a25641f`). Ordered export batches feed `LiveLineageProjection` under the
+  export lock; HeadlessRunner consumes the incremental projection after the
+  drain barrier. LIN3-01 wiring and LIN3-02/03 protocol are integrated;
+  **LIN-03 completion review is pending** and no LIN-03 acceptance is claimed.
+- **Integrated verification on the merged candidate:** `make quality-changed`
+  exited 0 (clean tree; minimum `fast` classification). `make quality-changed
+  QUALITY_EXECUTE=1` exited 0; all fast gates passed, no timeout, manifest
+  `artifacts/quality/20261018-022755-87361-0001/manifest.json`.
+  `make quality-profile PROFILES="static unit contracts runtime"` exited 1
+  (not a timeout): `sbt-test` failed with 183 passed / 1 failed in
+  `PlanPanelSpec` (`PLANUI-02`, `modules/repl/.../PlanPanelSpec.scala:280–282`;
+  `ready2Fresh` and `approved2` were false, and `plan-exec` was absent from
+  `List("plan", "plan", "plan-exec")`). The exact failing run is
+  `artifacts/quality/20261018-023805-12527-0001/sbt-test.log` (SHA-256
+  `0ed83dd5fd0d324b9106464b75df3693a2ff72fc3d6704aacd0b360088590345`); this
+  is a real observed red, not a timeout. In that run MJE-03c passed (its
+  historical RAI-157 known-red remains documented, not cleared) and TAB-02
+  passed (its RAI-172 load-race diagnosis remains documented, not fixed).
+- **LIN-03 acceptance suites:** the requested `sbt --batch 'raiderCli/testOnly
+  raider.cli.run.LiveLineageProjectionSpec
+  raider.cli.lineage.LineageSnapshotProtocolSpec
+  raider.cli.lineage.ReplayCliSpec raider.cli.lineage.ReplayProductCliSpec
+  raider.cli.run.LineageArtifactsSpec'` exited 0: 30 passed, 0 failed.
+  This component-suite result does not substitute for completion review or
+  erase the integrated profile red.
+- **Planning validation:** `python3 scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exited 0; 194 cards.
+- RAI-164 remains partial (stage runtime + digests; persistence waits for
+  RAI-174). The RAI-174 fix round is in flight (payload-interior boundary +
+  unknown-kind refusal).
+- **Queue:** LIN-03 completion review → LIN-04; RAI-164 completion after
+  RAI-174; RAI-157 ×10 / RAI-136 storm remain load-held.
+
 ## 2026-10-16 — Capacity revision: 20 spawned Luna agents
 
 Owner decision (interactive session, 2026-10-16, refined the same day):
