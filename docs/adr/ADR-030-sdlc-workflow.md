@@ -1,7 +1,8 @@
 # ADR-030: Scala SDLC Workflow, Checkpoints, and Local Integration/Release Contract
 
-Status: **Proposed** (contract draft for RAI-117; not accepted and not an
-implementation authorization). Date: 2026-10-16. Depends on RAI-116 / ADR-029
+Status: **Accepted (owner mandate, interactive session 2026-10-16)** — acceptance
+of the contract only; implementation cards are registered separately (ADR-028
+precedent for owner-mandated acceptance). Date: 2026-10-16. Depends on RAI-116 / ADR-029
 and the accepted RAI-116 boundary; first consumer: TokenRouter code development.
 The gateway remains P11 and is outside this decision. This ADR extends the
 workflow boundary without implementing a runtime, forge adapter, or release
@@ -10,10 +11,10 @@ for explicitly configured SDLC capabilities described here. ADR-029 H1–H8
 remain inherited unless a clause below narrows their application; no silent
 public signature or schema-v1 change is authorized.
 
-All APIs, verbs, schemas, cases, commands, and packets below are proposals, not
-existing Raider behavior. This document is a reviewable contract, not evidence
-that any SDLC behavior has shipped. Independent review and owner acceptance are
-required before implementation cards can freeze signatures or capabilities.
+The contract is accepted, but APIs, verbs, schemas, cases, commands, and packets
+below are proposals, not existing Raider behavior. This document is not evidence
+that any SDLC behavior has shipped. Implementation cards are registered
+separately; public signatures remain unfrozen pending the required review.
 
 ## 1. Context and scope
 
@@ -51,8 +52,8 @@ workflow.
    (§5).
 5. Commit/PR/merge may happen automatically only when the current configured
    repository rules and granted capabilities authorize the specific action.
-   The authoritative source and precedence of those repository rules remain an
-   owner question (§9).
+   The authoritative source and precedence of those repository rules are the
+   trusted Scala workflow configuration (§9).
 6. Evidence is bound to the exact candidate revision and relevant inputs,
    policy, toolchain, and verifier identities. A changed candidate invalidates
    affected check/review evidence.
@@ -88,7 +89,8 @@ definitions and toolchain; verifier version/hash; effective policy/capability
 snapshot; stage implementation version; and evidence/artifact digests. A value
 that cannot be observed is recorded as unknown, not fabricated. Evidence from a
 prior candidate or policy snapshot is not transferred to a new candidate.
-Exact evidence schemas and canonical digest rules remain unresolved (§9).
+Typed evidence schemas and their JSON artifact representation are selected in
+§9; canonical digest rules remain to be specified by implementation cards.
 
 ## 3. Configurable checkpoints and approval
 
@@ -110,9 +112,11 @@ not ask, wait on stdin, or auto-approve. After approval, the caller starts a
 candidate, and all relevant evidence. No fiber or workflow stack is resumed,
 and prior approval is not a reusable bearer capability.
 
-The approval artifact's schema, storage, signature/authenticity mechanism,
-retention, and exact identity fields are unresolved owner decisions. This ADR
-does not invent them.
+The approval request artifact records checkpoint ID, candidate digest, and
+expiry; the human decision is a separate decision file. Storage,
+signature/authenticity mechanism, retention, and additional identity fields
+remain implementation details. A new invocation re-reads policy, state, and
+digest; this does not resume a fiber.
 
 ## 4. Generic integration contract
 
@@ -121,9 +125,9 @@ operations equivalent to `commit(candidate, message, preconditions)`,
 `openOrUpdatePullRequest(candidate, target, description, preconditions)`, and
 `merge(request, target, preconditions)`. Names and signatures are illustrative
 and not frozen. A local Scala forge stand plus a disposable Git repository
-exercise the contract. Which forge semantics the generic stand models versus
-leaving adapter-specific is unresolved; the stand must report unsupported
-semantics rather than claim universal parity.
+exercise the full generic protocol, including commit, PR status, merge,
+stale-ref, conflict, duplicate, and unknown-outcome behavior. Real forges come
+later through separately accepted adapters.
 
 ### 4.1 Preconditions and ownership
 
@@ -157,11 +161,10 @@ uncertain are never success and never trigger blind retries.
 ## 5. Local release contract
 
 Release produces local, auditable artifacts only. The intended operations are
-to determine a version under the configured version policy, update a changelog,
-create a local (not pushed) tag, and build local artifacts with checksums and
-provenance. The precise versioning, changelog, tag, artifact names/paths,
-formats, reproducibility and schema conventions are unresolved owner
-questions. No example here selects a convention.
+to determine a SemVer version, update a Keep a Changelog changelog, create a
+local (not pushed) `v<semver>` tag, and build local artifacts with checksums and
+provenance under `artifacts/release/<version>/`. This is strictly local: no tag
+push, publish, or deploy.
 
 Preconditions include current source/candidate identity, required checks,
 release capability and checkpoint result, a version not already present, and
@@ -250,11 +253,11 @@ owner-approved argv and verifier identities, not generated from model output.
 ## 8. Implementation/verifier planning estimate (not approval)
 
 The historical 13,100-hour roadmap envelope is context only, not an approved
-budget or a cost allocation. The following separate RAI-117 estimate is a
-planning range for newly added kit/SCM/local-release work only, before
-implementation and independent review; it must be reconciled with existing
-roadmap allocations by the coordinator. No source of hours/budget has been
-approved; owner confirmation is required before work is scheduled.
+budget or a cost allocation. By explicit owner budget decision (§9), SDLC
+implementation hours are an expansion beyond that envelope. The following
+RAI-117 estimate is a planning range for newly added kit/SCM/local-release work
+only, before implementation and independent review; the 128–200h estimate is
+refined per implementation packet before spend.
 
 | Packet | Scope | Estimate | Dependency / owner role |
 | --- | --- | --- | --- |
@@ -266,30 +269,46 @@ approved; owner confirmation is required before work is scheduled.
 | V2 | Independent local release verifier SDLC-05 | 8–16 h | A4; independent verifier owner |
 | **Total** | **Added scope estimate, before deduplication** | **128–200 h** | Coordinator to reconcile overlaps, existing allocations, and source of hours |
 
-These are estimates, not approved hours, commitments, or implementation
-acceptance. Exact child card IDs, owners, allowed paths, dependencies, argv,
-acceptance cases, and per-card estimates are coordinator-owned registry work
-before ADR acceptance. Do not substitute the historical 13,100h envelope.
+These are estimates, not commitments or evidence of implementation. Exact
+child card IDs, owners, allowed paths, dependencies, argv, acceptance cases,
+and per-card estimates are coordinator-owned registry work. Do not substitute
+the historical 13,100h envelope; the explicit expansion is recorded as an
+owner budget decision on the board.
 
-## 9. Unresolved owner questions (must not be decided silently)
+## 9. Decisions (owner, 2026-10-16)
 
-1. What is the versioned schema and authority mechanism for headless approval
-   artifacts, and what exact fields bind approval to candidate, target, action,
-   policy, expiry and owner?
-2. Which repository rules are authoritative for automatic commit/PR/merge, and
-   what are their trust roots, precedence, pinning, and owner/maintainer
-   override semantics?
-3. Which exact forge behaviors does the generic Scala stand model, and which
-   must be explicitly adapter-specific or unsupported?
-4. What are the stage evidence schemas, canonical digest inputs, retention and
-   verifier-version rules?
-5. What version, changelog, local tag, build artifact naming/path/format and
-   provenance conventions does local release use?
-6. What is the approved hour/budget source for implementation, verifier,
-   coordinator integration and review? The 13,100h roadmap envelope is not an
-   approval.
-7. Will implementation require public signature or wire/schema changes? If
-   yes, which separate ADR and consumer/example migration cards are required?
+1. **D1 — Approval:** `NeedsApproval` writes an approval request artifact
+   (checkpoint ID, candidate digest, expiry); the human decision is a separate
+   decision file, and a new invocation re-reads policy/state/digest — no resumed
+   fiber. Rationale: approval is bound to current state without implying durable
+   execution.
+2. **D2 — Integration rules:** Scala workflow configuration is authoritative
+   (required checks/review and target branch); every mutation is preceded by a
+   read-only forge reconcile, and divergence yields typed refusal, never blind
+   retry. Rationale: one trusted, freshly reconciled source governs effects.
+3. **D3 — Generic forge stand:** the stand models the full generic protocol —
+   commit, PR status, merge, stale-ref, conflict, duplicate, and unknown-outcome;
+   real forges follow only as separately accepted adapters. Rationale: generic
+   conformance is testable without claiming vendor parity.
+4. **D4 — Evidence:** typed Scala schemas in `contracts/` cover check-result,
+   review-verdict, candidate-identity, and integration-result, with JSON
+   representation in run artifacts (`run.json`/`events.jsonl` extension).
+   Rationale: typed contracts and inspectable artifacts serve both runtime and
+   audit consumers.
+5. **D5 — Release:** SemVer + Keep a Changelog; local tag `v<semver>` and
+   checksummed artifacts under `artifacts/release/<version>/`, strictly local
+   (no tag push, publish, or deploy). Rationale: reproducible release evidence
+   without crossing the publication boundary.
+6. **D6 — Budget (explicit non-default owner choice):** SDLC implementation
+   hours come from a budget expansion beyond the 13,100h envelope, recorded as
+   an owner budget decision on the board; refine the 128–200h ADR estimate per
+   implementation packet before spend. Rationale: the added scope must not be
+   silently charged to the historical envelope.
+7. **D7 — Public API (explicit non-default owner choice):** a public effects
+   API is chosen; follow ADR-029 H8 discipline with design and consumer
+   migration plan in the first implementation card, and freeze no signature
+   before that review. Rationale: public effects need explicit compatibility
+   and migration review before signatures settle.
 
 ## 10. Alternatives and consequences
 
@@ -305,16 +324,15 @@ before ADR acceptance. Do not substitute the historical 13,100h envelope.
 
 **Consequences:** Scala-authored SDLC intent has an auditable path to
 integration/release without binding the product to a forge. This creates
-substantial implementation/verifier work and unresolved contracts around
-approval, repository rule authority, stand fidelity, evidence, and release
-naming. A local stand pass does not establish a real forge adapter's behavior.
+substantial implementation/verifier work. A local stand pass does not
+establish a real forge adapter's behavior.
 The current ADR does not change API signatures, runtime, CI engine, or product
 behavior. Rollback of a future implementation must preserve mutation
 uncertainty and must never replay an effect.
 
 ## 11. Acceptance status and required next step
 
-RAI-117 normal acceptance SDLCADR-01 is addressed as a proposed stage/packet
+RAI-117 normal acceptance SDLCADR-01 is addressed as an accepted stage/packet
 contract in §§2, 7, and 7.1; coordinator registration and target source
 evidence remain pending. SDLCADR-02 is addressed by the explicit adversarial
 outcome/reconciliation and no-publication clauses in §§4–5 and the SDLC-02/05
@@ -322,9 +340,8 @@ cases. SDLCADR-03 is addressed by one-owner/recheck/capability/orchestrator
 rules in §§3–4, 6, and the SDLC-03 case. These are contract provisions, not
 executed acceptance tests.
 
-Next: coordinator records exact SDLC-01..05 implementation and verifier card
-IDs, owners, allowed paths, dependencies, approved estimates/source, and
-target-specific commands; independent reviewer evaluates this ADR; owner
-resolves or explicitly carries the questions in §9; then owner accepts the
-contract. Only then may implementation cards be scheduled. Real forge adapter
-selection and its acceptance remain a later decision.
+Next: coordinator registers exact SDLC-01..05 implementation and verifier card
+IDs, owners, allowed paths, dependencies, packet estimates, and target-specific
+commands. Implementation remains unauthorized until those separately
+registered cards and required reviews are completed. Real forge adapter
+selection and acceptance remain a later decision.

@@ -77,6 +77,149 @@ after the first integration batch (main 0870045):
   manifest `artifacts/quality/20261016-073347-65305-0001/manifest.json` SHA-256
   `fb2078f1c6e077f5f595b565b63a4ecaff8aa0d2460cd71bc7aa852b3936557c`.
 
+## 2026-10-16 — ADR-030 owner decisions; MJE-03c known-red
+
+- **ADR-030 accepted (owner mandate, interactive session 2026-10-16; contract
+  only):**
+  - D1: `NeedsApproval` writes an approval request (checkpoint ID, candidate
+    digest, expiry); human decision is separate; a fresh invocation rereads
+    policy/state/digest, with no resumed fiber.
+  - D2: Scala workflow config is authoritative for required checks/review and
+    target branch; read-only forge reconcile precedes each mutation, with typed
+    refusal on divergence.
+  - D3: Full generic forge stand protocol includes commit, PR status, merge,
+    stale-ref, conflict, duplicate, and unknown-outcome; real forges are
+    separately accepted adapters.
+  - D4: Typed Scala schemas in `contracts/` for check-result, review-verdict,
+    candidate-identity, integration-result, represented as JSON in run artifacts.
+  - D5: SemVer + Keep a Changelog, local `v<semver>` tag, checksummed
+    `artifacts/release/<version>/`; strictly local, with no push/publish/deploy.
+  - D6 (**explicit non-default owner budget decision**): SDLC hours expand
+    beyond the 13,100h envelope; refine the 128–200h estimate per implementation
+    packet before spend, and record the budget decision on the board.
+  - D7 (**explicit non-default owner choice**): public effects-API, with ADR-029
+    H8 design and consumer migration discipline in the first implementation
+    card; no signature freeze before review.
+  - Coordinator registers implementation cards after the .e/.f critical path.
+- **MJE-03c adjudication (fresh independent reviewer, read-only):** scope is
+  RAI-157 — the captured-but-unconnected introduction is silently lost at
+  `MultiJobExport.scala:63–65/435–448`; this is **not** an RAI-156 regression
+  (`0870045` changes ReplayHarness replay drain only). MJE-03c expectation stays
+  unchanged; RAI-156 stays. Main carries a recorded **INTERMITTENT KNOWN-RED**
+  on the static/unit/contracts/docs profile until the RAI-157 fix merges and
+  passes integrated verification. Failed manifest
+  `20261016-072639-53185-0001` is retained; the successful targeted rerun is
+  noted separately and does not clear the integrated known-red.
+- **RAI-157 lane note:** original `wt/rai-157` had corrupt build state (phantom
+  `ToolCall.id` compile error; a fresh worktree of the same branch compiles).
+  The lane continues in `wt/rai-157-fresh`; the original is detached and
+  retained for forensics.
+
+## 2026-10-17 — RAI-161 merged; SDLC cards registered; phantom-compile root cause; cleanup
+
+- **RAI-161 merged** on main as `ee2186f` (round-2 gate-policy review:
+  approve). Schema-v2 manifests retain gate-time audit metadata for
+  `docs/work/records/**`; tampering fails verification, post-gate additions are
+  listed without changing the fingerprint, and v1 legacy manifests remain
+  supported.
+- **Integrated gates on main:** `make quality-changed` exit 0 (classification
+  only; the pre-existing untracked `contracts/chat-workflow/` files classify as
+  `contracts`, `static`, `unit`; no manifest). First
+  `make quality-changed QUALITY_EXECUTE=1` attempt timed out at 120s (terminated,
+  not a pass); retry exit 0, passed. Manifest
+  `artifacts/quality/20261017-161805-70800-0001/manifest.json`, SHA-256
+  `aa1ecbca498f129831623b240b5c0794d0cbfdde0cf23e5bdeffd4ba4b2fd37b`.
+  `make quality-profile PROFILES="static unit contracts docs"` exit 1,
+  manifest `artifacts/quality/20261017-162616-83255-0001/manifest.json`,
+  SHA-256 `d06451bd393482e12aff1993f8c835ad492f718f827a760987234948696277a2`;
+  its `sbt-test.log` SHA-256 is
+  `8cd808c9c5c2850d1a6c06185855ecc1226b7911fb31b6e910cf5f2dd00bbe36`.
+  The failure is a **real red**, not the documented MJE-03c known-red:
+  `SessionRegistry ... TAB-02` reported `hist.evicted == 252L`, actual
+  `.evicted = 251` (38 passed, 1 failed). MJE-03c itself passed in this run.
+  `python3 scripts/quality/quality.py self-check` exit 0; it verified the
+  tampered-record failure, post-gate record addition with unchanged fingerprint,
+  registry/classification/manifest checks. Self-check does not emit a manifest.
+- **SDLC implementation package registered** at baseline `ff29b01` (plan
+  validator: 191 cards): RAI-163..170 implement ADR-030 D1–D7, with RAI-163
+  effects-API design first and H8 discipline; RAI-171 prepares live-wire work.
+  No paid execution without a separate owner budget.
+- **Phantom `ToolCall.id` compile error — root cause:** corrupt zinc/build state
+  is created when a worktree's first compile runs under heavy parallel load;
+  zinc then reuses stale partial core analysis and reports `value id is not a
+  member` against a class missing the `def`. Remedy: purge affected modules'
+  `target/` (and `.bsp`) and recompile; verified green in `wt/rai-162` with a
+  26s clean compile. Cases: `wt/rai-157` was superseded by
+  `wt/rai-157-fresh`, with the original retained detached for forensics;
+  `wt/rai-162` was purged and compiled green. Runbook implication: on phantom
+  member errors under load, purge targets before diagnosing sources.
+- **External worktree cleanup executed** per owner decision: 91 → 79 registered
+  worktrees. Merged/clean external worktrees under `../raider-english` and
+  `../raider-wt` were removed with per-entry re-verification; unmerged English,
+  handbook, and docs branches were preserved.
+- **Queue:** RAI-162 lane verification (environment fixed); RAI-137 round-3 after
+  this merge (freshness gap closed by RAI-161); RAI-157 full-spec ×10 matrix and
+  RAI-136 final storm deferred while machine load is high; LIN-03 LIN3-02/03
+  pending.
+
+## 2026-10-17 — TAB-02 eviction-count race diagnosis (integrated-gate red explained)
+
+- The `20261017-162616` profile red (`SessionRegistrySpec` TAB-02: 252 evictions
+  expected, 251 actual) is a **load-sensitive test race**, not a product
+  regression. `SessionRegistry.scala:453–466` publishes the folded snapshot
+  before `appendHistory` updates the history vector/eviction counter
+  (`:470–483`). TAB-02 waits for `lastSeq == 451`
+  (`SessionRegistrySpec.scala:205–210`), which does not imply history-accounting
+  quiescence; history can be one event behind.
+- Reproduction attempts: 10/10 isolated and 10/10 under system load 47–76 were
+  green, with the correctly filtered `-t TAB-02`; logs are in
+  `artifacts/tab02-diag/`. The failure was not reproduced; bisect is not
+  indicated.
+- Disposition: conditional determinism follow-up (RAI-123 pattern)—make the test
+  wait for the history/accounting condition; do **not** weaken the exact eviction
+  assertion. Register the conditional card when convenient; no product change
+  now.
+- Concurrent context: the same integrated run passed MJE-03c; its known-red is
+  intermittent and remains RAI-157-owned.
+
+## 2026-10-17 — Batch merge: RAI-137 + RAI-162; E03 unblocked on main
+
+- **RAI-137 merged** as `d7318f9` (round-3 approve): honest `ux-baseline` exit
+  semantics; additive `perf`/`ux-baseline`; freshness through RAI-161 schema-v2.
+- **RAI-162 merged** as `b3dda3f`: marker bound to invocation `workDir`; E03
+  RED-first, 3/3, with negative sibling coverage; review-fix round closed. The
+  RAI-155.e verifier corpus (E01/E02/E03, Harness, corpus spec, and records) is
+  now on main. E03 green there makes the .e lane re-gate a formality away:
+  merge main into `lane/rai-155e`, rerun EXECUTE, and review.
+- **Untracked-collision resolution:** the stale root copy of
+  `contracts/chat-workflow/` (old README and superseded
+  `verifier-expected.json`) was backed up to
+  `/var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/opencode/chat-workflow-untracked-backup-20261017`
+  and superseded by the tracked merge; nothing was lost.
+- **Integrated gates on main `b3dda3f`:** `make quality-changed` exit 0
+  (clean-tree classification: minimum `fast`); `make quality-changed
+  QUALITY_EXECUTE=1` exit 0, passed on first attempt (no timeout);
+  `make quality-profile PROFILES="static unit contracts ci"` exit 0,
+  passed; `make quality-profile PROFILES="repl runtime"` exit 0, passed;
+  `python3 scripts/quality/quality.py self-check` exit 0; plan validator exit 0
+  (191 cards). Executed-run manifests share input fingerprint
+  `87aa17ee285bc555af8e6a98124046ab0c5bce5db6b410766ba0b73b67f09546` and
+  policy hash `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`:
+  - EXECUTE fast: `artifacts/quality/20261017-181902-39730-0001/manifest.json`,
+    SHA-256 `5f08191bfb922f014aaba42703f074274863f7e21c053df809b29fb4dc56c5ab`.
+  - static/unit/contracts/ci: `artifacts/quality/20261017-183239-46718-0001/manifest.json`,
+    SHA-256 `2daeacc7318064ea290d8c9b5edda45ba26ed43ceb04fbac5627b706ba301697`.
+  - repl/runtime: `artifacts/quality/20261017-184250-52167-0001/manifest.json`,
+    SHA-256 `f6b5afbc7c206d7e30ab644c9516217be1fbc2c7d7ca25bdab5cc6bf0d353be7`.
+  MJE-03c (intermittent KNOWN-RED, RAI-157-owned) and TAB-02 (diagnosed
+  load-race; conditional determinism card) were **not observed** in these runs;
+  both requested profiles passed without failures. This is not a claim that
+  either historical issue is fixed.
+- **Queue:** RAI-155.e re-gate + review (critical path to .f); RAI-157
+  full-spec ×10 matrix (wait for lower load; load 76 today); RAI-136 final storm
+  (same); LIN-03 LIN3-02/03; TAB-02 conditional determinism card; SDLC
+  RAI-163..171; live-wire RAI-171 (owner budget pending).
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.
