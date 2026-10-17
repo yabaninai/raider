@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "workspace": "/absolute/path/to/fresh-workspace-copy",
+  "task": {
+    "targetPath": "marker.txt",
+    "summary": "first-input-summary-token"
+  }
+}
