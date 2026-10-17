@@ -796,7 +796,19 @@ object WorkflowRun:
         .ofPattern("yyyyMMdd-HHmmss")
         .withZone(java.time.ZoneOffset.UTC)
         .format(Instant.now())
-      val file = out.resolve(s"interrupted-$stamp.json")
+      val workDir =
+        if Files.isDirectory(out) then
+          val dirs = Files.newDirectoryStream(out, "work-*")
+          try
+            val it = dirs.iterator()
+            var latest: Option[Path] = None
+            while it.hasNext do
+              val candidate = it.next()
+              if Files.isDirectory(candidate) then latest = Some(candidate)
+            latest.getOrElse(out)
+          finally dirs.close()
+        else out
+      val file = workDir.resolve(s"interrupted-$stamp.json")
       val body =
         """{"schemaVersion":1,"kind":"chat-workflow-run-interrupted",""" +
           "\"status\":\"Interrupted\",\"exitCode\":" +
