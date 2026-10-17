@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.security.MessageDigest
 
 import scala.jdk.CollectionConverters.*
 
@@ -21,6 +22,23 @@ import scala.jdk.CollectionConverters.*
   * verdicts live in the cli-side verifier suites.
   */
 object ChatWorkflowVerifierCorpusSpec extends ZIOSpecDefault:
+
+  // This digest is pinned independently in verifier code, not loaded from the
+  // expectation document it authenticates. Changing an expected verdict must
+  // therefore fail closed before the changed expectation can be used.
+  private val E02ExpectationSha256 =
+    "797dcb60df69bbf920b647d8739f697b98f96caab1f801c054fd2104abbfff3d"
+
+  private def sha256(bytes: Array[Byte]): String =
+    MessageDigest
+      .getInstance("SHA-256")
+      .digest(bytes)
+      .map(b => f"${b & 0xff}%02x")
+      .mkString
+
+  private def e02Integrity(bytes: Array[Byte]): Either[String, Unit] =
+    if sha256(bytes) == E02ExpectationSha256 then Right(())
+    else Left("verifier input digest mismatch")
 
   private def repoRoot: Path =
     val cwd = Paths.get("").toAbsolutePath
@@ -84,7 +102,8 @@ object ChatWorkflowVerifierCorpusSpec extends ZIOSpecDefault:
           "bogus-success",
           "prompt-injection-stays-data",
           "stale-build",
-          "corrupted-build"
+          "corrupted-build",
+          "changed-verifier-input"
         )
         val ids = readJson("expectations/CWF-E02.json").toOption
           .flatMap(j => field(j, "cases"))
@@ -97,6 +116,21 @@ object ChatWorkflowVerifierCorpusSpec extends ZIOSpecDefault:
         assertTrue(
           ids.toSet == required,
           ids.size == ids.distinct.size
+        )
+      },
+      test(
+        "a changed verifier expectation is refused by its independent anchor"
+      ) {
+        val original = Files.readAllBytes(corpus("expectations/CWF-E02.json"))
+        val tampered = new String(original, UTF_8)
+          .replace("\"expectedExitCode\": 10", "\"expectedExitCode\": 0")
+          .getBytes(UTF_8)
+        val intactResult = e02Integrity(original)
+        val tamperedResult = e02Integrity(tampered)
+        assertTrue(
+          intactResult == Right(()),
+          tamperedResult == Left("verifier input digest mismatch"),
+          !tamperedResult.isRight
         )
       },
       test(

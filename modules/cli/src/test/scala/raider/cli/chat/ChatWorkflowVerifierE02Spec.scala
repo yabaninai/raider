@@ -90,6 +90,21 @@ object ChatWorkflowVerifierE02Spec extends ZIOSpecDefault:
 
   def spec =
     suite("ChatWorkflowVerifierE02 (CWF-E02 negative corpus)")(
+      test("changed verifier expectation is refused by the real E02 loader") {
+        val original = Files.readAllBytes(
+          corpusPath("expectations/CWF-E02.json")
+        )
+        val tampered = new String(original, UTF_8)
+          .replace("\"expectedExitCode\": 10", "\"expectedExitCode\": 0")
+          .getBytes(UTF_8)
+        loadE02Bytes(tampered).either.map { result =>
+          assertTrue(
+            result.left.toOption.exists(
+              _.getMessage == "verifier input digest mismatch"
+            )
+          )
+        }
+      },
       test(
         "export refusals: lost context (R2), no selection (R1), secrets at select and adapter boundaries (R4, value never echoed), nonexistent parent, symlink target, staging remnant, never-overwrite (R5)"
       ) {

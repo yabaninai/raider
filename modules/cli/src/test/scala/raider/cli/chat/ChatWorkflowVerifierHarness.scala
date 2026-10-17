@@ -263,9 +263,42 @@ object ChatWorkflowVerifierHarness:
         )
     }
 
+  // Independently pinned verifier-input anchor. Keep this in the actual E02
+  // expectation-loading path; the contract corpus has its own independent
+  // integrity assertion. This is tamper evidence for verifier inputs, not a
+  // security boundary against changes to verifier code or this anchor.
+  private val E02ExpectationSha256 =
+    "797dcb60df69bbf920b647d8739f697b98f96caab1f801c054fd2104abbfff3d"
+
+  private def sha256(bytes: Array[Byte]): String =
+    MessageDigest
+      .getInstance("SHA-256")
+      .digest(bytes)
+      .map(b => f"${b & 0xff}%02x")
+      .mkString
+
+  private[chat] def loadE02Bytes(bytes: Array[Byte]): Task[E02Doc] =
+    if sha256(bytes) != E02ExpectationSha256 then
+      ZIO.fail(new IllegalStateException("verifier input digest mismatch"))
+    else
+      ZIO
+        .attempt(new String(bytes, StandardCharsets.UTF_8).fromJson[E02Doc])
+        .flatMap {
+          case Right(doc) => ZIO.succeed(doc)
+          case Left(error) =>
+            ZIO.fail(
+              new IllegalStateException(
+                s"corpus expectations/CWF-E02.json does not decode: $error"
+              )
+            )
+        }
+
   def loadE01: Task[E01Doc] = loadCorpus("expectations/CWF-E01.json")
 
-  def loadE02: Task[E02Doc] = loadCorpus("expectations/CWF-E02.json")
+  def loadE02: Task[E02Doc] =
+    ZIO
+      .attempt(Files.readAllBytes(corpusPath("expectations/CWF-E02.json")))
+      .flatMap(loadE02Bytes)
 
   def loadE03: Task[E03Doc] = loadCorpus("expectations/CWF-E03.json")
 
