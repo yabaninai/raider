@@ -17,7 +17,7 @@ import java.util.UUID
 import scala.jdk.CollectionConverters.*
 
 /** Standalone CLI entry of the replay chain (LIN-10, docs/tasks/lineage.md,
-  * ADR-027 §4): reads the recorded `lineage-data.json` of a run directory,
+  * ADR-027 §4): reads the committed lineage snapshot of a run directory,
   * replays it through the frozen [[ReplayHarness]] against a THROWAWAY copy of
   * the workspace, and reports the verdict.
   *
@@ -47,7 +47,7 @@ import scala.jdk.CollectionConverters.*
   *
   * Typed failures (LIN10-02) use the closed [[Failure]] set over the frozen
   * error types (`StoreError`, `IsolationError`, `RaiderError`, `ReduceError`):
-  * a missing or corrupt lineage-data file is a typed failure, never a crash
+  * a missing or corrupt committed snapshot is a typed failure, never a crash
   * masked into an exit code and never a fake verdict. Runtime defects (broken
   * invariants, interrupted fibers) are NOT data — they propagate and crash the
   * JVM loudly.
@@ -56,8 +56,8 @@ import scala.jdk.CollectionConverters.*
   * (`raider.core.result.ExitCodes`) — no invented codes:
   *   - 0 — Match;
   *   - 10 — Mismatch (verifier rejection: the replayed chain diverged);
-  *   - 21 — config/input invalid (missing/corrupt lineage-data, missing
-  *     workspace, refused workspace shape, un-translatable record, argv usage);
+  *   - 21 — config/input invalid (missing/corrupt snapshot, missing workspace,
+  *     refused workspace shape, un-translatable record, argv usage);
   *   - 20 — runtime failure (IO environment, replay loop typed failure, reduce
   *     failure);
   *   - 22 — capability denial, 23 — budget, 24 — deadline (mapped from the
@@ -71,8 +71,9 @@ import scala.jdk.CollectionConverters.*
   */
 object ReplayCli:
 
-  /** File name of the recorded data resource inside a run directory (the LIN-09
-    * artifact layout: the lineage artifacts sit NEXT TO the run artifacts).
+  /** Legacy fixed data artifact name, retained for LIN-09 display
+    * compatibility; the snapshot reader resolves the committed generation
+    * instead.
     */
   val DataFileName = "lineage-data.json"
 
@@ -81,9 +82,9 @@ object ReplayCli:
     */
   val RunLabel = "replay-cli"
 
-  /** Parsed command line: the run directory (holding [[DataFileName]] unless
-    * [[Config.dataFile]] overrides), the ORIGINAL workspace the record was made
-    * against, and an optional explicit data-file path.
+  /** Parsed command line: the run directory holding the commit pointer unless
+    * [[Config.dataFile]] names that pointer elsewhere, the original workspace,
+    * and an optional explicit commit-manifest path.
     */
   final case class Config(
       runDir: Path,
@@ -100,9 +101,10 @@ object ReplayCli:
   enum Failure:
 
     /** The lineage-data file could not be read/decoded
-      * (`Missing`/`Corrupt`/`Io` — the frozen [[LineageDataStore]] taxonomy).
+      * (`Missing`/`Corrupt`/`Io` — the frozen store taxonomy).
       */
     case Data(error: StoreError)
+    case Snapshot(error: LineageSnapshot.Error)
 
     /** The pre-run byte snapshot of the original workspace was refused by the
       * LIN-06C guard (symlink/special entry, file-count bound).
@@ -143,13 +145,13 @@ object ReplayCli:
   private val Usage =
     s"""usage: ReplayCli [replay] <run-dir> --workspace <dir> [--data <file>]
        |
-       |Replays a recorded lineage campaign (recorded-only: no model calls).
-       |Reads <run-dir>/$DataFileName (or --data <file>), isolates a throwaway
+        |Replays a committed lineage campaign (recorded-only: no model calls).
+        |Reads <run-dir>/${LineageSnapshot.CommitName} (or --data <commit-manifest>), isolates a throwaway
        |copy of --workspace, replays through ReplayHarness, prints the verdict.
        |
-       |  <run-dir>   run directory holding the recorded lineage-data.json
+        |  <run-dir>   run directory holding the committed lineage pair
        |  --workspace original workspace the record was made against (required)
-       |  --data      explicit lineage-data file path (default: <run-dir>/$DataFileName)
+        |  --data      explicit lineage-commit.json path (default: <run-dir>/${LineageSnapshot.CommitName})
        |
        |Exit codes (ci-runtime §8): 0 = match, 10 = mismatch,
        |20/21/22/23/24/26 = typed failure, nonzero always on failure.""".stripMargin
@@ -205,7 +207,7 @@ object ReplayCli:
     ZIO
       .scoped {
         for
-          doc <- readDoc(dataPathOf(config))
+          doc <- readDoc(config)
           expected <- recordedGraphOf(doc)
           parent <- ZIO.acquireRelease(acquireStagingParent)(
             releaseStagingParent
@@ -223,11 +225,27 @@ object ReplayCli:
       }
       .fold(failure => Verdict.Failed(failure), identity)
 
-  private def dataPathOf(config: Config): Path =
-    config.dataFile.getOrElse(config.runDir.resolve(DataFileName))
-
-  private def readDoc(path: Path): ZIO[Any, Failure, LineageDataDocument] =
-    ZIO.fromEither(LineageDataStore.read(path)).mapError(Failure.Data(_))
+  private def readDoc(config: Config): ZIO[Any, Failure, LineageDataDocument] =
+    val directory = config.dataFile match
+      case Some(pointer)
+          if pointer.getFileName.toString == LineageSnapshot.CommitName =>
+        Right(Option(pointer.getParent).getOrElse(Path.of(".")))
+      case Some(pointer) =>
+        Left(
+          Failure.Snapshot(
+            LineageSnapshot.Error.Invalid(
+              pointer,
+              "--data must name the committed lineage-commit.json pointer"
+            )
+          )
+        )
+      case None => Right(config.runDir)
+    ZIO
+      .fromEither(directory)
+      .flatMap(path =>
+        ZIO.fromEither(LineageSnapshot.read(path)).mapError(Failure.Snapshot(_))
+      )
+      .map(_.document)
 
   /** The graph recorded in the document. [[ReplayHarness.recordedGraph]]
     * reports refusal conditions via `sys.error` (its fixture-bug channel); for
@@ -349,6 +367,7 @@ object ReplayCli:
         s"lineage-data corrupt at $path: $detail (StoreError.Corrupt)"
       case Failure.Data(StoreError.Io(path, detail)) =>
         s"lineage-data read failed at $path: $detail (StoreError.Io)"
+      case Failure.Snapshot(error) => s"lineage snapshot invalid: $error"
       case Failure.SnapshotGuard(what) =>
         s"workspace snapshot refused: $what"
       case Failure.Record(what) =>
@@ -382,8 +401,21 @@ object ReplayCli:
       case Failure.Data(_: StoreError.Missing) => ExitCodes.ConfigInvalid
       case Failure.Data(_: StoreError.Corrupt) => ExitCodes.ConfigInvalid
       case Failure.Data(_: StoreError.Io)      => ExitCodes.RuntimeFailure
-      case Failure.SnapshotGuard(_)            => ExitCodes.ConfigInvalid
-      case Failure.Record(_)                   => ExitCodes.ConfigInvalid
+      case Failure.Snapshot(LineageSnapshot.Error.Missing(_)) =>
+        ExitCodes.ConfigInvalid
+      case Failure.Snapshot(LineageSnapshot.Error.Invalid(_, _)) =>
+        ExitCodes.ConfigInvalid
+      case Failure.Snapshot(
+            LineageSnapshot.Error.Data(_: StoreError.Missing)
+          ) =>
+        ExitCodes.ConfigInvalid
+      case Failure.Snapshot(
+            LineageSnapshot.Error.Data(_: StoreError.Corrupt)
+          ) =>
+        ExitCodes.ConfigInvalid
+      case Failure.Snapshot(_)      => ExitCodes.RuntimeFailure
+      case Failure.SnapshotGuard(_) => ExitCodes.ConfigInvalid
+      case Failure.Record(_)        => ExitCodes.ConfigInvalid
       case Failure.Isolation(IsolationError.OriginalMissing(_)) =>
         ExitCodes.ConfigInvalid
       case Failure.Isolation(IsolationError.CopyFailed(_)) =>

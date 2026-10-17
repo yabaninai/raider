@@ -117,6 +117,24 @@ Validation is done by a structural checker script run from a temp directory
 (the `python3-jsonschema` library is not available in this environment); the
 checker is deliberately NOT stored in the repo.
 
+## Snapshot publication and pinned validation (LIN-03.b)
+
+The frozen `lineage-data.json` schema and GraphHash canonicalization are
+unchanged. A run publishes the pair using immutable generation files and the
+`lineage-commit.json` pointer: complete data/source bytes are written first,
+then the pointer is replaced atomically. The pointer identifies both filenames
+and SHA-256 digests. A reader MUST resolve both members through this pointer,
+verify both digests, and fail explicitly on a missing, malformed, incomplete,
+or mismatched generation. Direct reads of the fixed-name `lineage-data.json`
+are not an accepted snapshot read protocol.
+
+The authorized live pinned-compiler check is the scripted local
+`dotty.tools.dotc.Main` 3.9.0 process exercised by `LineageArtifactsSpec` on
+the source path resolved from the committed snapshot. It performs compilation
+only, uses local pinned artifacts, makes no provider call, and does not change
+the headless session exit code. Timeout/launch failure is unavailable
+evidence, never a compile pass.
+
 ## Determinism (LIN2-A-03)
 
 Golden files are canonical: 2-space indent, keys in contract order, UTF-8
