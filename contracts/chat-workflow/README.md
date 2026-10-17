@@ -84,6 +84,15 @@ successful.
 - `expectations/CWF-E02.json` — negative corpus expectations (CWF-E02).
 - `expectations/CWF-E03.json` — cancellation/concurrency expectations (CWF-E03).
 
+The E02 expectation bytes have an independent SHA-256 anchor in
+`ChatWorkflowVerifierCorpusSpec`. The verifier refuses a changed expectation
+document before using its verdicts; in particular changing the `bogus-success`
+expected exit from 10 to 0 cannot convert a failed trusted check into a pass.
+The corpus test mutates that value in memory and asserts typed integrity
+rejection (`verifier input digest mismatch`). This is tamper evidence for these
+verifier inputs, not a general claim that verifier source or the anchor cannot
+be changed; those remain protected review inputs.
+
 Every missing/timeout/skipped verifier case is a non-pass. No fixture in this
 corpus hand-authors a workflow: every compiled/run source in the verifier is
 produced by `:export-workflow` from a captured session (the only deliberately

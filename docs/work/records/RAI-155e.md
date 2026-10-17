@@ -1,6 +1,6 @@
 # RAI-155.e: work record
 
-Status: partial — re-gates green; acceptance completeness requires reviewer confirmation. Date: 2026-10-17. Lane: `lane/rai-155e`. Pre-merge HEAD: `1598861f827dbcb6c4bb12fca7e2b2e2d1070e62`; requested `main`: `46dc1401596e9fb8b3b1a3b331aedee93c9bbb55`.
+Status: review-fix implemented; final gates passed. Date: 2026-10-17. Lane: `lane/rai-155e`. Review-fix baseline: `808bdcd44320abf9c20a98896363d478de627ed4`.
 
 ## Resulting behavior
 
@@ -8,11 +8,16 @@ Status: partial — re-gates green; acceptance completeness requires reviewer co
 - E01, E02, E03, and corpus tests pass; E03 passed in the complete verifier run and in three further consecutive standalone executions.
 - All requested quality commands pass. Neither documented exception (MJE-03c or TAB-02) failed in the profile run; no exception was needed. There were no skips or timeouts.
 - No paid provider calls. E01 uses the explicitly local scripted OpenAI-compatible stand.
+- Closed the High finding: E02 now includes `changed-verifier-input`. The exact CWF-E02 expectation file is pinned by a verifier-code SHA-256 anchor, independent of the JSON expectation document. A mutation changing the `bogus-success` expected exit from 10 to 0 produces `Left("verifier input digest mismatch")` before the modified expected value can be used. This is narrowly tamper-evidence for these expectation bytes, not a claim that verifier source/anchor cannot be modified.
+- Combined E01/E02/E03/corpus run passed: 6 CLI tests and 5 DSL corpus tests; no failures/skips. The new negative case passed in three consecutive standalone corpus runs (5 tests passed each run).
+- Required change gates and the static/unit/contracts/ci profile passed with no skipped checks. Current final manifests and their post-gate verification output are recorded in the final handoff; quality gates ran after this record's final content was prepared.
 
 ## Changed paths
 
 - `docs/work/records/RAI-155e.md` (this evidence and completeness record only).
-- Product and verifier changes are from the fast-forward merge of `main`, not edits in this lane.
+- `contracts/chat-workflow/expectations/CWF-E02.json` (added contract-derived changed-verifier-input case).
+- `contracts/chat-workflow/README.md` (anchor scope and tamper-evidence limitation).
+- `modules/dsl/src/test/scala/raider/dsl/workflow/ChatWorkflowVerifierCorpusSpec.scala` (independent digest anchor and tampered-expectation refusal test).
 
 ## Acceptance evidence and completeness matrix
 
@@ -22,15 +27,27 @@ Status: partial — re-gates green; acceptance completeness requires reviewer co
 | CWF-E01: independent failure before agent work / success after repair; real effect | Green. Independent check fails before agent work and passes after; scripted stand causes actual tool effects. | None observed. |
 | CWF-E01: four-cell 2-input × 2-launcher matrix on fresh copies | Green. Two inputs and `local-main` / `raider-workflow-run`, four fresh workspaces; normalized outcomes match per input and inputs differ observably. Same edited workflow/build identity is checked. | None observed. |
 | CWF-E01: fifth unedited control | Green. Fifth fresh workspace runs unedited source for input 1; both runs succeed and report/effect/source identity distinguish the manual edit. | None observed. |
-| CWF-E02: negative corpus | Green for frozen corpus cases: absent/lost selection context, secrets at select/export, unsafe export paths/targets/remnants, invalid edited source and input, symlink workspace, missing credentials, bogus success/failed check on both launchers, hostile prompt content inert as data, stale source/build identity, corrupted classes. | **Card's “changed verifier/test” negative is not independently established by the visible CWF-E02 case: the stale-build test establishes edited workflow source/build mismatch, not an explicit mutation/change to a verifier/test input.** Requires independent reviewer disposition or a scoped verifier addition; expectations have not been weakened. |
+| CWF-E02: negative corpus | Existing cases remain; additionally `changed-verifier-input` rejects a changed `bogus-success` expected exit using the independently pinned digest. The mutation is refused before the modified verifier input can convert a failed acceptance result to pass. | No weakening; anchor is in the corpus verifier and expectation does not define its own digest. |
 | CWF-E03: interrupted capture/export snapshot/concurrent export/no retry | Green. In-flight turn is Unknown and retained, completed prefix is selectable, no redispatch; streaming export matches quiescent snapshot; concurrent distinct-target exports match and staging remnants are refused. | None observed. |
 | CWF-E03: fresh-process SIGTERM, bounded truthful artifact, exit 143, no success/retry; deterministic repeat | Green. Expected exit, incomplete artifact/interrupted state, never Succeeded, no auto retry; deterministic run/export comparison. Full verifier plus three additional passes. | None observed in test runs. |
 | Corpus integrity | Green; exactly frozen expected files, documented normalization/prerequisites, E02 negative corpus declaration, all expectation IDs parse. | None observed. |
 | Independent review / integrated acceptance | Not performed by this worker. | Required before acceptance. Lane evidence is not integrated-candidate evidence. |
 
-Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat entrypoints/local stand, four fresh matrix copies, fifth unedited control, independent pre-repair failure, post-repair passing checks, and same edited program on local and non-TTY CI launchers. CWF-E02 and E03 add the negative and cancellation/concurrency checks. The only identified acceptance subcase gap is explicit changed-verifier/test detection (distinct from stale edited-source detection); CWF-E01..E03 are otherwise green. RAI-155.f walkthrough remains downstream and is not this card's acceptance.
+Roadmap §6d's explicit demonstration elements are covered by E01: genuine chat entrypoints/local stand, four fresh matrix copies, fifth unedited control, independent pre-repair failure, post-repair passing checks, and same edited program on local and non-TTY CI launchers. CWF-E02 includes independently anchored verifier-input tamper detection distinct from stale workflow build detection; E03 adds cancellation/concurrency checks. RAI-155.f walkthrough remains downstream and is not this card's acceptance.
 
 ## Commands
+
+Final gate sequence (record finalized before this sequence):
+
+| argv / command | Exit | Log / manifest |
+| --- | ---: | --- |
+| `make quality-changed` | 0 | Classified contracts/static/unit. |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | Passed, 5 gates, 0 failures/skips; `artifacts/quality/20261017-201412-25122-0001/manifest.json`. |
+| `make quality-profile PROFILES="static unit contracts ci"` | 0 | Passed, 6 gates, 0 failures/skips; `artifacts/quality/20261017-202051-26386-0001/manifest.json`. |
+| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-201412-25122-0001/manifest.json --require contracts,static,unit` | 0 | `[verify] OK` — policy/toolchain/log hashes checked, fingerprint fresh. |
+| `python3 scripts/quality/quality.py verify artifacts/quality/20261017-202051-26386-0001/manifest.json --require static,unit,contracts,ci` | 0 | `[verify] OK` — policy/toolchain/log hashes checked, fingerprint fresh. |
+
+The exact post-gate verifier output is: `[verify] OK: manifest <path> satisfies <required profiles> (policy/toolchain/logs hashes checked, fingerprint fresh)` for both manifests above. No skip or timeout was treated as a pass.
 
 | argv / command | Exit | Log / manifest |
 | --- | ---: | --- |

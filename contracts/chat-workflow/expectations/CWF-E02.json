@@ -141,6 +141,13 @@
       "expectedDetailContains": ["stale or corrupted build"],
       "expectedRunStatus": "Failed",
       "note": "tampered class files fail the class-digest preflight before dispatch"
+    },
+    {
+      "id": "changed-verifier-input",
+      "kind": "integrity",
+      "expectedDetailContains": ["verifier input digest mismatch"],
+      "expectedVerdictAbsent": true,
+      "note": "changing a verifier expectation (including changing a failing bogus-success expectation to exit 0) is refused against the verifier's independently anchored suite-input digest"
     }
   ]
 }
