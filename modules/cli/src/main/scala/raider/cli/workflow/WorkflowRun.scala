@@ -862,14 +862,18 @@ object WorkflowRun:
                   o
                 catch
                   case _: InterruptedException =>
-                    done.set(true)
+                    // An interrupted join is not evidence that the runner's
+                    // finalizers have completed. Keep the shutdown hook's
+                    // bounded wait active so it can either observe cleanup or
+                    // publish the truthful interruption marker.
                     Outcome(
                       raider.core.result.ExitCodes.SigTerm,
                       args.out,
                       None
                     )
                   case _: zio.FiberFailure =>
-                    done.set(true)
+                    // As above, do not let the join-side signal suppress the
+                    // hook's marker before artifact finalization has settled.
                     Outcome(
                       raider.core.result.ExitCodes.SigTerm,
                       args.out,
