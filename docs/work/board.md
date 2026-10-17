@@ -288,6 +288,57 @@ after the first integration batch (main 0870045):
   remain, not reclassified as fixed. The ADR-034 EXECUTE timeout debt is repaid
   by the successful retry; the first timeout remains recorded as a non-pass.
 
+## 2026-10-18 — RAI-155.f accepted; RAI-155 parent remains open
+
+- **RAI-155.f merged and accepted** from `lane/rai-155f` after approved review.
+  The English walkthrough is at `docs/examples/chat-workflow/README.md`; lane
+  evidence reports the §6d five-run fresh-copy matrix (two inputs × two
+  launchers plus the unedited control), with checks failing before repair and
+  passing after. Its recorded real run IDs are `wf_955e397c`, `wf_4236a29f`,
+  and `wf_9ac3e838`.
+- **RAI-155 parent remains blocked/open.** Children a–f are accepted
+  (`23bbc36`, `fee77dd`, `29ad1b4`, `3a4e91d`, `37911dc`, and this merge), but
+  the required integrated verifier was not run because integrated gates found
+  a real docs-verifier failure. Scope remains the first-slice path with
+  explicit sequential task selection; SDLC/PR/merge/release remain in the
+  RAI-163..170/173 chain. No live-model quality claim is made.
+- **Integrated gates on the merged tree:** `make quality-changed` exited 0
+  (clean-tree classification; minimum fast). `make quality-changed
+  QUALITY_EXECUTE=1` first timed out at the 120-second command budget (not a
+  pass); its one longer-budget retry exited 2. Manifest
+  `artifacts/quality/20261018-004127-48453-0001/manifest.json` reports
+  `plan-validate: failed exit=1`; compile, formatting, scalafix, forbidden API,
+  license, contracts, fixtures, and sbt-test checks passed. `make
+  quality-profile PROFILES="static unit contracts ci docs"` exited 2 with
+  manifest `artifacts/quality/20261018-004900-54230-0001/manifest.json`;
+  sbt-test, CLI smoke, contracts, compile fixtures, compile, and static checks
+  passed, while plan-validate failed. The precise red is five missing links in
+  `docs/examples/chat-workflow/README.md` to lane-only
+  `artifacts/rai-155f/e01.log`, `e02.log`, `e03.log`,
+  `e01/cwf-e01-a/cwf_e01-manifest.json`, and
+  `e01/cwf-e01-a/cwf_e01.input.json` (those artifacts are absent in the root
+  checkout). Explicit `python3 scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` reported `Plan package: failed; 193
+  cards` and the same five missing links. This is a real red, not a timeout or
+  skip. MJE-03c (RAI-157) and TAB-02 (conditional RAI-172) remain separately
+  documented load-held exceptions; neither explains or excuses this failure.
+  Manifests/logs are under the paths above.
+- **Parent acceptance:** not claimed. The required merged-tree command
+  `sbt --batch 'raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec
+  raider.cli.chat.ChatWorkflowVerifierE02Spec
+  raider.cli.chat.ChatWorkflowVerifierE03Spec'
+  'raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec'` was
+  deliberately not run after the real gate red, so there are no verifier
+  exit codes to report. Fix the root documentation artifact links and rerun
+  gates plus the integrated verifier before accepting RAI-155.
+- **Parallel lanes / next work:** RAI-164 is partial (stages, typed evidence,
+  SDLC-STG-01..04 green; artifact-writer wiring owed). RAI-173 is partial
+  (reader protocol and 0-torn-reads ×3; `sbt-test` gate red with truncated
+  diagnostic, which is owed). RAI-157 matrix and RAI-136 storm remain held
+  until load is below 10 (today: 16–37). Next: complete LIN-03 through the
+  RAI-173 merge after its gate diagnostic; continue RAI-165+ chain; resume
+  RAI-157/136 under the load threshold.
+
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
 Registered **RAI-155**, with delivery cards **RAI-155.a–f**, all `todo`.

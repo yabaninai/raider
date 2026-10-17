@@ -752,7 +752,7 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-144.
 
 ## RAI-155: Chat to editable Scala workflow to local and generic CI
 
-Status: todo. Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b, RAI-155.c, RAI-155.d, RAI-155.e, RAI-155.f.
+Status: blocked (integrated documentation gate fails because RAI-155.f references lane artifacts absent from the root checkout; parent verifier not run). Milestone: LIN. Dependencies: RAI-155.a, RAI-155.b, RAI-155.c, RAI-155.d, RAI-155.e, RAI-155.f.
 
 **Scenario and contract.** Priority integration umbrella. Deliver one supported product path: a user completes a multi-turn coding conversation in raider chat, selects the relevant turns and task intent, explicitly exports a proposed Scala workflow, edits that normal source file, compiles/packages it, and runs the edited definition on a fresh workspace through the existing local/headless runtime. The output must launch real agent work and trusted checks; returning LineageStep/StepReport history, a fixed answer, a historical patch, or a TaskSummary-only demonstration does not satisfy this card. All six child packets are required for acceptance; the parent owns integration only. Preserve current P-LIN/TUI lanes and accepted contracts.
 
@@ -896,7 +896,7 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-155.b, RAI-155.c, RAI-155.d.
 
 ## RAI-155.f: User walkthrough: chat, export Scala, edit, and run in CI
 
-Status: ready. Milestone: LIN. Dependencies: RAI-155.e.
+Status: accepted. Milestone: LIN. Dependencies: RAI-155.e.
 
 **Scenario and contract.** Document the accepted user path in English with a real small conversation, exact shipped export command, complete exported Scala source, a meaningful user edit/diff, exact compile/package/local/CI commands and actual result/artifact locations. Make the edited generated workflow the main example; distinguish authoring source from dry-run lineage and later run history in plain language. Keep acceptance/internal planning detail out of the user tutorial. Preserve old captures and link the new source/result to the candidate that produced them.
 
