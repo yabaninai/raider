@@ -11,7 +11,7 @@ import raider.runtime.lineage.wire.{
   LineageWire
 }
 import raider.runtime.loop.LoopEvents
-import zio.{Fiber, Ref, Semaphore, UIO, ZIO}
+import zio.{Duration, Fiber, Ref, Semaphore, UIO, ZIO}
 
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -635,11 +635,7 @@ final class MultiJobExport private (
     def loop: UIO[Unit] =
       cond.flatMap { ok =>
         if ok || System.currentTimeMillis() >= deadline then ZIO.unit
-        else
-          ZIO.succeed {
-            java.util.concurrent.TimeUnit.MILLISECONDS.sleep(2L)
-            ()
-          } *> loop
+        else ZIO.sleep(Duration.fromMillis(2L)) *> loop
       }
     loop
 

@@ -152,11 +152,7 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     def loop: UIO[Unit] =
       cond.flatMap { ok =>
         if ok || System.currentTimeMillis() >= deadline then ZIO.unit
-        else
-          ZIO.succeed {
-            java.util.concurrent.TimeUnit.MILLISECONDS.sleep(2L)
-            ()
-          } *> loop
+        else ZIO.sleep(ZDuration.fromMillis(2L)) *> loop
       }
     loop
 
