@@ -117,6 +117,10 @@ lazy val raiderRepl = (project in file("modules/repl"))
     raiderTools,
     raiderProviderChat,
     raiderProviderAnthropic,
+    // RAI-177 (coordinator, 2026-10-18): expose accepted CLI lineage
+    // pointer-reader/live-projection interfaces to the REPL host. CLI does
+    // not depend on REPL, so this preserves the headless/compiler boundary.
+    raiderCli % "compile->compile;test->test",
     // RAI-102 contract change (ratified by coordinator 2026-10-12): the
     // product REPL hosts the accepted raider.ui TabShell (RAI-061). No cycle
     // (ui depends only on runtime); same pinned JLine 4.0.14. The headless

@@ -106,7 +106,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 ## LIN-04: Lineage tab in the TUI
 
-Status: ready. Milestone: LIN. Dependencies: LIN-03.
+Status: accepted. Milestone: LIN. Dependencies: LIN-03.
 
 **Scenario and contract.** Minimal tab host (one tab, without P2 drafts): session tree, lineage.scala source, and validity status; accessible during a live session without blocking input.
 
@@ -130,7 +130,9 @@ Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 ## RAI-177: LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance
 
-Status: ready. Milestone: LIN. Dependencies: LIN-04, LIN-03, RAI-173.
+Status: accepted. Milestone: LIN. Dependencies: LIN-04, LIN-03, RAI-173.
+
+Scope note (coordinator, 2026-10-18): build edge raiderRepl→raiderCli authorized (RAI-102 precedent) to consume the accepted lineage interfaces; pointer-protocol-only reads unchanged.
 
 **Scenario and contract.** Complete the accepted LineageTab slice in the product REPL by wiring a live provider into the REPL host. Consume the LIN-03 live incremental projection and/or snapshots resolved exclusively through the RAI-173 commit-pointer protocol; never read a fixed artifact path or bypass the protocol. Surface invalid projections through a typed status that the tab renders honestly under ADR-024. Prove tab switching while a live producer updates the projection, using real PTY acceptance rather than only scripted-terminal tests.
 
@@ -154,7 +156,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-04, LIN-03, RAI-173.
 
 ## LIN-05: Replay-recorded interpreter and graph comparator
 
-Status: todo. Milestone: LIN. Dependencies: LIN-02, LIN-03.
+Status: accepted. Milestone: LIN. Dependencies: LIN-02, LIN-03.
 
 **Scenario and contract.** Execute the lineage program in replay-recorded mode (default): use LLM responses from the recording and recompute deterministic tool calls. Success means an identical call graph, checked by a graph-hash comparator.
 
@@ -178,7 +180,7 @@ Status: todo. Milestone: LIN. Dependencies: LIN-02, LIN-03.
 
 ## LIN-06: Live rerun, mutation isolation, and diff report
 
-Status: todo. Milestone: LIN. Dependencies: LIN-05.
+Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
 **Scenario and contract.** Opt-in live rerun makes real calls. Mutating operations run only in an isolated WS copy (RecoveryClass policy); enforce a budget; report the diff between the live and recorded graphs.
 
@@ -202,7 +204,7 @@ Status: todo. Milestone: LIN. Dependencies: LIN-05.
 
 ## LIN-07: Partial replay of phases/subtrees
 
-Status: todo. Milestone: LIN. Dependencies: LIN-05.
+Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
 **Scenario and contract.** Replay a named phase/subtree with an explicit input contract; isolate non-overlapping phases; report contract errors instead of substituting empty values.
 
@@ -226,7 +228,7 @@ Status: todo. Milestone: LIN. Dependencies: LIN-05.
 
 ## LIN-08: Scopes (chat/headless/campaigns), pinning, catalog
 
-Status: todo. Milestone: LIN. Dependencies: LIN-03, LIN-05.
+Status: ready. Milestone: LIN. Dependencies: LIN-03, LIN-05.
 
 **Scenario and contract.** Lineage for chat, headless, and overnight campaigns (tree catalog); compare the pinned environment: warning + attempt + discrepancy report.
 

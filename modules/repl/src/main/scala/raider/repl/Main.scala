@@ -286,8 +286,18 @@ object Main:
           ZIO.scoped {
             for
               wiring <- TabShellHost.wiring
+              lineageDir = sys.env
+                .get("RAIDER_LINEAGE_DIR")
+                .map(
+                  java.nio.file.Paths.get(_).toAbsolutePath.normalize()
+                )
+              lineage <- ReplLineageProvider.make(lineageDir)
               _ <- ScriptedTabStream.run(wiring).when(plan.isScripted).fork
-              _ <- TabShellHost.run(wiring, ScrollbackCommands(wiring.registry))
+              _ <- TabShellHost.run(
+                wiring,
+                ScrollbackCommands(wiring.registry),
+                lineage
+              )
             yield ()
           }
         )
