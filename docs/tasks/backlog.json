@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 184,
+  "raider_count": 185,
   "companion_count": 3,
   "cards": [
     {
@@ -4782,7 +4782,7 @@
         "RAI-155.e",
         "RAI-155.f"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/work/records/RAI-155.md"
       ],
@@ -4965,7 +4965,7 @@
       "dependencies": [
         "RAI-155.e"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "README.md",
         "docs/onboarding.md",
@@ -5217,6 +5217,23 @@
       },
       "non_goals": "Approval processing, forge mutations/adapters, local release, second scheduler/daemon, unreviewed BundleWorkflow v1 changes.",
       "context": "ADR-030 §§2, 2.1, 7 SDLC-01; roadmap-12k §6c SDLC-01."
+    },
+    {
+      "id": "RAI-174",
+      "title": "SDLC evidence persistence: versioned event/run schema extension",
+      "milestone": "M1",
+      "dependencies": ["RAI-164"],
+      "status": "todo",
+      "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**"],
+      "profiles": ["contracts"],
+      "behavior": "Reviewed versioned extension of the event/run artifact schema with an additive record union carrying typed check-result, review-verdict, candidate-identity and integration-result records. Keep v1 consumers unaffected and pin v1 output bit-for-bit where no SDLC evidence exists; unknown-field typed refusal follows RAI-164's evolution policy. RAI-143 is the versioned additive-wire precedent.",
+      "acceptance": {
+        "normal": "SDLC-WIRE-01: v1-pinning golden remains bit-for-bit unchanged without SDLC evidence; additive decoding and roundtrip succeed for each of the four typed evidence records.",
+        "error": "SDLC-WIRE-02: unsupported/unknown typed fields are refused according to the RAI-164 evolution policy; v1 consumers remain unaffected.",
+        "concurrency": "SDLC-WIRE-03: mixed v1 and additive SDLC records preserve deterministic order and roundtrip without changing existing v1 records or fields."
+      },
+      "non_goals": "Removing/renaming v1 fields, a second writer format, schema changes beyond the additive union, or changing protected verifiers/goldens outside their own reviewed path.",
+      "context": "RAI-164 is blocked at the frozen boundary: EventPayload is closed over v1 cases and EventsJsonlWriter.append accepts only EventEnvelope, preventing typed SDLC evidence persistence in run.json/events.jsonl without a contract extension. RAI-143 provides the additive versioned-wire precedent with v1 pinned."
     },
     {
       "id": "RAI-165",

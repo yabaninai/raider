@@ -12,7 +12,7 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | M1 027–040 | [Extensibility and optional integrations](m1.md) |
 | M2 041–047 / P2 048–053 | [Release/P2](m2-p2.md) |
 | YB-RAI-01–03 | [Changes in Yabanin](yabanin.md) |
-| RAI-163–170 | [SDLC effects API, stages, approval, integration, release, and independent verification](m1.md) |
+| RAI-163–170, RAI-174 | [SDLC effects API, stages, evidence persistence, approval, integration, release, and independent verification](m1.md) |
 | RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
 | RAI-173 | [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
@@ -194,6 +194,7 @@ See [backlog.json](backlog.json) for cards added in later revisions, including L
 - **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
 - **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
 - **RAI-173** [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
+- **RAI-174** [SDLC evidence persistence: versioned event/run schema extension](m1.md); dependencies: RAI-164; profiles: contracts.
 
 ## Existing obligations added on 2026-10-13
 

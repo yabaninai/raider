@@ -127,6 +127,8 @@ final class MultiJobExport private (
     workDir: Path,
     joinLock: Semaphore,
     wire: Ref[Vector[LineageEnvelope]],
+    liveProjection: Ref[Option[LiveLineageProjection]],
+    projectionFailure: Ref[Option[String]],
     segmentsRef: Ref[Vector[MultiJobExport.Segment]],
     campaignRef: Ref[Option[JobId]],
     rootTerminalExported: Ref[Boolean],
@@ -141,6 +143,22 @@ final class MultiJobExport private (
   // Export-canonical per-job seq counters — file order, guarded by joinLock.
   private val fileSeq =
     scala.collection.mutable.HashMap.empty[String, Long]
+
+  /** Append the exact committed export lines to the live fold. The export lock
+    * serializes callers, so projection state has the same order as the file. A
+    * rejected projection is recorded but never interferes with the session.
+    */
+  private def appendWire(lines: Vector[LineageEnvelope]): UIO[Unit] =
+    wire.update(_ ++ lines) *> ZIO.foreachDiscard(lines) { line =>
+      liveProjection.get.flatMap { previous =>
+        LiveLineageProjection.append(previous, line) match
+          case Right(next) => liveProjection.set(Some(next))
+          case Left(error) => projectionFailure.set(Some(String.valueOf(error)))
+      }
+    }
+
+  def currentProjection: UIO[(Option[LiveLineageProjection], Option[String])] =
+    liveProjection.get.zip(projectionFailure.get)
 
   /** The campaign (root) job id — set by the runner right after the job is
     * started, before any child can exist (children are forked by the campaign's
@@ -332,7 +350,7 @@ final class MultiJobExport private (
                     val copies = held.map(e => joinedCopy(e, inv))
                     ZIO.succeed(forkRec +: copies)
             _ <- ZIO.foreachDiscard(joined)(runWriter.appendLineage)
-            _ <- wire.update(_ ++ joined)
+            _ <- appendWire(joined)
             // The native segment: verbatim hub envelopes (hub seqs), including
             // the child's own fork-record copy — the provenance-preserved
             // original the joined stream points back to.
@@ -360,7 +378,7 @@ final class MultiJobExport private (
             val line = joinedCopy(e, seg.invocationId)
             runWriter.appendLineage(line) *> seg
               .appendNative(e)
-              .unit *> wire.update(_ :+ line)
+              .unit *> appendWire(Vector(line))
       }
     }
 
@@ -401,7 +419,7 @@ final class MultiJobExport private (
           else ZIO.succeed(Vector.empty[LineageEnvelope])
         all = extra :+ exported(env)
         _ <- ZIO.foreachDiscard(all)(runWriter.appendLineage)
-        _ <- wire.update(_ ++ all)
+        _ <- appendWire(all)
         // The campaign watermark counts CAMPAIGN hub envelopes only (see
         // [[campaignWritten]]).
         _ <-
@@ -542,7 +560,7 @@ final class MultiJobExport private (
             // here and records nothing (the run fails through the main path).
             runWriter
               .appendLineage(line)
-              .flatMap(_ => wire.update(_ :+ line))
+              .flatMap(_ => appendWire(Vector(line)))
               .catchAllDefect(_ => ZIO.unit)
           }
     }
@@ -676,6 +694,8 @@ object MultiJobExport:
     for
       lock <- Semaphore.make(1L)
       wireRef <- Ref.make(Vector.empty[LineageEnvelope])
+      projectionRef <- Ref.make(LiveLineageProjection.initial)
+      projectionErrorRef <- Ref.make(Option.empty[String])
       segsRef <- Ref.make(Vector.empty[Segment])
       campaignRef <- Ref.make(Option.empty[JobId])
       rootDoneRef <- Ref.make(false)
@@ -688,6 +708,8 @@ object MultiJobExport:
       workDir,
       lock,
       wireRef,
+      projectionRef,
+      projectionErrorRef,
       segsRef,
       campaignRef,
       rootDoneRef,

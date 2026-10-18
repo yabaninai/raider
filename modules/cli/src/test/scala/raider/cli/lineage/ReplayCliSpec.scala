@@ -13,6 +13,7 @@ import raider.runtime.lineage.replay.{
 }
 import zio.test.*
 import zio.{Scope, ZIO}
+import zio.json.EncoderOps
 
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
@@ -61,8 +62,7 @@ object ReplayCliSpec extends ZIOSpecDefault:
       ZIO.attempt(Files.createTempDirectory(s"raider-replay-cli-$prefix")).orDie
     )(d => ZIO.attempt(deleteRecursively(d)).orDie.ignore)
 
-  /** Writes `doc` as the run directory's lineage-data artifact through the
-    * frozen recording store (the layout `ReplayCli` reads by default).
+  /** Publishes a complete data/source generation through the reader protocol.
     */
   private def writeDoc(
       runDir: Path,
@@ -70,7 +70,11 @@ object ReplayCliSpec extends ZIOSpecDefault:
   ): ZIO[Any, Nothing, Unit] =
     ZIO
       .attempt(
-        LineageDataStore.write(runDir.resolve(ReplayCli.DataFileName), doc)
+        LineageSnapshot.publish(
+          runDir,
+          doc.toJson.getBytes(UTF_8),
+          doc.runId.getBytes(UTF_8)
+        )
       )
       .orDie
       .flatMap {
@@ -168,7 +172,7 @@ object ReplayCliSpec extends ZIOSpecDefault:
       }
     },
     test(
-      "LIN10-02: missing lineage-data.json is a typed StoreError.Missing with a nonzero exit"
+      "LIN3B-02: missing commit pointer is an explicit invalid snapshot"
     ) {
       live {
         ZIO.scoped {
@@ -178,15 +182,17 @@ object ReplayCliSpec extends ZIOSpecDefault:
             verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
           yield verdict match
             case ReplayCli.Verdict.Failed(
-                  ReplayCli.Failure.Data(StoreError.Missing(path))
+                  ReplayCli.Failure.Snapshot(
+                    LineageSnapshot.Error.Missing(path)
+                  )
                 ) =>
               val rendered = ReplayCli.render(verdict)
               assertTrue(
-                path == runDir.resolve(ReplayCli.DataFileName),
+                path == runDir.resolve(LineageSnapshot.CommitName),
                 ReplayCli.exitCode(verdict) == ExitCodes.ConfigInvalid,
                 ReplayCli.exitCode(verdict) != 0,
                 rendered.startsWith("typed-error:"),
-                rendered.contains("StoreError.Missing")
+                rendered.contains("lineage snapshot invalid")
               )
             case other =>
               throw new IllegalStateException(
@@ -196,7 +202,7 @@ object ReplayCliSpec extends ZIOSpecDefault:
       }
     },
     test(
-      "LIN10-02: corrupt lineage-data.json is a typed StoreError.Corrupt with a nonzero exit"
+      "LIN3B-02: malformed commit pointer is explicitly invalid"
     ) {
       live {
         ZIO.scoped {
@@ -206,8 +212,8 @@ object ReplayCliSpec extends ZIOSpecDefault:
             _ <- ZIO
               .attempt(
                 Files.writeString(
-                  runDir.resolve(ReplayCli.DataFileName),
-                  "{ this is not a lineage-data document",
+                  runDir.resolve(LineageSnapshot.CommitName),
+                  "broken manifest\n",
                   UTF_8
                 )
               )
@@ -215,14 +221,15 @@ object ReplayCliSpec extends ZIOSpecDefault:
             verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
           yield verdict match
             case ReplayCli.Verdict.Failed(
-                  ReplayCli.Failure.Data(StoreError.Corrupt(_, _))
+                  ReplayCli.Failure
+                    .Snapshot(LineageSnapshot.Error.Invalid(_, _))
                 ) =>
               val rendered = ReplayCli.render(verdict)
               assertTrue(
                 ReplayCli.exitCode(verdict) == ExitCodes.ConfigInvalid,
                 ReplayCli.exitCode(verdict) != 0,
                 rendered.startsWith("typed-error:"),
-                rendered.contains("StoreError.Corrupt")
+                rendered.contains("lineage snapshot invalid")
               )
             case other =>
               throw new IllegalStateException(
