@@ -1,5 +1,68 @@
 # LIN-03: work record
 
+## Live projection diagnostic completion round (2026-10-18)
+
+Status: partial; the reviewed HeadlessRunner reporting gap is wired. Baseline:
+`98d2b4f` on `lane/lin-03`, after the requested fast-forward merge from `main`;
+worktree was clean before edits. No frozen schema, GraphHash, build, gates, or
+board files were changed.
+
+### Resulting behavior
+
+`executeAsJob` now carries the exporter’s current live projection through to
+artifact rendering. A non-valid `projectionStatus` and/or a retained live fold
+error produces an additive, bounded `lineage live projection: invalid (...)`
+line in `summary.md`. It is observational only and does not participate in the
+session result or exit code. Existing settled lineage artifacts continue to be
+published through `lineage-commit.json`; the fixture resolves the pointer and
+checks both committed members remain readable.
+
+### Acceptance evidence
+
+| Criterion / test ID | Actual result | Evidence |
+| --- | --- | --- |
+| LIN3-01 | Existing live ordered fold behavior unchanged; this round did not add a 200-round production-run check. | Existing `LiveLineageProjectionSpec`; not rerun as a dedicated test in this round. |
+| LIN3-02 | Partial: live `projectionStatus`/retained fold error now have a summary reporting path without changing the exit path. No live dotc compile was added; the pinned compiler remains exercised on settled committed artifacts only. | `HeadlessRunner.liveProjectionDiagnostic`; `LineageSummarySpec` LIN3-03 test; targeted spec below. |
+| LIN3-03 | Partial: a report-only failure fixture observes success exit and a readable pointer-backed prior/settled snapshot. It is not a process-crash-between-nodes fixture and does not prove a mid-run checkpoint. | `LineageSummarySpec` LIN3-03 test. |
+| RED-first | The baseline code at `a25641f` had no `liveProjectionStatus` passed to `writeArtifacts`, and the summary writer emitted only settled lineage/artifact lines; therefore the finding’s report assertion had no reporting path. This is source-inspection evidence, **not** an executed failing pre-fix test. | Baseline `HeadlessRunner.scala` before this patch; no historical run manifest. |
+| Snapshot pointer | The fixture resolves `LineageSnapshot.read` and checks both source/data files exist. | `LineageSummarySpec` LIN3-03 test. |
+| GraphHash | No canonicalization changes. | `GraphHash.scala` unchanged. |
+
+The fixture supplies a retained fold-error value to the same diagnostic path and
+runs a successful mock session to compare the unchanged success exit and
+resolve the session snapshot. It does **not** cause the production live stream
+to become invalid during execution, and does not exercise a dotc failure or
+prove a compile-failing live projection leaves a prior mid-run snapshot. The
+requested full end-to-end live-invalid/compile-failure and crash-checkpoint
+acceptance remains open; no frozen schema carrier was needed for this additive
+summary channel.
+
+### Commands and gate evidence
+
+| argv / command | Exit | Log / manifest |
+| --- | --- | --- |
+| `git status --short && git branch --show-current && git log -1 --oneline` | 0 | Clean before edits; `lane/lin-03`, `98d2b4f`. |
+| `git merge main` | 0 | Fast-forward to `98d2b4f`; no conflicts. |
+| `sbt --batch 'raiderCli/testOnly raider.cli.run.LineageSummarySpec'` | 0 | 4 tests passed; no failures/ignored. |
+| `sbt --batch scalafmtAll` | 0 | Formatting completed. |
+| `make quality-changed` | pending | To be recorded after the final pre-gate record is finalized. |
+| `make quality-changed QUALITY_EXECUTE=1` | pending | To be recorded. |
+| `make quality-profile PROFILES="static unit contracts runtime"` | pending | To be recorded. |
+
+No paid calls were made.
+
+### Changed paths
+
+- `modules/cli/src/main/scala/raider/cli/run/HeadlessRunner.scala`
+- `modules/cli/src/test/scala/raider/cli/run/LineageSummarySpec.scala`
+- `docs/work/records/LIN-03.md`
+
+Next: add a production-wired fixture that makes the live stream projection
+invalid mid-session, runs the pinned compiler by an authorized live mechanism,
+proves exit invariance and pointer resolution under the failure, and covers
+crash-between-node checkpoint behavior. LIN-03 is not accepted; LIN-04 remains
+dependent on LIN-03 acceptance.
+
 ## Completion attempt (2026-10-17)
 
 Status: blocked. Baseline commit: `4bc5b0d` (`lane/lin-03`); merged `main` at `46dc140` as requested (merge completed without conflicts). The worktree was clean before the merge. No product source was changed in this attempt.

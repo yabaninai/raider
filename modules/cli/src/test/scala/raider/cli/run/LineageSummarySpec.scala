@@ -5,6 +5,7 @@ import raider.runtime.events.{EventEnvelope, EventCodecs}
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.lineage.model.GraphHash
 import raider.runtime.lineage.reduce.LineageReducer
+import raider.cli.lineage.LineageSnapshot
 import zio.ZIO
 import zio.json.DecoderOps
 import zio.test._
@@ -163,6 +164,31 @@ object LineageSummarySpec extends ZIOSpecDefault:
           outcome.exitCode == 21,
           summary.contains("FAILED"),
           !summary.contains("lineage:")
+        )
+      }
+    },
+    test(
+      "LIN3-03: live projection failure is report-only and snapshot stays readable"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          outcome <- HeadlessRunner.run(mockAgentArgs(work))
+          summary <- ZIO.attempt(summaryOf(outcome.workDir)).orDie
+          prior <- ZIO.attempt(LineageSnapshot.read(outcome.workDir)).orDie
+          diagnostic = HeadlessRunner.liveProjectionDiagnostic(
+            (None, Some("Reduce(InvalidEvent): live projection rejected event"))
+          )
+          reportLine = diagnostic.map(HeadlessRunner.liveProjectionSummaryLine)
+        yield assertTrue(
+          outcome.exitCode == 0,
+          diagnostic.exists(_.contains("fold error:")),
+          reportLine.exists(_.contains("lineage live projection: invalid")),
+          prior.isRight,
+          prior.toOption.exists(s =>
+            Files.isRegularFile(s.sourcePath) && Files.isRegularFile(s.dataPath)
+          ),
+          summary.contains("- lineage: graph ")
         )
       }
     }
