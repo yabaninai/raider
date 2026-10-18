@@ -154,6 +154,11 @@ object ApprovalArtifactsSpec extends ZIOSpecDefault:
       val changedRepo = state(candidate.copy(treeDigest = "repo-new"))
       val changedTask = state(candidate.copy(taskDigest = "task-new"))
       val noEvidence = state().copy(evidenceDigests = Nil)
+      val mismatchedEvidence =
+        state().copy(evidenceCandidateDigest = "0" * 64)
+      val changedCurrentPolicy = state().copy(policyDigest = "policy-new")
+      val changedCurrentRepo = state().copy(repositoryStateDigest = "repo-new")
+      val changedCurrentTask = state().copy(taskDigest = "task-new")
       val noCapability = state().copy(ownerCapabilities = Set.empty)
       assertTrue(
         validateDecisionFile(
@@ -163,6 +168,36 @@ object ApprovalArtifactsSpec extends ZIOSpecDefault:
           changedPolicy,
           "merge"
         ) == Left(CandidateMismatch),
+        CandidateIdentity.digest(
+          changedCurrentPolicy.candidate
+        ) == approval.candidateDigest,
+        validateDecisionFile(
+          approval,
+          decision,
+          now,
+          changedCurrentPolicy,
+          "merge"
+        ) == Left(PolicyChanged),
+        CandidateIdentity.digest(
+          changedCurrentRepo.candidate
+        ) == approval.candidateDigest,
+        validateDecisionFile(
+          approval,
+          decision,
+          now,
+          changedCurrentRepo,
+          "merge"
+        ) == Left(RepositoryChanged),
+        CandidateIdentity.digest(
+          changedCurrentTask.candidate
+        ) == approval.candidateDigest,
+        validateDecisionFile(
+          approval,
+          decision,
+          now,
+          changedCurrentTask,
+          "merge"
+        ) == Left(TaskOrBaseChanged),
         validateDecisionFile(
           approval,
           decision,
@@ -182,6 +217,15 @@ object ApprovalArtifactsSpec extends ZIOSpecDefault:
           decision,
           now,
           noEvidence,
+          "merge"
+        ) == Left(EvidenceChanged),
+        mismatchedEvidence.evidenceDigests.nonEmpty,
+        mismatchedEvidence.evidenceCandidateDigest != approval.candidateDigest,
+        validateDecisionFile(
+          approval,
+          decision,
+          now,
+          mismatchedEvidence,
           "merge"
         ) == Left(EvidenceChanged),
         validateDecisionFile(
