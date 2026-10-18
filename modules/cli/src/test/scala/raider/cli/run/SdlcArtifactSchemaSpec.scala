@@ -103,6 +103,18 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
           ),
         decode(version) == Left(DecodeError.UnsupportedVersion(3L))
       )
+    },
+    test("SDLC-WIRE-02: non-string digest returns the exact typed refusal") {
+      val nonStringDigest =
+        """{"schemaVersion":2,"type":"check-result","id":"evidence-0","data":{"digest":17}}"""
+      assertTrue(
+        decode(nonStringDigest) ==
+          Left(
+            DecodeError.Malformed(
+              "check-result.data.digest must be a string"
+            )
+          )
+      )
     }
   )
 
