@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 188,
+  "raider_count": 189,
   "companion_count": 3,
   "cards": [
     {
@@ -5471,6 +5471,30 @@
       },
       "non_goals": "Changing LIN-03 projection/writer behavior or RAI-173 pointer/reader protocol; fixed-path snapshot reads; new lineage schema or public API; replacing real PTY acceptance with scripted-terminal tests; unrelated TUI work or paid provider calls.",
       "context": "LIN-04 currently has only scripted-terminal acceptance and no lineage provider in the REPL host. The live projection and pointer-aware snapshot reader are owned by LIN-03/RAI-173 in CLI lineage/run paths, outside LIN-04's allowed paths; this card consumes their accepted interfaces rather than moving or duplicating those readers. Invalid-projection status must preserve ADR-024 honest-unknowns semantics. Use P2W/P2U PTY house patterns and RAI-119's drain/refresh-retry determinism discipline. The LIN-04 lane record is absent at registration; this context is based on the observed blocker described here."
+    },
+    {
+      "id": "RAI-178",
+      "title": "Full-suite stability: WIR-01 internal timeout + suite-duration investigation",
+      "milestone": "M2",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/**",
+        "scripts/quality-policy/registry.json",
+        "docs/tasks/**",
+        "docs/work/board.md",
+        "docs/work/records/**",
+        "artifacts/**"
+      ],
+      "profiles": ["static", "unit", "runtime", "ci", "docs"],
+      "behavior": "Diagnose the full raiderCli/test timeout after the ZIO.sleep sweep: capture WIR-01 WorkflowLaunchSpec fiber trace/timeline under suite load and per-suite sbt wall times; adjudicate real-process fixture wall time, suite-duration growth under unchanged budgets, and residual blocking waits. Deliver the minimal evidence-supported fixture/parallelism correction and/or measured sbt-test budget calibration. e846d84 is precedent for measured calibration with identical assertions, not a bar change.",
+      "acceptance": {
+        "normal": "WIR01-STAB-01: capture an actionable WIR-01 fiber trace/timeline and per-suite sbt wall-time report from the full suite; correlate internal deadlines and test process activity, and identify blocking-wait evidence or explicitly rule it out for implicated fixtures.",
+        "error": "WIR01-STAB-02: distinguish fixture/process wall-time and suite-load effects from a product/test defect; apply only the minimal reviewed correction supported by evidence. Any budget calibration records runtime, contention, rationale, and identical assertions/semantics; no expectation weakening, skips, or acceptance-threshold changes.",
+        "concurrency": "WIR01-STAB-03: verify process cleanup, cancellation/SIGTERM, and fixture isolation/parallelism as applicable; run full raiderCli/test five consecutive times green. Incomplete or timed-out runs are not green evidence."
+      },
+      "non_goals": "Weakening expectations; skipping tests; changing acceptance thresholds; unrelated test/gate budget changes; speculative process refactors; claiming full acceptance from focused suites; paid calls or neighboring-repository changes.",
+      "context": "RAI-157 lane records and the 2026-10-18 board report that focused MultiJobExportSpec is 10/10 after six blocking polls were replaced by ZIO.sleep, while full raiderCli/test exceeded the 2700-second budget with WIR-01's five-minute deadline and other internal timeouts. Causes remain hypotheses. Commit e846d84 measured and calibrated repl-smoke/secrets-scan budgets under contention with identical assertions; use only as precedent, not as a bar change."
     }
   ]
 }
