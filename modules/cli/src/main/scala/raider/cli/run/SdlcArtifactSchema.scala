@@ -3,6 +3,8 @@ package raider.cli.run
 import zio.Chunk
 import zio.json.ast.Json
 import zio.json.{DecoderOps, EncoderOps}
+import raider.core.sdlc.SdlcEvidence
+import raider.core.sdlc.SdlcEvidence.*
 
 /** Versioned SDLC record projection shared by run.json and events.jsonl. The
   * typed evidence payload is owned by the core SDLC contract; this wire layer
@@ -18,6 +20,147 @@ object SdlcArtifactSchema:
     case IntegrationResult extends Kind("integration-result")
 
   final case class Record(kind: Kind, id: String, data: Json.Obj)
+
+  /** Project the frozen core evidence codecs into the additive v2 union. */
+  def fromEvidence(
+      id: String,
+      evidence: SdlcEvidence.Artifact
+  ): Either[DecodeError, Record] =
+    val kind = Kind.values
+      .find(_.wireName == evidence.kind)
+      .toRight(DecodeError.UnknownKind(evidence.kind))
+    kind.flatMap { recordKind =>
+      val parsed = Json.decoder
+        .decodeJson(evidence.payload)
+        .left
+        .map(DecodeError.Malformed.apply)
+      parsed.flatMap {
+        case obj: Json.Obj =>
+          val validated = recordKind match
+            case Kind.CheckResult =>
+              strictPayload[CheckResult](evidence.payload)
+            case Kind.ReviewVerdict =>
+              strictPayload[ReviewVerdict](evidence.payload)
+            case Kind.CandidateIdentity =>
+              strictPayload[CandidateIdentity](evidence.payload)
+            case Kind.IntegrationResult =>
+              strictPayload[IntegrationResult](evidence.payload)
+          validated
+            .flatMap(_ => validateInterior(recordKind, obj))
+            .map(_ => Record(recordKind, id, obj))
+        case _ =>
+          Left(
+            DecodeError.Malformed("typed evidence payload must be an object")
+          )
+      }
+    }
+
+  /** Build a deterministic wire sequence from actual completed stage results.
+    */
+  def fromStageResults(
+      results: List[raider.core.sdlc.SdlcStages.StageResult]
+  ): Either[DecodeError, List[Record]] =
+    val candidates = results.map(_.context.candidate).distinct
+    val identities = candidates.map { candidate =>
+      val payload = SdlcEvidence.artifact("candidate-identity", candidate)
+      SdlcEvidence
+        .decodeArtifact(payload)
+        .left
+        .map(e => DecodeError.Malformed(e.toString))
+        .flatMap(a =>
+          fromEvidence(s"candidate-${CandidateIdentity.digest(candidate)}", a)
+        )
+    }
+    val staged = results.flatMap(_.typedEvidence).zipWithIndex.map {
+      case (typedRecord, index) =>
+        SdlcEvidence
+          .decodeArtifact(SdlcEvidence.artifactOf(typedRecord))
+          .left
+          .map(e => DecodeError.Malformed(e.toString))
+          .flatMap(a => fromEvidence(s"stage-evidence-$index", a))
+    }
+    (identities ++ staged).foldLeft[Either[DecodeError, List[Record]]](
+      Right(Nil)
+    ) { case (acc, next) =>
+      acc.flatMap(done => next.map(done :+ _))
+    }
+
+  private def strictPayload[A: zio.json.JsonDecoder](
+      input: String
+  ): Either[DecodeError, A] =
+    input.fromJson[A].left.map(DecodeError.Malformed.apply)
+
+  private val candidateFields = Set(
+    "repository",
+    "worktree",
+    "baseRevision",
+    "headRevision",
+    "revision",
+    "treeDigest",
+    "taskDigest",
+    "planDigest",
+    "policyDigest",
+    "configDigest"
+  )
+
+  private def validateInterior(
+      kind: Kind,
+      data: Json.Obj
+  ): Either[DecodeError, Unit] =
+    val allowed = kind match
+      case Kind.CheckResult =>
+        Set(
+          "checkId",
+          "definitionDigest",
+          "argvDigest",
+          "outcome",
+          "exitCode",
+          "toolchainIdentity",
+          "verifierIdentity",
+          "candidate",
+          "outputDigest",
+          "policyDigest"
+        )
+      case Kind.ReviewVerdict =>
+        Set(
+          "reviewerIdentity",
+          "verdict",
+          "findingsDigest",
+          "taskDigest",
+          "planDigest",
+          "candidate",
+          "checkResultDigests",
+          "policyDigest"
+        )
+      case Kind.CandidateIdentity => candidateFields
+      case Kind.IntegrationResult =>
+        Set(
+          "operationId",
+          "operationKind",
+          "candidate",
+          "targetIdentity",
+          "expectedPreconditionsDigest",
+          "observedStateDigest",
+          "outcome",
+          "evidenceDigests",
+          "policyDigest"
+        )
+    data.fields.find(kv => !allowed(kv._1)) match
+      case Some((field, _)) =>
+        Left(DecodeError.UnknownPayloadField(kind, field))
+      case None =>
+        val nested =
+          if kind == Kind.CandidateIdentity then None
+          else data.fields.find(_._1 == "candidate")
+        nested match
+          case Some((_, obj: Json.Obj)) =>
+            obj.fields.find(kv => !candidateFields(kv._1)) match
+              case Some((field, _)) =>
+                Left(DecodeError.UnknownPayloadField(kind, s"candidate.$field"))
+              case None => Right(())
+          case Some(_) =>
+            Left(DecodeError.Malformed("candidate must be an object"))
+          case None => Right(())
 
   enum DecodeError:
     case Malformed(detail: String)
@@ -116,22 +259,19 @@ object SdlcArtifactSchema:
                 dataJson <- required("data")
                 data <- dataJson match
                   case obj: Json.Obj =>
-                    obj.fields
-                      .find(_._1 != "digest")
-                      .map(kv =>
-                        Left(DecodeError.UnknownPayloadField(kind, kv._1))
-                      )
-                      .getOrElse {
-                        obj.fields.find(_._1 == "digest") match
-                          case Some((_, Json.Str(_))) => Right(obj)
-                          case Some(_) =>
-                            Left(
-                              DecodeError.Malformed(
-                                s"${kind.wireName}.data.digest must be a string"
-                              )
-                            )
-                          case None => Right(obj)
-                      }
+                    val payload = obj.toJson
+                    val decoded = kind match
+                      case Kind.CheckResult =>
+                        strictPayload[CheckResult](payload).map(_ => ())
+                      case Kind.ReviewVerdict =>
+                        strictPayload[ReviewVerdict](payload).map(_ => ())
+                      case Kind.CandidateIdentity =>
+                        strictPayload[CandidateIdentity](payload).map(_ => ())
+                      case Kind.IntegrationResult =>
+                        strictPayload[IntegrationResult](payload).map(_ => ())
+                    decoded
+                      .flatMap(_ => validateInterior(kind, obj))
+                      .map(_ => obj)
                   case _ =>
                     Left(DecodeError.Malformed("data must be an object"))
               yield Record(kind, id, data)

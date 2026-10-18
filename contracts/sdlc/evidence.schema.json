@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.invalid/contracts/sdlc/evidence-v1.schema.json",
+  "title": "Raider SDLC evidence artifact",
+  "description": "Versioned outer projection; payload is the JSON encoding of the selected typed Scala evidence record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "kind", "payload"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "type": "string", "minLength": 1, "enum": ["candidate-identity", "check-result", "review-verdict", "integration-result"] },
+    "payload": { "type": "string", "contentMediaType": "application/json" }
+  }
+}
