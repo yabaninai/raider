@@ -204,5 +204,33 @@ object LocalForgeStandSpec extends ZIOSpecDefault:
           )
         } finally stand.close()
       }
+    },
+    test(
+      "SDLC-FORGE-03: competing owners serialize and one observes a stale ref"
+    ) {
+      val stand = LocalForgeStand("base")
+      for responses <- zio.ZIO.foreachPar(List("owner-a", "owner-b")) { owner =>
+          zio.ZIO.succeed {
+            stand.commit(
+              request(
+                owner,
+                OperationKind.Commit,
+                "base",
+                Some(s"candidate-$owner")
+              )
+            )
+          }
+        }
+      yield assertTrue(
+        responses.count(_.outcome == Outcome.Applied) == 1,
+        responses.count(_.outcome == Outcome.Stale) == 1,
+        stand
+          .reconcile(
+            responses.find(_.outcome == Outcome.Applied).get.operationId
+          )
+          .snapshot
+          .ref
+          .startsWith("candidate-owner-")
+      )
     }
   )

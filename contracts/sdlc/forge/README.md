@@ -10,7 +10,7 @@
 | SDLC-FORGE-02c | Timeout/unknown after effect | `TimedOutUncertain`, blind retry `ReconcileRequired`, read-only reconcile `AlreadyApplied` |
 | SDLC-FORGE-02d | Disposable Git commit, PR branch/status, merge, stale ref | Actual temporary `refs/heads/main` and `refs/heads/pr/<id>` change; stale expected object ID returns `Stale` |
 | SDLC-FORGE-02e | Asynchronous pending-to-timeout window | Injected async commit is `Pending` before virtual-clock deadline, then `TimedOutUncertain`; mutation retry is blocked until read-only reconcile |
-| SDLC-FORGE-03 | Stale ref followed by fresh reconcile and explicit retry | initial `Stale`, retry with current ref `Applied` |
+| SDLC-FORGE-03 | Competing owners serialize; stale state is read-only reconciled before explicit retry | one concurrent request `Applied`, the other `Stale`; fresh-ref retry `Applied` |
 
 Each mutating call checks its expected ref against a fresh snapshot immediately before applying the request. An uncertain operation is retained as terminal for mutation purposes until explicit read-only reconciliation. No outcome establishes exactly-once behavior.
 
