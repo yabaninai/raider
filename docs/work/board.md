@@ -1,5 +1,9 @@
 # Raider Execution Board
 
+## 2026-10-18 — RAI-176 local interactive tool regression
+
+RAI-176 is in progress after an owner-reported local Qwen chat returned XML as text. The streaming request encoder omits tool definitions; a bounded direct request to the same local llama-server returned structured tool calls. One visible isolated worker and independent reviewer use Codex agent tools in place of the OpenCode task tool; coordinator owns integration and metadata. No paid providers or neighboring repositories are involved.
+
 ## 2026-10-18 — Owner decisions: LIN-03 acceptance basis; RAI-175 registered
 
 Owner decision: LIN-03 acceptance is based on live fold-error evidence (invalid projection reported, session exit unchanged, and prior committed snapshot readable through the pointer); live compile-failure validation transfers to the pinned-dotc validation mechanism in RAI-173 and is not a LIN-03 acceptance condition.

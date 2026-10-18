@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 186,
+  "raider_count": 187,
   "companion_count": 3,
   "cards": [
     {
@@ -5419,6 +5419,35 @@
       },
       "non_goals": "Product-code changes, assertion changes/weakening, starting RAI-123 or claiming its mechanism established without a captured reproducer, unrelated soak work.",
       "context": "Integrated red and diagnostic report cited above; board entry 2026-10-18 PLANUI-02 integrated red diagnostic. Prior 20 focused attempts were green and did not clear the integrated red."
+    },
+    {
+      "id": "RAI-176",
+      "title": "Preserve tool definitions in streaming Chat requests",
+      "milestone": "M2",
+      "dependencies": [
+        "RAI-012"
+      ],
+      "status": "in_progress",
+      "allowed_paths": [
+        "modules/provider-chat/src/main/scala/raider/provider/chat/stream/OpenAIChatStreamingBackend.scala",
+        "modules/provider-chat/src/main/scala/raider/provider/chat/OpenAIChatBackend.scala",
+        "modules/provider-chat/src/test/scala/raider/provider/chat/stream/OpenAIChatStreamSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport"
+      ],
+      "behavior": "Preserve ModelRequest.tools in streaming Chat requests so an interactive coding model receives tool definitions and returns structured tool calls.",
+      "acceptance": {
+        "normal": "CHATWIRE-01: HTTP request-sensitive stand validates streaming tool definitions and a completed agent tool round.",
+        "error": "CHATWIRE-02: schema JSON types, Unicode and escaping survive serialization; empty tools remain valid; malformed and truncated stream regressions pass.",
+        "concurrency": "CHATWIRE-03: existing cancellation, timeout and uncertain-accounting checks pass without weaker assertions or changed bounds."
+      },
+      "non_goals": "XML scraping, model/template changes, public contract changes, dependencies, unrelated runtime changes, paid providers or gate-policy changes.",
+      "context": "Owner local Qwen interactive chat reproducer; direct local-server SSE probe returned structured tool_calls when tools were provided."
     }
   ]
 }

@@ -244,3 +244,5 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-160** [Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)](lineage.md); dependencies: RAI-155.b, RAI-155.c; profiles: static, unit, contracts, ci.
 - **RAI-162** [WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-161** [Quality runner: implement the documented operational-record exclusion](m0.md); dependencies: none; profiles: self, docs.
+
+- **RAI-176** [Preserve tool definitions in streaming Chat requests](m2-p2.md); dependencies: RAI-012; profiles: static, unit, contracts, transport.
