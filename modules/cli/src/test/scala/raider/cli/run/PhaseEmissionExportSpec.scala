@@ -1,10 +1,10 @@
 package raider.cli.run
 
-import raider.core.{RootId, Task}
+import raider.core.{JobId, RootId, Task}
 import raider.runtime.events.{EventHub, EventPayload}
 import raider.runtime.jobs.{JobManager, OnTransition, StatusLedger}
 import raider.runtime.lineage.io.LineageWireReader
-import raider.runtime.lineage.model.RecoveryClass
+import raider.runtime.lineage.model.{GraphHash, RecoveryClass}
 import raider.runtime.lineage.wire.{
   LineageEnvelope,
   LineagePayload,
@@ -12,7 +12,7 @@ import raider.runtime.lineage.wire.{
 }
 import raider.runtime.loop.LoopEvents
 import zio.test.*
-import zio.{Promise, ZIO}
+import zio.{Promise, Ref, ZIO}
 
 import java.nio.file.Files
 
@@ -180,6 +180,118 @@ object PhaseEmissionExportSpec extends ZIOSpecDefault:
                 p.envelopes == envs && p.truncatedTail.isEmpty
               case Left(_) => false
           )
+      }
+    },
+    test(
+      "LIN3-01: 200 ordered production campaign rounds keep sampled live projections consistent with the locked export prefix"
+    ) {
+      ZIO.scoped {
+        for
+          dir <- ZIO.attempt(
+            Files.createTempDirectory("lin3-live-campaign-200")
+          )
+          hub <- EventHub.make()
+          writer <- EventsJsonlWriter.open(dir.resolve("events.jsonl"))
+          _ <- ZIO.addFinalizer(writer.close)
+          join <- MultiJobExport.make(hub, writer, dir)
+          _ <- ZIO.addFinalizer(join.close)
+          ledger = StatusLedger.onTransition(hub, rootId)
+          listener: OnTransition = (j, f, t) =>
+            join.capture(j, f, t) *> ledger(j, f, t)
+          manager <- JobManager.make(onTransition = Some(listener))
+          barrier <- Promise.make[Nothing, JobId]
+          samples <- Ref.make(
+            Vector.empty[
+              (
+                  Int,
+                  Option[LiveLineageProjection],
+                  Option[String],
+                  Vector[raider.runtime.lineage.wire.LineageEnvelope]
+              )
+            ]
+          )
+          campaign = Task(
+            barrier.await.flatMap { jobId =>
+              val events = LoopEvents(
+                hub,
+                jobId,
+                rootId,
+                sessionId,
+                phases = Some(join.phaseSink)
+              )
+              ZIO.foreachDiscard(1 to 200) { round =>
+                val phase = f"round-$round%03d"
+                events.modelCallStarted(round, "fixture-model", 1) *>
+                  events.modelCallFinished(round, 1L) *>
+                  events.phaseStarted(phase, RecoveryClass.ReadOnly) *>
+                  events.phaseFinished(phase) *>
+                  (if round % 25 == 0 then
+                     join.currentProjection.flatMap {
+                       case (projection, error) =>
+                         join.exportedWire.flatMap(wire =>
+                           samples.update(
+                             _ :+ ((round, projection, error, wire))
+                           )
+                         )
+                     }
+                   else ZIO.unit)
+              }
+            }
+          )
+          handle <- manager.start(rootId, "lin3-production-campaign", campaign)
+          _ <- join.campaign(handle.id)
+          subscribed <- hub.subscribe(handle.id)
+          (snapshot, stream) = subscribed
+          _ <- ZIO.foreachDiscard(
+            EventExport.startTransition(snapshot).toVector
+          )(
+            join.exportParent
+          )
+          collector <- EventExport
+            .inOrder(snapshot.lastSeq)(stream)
+            .foreach(e => join.exportParent(e))
+            .forkDaemon
+          _ <- barrier.succeed(handle.id).unit
+          result <- manager.await(handle).either
+          _ <- EventExport.awaitCaughtUp(hub, handle.id, join.campaignWritten)
+          _ <- collector.interrupt
+          checkpoints <- samples.get
+          (finalProjection, finalError) <- join.currentProjection
+          exported <- join.exportedWire
+          parsed = LineageWireReader.read(dir.resolve("events.jsonl"))
+          validSamples = checkpoints.forall {
+            case (round, projection, error, prefix) =>
+              round % 25 == 0 && error.isEmpty && projection.exists(p =>
+                p.wire == prefix && p.graphHash == GraphHash(p.graph) &&
+                  p.source.isDefined &&
+                  prefix.count(
+                    _.payload.isInstanceOf[LineagePayload.PhaseFinished]
+                  ) == round &&
+                  p.graph.nodes.count(
+                    _.isInstanceOf[
+                      raider.runtime.lineage.model.SessionNode.ModelCall
+                    ]
+                  ) == round
+              )
+          }
+        yield assertTrue(
+          result.isRight,
+          checkpoints.map(_._1) == Vector(25, 50, 75, 100, 125, 150, 175, 200),
+          validSamples,
+          finalError.isEmpty,
+          finalProjection.exists(p =>
+            p.wire == exported && p.graphHash == GraphHash(p.graph) &&
+              p.wire.count(
+                _.payload.isInstanceOf[LineagePayload.PhaseFinished]
+              ) == 200 &&
+              p.graph.nodes.count(
+                _.isInstanceOf[
+                  raider.runtime.lineage.model.SessionNode.ModelCall
+                ]
+              ) == 200
+          ),
+          parsed.exists(p => p.truncatedTail.isEmpty && p.envelopes == exported)
+        )
       }
     },
     test(

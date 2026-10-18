@@ -176,7 +176,7 @@ object HeadlessRunner:
           ciRef,
           usageRef
         )
-        (outcome, eventsWritten, lineage) = jobOutcome
+        (outcome, eventsWritten, lineage, liveProjectionStatus) = jobOutcome
         ciOpt <- ciRef.get
         usageOpt <- usageRef.get
         finishedAt <- ZIO.succeed(Instant.now())
@@ -205,7 +205,8 @@ object HeadlessRunner:
           eventsWritten,
           ciOpt,
           usageOpt,
-          lineage
+          lineage,
+          liveProjectionStatus
         )
       yield Outcome(exitCode, workDir, Some(runResult))
 
@@ -292,7 +293,8 @@ object HeadlessRunner:
     (
         Either[RaiderError, String],
         Long,
-        Option[Either[ReduceError, LineageOutcome]]
+        Option[Either[ReduceError, LineageOutcome]],
+        Option[String]
     )
   ] =
     for
@@ -383,6 +385,10 @@ object HeadlessRunner:
       // RAI-144: quiesce the exporter FIRST (capture fibers interrupted,
       // segments closed) so the fold buffer is final before the reduction.
       exported <- join.exportedWire
+      // LIN-03: this snapshot is maintained as each ordered export line lands.
+      // The exporter drain above guarantees it covers the settled stream.
+      live <- join.currentProjection
+      liveProjectionStatus = liveProjectionDiagnostic(live)
       // LIN-03B + RAI-144: settled — reduce the folded prefix through the
       // versioned entries. Preflight-failure families produce NO lineage line
       // (the run never formed a campaign); anything else attempts the
@@ -392,10 +398,31 @@ object HeadlessRunner:
         e =>
           if isPreflightFailure(e) then
             ZIO.succeed(Option.empty[Either[ReduceError, LineageOutcome]])
-          else unifiedLineage(join, exported).map(Some(_)),
-        _ => unifiedLineage(join, exported).map(Some(_))
+          else unifiedLineage(join, exported, live).map(Some(_)),
+        _ => unifiedLineage(join, exported, live).map(Some(_))
       )
-    yield (result, lines, lineage)
+    yield (result, lines, lineage, liveProjectionStatus)
+
+  /** Preserve live-fold failures as an additive summary diagnostic. This is
+    * observational only: it never participates in the run result or exit code.
+    */
+  private[run] def liveProjectionDiagnostic(
+      live: (Option[LiveLineageProjection], Option[String])
+  ): Option[String] =
+    val status = live._1.flatMap(_.projectionStatus match
+      case LiveLineageProjection.Status.Valid => None
+      case LiveLineageProjection.Status.Invalid(detail) =>
+        Some(s"invalid: $detail"))
+    val error = live._2.map(detail => s"fold error: $detail")
+    (status.toVector ++ error.toVector) match
+      case Vector() => None
+      case details  => Some(details.mkString("; "))
+
+  private[run] def liveProjectionSummaryLine(diagnostic: String): String =
+    s"- lineage live projection: invalid (${diagnostic
+        .replace("\n", " ")
+        .replace("\r", " ")
+        .take(240)})"
 
   /** RAI-144: the settled reduction of the exported stream — the strict
     * versioned entry first; a campaign that cannot reach Terminal (a detached
@@ -405,7 +432,8 @@ object HeadlessRunner:
     */
   private def unifiedLineage(
       join: MultiJobExport,
-      wire: Vector[LineageEnvelope]
+      wire: Vector[LineageEnvelope],
+      live: (Option[LiveLineageProjection], Option[String])
   ): UIO[Either[ReduceError, LineageOutcome]] =
     join.invocations.flatMap { invs =>
       val reduced: Either[ReduceError, LineageOutcome] =
@@ -425,7 +453,11 @@ object HeadlessRunner:
           case other =>
             other.map(red =>
               LineageOutcome(
-                red.graph,
+                live match
+                  case (Some(snapshot), None)
+                      if snapshot.graphHash == GraphHash(red.graph) =>
+                    snapshot.graph
+                  case _ => red.graph,
                 partial = false,
                 red.provenance,
                 invs,
@@ -739,7 +771,9 @@ object HeadlessRunner:
       eventsWritten: Long,
       ci: Option[CiContext],
       usage: Option[UsageReport],
-      lineage: Option[Either[ReduceError, LineageOutcome]]
+      lineage: Option[Either[ReduceError, LineageOutcome]],
+      liveProjectionStatus: Option[String],
+      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
   ): ZIO[Any, Nothing, Unit] =
     ZIO.attempt {
       Files.createDirectories(workDir)
@@ -767,7 +801,7 @@ object HeadlessRunner:
         tmp,
         // RAI-086: additive `ci`/`accounting` splice (frozen core schema is
         // not extended in this slice); absent input → absent field
-        spliceExtras(finalResult.toJson, ci, usage),
+        spliceExtras(finalResult.toJson, ci, usage, sdlcEvidence),
         UTF_8
       )
       Files.move(
@@ -840,6 +874,9 @@ object HeadlessRunner:
               RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)})"
           case Left(e) => s"- lineage artifacts: unavailable ($e)"
       }
+      val liveProjectionLine = liveProjectionStatus.map { diagnostic =>
+        liveProjectionSummaryLine(diagnostic)
+      }
       val summary = s"""# raider run
            |
            |$statusLine
@@ -857,7 +894,8 @@ object HeadlessRunner:
         // byte-identical to the pre-LIN-03B summary shape; the LIN-09
         // artifacts line rides behind the lineage line for the same reason
         summary + lineageLine.fold("")(l => l + "\n") +
-          artifactsLine.fold("")(l => l + "\n"),
+          artifactsLine.fold("")(l => l + "\n") +
+          liveProjectionLine.fold("")(l => l + "\n"),
         UTF_8
       )
       // RAI-131 (CI adapter batch): checks.junit.xml — the ci-runtime
@@ -986,7 +1024,8 @@ object HeadlessRunner:
   private def spliceExtras(
       base: String,
       ci: Option[CiContext],
-      usage: Option[UsageReport]
+      usage: Option[UsageReport],
+      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
   ): String =
     import zio.json.ast.Json
     def astOf(json: String): Option[Json] =
@@ -998,11 +1037,13 @@ object HeadlessRunner:
             astOf(AccountingView.json(u)).map(j => "accounting" -> j)
           )
           .toList
-    if extras.isEmpty then base
-    else
-      Json.decoder.decodeJson(base) match
-        case Right(Json.Obj(fields)) =>
-          Json.Obj(fields ++ zio.Chunk.fromIterable(extras)).toJson
-        case _ => base // impossible: RunResult JSON is always an object
+    val withExisting =
+      if extras.isEmpty then base
+      else
+        Json.decoder.decodeJson(base) match
+          case Right(Json.Obj(fields)) =>
+            Json.Obj(fields ++ zio.Chunk.fromIterable(extras)).toJson
+          case _ => base // impossible: RunResult JSON is always an object
+    SdlcArtifactSchema.addToRunJson(withExisting, sdlcEvidence)
 
 end HeadlessRunner

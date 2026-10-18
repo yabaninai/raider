@@ -12,6 +12,10 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | M1 027–040 | [Extensibility and optional integrations](m1.md) |
 | M2 041–047 / P2 048–053 | [Release/P2](m2-p2.md) |
 | YB-RAI-01–03 | [Changes in Yabanin](yabanin.md) |
+| RAI-163–170, RAI-174 | [SDLC effects API, stages, evidence persistence, approval, integration, release, and independent verification](m1.md) |
+| RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
+| RAI-173 | [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md) |
+| RAI-175 | [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -178,6 +182,22 @@ Markdown contains the full contract; JSON is canonical for ID/title/dependency/p
 
 See [backlog.json](backlog.json) for cards added in later revisions, including LIN and P2 work.
 
+## SDLC and live-wire preparation cards registered 2026-10-16
+
+- **RAI-163** [Design the public SDLC effects API and consumer migration](m1.md); dependencies: RAI-117; profiles: docs.
+- **RAI-164** [Implement SDLC stages and typed evidence schemas](m1.md); dependencies: RAI-117, RAI-163; profiles: static, unit, contracts, runtime, ci.
+- **RAI-165** [Implement approval artifacts and new-invocation recheck](m1.md); dependencies: RAI-117, RAI-163, RAI-164; profiles: static, unit, contracts, runtime, ci.
+- **RAI-166** [Build the generic forge protocol stand](m1.md); dependencies: RAI-117, RAI-163, RAI-164; profiles: static, unit, contracts, runtime, integration.
+- **RAI-167** [Enforce configured integration rules and reconcile before mutation](m1.md); dependencies: RAI-117, RAI-163, RAI-164, RAI-165, RAI-166; profiles: static, unit, contracts, runtime.
+- **RAI-168** [Create strictly local SemVer release artifacts](m1.md); dependencies: RAI-117, RAI-163, RAI-164, RAI-165, RAI-167; profiles: static, unit, contracts, release.
+- **RAI-169** [Independently verify SDLC-01–04 stages, approval, and integration](m1.md); dependencies: RAI-117, RAI-164, RAI-165, RAI-166, RAI-167; profiles: static, unit, contracts, runtime, ci, integration.
+- **RAI-170** [Independently verify the local-only release contract](m1.md); dependencies: RAI-117, RAI-168; profiles: static, unit, contracts, release.
+- **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
+- **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
+- **RAI-173** [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
+- **RAI-174** [SDLC evidence persistence: versioned event/run schema extension](m1.md); dependencies: RAI-164; profiles: contracts.
+- **RAI-175** [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md); dependencies: RAI-110, RAI-119; profiles: static, unit, repl.
+
 ## Existing obligations added on 2026-10-13
 
 These cards were already present in the local backlog when documentation work began; their metadata is preserved and their Markdown mirrors are now synchronized.
@@ -222,4 +242,5 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-158** [Workflow renderer naming fix: object/@main case-collision on case-insensitive filesystems (RAI-155.d contract-change request)](lineage.md); dependencies: RAI-155.c, RAI-155.d; profiles: static, unit, contracts.
 - **RAI-159** [WorkflowRun unwritable-output typed failure (EventsJsonlWriter open ordering) + dead-branch simplification](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-160** [Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)](lineage.md); dependencies: RAI-155.b, RAI-155.c; profiles: static, unit, contracts, ci.
+- **RAI-162** [WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-161** [Quality runner: implement the documented operational-record exclusion](m0.md); dependencies: none; profiles: self, docs.

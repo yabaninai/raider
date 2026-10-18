@@ -213,26 +213,33 @@ object WorkflowRun:
   /** One headless launch. Never throws. `env` is injectable (the RAI-064
     * HeadlessRunner seam); production passes `sys.env`.
     */
+  private def newWorkDir(args: Args): Path =
+    Paths.get(args.out.toString, s"work-${UUID.randomUUID().toString.take(8)}")
+
   def run(args: Args, env: Map[String, String]): ZIO[Any, Nothing, Outcome] =
+    run(args, env, newWorkDir(args))
+
+  private def run(
+      args: Args,
+      env: Map[String, String],
+      workDir: Path
+  ): ZIO[Any, Nothing, Outcome] =
     ZIO.scoped:
-      body(args, env).fold(
+      body(args, env, workDir).fold(
         err => Outcome(HeadlessRunner.exitCodeFor(err), args.out, Some(err)),
         _ => Outcome(raider.core.result.ExitCodes.Success, args.out, None)
       )
 
   private def body(
       args: Args,
-      env: Map[String, String]
+      env: Map[String, String],
+      workDir: Path
   ): ZIO[Scope, RaiderError, Unit] =
     ZIO.scoped:
       for
         startedAt <- ZIO.succeed(Instant.now())
         root = RootId(s"wf_${UUID.randomUUID().toString.take(8)}")
         state <- Ref.make(RunState())
-        workDir = Paths.get(
-          args.out.toString,
-          s"work-${UUID.randomUUID().toString.take(8)}"
-        )
         // RAI-159 (UO-01): the typed output-dir probe runs BEFORE the events
         // writer opens — an unwritable parent --out now fails TYPED
         // (RA-JOURNAL, exit 27) with honest artifact absence (nothing was
@@ -790,13 +797,12 @@ object WorkflowRun:
     * the artifacts (ci-runtime §6: interrupted outcomes are saved best-effort;
     * absence of a complete result always means incomplete).
     */
-  private def writeInterruptedMarker(out: Path): Unit =
+  private def writeInterruptedMarker(out: Path, workDir: Path): Unit =
     try
       val stamp = java.time.format.DateTimeFormatter
         .ofPattern("yyyyMMdd-HHmmss")
         .withZone(java.time.ZoneOffset.UTC)
         .format(Instant.now())
-      val file = out.resolve(s"interrupted-$stamp.json")
       val body =
         """{"schemaVersion":1,"kind":"chat-workflow-run-interrupted",""" +
           "\"status\":\"Interrupted\",\"exitCode\":" +
@@ -804,7 +810,13 @@ object WorkflowRun:
           ",\"note\":\"SIGTERM: the bounded shutdown expired before the run" +
           " finalizers completed; the outcome is incomplete/uncertain and is" +
           " never retried automatically\"}"
-      Files.writeString(file, body, StandardCharsets.UTF_8)
+      List(out, workDir).distinct.foreach(dir =>
+        Files.writeString(
+          dir.resolve(s"interrupted-$stamp.json"),
+          body,
+          StandardCharsets.UTF_8
+        )
+      )
       ()
     catch case NonFatal(_) => () // best-effort by contract
 
@@ -833,9 +845,12 @@ object WorkflowRun:
             Unsafe.unsafe { implicit u =>
               val runtime = zio.Runtime.default
               val done = new AtomicBoolean(false)
+              val workDir = newWorkDir(args)
               // forkDaemon: the runner must outlive this Unsafe block.
               val fiber =
-                runtime.unsafe.run(run(args, sys.env).forkDaemon).getOrThrow()
+                runtime.unsafe
+                  .run(run(args, sys.env, workDir).forkDaemon)
+                  .getOrThrow()
               val hook = new Thread(
                 () => {
                   runtime.unsafe.run(fiber.interrupt.forkDaemon).getOrThrow()
@@ -848,7 +863,7 @@ object WorkflowRun:
                     // re-entered a hanging provider call): write the
                     // truthful interrupted marker best-effort — the outcome
                     // stays incomplete/uncertain, never a green artifact.
-                    writeInterruptedMarker(args.out)
+                    writeInterruptedMarker(args.out, workDir)
                   // RETURN — never System.exit here (Shutdown.runHooks
                   // deadlocks; found by the RAI-022 probe).
                 },
@@ -862,14 +877,18 @@ object WorkflowRun:
                   o
                 catch
                   case _: InterruptedException =>
-                    done.set(true)
+                    // An interrupted join is not evidence that the runner's
+                    // finalizers have completed. Keep the shutdown hook's
+                    // bounded wait active so it can either observe cleanup or
+                    // publish the truthful interruption marker.
                     Outcome(
                       raider.core.result.ExitCodes.SigTerm,
                       args.out,
                       None
                     )
                   case _: zio.FiberFailure =>
-                    done.set(true)
+                    // As above, do not let the join-side signal suppress the
+                    // hook's marker before artifact finalization has settled.
                     Outcome(
                       raider.core.result.ExitCodes.SigTerm,
                       args.out,

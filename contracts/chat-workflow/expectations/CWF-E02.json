@@ -1,0 +1,153 @@
+{
+  "expectationId": "CWF-E02",
+  "title": "Negative corpus: bogus success, lost/unsupported chat context, invalid source/inputs, prompt injection stays data, secret leakage, path escape, stale build, changed source vs build identity, failed checks",
+  "derivedFrom": [
+    "docs/tasks/lineage.md RAI-155.e (CWF-E02)",
+    "docs/adr/ADR-033-chat-workflow-export.md section 8 (R1-R9), section 6.1 (K9 no-dispatch), section 6.5 (redaction)",
+    "ci-runtime stable exit table (0/10/21/143)"
+  ],
+  "exitCodeMeaning": {
+    "0": "success",
+    "10": "TaskRejected (failed trusted check stays failed, R9)",
+    "21": "ConfigInvalid (typed InputValidation/Configuration/Compilation preflight failures, R5/R7)",
+    "1": "generated local launcher typed failure"
+  },
+  "cases": [
+    {
+      "id": "lost-chat-context",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R2",
+      "expectedDetailContains": ["cannot invent absent execution records"],
+      "expectedTargetAbsent": true,
+      "note": "a session without a turn ledger is refused; the product cannot invent absent execution records (ADR-033 section 5.3)"
+    },
+    {
+      "id": "unsupported-selection",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R1",
+      "expectedDetailContains": ["no task selection"],
+      "expectedTargetAbsent": true,
+      "note": "captured ledger without an explicit :task select snapshot is refused (explicit selection is mandatory)"
+    },
+    {
+      "id": "secret-leakage-select",
+      "kind": "select",
+      "expectedErrorCode": "RA-INP",
+      "expectedDetailContains": ["CWF-R4"],
+      "expectedSecretNeverEchoed": true,
+      "note": "credential-shaped capture text is refused at select time; only the location/class is named, never the value"
+    },
+    {
+      "id": "secret-leakage-export",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R4",
+      "expectedSecretNeverEchoed": true,
+      "expectedTargetAbsent": true,
+      "note": "the adapter boundary re-checks the snapshot independently of select time (defense in depth)"
+    },
+    {
+      "id": "path-escape-nonexistent-parent",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R5",
+      "expectedTargetAbsent": true,
+      "expectedParentNotCreated": true,
+      "note": "export never creates parent directories; a target whose parent does not exist is refused"
+    },
+    {
+      "id": "path-escape-symlink-target",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R5",
+      "expectedTargetAbsent": true,
+      "note": "a symlink export target is refused (ADR-033 section 6.2 path rules)"
+    },
+    {
+      "id": "export-staging-remnant-and-existing-target",
+      "kind": "export",
+      "expectedRefusalPrefix": "export refused [RA-INP]: CWF-R5",
+      "expectedDetailContains": ["never overwrites"],
+      "note": "an interrupted export leaves a distinguishable staging remnant; an existing target is never overwritten (partial writes never look complete)"
+    },
+    {
+      "id": "invalid-source",
+      "kind": "compile",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-COMPILE",
+      "note": "an invalid manual edit fails the pinned compile with a typed diagnostic and never auto-runs (R7)"
+    },
+    {
+      "id": "invalid-input",
+      "kind": "run",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-INP",
+      "expectedDetailContains": ["CWF-input: invalid input JSON"],
+      "expectedRunStatus": "Failed",
+      "expectNoDispatch": true,
+      "note": "malformed input JSON fails validated decoding INSIDE the String boundary before any dispatch (zero stand requests)"
+    },
+    {
+      "id": "workspace-symlink",
+      "kind": "run",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-INP",
+      "expectedDetailContains": ["CWF-input: workspace must not be a symlink"],
+      "expectedRunStatus": "Failed",
+      "expectNoDispatch": true,
+      "note": "workspace path-escape/symlink rules bind at run time before dispatch"
+    },
+    {
+      "id": "no-credential",
+      "kind": "run",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-CFG",
+      "expectedDetailContains": ["missing credentials"],
+      "expectedRunStatus": "Failed",
+      "expectNoDispatch": true,
+      "note": "credentials are resolved fresh per invocation before construction; no credential means a typed preflight failure, never a hidden fallback"
+    },
+    {
+      "id": "bogus-success",
+      "kind": "run",
+      "expectedExitCode": 10,
+      "expectedErrorCode": "RA-OUT",
+      "expectedDetailContains": ["check 'marker' failed with exit code"],
+      "expectedRunStatus": "Failed",
+      "expectedVerdictAbsent": true,
+      "note": "the agent claims done without doing the work; the independent check fails and the run stays failed on BOTH launchers (R9: a failed check is never talked past)"
+    },
+    {
+      "id": "prompt-injection-stays-data",
+      "kind": "run",
+      "expectedExitCode": 0,
+      "expectedRunStatus": "Succeeded",
+      "expectedInjectionInert": true,
+      "expectedCredentialAbsentFromSource": true,
+      "expectedChecksUnchangedByModelText": true,
+      "note": "hostile captured text compiles only as escaped string DATA, never executes as shell or Scala; checks stay exactly the user-registered argv"
+    },
+    {
+      "id": "stale-build",
+      "kind": "run",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-INP",
+      "expectedDetailContains": ["stale build"],
+      "expectedRunStatus": "Failed",
+      "note": "a source edited after compilation is detected via build identity; earlier result claims are invalidated (CWF-D02, changed verifier/test detection)"
+    },
+    {
+      "id": "corrupted-build",
+      "kind": "run",
+      "expectedExitCode": 21,
+      "expectedErrorCode": "RA-INP",
+      "expectedDetailContains": ["stale or corrupted build"],
+      "expectedRunStatus": "Failed",
+      "note": "tampered class files fail the class-digest preflight before dispatch"
+    },
+    {
+      "id": "changed-verifier-input",
+      "kind": "integrity",
+      "expectedDetailContains": ["verifier input digest mismatch"],
+      "expectedVerdictAbsent": true,
+      "note": "changing a verifier expectation (including changing a failing bogus-success expectation to exit 0) is refused against the verifier's independently anchored suite-input digest"
+    }
+  ]
+}

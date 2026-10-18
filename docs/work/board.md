@@ -1,5 +1,79 @@
 # Raider Execution Board
 
+## 2026-10-18 — Owner decisions: LIN-03 acceptance basis; RAI-175 registered
+
+Owner decision: LIN-03 acceptance is based on live fold-error evidence (invalid projection reported, session exit unchanged, and prior committed snapshot readable through the pointer); live compile-failure validation transfers to the pinned-dotc validation mechanism in RAI-173 and is not a LIN-03 acceptance condition.
+
+RAI-175 is registered as ready to instrument PLANUI-02 structured capture of plan-2 settlement and approval state, then run authorized isolated and loaded probes until recurrence or exoneration. The card makes no product fix authorized without a captured reproducer; RAI-123 remains conditional because its mechanism is unestablished.
+
+## 2026-10-18 — RAI-164 + LIN-03 accepted
+
+- **RAI-164:** merged `lane/rai-164` as `c041662` (source tip `b019883`); completion review approved. Stage runtime and the four typed evidence records persist through the RAI-174 carrier into `run.json`/`events.jsonl`, retaining v1 bytes when SDLC evidence is absent. Unblocks RAI-165/166/167.
+- **LIN-03:** merged `lane/lin-03` as `37645f2` (source tip `f29c41f`); completion review approved under the 2026-10-18 owner scope basis. The 200-round production-path campaign, live fold-error reporting with unchanged session exit/prior pointer snapshot readable, and interrupted-publication checkpoint all passed. Live pinned-dotc compile-failure validation remains with RAI-173 and is not claimed here. LIN-04 is ready; its only declared dependency is LIN-03, now accepted.
+- **Integrated gates:** `make quality-changed` exit 0 (clean tree, minimum `fast`); `make quality-changed QUALITY_EXECUTE=1` exit 0, manifest `artifacts/quality/20261018-055427-30454-0001/manifest.json`; `make quality-profile PROFILES="static unit contracts runtime ci docs"` exit 0, manifest `artifacts/quality/20261018-060138-46106-0001/manifest.json`; `make quality-profile PROFILES="repl"` exit 0, manifest `artifacts/quality/20261018-060851-57143-0001/manifest.json`. After status metadata updates, `make quality-changed` selected `docs`, and its `QUALITY_EXECUTE=1` rerun passed with manifest `artifacts/quality/20261018-061801-71830-0001/manifest.json`. No timeout or real red occurred in these requested runs.
+- **Tracked exceptions, not cleared by these runs:** MJE-03c is RAI-157's known-red and its 10-run matrix remains load-held; TAB-02 is RAI-172's conditional determinism follow-up; PLANUI-02 still awaits the RAI-175 reproducer probe. No exception is represented as fixed or as a failed result in the requested gate runs.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 195 cards. **Queue:** RAI-165 lane next; LIN-04 lane next; 157×10/136 storm and RAI-175 probe remain load-held.
+
+## 2026-10-18 — PLANUI-02 integrated red diagnostic
+
+- Focused `PlanPanelSpec` suite filtered with `-t "PLANUI-02"` passed 10/10
+  isolated and 10/10 under load; each run verified exactly five PLANUI-02 tests
+  executed (not the other PlanPanelSpec suites). Loaded 18-CPU host reached
+  sampled 1-minute load 48.8–114.9 with ambient build activity and 40 temporary
+  CPU burners. Logs, matrices, analysis, and source hashes:
+  `artifacts/planui02-diag/` (`REPORT.md`).
+- Verdict: **ambiguous**, not cleared as a flake. The watcher outcomeRef race
+  could explain stale `ready2Fresh`, but cannot by itself explain the missing
+  `plan-exec`; the test did not capture plan-2 settlement/approval outcome.
+  RAI-123's per-job outcomeRef trigger is not established; do not start that
+  fix card from this evidence. No bisect was triggered because focused runs
+  remained green; `wt/diag-pre` was not created. Recommended next step is an
+  authorized reproducer capturing plan settlement and approval outcome.
+
+## 2026-10-18 — RAI-173 merged; LIN-03 integration staged
+
+- **RAI-173 merged** from `lane/rai-173` as
+  `8aa1c11488fd55cf9f4b9f95512869559e9b96a0` (merge commit; source
+  `cd32cff`), round-2 review approved. The lineage snapshot protocol pins the
+  data/source digests behind `lineage-commit.json` and atomically replaces the
+  pointer. The 8-reader × 120-update × 3 repetitions proof seeds pre-state and
+  uses strict Missing discipline; the prior race-masking fixture is closed by
+  reviewer-verified handling.
+- **LIN-03 wiring merged** from `lane/lin-03` as
+  `23c06924fe6e95981790dae6dad691b18e9c2a39` (merge commit; source
+  `a25641f`). Ordered export batches feed `LiveLineageProjection` under the
+  export lock; HeadlessRunner consumes the incremental projection after the
+  drain barrier. LIN3-01 wiring and LIN3-02/03 protocol are integrated;
+  **LIN-03 completion review is pending** and no LIN-03 acceptance is claimed.
+- **Integrated verification on the merged candidate:** `make quality-changed`
+  exited 0 (clean tree; minimum `fast` classification). `make quality-changed
+  QUALITY_EXECUTE=1` exited 0; all fast gates passed, no timeout, manifest
+  `artifacts/quality/20261018-022755-87361-0001/manifest.json`.
+  `make quality-profile PROFILES="static unit contracts runtime"` exited 1
+  (not a timeout): `sbt-test` failed with 183 passed / 1 failed in
+  `PlanPanelSpec` (`PLANUI-02`, `modules/repl/.../PlanPanelSpec.scala:280–282`;
+  `ready2Fresh` and `approved2` were false, and `plan-exec` was absent from
+  `List("plan", "plan", "plan-exec")`). The exact failing run is
+  `artifacts/quality/20261018-023805-12527-0001/sbt-test.log` (SHA-256
+  `0ed83dd5fd0d324b9106464b75df3693a2ff72fc3d6704aacd0b360088590345`); this
+  is a real observed red, not a timeout. In that run MJE-03c passed (its
+  historical RAI-157 known-red remains documented, not cleared) and TAB-02
+  passed (its RAI-172 load-race diagnosis remains documented, not fixed).
+- **LIN-03 acceptance suites:** the requested `sbt --batch 'raiderCli/testOnly
+  raider.cli.run.LiveLineageProjectionSpec
+  raider.cli.lineage.LineageSnapshotProtocolSpec
+  raider.cli.lineage.ReplayCliSpec raider.cli.lineage.ReplayProductCliSpec
+  raider.cli.run.LineageArtifactsSpec'` exited 0: 30 passed, 0 failed.
+  This component-suite result does not substitute for completion review or
+  erase the integrated profile red.
+- **Planning validation:** `python3 scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exited 0; 194 cards.
+- RAI-164 remains partial (stage runtime + digests; persistence waits for
+  RAI-174). The RAI-174 fix round is in flight (payload-interior boundary +
+  unknown-kind refusal).
+- **Queue:** LIN-03 completion review → LIN-04; RAI-164 completion after
+  RAI-174; RAI-157 ×10 / RAI-136 storm remain load-held.
+
 ## 2026-10-16 — Capacity revision: 20 spawned Luna agents
 
 Owner decision (interactive session, 2026-10-16, refined the same day):
@@ -76,6 +150,263 @@ after the first integration batch (main 0870045):
   typed refusal). `make quality-profile PROFILES="repl runtime"` exit 0,
   manifest `artifacts/quality/20261016-073347-65305-0001/manifest.json` SHA-256
   `fb2078f1c6e077f5f595b565b63a4ecaff8aa0d2460cd71bc7aa852b3936557c`.
+
+## 2026-10-16 — ADR-030 owner decisions; MJE-03c known-red
+
+- **ADR-030 accepted (owner mandate, interactive session 2026-10-16; contract
+  only):**
+  - D1: `NeedsApproval` writes an approval request (checkpoint ID, candidate
+    digest, expiry); human decision is separate; a fresh invocation rereads
+    policy/state/digest, with no resumed fiber.
+  - D2: Scala workflow config is authoritative for required checks/review and
+    target branch; read-only forge reconcile precedes each mutation, with typed
+    refusal on divergence.
+  - D3: Full generic forge stand protocol includes commit, PR status, merge,
+    stale-ref, conflict, duplicate, and unknown-outcome; real forges are
+    separately accepted adapters.
+  - D4: Typed Scala schemas in `contracts/` for check-result, review-verdict,
+    candidate-identity, integration-result, represented as JSON in run artifacts.
+  - D5: SemVer + Keep a Changelog, local `v<semver>` tag, checksummed
+    `artifacts/release/<version>/`; strictly local, with no push/publish/deploy.
+  - D6 (**explicit non-default owner budget decision**): SDLC hours expand
+    beyond the 13,100h envelope; refine the 128–200h estimate per implementation
+    packet before spend, and record the budget decision on the board.
+  - D7 (**explicit non-default owner choice**): public effects-API, with ADR-029
+    H8 design and consumer migration discipline in the first implementation
+    card; no signature freeze before review.
+  - Coordinator registers implementation cards after the .e/.f critical path.
+- **MJE-03c adjudication (fresh independent reviewer, read-only):** scope is
+  RAI-157 — the captured-but-unconnected introduction is silently lost at
+  `MultiJobExport.scala:63–65/435–448`; this is **not** an RAI-156 regression
+  (`0870045` changes ReplayHarness replay drain only). MJE-03c expectation stays
+  unchanged; RAI-156 stays. Main carries a recorded **INTERMITTENT KNOWN-RED**
+  on the static/unit/contracts/docs profile until the RAI-157 fix merges and
+  passes integrated verification. Failed manifest
+  `20261016-072639-53185-0001` is retained; the successful targeted rerun is
+  noted separately and does not clear the integrated known-red.
+- **RAI-157 lane note:** original `wt/rai-157` had corrupt build state (phantom
+  `ToolCall.id` compile error; a fresh worktree of the same branch compiles).
+  The lane continues in `wt/rai-157-fresh`; the original is detached and
+  retained for forensics.
+
+## 2026-10-17 — RAI-161 merged; SDLC cards registered; phantom-compile root cause; cleanup
+
+- **RAI-161 merged** on main as `ee2186f` (round-2 gate-policy review:
+  approve). Schema-v2 manifests retain gate-time audit metadata for
+  `docs/work/records/**`; tampering fails verification, post-gate additions are
+  listed without changing the fingerprint, and v1 legacy manifests remain
+  supported.
+- **Integrated gates on main:** `make quality-changed` exit 0 (classification
+  only; the pre-existing untracked `contracts/chat-workflow/` files classify as
+  `contracts`, `static`, `unit`; no manifest). First
+  `make quality-changed QUALITY_EXECUTE=1` attempt timed out at 120s (terminated,
+  not a pass); retry exit 0, passed. Manifest
+  `artifacts/quality/20261017-161805-70800-0001/manifest.json`, SHA-256
+  `aa1ecbca498f129831623b240b5c0794d0cbfdde0cf23e5bdeffd4ba4b2fd37b`.
+  `make quality-profile PROFILES="static unit contracts docs"` exit 1,
+  manifest `artifacts/quality/20261017-162616-83255-0001/manifest.json`,
+  SHA-256 `d06451bd393482e12aff1993f8c835ad492f718f827a760987234948696277a2`;
+  its `sbt-test.log` SHA-256 is
+  `8cd808c9c5c2850d1a6c06185855ecc1226b7911fb31b6e910cf5f2dd00bbe36`.
+  The failure is a **real red**, not the documented MJE-03c known-red:
+  `SessionRegistry ... TAB-02` reported `hist.evicted == 252L`, actual
+  `.evicted = 251` (38 passed, 1 failed). MJE-03c itself passed in this run.
+  `python3 scripts/quality/quality.py self-check` exit 0; it verified the
+  tampered-record failure, post-gate record addition with unchanged fingerprint,
+  registry/classification/manifest checks. Self-check does not emit a manifest.
+- **SDLC implementation package registered** at baseline `ff29b01` (plan
+  validator: 191 cards): RAI-163..170 implement ADR-030 D1–D7, with RAI-163
+  effects-API design first and H8 discipline; RAI-171 prepares live-wire work.
+  No paid execution without a separate owner budget.
+- **Phantom `ToolCall.id` compile error — root cause:** corrupt zinc/build state
+  is created when a worktree's first compile runs under heavy parallel load;
+  zinc then reuses stale partial core analysis and reports `value id is not a
+  member` against a class missing the `def`. Remedy: purge affected modules'
+  `target/` (and `.bsp`) and recompile; verified green in `wt/rai-162` with a
+  26s clean compile. Cases: `wt/rai-157` was superseded by
+  `wt/rai-157-fresh`, with the original retained detached for forensics;
+  `wt/rai-162` was purged and compiled green. Runbook implication: on phantom
+  member errors under load, purge targets before diagnosing sources.
+- **External worktree cleanup executed** per owner decision: 91 → 79 registered
+  worktrees. Merged/clean external worktrees under `../raider-english` and
+  `../raider-wt` were removed with per-entry re-verification; unmerged English,
+  handbook, and docs branches were preserved.
+- **Queue:** RAI-162 lane verification (environment fixed); RAI-137 round-3 after
+  this merge (freshness gap closed by RAI-161); RAI-157 full-spec ×10 matrix and
+  RAI-136 final storm deferred while machine load is high; LIN-03 LIN3-02/03
+  pending.
+
+## 2026-10-17 — TAB-02 eviction-count race diagnosis (integrated-gate red explained)
+
+- The `20261017-162616` profile red (`SessionRegistrySpec` TAB-02: 252 evictions
+  expected, 251 actual) is a **load-sensitive test race**, not a product
+  regression. `SessionRegistry.scala:453–466` publishes the folded snapshot
+  before `appendHistory` updates the history vector/eviction counter
+  (`:470–483`). TAB-02 waits for `lastSeq == 451`
+  (`SessionRegistrySpec.scala:205–210`), which does not imply history-accounting
+  quiescence; history can be one event behind.
+- Reproduction attempts: 10/10 isolated and 10/10 under system load 47–76 were
+  green, with the correctly filtered `-t TAB-02`; logs are in
+  `artifacts/tab02-diag/`. The failure was not reproduced; bisect is not
+  indicated.
+- Disposition: conditional determinism follow-up (RAI-123 pattern)—make the test
+  wait for the history/accounting condition; do **not** weaken the exact eviction
+  assertion. Register the conditional card when convenient; no product change
+  now.
+- Concurrent context: the same integrated run passed MJE-03c; its known-red is
+  intermittent and remains RAI-157-owned.
+
+## 2026-10-17 — Batch merge: RAI-137 + RAI-162; E03 unblocked on main
+
+- **RAI-137 merged** as `d7318f9` (round-3 approve): honest `ux-baseline` exit
+  semantics; additive `perf`/`ux-baseline`; freshness through RAI-161 schema-v2.
+- **RAI-162 merged** as `b3dda3f`: marker bound to invocation `workDir`; E03
+  RED-first, 3/3, with negative sibling coverage; review-fix round closed. The
+  RAI-155.e verifier corpus (E01/E02/E03, Harness, corpus spec, and records) is
+  now on main. E03 green there makes the .e lane re-gate a formality away:
+  merge main into `lane/rai-155e`, rerun EXECUTE, and review.
+- **Untracked-collision resolution:** the stale root copy of
+  `contracts/chat-workflow/` (old README and superseded
+  `verifier-expected.json`) was backed up to
+  `/var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/opencode/chat-workflow-untracked-backup-20261017`
+  and superseded by the tracked merge; nothing was lost.
+- **Integrated gates on main `b3dda3f`:** `make quality-changed` exit 0
+  (clean-tree classification: minimum `fast`); `make quality-changed
+  QUALITY_EXECUTE=1` exit 0, passed on first attempt (no timeout);
+  `make quality-profile PROFILES="static unit contracts ci"` exit 0,
+  passed; `make quality-profile PROFILES="repl runtime"` exit 0, passed;
+  `python3 scripts/quality/quality.py self-check` exit 0; plan validator exit 0
+  (191 cards). Executed-run manifests share input fingerprint
+  `87aa17ee285bc555af8e6a98124046ab0c5bce5db6b410766ba0b73b67f09546` and
+  policy hash `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`:
+  - EXECUTE fast: `artifacts/quality/20261017-181902-39730-0001/manifest.json`,
+    SHA-256 `5f08191bfb922f014aaba42703f074274863f7e21c053df809b29fb4dc56c5ab`.
+  - static/unit/contracts/ci: `artifacts/quality/20261017-183239-46718-0001/manifest.json`,
+    SHA-256 `2daeacc7318064ea290d8c9b5edda45ba26ed43ceb04fbac5627b706ba301697`.
+  - repl/runtime: `artifacts/quality/20261017-184250-52167-0001/manifest.json`,
+    SHA-256 `f6b5afbc7c206d7e30ab644c9516217be1fbc2c7d7ca25bdab5cc6bf0d353be7`.
+  MJE-03c (intermittent KNOWN-RED, RAI-157-owned) and TAB-02 (diagnosed
+  load-race; conditional determinism card) were **not observed** in these runs;
+  both requested profiles passed without failures. This is not a claim that
+  either historical issue is fixed.
+- **Queue:** RAI-155.e re-gate + review (critical path to .f); RAI-157
+  full-spec ×10 matrix (wait for lower load; load 76 today); RAI-136 final storm
+  (same); LIN-03 LIN3-02/03; TAB-02 conditional determinism card; SDLC
+  RAI-163..171; live-wire RAI-171 (owner budget pending).
+
+## 2026-10-17 — ADR-034 merged (Proposed); RAI-155.e round-2; LIN-03 blocker
+
+- **RAI-163 merged** as `d7dbd4d` (round-2 review approve). ADR-034 is a
+  **proposed** effects-API design under ADR-030 D7: typed effect descriptions
+  are separate from executors; capability and reconcile boundaries, D1 approval
+  artifacts, typed refusals, D4 evidence schemas, H8 consumer migration, and
+  the §3 environment/helper-only credential boundary are documented. No public
+  signature freeze or API acceptance is claimed; H8 consumer migration is
+  required before any future freeze.
+- **Integrated RAI-163 gates on main:** `make quality-changed` exit 0
+  (clean-tree classification; minimum `fast`); `make quality-changed
+  QUALITY_EXECUTE=1` timed out and was terminated on both attempts (first at
+  120s, retry at 600s; neither is a pass); `make quality-profile
+  PROFILES="docs"` exit 0 (docs profile manifest passed). `python3
+  scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exit 0 (192 cards). The execute timeout
+  did not yield an adjudicable test result: neither MJE-03c nor TAB-02 can be
+  reported as observed or cleared by this integration run. The previous
+  recorded states remain: MJE-03c known-red (RAI-157-owned); TAB-02 diagnosed
+  load-race with conditional RAI-172 follow-up.
+- **RAI-155.e re-gate:** verifiers E01–E03 and corpus are green; EXECUTE and
+  required profiles are green (post-gate verification passes are recorded in
+  the .e work record). Review round 1 is closed after the changed-verifier-input
+  case and digest anchor. Round 2 found that the digest check is not wired into
+  `ChatWorkflowVerifierHarness.loadE02` (standalone proof only), plus stale
+  record lines. Final fix round is in flight; .f remains blocked until round-3
+  approval.
+- **LIN-03 blocker:** pair-snapshot consistency requires readers to honor a
+  commit pointer, but `ReplayCli` resolves `lineage-data.json` directly, outside
+  LIN-03's allowed paths. A follow-up must authorize the reader protocol across
+  `ReplayCli`, `HeadlessRunner`, and export. Live pinned-compiler validation
+  also needs an authorized mechanism. Coordinator registers LIN-03.b next cycle.
+- **RAI-172** (conditional TAB-02 determinism follow-up) is registered at
+  baseline `eb4d3a4`.
+
+## 2026-10-17 — RAI-155.e ACCEPTED; critical path open to .f
+
+- **RAI-155.e accepted and merged** as `37911dc` (merge commit). Three
+  independent review rounds closed: round 3 confirmed code and coverage closed;
+  the only remaining freshness blocker was resolved by fresh verified manifest
+  `20261017-214247-62757` (record remained untouched after its gate). Lesson:
+  verifier output must not be written into the record after verification; keep
+  evidence records frozen and run gates LAST to avoid verify-output-in-record
+  self-reference.
+- **RAI-155.f is UNBLOCKED** and is next on the owner's critical path: user
+  walkthrough from chat through export/edit to local execution and generic CI.
+- **Integrated gates on `37911dc`:** `make quality-changed` exit 0 (clean-tree
+  classification, minimum fast); `make quality-changed QUALITY_EXECUTE=1`
+  first attempt was terminated by the 1200-second outer runner timeout (not a
+  gate result), then the single longer-budget retry passed exit 0 with all 10
+  checks green and no gate timeout. Manifest
+  `artifacts/quality/20261017-230452-73967-0001/manifest.json`, SHA-256
+  `b5467cc9282cf9c4b4a5399f8cc2a57044018d5e999be8e5e942defc29096be2`,
+  fingerprint `9101b38dfde32d119097d5de68684befa386341133078fbaf7b9d0d3beac42c1`,
+  policy `9122e5ad9c8abcc021c49df1905c34f9c7508c66cad93fc41f6d72dd7e20c775`.
+  `make quality-profile PROFILES="static unit contracts ci"` passed (manifest
+  `20261017-231849-25048-0001`, SHA-256
+  `a428050a99e334426d4224b73a4df3ade7bfeb0f8bb296ce637b4a63cf64a788`);
+  `make quality-profile PROFILES="docs repl runtime"` passed (manifest
+  `20261017-233235-34465-0001`, SHA-256
+  `39d6d082a904bbfed4d3289a7a6db588ef1062f28afa5aae358ec426e26ec8c0`).
+  Both profile manifests use the same product fingerprint and policy above.
+  MJE-03c passed in the successful runs and was not observed red; its historical
+  RAI-157-owned known-red status is not claimed fixed by this. TAB-02 passed and
+  was not observed red; its diagnosed load race and conditional RAI-172 follow-up
+  remain, not reclassified as fixed. The ADR-034 EXECUTE timeout debt is repaid
+  by the successful retry; the first timeout remains recorded as a non-pass.
+
+## 2026-10-18 — RAI-155.f accepted; RAI-155 parent accepted
+
+- **RAI-155.f merged and accepted** from `lane/rai-155f` after approved review.
+  The English walkthrough is at `docs/examples/chat-workflow/README.md`; lane
+  evidence reports the §6d five-run fresh-copy matrix (two inputs × two
+  launchers plus the unedited control), with checks failing before repair and
+  passing after. Its recorded real run IDs are `wf_955e397c`, `wf_4236a29f`,
+  and `wf_9ac3e838`.
+- **Artifact transfer fix:** copied and force-staged the complete lane evidence
+  tree `wt/rai-155f/artifacts/rai-155f/` into `artifacts/rai-155f/` after
+  scanning content for credentials. The walkthrough's five previously missing
+  references now resolve: `e01.log`, `e02.log`, `e03.log`,
+  `e01/cwf-e01-a/cwf_e01-manifest.json`, and
+  `e01/cwf-e01-a/cwf_e01.input.json`.
+- **Integrated gates on root:** `python3 scripts/plan/validate.py --out
+  artifacts/plan-review/report.json` exited 0 twice (193 cards, zero missing
+  links; first before gates, second after the parent status flip).
+  `make quality-changed` exited 0 (clean-tree minimum-fast classification);
+  `make quality-changed QUALITY_EXECUTE=1` exited 0 with manifest
+  `artifacts/quality/20261018-005950-74492-0001/manifest.json` (all fast gates
+  passed); `make quality-profile PROFILES="static unit contracts ci docs"`
+  exited 0 with manifest
+  `artifacts/quality/20261018-010710-83008-0001/manifest.json` (all listed
+  profiles passed). No timeout or real red remained. MJE-03c (RAI-157 known-red)
+  and TAB-02 (diagnosed load-race) remain documented exceptions, not failures
+  observed in this gate run and not claimed fixed.
+- **Integrated parent verifier:** the exact requested `sbt --batch
+  'raiderCli/testOnly raider.cli.chat.ChatWorkflowVerifierE01Spec
+  raider.cli.chat.ChatWorkflowVerifierE02Spec
+  raider.cli.chat.ChatWorkflowVerifierE03Spec'
+  'raiderDsl/testOnly raider.dsl.workflow.ChatWorkflowVerifierCorpusSpec'`
+  exited 0. CLI verifiers: 7 tests passed, 0 failed; DSL corpus: 5 passed,
+  0 failed.
+- **RAI-155 parent accepted** with basis: accepted children a `23bbc36`, b
+  `fee77dd`, c `29ad1b4`, d `3a4e91d`, e `37911dc`, and f `088ee3d`; integrated
+  verifier green; integrated gates green. Scope remains the first-slice path
+  with explicit sequential task selection; SDLC/PR/merge/release remain in the
+  RAI-163..170/173 chain. No live-model quality claim is made.
+- **Parallel lanes / next work:** RAI-164 is partial (stages, typed evidence,
+  SDLC-STG-01..04 green; artifact-writer wiring owed). RAI-173 is partial
+  (reader protocol and 0-torn-reads ×3; `sbt-test` gate red with truncated
+  diagnostic, which is owed). RAI-157 matrix and RAI-136 storm remain held
+  until load is below 10 (today: 16–37). Next: complete LIN-03 through the
+  RAI-173 merge after its gate diagnostic; continue RAI-165+ chain; resume
+  RAI-157/136 under the load threshold.
 
 ## 2026-10-14 — Chat to editable Scala workflow priority
 
@@ -734,3 +1065,32 @@ Historical audit snapshot, verified 2026-10-13 against main `acca49f` (file:line
 | 2026-10-04 (RAI-012) | SSE streaming slice: SseFramer (byte-level, UTF-8-safe) + ChatChunkParser + streaming backend. Partition property, typed negatives, cancel-mid-stream. 17/17 ×3; full 151. Record: RAI-012-SLICE.md |
 | 2026-10-04 (RAI-011) | OpenAI transport slice: provider-chat module, JDK HttpClient, non-streaming + tool_calls. Capstone: AgentLoop over HTTP. 4/4 ×3. Record: RAI-011-SLICE.md |
 | 2026-10-03 (40h session final) | Full test 188/0, gates 6/6, all smokes green. Records: RAI-010-A through RAI-011-SLICE |
+
+## 2026-10-18 — RAI-174 merged; PLANUI-02 diagnosed; LIN-03 remainder
+
+- **RAI-174 merged** from `lane/rai-174` as
+  `f9ad80e0cbfa1c4bf0a3edf8ad70019cff1a0eef` (merge commit;
+  round-3 review approved). The schema-v2 additive carrier is complete for
+  card scope; RAI-164 completion is unblocked for its persistence wiring.
+- **PLANUI-02:** integrated-only red was diagnosed as ambiguous; 20 focused
+  attempts were green (10 isolated, 10 under load). RAI-123's mechanism is
+  not established. An authorized reproducer capturing plan settlement and
+  approval outcome is recommended before any fix card; artifacts:
+  `artifacts/planui02-diag/`.
+- **LIN-03 is NOT accepted.** Honest remainder: executed RED-first for the
+  live fixture; decide compile-failure ↔ fold-error mapping (card clarification
+  or evidence); add the 200-live-round production fixture; and test a crash
+  between nodes. The lane iterates next cycle; LIN-04 stays blocked.
+- **Integrated gates after merge:** `make quality-changed` exit 0 (docs
+  classification); `make quality-changed QUALITY_EXECUTE=1` exit 0, passed,
+  no timeout (`artifacts/quality/20261018-040545-93656-0001/manifest.json`);
+  `make quality-profile PROFILES="static unit contracts runtime ci docs"`
+  exit 0, all listed profiles passed, no timeout
+  (`artifacts/quality/20261018-040609-95076-0001/manifest.json`). MJE-03c
+  remains RAI-157's documented known-red (lane fix exists; full matrix remains
+  load-held); TAB-02 remains RAI-172's conditional determinism follow-up. These
+  documented exceptions were not observed as failures in this green run and
+  are not claimed fixed. PLANUI-02 is a separate diagnosed integrated-only
+  red, not reproduced by the focused matrix; do not infer the RAI-123 cause.
+- `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json`
+  exit 0; 194 cards. PLANUI-02 diagnostic note retained above.

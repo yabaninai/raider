@@ -1,0 +1,22 @@
+[info] welcome to sbt 1.11.4 (Homebrew Java 27)
+[info] loading global plugins from /Users/reireirei/.sbt/1.0/plugins
+[info] loading settings for project rai-155f-build from plugins.sbt...
+[info] loading project definition from /Users/reireirei/PycharmProjects/PythonProject/startup/scalaagent/wt/rai-155f/project
+[info] loading settings for project root from build.sbt...
+[info] resolving key references (14350 settings) ...
+[info] set current project to raider (in build file:/Users/reireirei/PycharmProjects/PythonProject/startup/scalaagent/wt/rai-155f/)
+WARNING: A terminally deprecated method in sun.misc.Unsafe has been called
+WARNING: sun.misc.Unsafe::objectFieldOffset has been called by scala.runtime.LazyVals$ (file:/Users/reireirei/Library/Caches/Coursier/v1/https/repo1.maven.org/maven2/org/scala-lang/scala-library/3.9.0/scala-library-3.9.0.jar)
+WARNING: Please consider reporting this to the maintainers of class scala.runtime.LazyVals$
+WARNING: sun.misc.Unsafe::objectFieldOffset will be removed in a future release
+[32m+[0m ChatWorkflowVerifierE03 (CWF-E03 cancellation/concurrency)
+  [32m+[0m interrupted capture stays typed-Unknown outside the snapshot; R3 names the offending turn; no redispatch; export during streaming equals the quiescent reference; concurrent exports isolated; staging remnant refused
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e03-sigterm12830208816680465520/cwf_e03_sig-build
+compiled workflow build: /var/folders/2q/nmsh46097bv_82prfpbwh22c0000gn/T/cwf-e03-sigterm12830208816680465520/cwf_e03_sigterm-build
+  [32m+[0m fresh-process SIGTERM: bounded truthful outcome (exit per corpus, incomplete artifact or interrupted marker, never Succeeded, no retry); deterministic repeats: re-export byte-identical + normalized-equal repeat runs
+2 tests passed. 0 tests failed. 0 tests ignored.
+
+Executed in 22 s 632 ms
+
+[info] Completed tests
+[success] Total time: 24 s, completed Oct 17, 2026, 11:47:13 PM

@@ -96,6 +96,12 @@
    "gates": [
     "eval-corpus"
    ]
+  },
+  "perf": {
+   "stage": "component",
+   "gates": [
+    "ux-baseline"
+   ]
   }
  },
  "gates": {
@@ -207,6 +213,15 @@
     "raiderRuntime/testOnly raider.runtime.loop.corpus.PlanScenarioCorpusSpec"
    ],
    "timeout_s": 600
+  },
+  "ux-baseline": {
+   "argv": [
+    "python3",
+    "scripts/quality/ux_baseline.py",
+    "--out",
+    "artifacts/ux-baseline/quality-profile.json"
+   ],
+   "timeout_s": 1800
   }
  },
  "path_profiles": {

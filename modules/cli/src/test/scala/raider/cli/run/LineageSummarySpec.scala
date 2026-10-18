@@ -5,6 +5,7 @@ import raider.runtime.events.{EventEnvelope, EventCodecs}
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.lineage.model.GraphHash
 import raider.runtime.lineage.reduce.LineageReducer
+import raider.cli.lineage.LineageSnapshot
 import zio.ZIO
 import zio.json.DecoderOps
 import zio.test._
@@ -163,6 +164,35 @@ object LineageSummarySpec extends ZIOSpecDefault:
           outcome.exitCode == 21,
           summary.contains("FAILED"),
           !summary.contains("lineage:")
+        )
+      }
+    },
+    test(
+      "LIN3-03: a real invalid live phase fold is diagnostic-only and prior committed snapshot stays readable"
+    ) {
+      ZIO.scoped {
+        for
+          work <- ZIO.attempt(tempDir()).orDie
+          // Establish a valid, committed session snapshot before the bad live
+          // input arrives. This is deliberately the source of the pointer used
+          // below, rather than a hand-built manifest.
+          priorOutcome <- HeadlessRunner.run(mockAgentArgs(work))
+          prior <- ZIO.attempt(LineageSnapshot.read(priorOutcome.workDir)).orDie
+          (invalidOutcome, live) <- LiveInvalidSession.run(work)
+          diagnostic = HeadlessRunner.liveProjectionDiagnostic(live)
+          reportLine = diagnostic.map(HeadlessRunner.liveProjectionSummaryLine)
+        yield assertTrue(
+          priorOutcome.exitCode == invalidOutcome,
+          invalidOutcome == 0,
+          diagnostic.exists(_.contains("fold error:")),
+          reportLine.exists(_.contains("lineage live projection: invalid")),
+          prior.isRight,
+          prior.toOption.exists(s =>
+            Files.isRegularFile(s.sourcePath) && Files.isRegularFile(s.dataPath)
+          ),
+          prior.toOption.exists(s =>
+            Files.isReadable(s.sourcePath) && Files.isReadable(s.dataPath)
+          )
         )
       }
     }

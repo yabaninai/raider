@@ -1,6 +1,7 @@
 package raider.cli.run
 
 import raider.cli.lineage.SessionGraphView
+import raider.cli.lineage.LineageSnapshot
 import raider.dsl.lineage.data.{
   DataNode,
   GeneratorInfo,
@@ -20,6 +21,7 @@ import raider.runtime.lineage.wire.{LineageEnvelope, LineagePayload}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, StandardCopyOption}
 import scala.util.control.NonFatal
+import zio.json.EncoderOps
 
 /** LIN-09 (ADR-027 §2/§6.5, docs/lineage.md §9.2 "Writing artifacts to the run
   * directory"): writes the settled run's lineage artifacts NEXT TO the run's
@@ -110,11 +112,13 @@ object RunLineageArtifacts:
           .render(view)
           .left
           .map(e => ArtifactError.Render(String.valueOf(e)))
-        _ <- LineageDataStore
-          .write(data, documentOf(graph, wire, provenance))
-          .left
-          .map(e => ArtifactError.Store(String.valueOf(e)))
-        _ <- writeSourceAtomically(source, rendered)
+        _ <- publishPair(
+          workDir,
+          data,
+          source,
+          documentOf(graph, wire, provenance),
+          rendered
+        )
       yield Written(source, data)
     catch case NonFatal(t) => Left(ArtifactError.Io(String.valueOf(t)))
 
@@ -325,5 +329,30 @@ object RunLineageArtifacts:
     catch
       case e: java.io.IOException =>
         Left(ArtifactError.Io(String.valueOf(e.getMessage)))
+
+  /** Commit the pair only after both immutable generation files are complete.
+    */
+  private def publishPair(
+      dir: Path,
+      data: Path,
+      source: Path,
+      document: LineageDataDocument,
+      rendered: String
+  ): Either[ArtifactError, Unit] =
+    val dataBytes = document.toJson.getBytes(UTF_8)
+    val sourceBytes = rendered.getBytes(UTF_8)
+    LineageSnapshot
+      .publish(dir, dataBytes, sourceBytes)
+      .left
+      .map(e => ArtifactError.Io(String.valueOf(e)))
+      .flatMap { _ =>
+        for
+          _ <- LineageDataStore
+            .write(data, document)
+            .left
+            .map(e => ArtifactError.Store(String.valueOf(e)))
+          _ <- writeSourceAtomically(source, rendered)
+        yield ()
+      }
 
 end RunLineageArtifacts
