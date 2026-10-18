@@ -15,6 +15,7 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | RAI-163–170, RAI-174 | [SDLC effects API, stages, evidence persistence, approval, integration, release, and independent verification](m1.md) |
 | RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
 | RAI-173 | [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md) |
+| RAI-175 | [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -195,6 +196,7 @@ See [backlog.json](backlog.json) for cards added in later revisions, including L
 - **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
 - **RAI-173** [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
 - **RAI-174** [SDLC evidence persistence: versioned event/run schema extension](m1.md); dependencies: RAI-164; profiles: contracts.
+- **RAI-175** [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md); dependencies: RAI-110, RAI-119; profiles: static, unit, repl.
 
 ## Existing obligations added on 2026-10-13
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 185,
+  "raider_count": 186,
   "companion_count": 3,
   "cards": [
     {
@@ -5399,6 +5399,26 @@
       },
       "non_goals": "Changing LIN-03-owned fold wiring or writer paths before they merge; unrelated lineage schema changes; weakening LIN-14 expectations; paid provider calls.",
       "context": "Board 2026-10-17 LIN-03 blocker: ReplayCli resolves lineage-data.json outside LIN-03 allowed paths, and HeadlessRunner/live export must honor the commit pointer. LIN-14 concurrent projection-read expectations apply; lineage contracts require an authorized live pinned-compiler validation mechanism."
+    },
+    {
+      "id": "RAI-175",
+      "title": "PLANUI-02 authorized reproducer (plan settlement/approval capture)",
+      "milestone": "M2",
+      "dependencies": ["RAI-110", "RAI-119"],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/test/scala/raider/repl/**",
+        "docs/work/records/**"
+      ],
+      "profiles": ["static", "unit", "repl"],
+      "behavior": "PLANUI-02 red appeared once on an integrated run (manifest `artifacts/quality/20261018-023805-12527-0001`; `PlanPanelSpec`: `ready2Fresh`/`approved2` false and `plan-exec` absent). Twenty focused attempts were green (10 isolated + 10 loaded, load >50). Mechanism analysis in `artifacts/planui02-diag/REPORT.md`: the watcher `outcomeRef` race could explain stale `ready2Fresh` but not missing `plan-exec`; approval starts execution only after plan-2 settlement (`PlanSession.scala:121–165`), and settlement/approval outcome was not captured. Instrument the PLANUI-02 fixture to capture plan-2 settlement and approval state in structured form, with no assertion changes, then run the authorized isolated + loaded probe matrices until the red recurs or the capture exonerates the suspects. Deliverable is a captured reproducer or recorded exoneration. No product fix in this card; any fix follows only from a captured reproducer (RAI-123 pattern). RAI-123 remains conditional because its mechanism was not established.",
+      "acceptance": {
+        "normal": "PLANUI2-CAP-01: capture plan-2 settlement and approval state structurally in the PLANUI-02 fixture without changing assertions; execute isolated and loaded probe matrices until recurrence or exoneration, preserving exact run logs/load observations.",
+        "error": "PLANUI2-CAP-02: if the red recurs, retain an actionable captured reproducer showing settlement and approval outcomes correlated with `ready2Fresh`, `approved2`, and `plan-exec`; if it does not recur, record the completed probe and whether the captured outcomes exonerate the suspects. No product fix absent a captured reproducer.",
+        "concurrency": "PLANUI2-CAP-03: focused tests remain assertion-identical; isolated and loaded probe evidence distinguishes plan-2 settlement from approval/execution start, and any interruption or incomplete matrix is recorded as pending, not exoneration."
+      },
+      "non_goals": "Product-code changes, assertion changes/weakening, starting RAI-123 or claiming its mechanism established without a captured reproducer, unrelated soak work.",
+      "context": "Integrated red and diagnostic report cited above; board entry 2026-10-18 PLANUI-02 integrated red diagnostic. Prior 20 focused attempts were green and did not clear the integrated red."
     }
   ]
 }

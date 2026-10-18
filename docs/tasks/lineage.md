@@ -58,6 +58,8 @@ Status: accepted. Milestone: LIN. Dependencies: LIN-01, RAI-017.
 
 Status: todo. Milestone: LIN. Dependencies: LIN-01, LIN-02.
 
+Scope note (owner decision 2026-10-18): LIN-03 acceptance basis = live fold-error evidence (invalid projection reported, session exit unchanged, prior committed snapshot readable through the pointer); live compile-failure validation transfers to the pinned-dotc validation mechanism (RAI-173 scope) — not a LIN-03 acceptance condition.
+
 **Scenario and contract.** Incrementally extend the graph and projection during a session; periodically compile and validate the incremental output; on crash, the artifact remains consistent through the last completed node.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14

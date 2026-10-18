@@ -1,5 +1,11 @@
 # Raider Execution Board
 
+## 2026-10-18 — Owner decisions: LIN-03 acceptance basis; RAI-175 registered
+
+Owner decision: LIN-03 acceptance is based on live fold-error evidence (invalid projection reported, session exit unchanged, and prior committed snapshot readable through the pointer); live compile-failure validation transfers to the pinned-dotc validation mechanism in RAI-173 and is not a LIN-03 acceptance condition.
+
+RAI-175 is registered as ready to instrument PLANUI-02 structured capture of plan-2 settlement and approval state, then run authorized isolated and loaded probes until recurrence or exoneration. The card makes no product fix authorized without a captured reproducer; RAI-123 remains conditional because its mechanism is unestablished.
+
 ## 2026-10-18 — PLANUI-02 integrated red diagnostic
 
 - Focused `PlanPanelSpec` suite filtered with `-t "PLANUI-02"` passed 10/10
