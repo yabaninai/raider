@@ -747,7 +747,8 @@ object HeadlessRunner:
       eventsWritten: Long,
       ci: Option[CiContext],
       usage: Option[UsageReport],
-      lineage: Option[Either[ReduceError, LineageOutcome]]
+      lineage: Option[Either[ReduceError, LineageOutcome]],
+      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
   ): ZIO[Any, Nothing, Unit] =
     ZIO.attempt {
       Files.createDirectories(workDir)
@@ -775,7 +776,7 @@ object HeadlessRunner:
         tmp,
         // RAI-086: additive `ci`/`accounting` splice (frozen core schema is
         // not extended in this slice); absent input → absent field
-        spliceExtras(finalResult.toJson, ci, usage),
+        spliceExtras(finalResult.toJson, ci, usage, sdlcEvidence),
         UTF_8
       )
       Files.move(
@@ -994,7 +995,8 @@ object HeadlessRunner:
   private def spliceExtras(
       base: String,
       ci: Option[CiContext],
-      usage: Option[UsageReport]
+      usage: Option[UsageReport],
+      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
   ): String =
     import zio.json.ast.Json
     def astOf(json: String): Option[Json] =
@@ -1006,11 +1008,13 @@ object HeadlessRunner:
             astOf(AccountingView.json(u)).map(j => "accounting" -> j)
           )
           .toList
-    if extras.isEmpty then base
-    else
-      Json.decoder.decodeJson(base) match
-        case Right(Json.Obj(fields)) =>
-          Json.Obj(fields ++ zio.Chunk.fromIterable(extras)).toJson
-        case _ => base // impossible: RunResult JSON is always an object
+    val withExisting =
+      if extras.isEmpty then base
+      else
+        Json.decoder.decodeJson(base) match
+          case Right(Json.Obj(fields)) =>
+            Json.Obj(fields ++ zio.Chunk.fromIterable(extras)).toJson
+          case _ => base // impossible: RunResult JSON is always an object
+    SdlcArtifactSchema.addToRunJson(withExisting, sdlcEvidence)
 
 end HeadlessRunner

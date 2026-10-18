@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.dev/contracts/sdlc/evidence-record.schema.json",
+  "title": "Raider SDLC evidence record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "type", "id", "data"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "type": {
+      "enum": ["check-result", "review-verdict", "candidate-identity", "integration-result"]
+    },
+    "id": { "type": "string", "minLength": 1 },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "digest": { "type": "string" }
+      }
+    }
+  },
+  "$comment": "This lane's provisional carrier accepts only the digest string field used by its fixtures. RAI-164-owned evidence fields and their evolution policy are not available here; this narrow boundary does not claim validation of the eventual domain records."
+}

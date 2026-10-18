@@ -88,6 +88,25 @@ final class EventsJsonlWriter private (
       }
     }
 
+  /** Appends one versioned SDLC evidence record to this same event stream. */
+  def appendSdlc(record: SdlcArtifactSchema.Record): UIO[Long] =
+    lock.withPermit {
+      out.get.flatMap {
+        case None =>
+          ZIO.die(
+            new IllegalStateException(
+              s"EventsJsonlWriter.appendSdlc after close: $path"
+            )
+          )
+        case Some(w) =>
+          ZIO.attempt {
+            w.write(SdlcArtifactSchema.encode(record) + "\n")
+            w.flush()
+            ()
+          }.orDie *> lines.updateAndGet(_ + 1L)
+      }
+    }
+
   /** Flushes and closes the writer. Idempotent; a closed sink never reopens
     * implicitly (a later append is a defect, as in the journal).
     */
