@@ -1,5 +1,69 @@
 # LIN-03: work record
 
+## Final consolidation attempt (2026-10-18)
+
+Owner's final acceptance basis for this round: a live fold-invalid projection is
+reported, the session exit remains unchanged, and the prior committed snapshot
+remains readable through `lineage-commit.json`. A live compile failure is not an
+acceptance condition; it is transferred to pinned-dotc validation scope. This
+maps the earlier LIN3-02 compile-failure wording to the actual live fold-error
+diagnostic and does not claim dotc validation.
+
+The requested `git merge main` was run first. It brought the RAI-174 carrier
+and board update; the only conflict was the `HeadlessRunner.writeArtifacts`
+parameter list, resolved by retaining both `liveProjectionStatus` and the
+defaulted `sdlcEvidence` carrier. Merge commit: `40a4faa`.
+
+### Executed RED-first
+
+Created a scratch worktree at `e74f621^`, cherry-picked the live fixture commit
+`cec12a4`, and ran the fixture. The first compilation attempt exposed an
+unrelated stale incremental-build error in `AgentLoop.scala` (`ToolCall.id` not
+found); per the phantom-compile rule, removed all lane `target/` directories and
+`.bsp` and retried once. The clean retry compiled production and failed test
+compilation as expected: `LineageSnapshot` and
+`HeadlessRunner.liveProjectionDiagnostic` were not found at
+`LineageSummarySpec.scala:179` and `:181` (plus cascading `Any` typing errors).
+The retry command exited 1. This is executed RED evidence for the prior
+implementation's missing diagnostic/snapshot-reader fixture support, not
+evidence of a runtime compile failure and not an acceptance requirement for
+live dotc.
+
+### Remaining production-path and crash proof
+
+The available `LineageSummarySpec` live-invalid fixture exercises a real
+`JobManager`/`EventHub` campaign, `MultiJobExport` phase sink and the live fold;
+it verifies an invalid duplicate phase finish is reported without changing the
+successful exit and that a prior snapshot is readable through the pointer.
+The requested 200-prefix test driving 200 ordered production-path rounds was
+not added or executed in this consolidation attempt; existing 200-round
+evidence remains fold-level only. A fixture-controlled interruption after
+generation writes but before pointer replacement was also not added or
+executed; existing assertions prove readability after a fold-invalid campaign,
+not the protocol crash checkpoint. LIN3-01 and the LIN3-03 crash criterion
+therefore remain unproven here.
+
+### Verification for this attempt
+
+| Command | Exit | Evidence |
+| --- | --- | --- |
+| `git merge main` | 1 | Automatic merge stopped at one content conflict in `HeadlessRunner.scala`; resolved by retaining both parameters. |
+| `git commit -m "merge: RAI-174 carrier into LIN-03 lane"` | 0 | Merge commit `40a4faa`. |
+| `sbt --batch 'raiderCli/testOnly raider.cli.run.LineageSummarySpec'` on scratch parent after clean retry | 1 | Expected test-compilation RED: missing `LineageSnapshot` and `liveProjectionDiagnostic`; first attempt had unrelated compile error, then mandated purge/retry. |
+| `sbt --batch 'raiderCli/testOnly raider.cli.run.LineageSummarySpec'` on lane tip | 0 | 4 tests passed, including the live invalid-fold diagnostic/prior-pointer fixture; no failures or ignored tests. |
+| `make quality-changed` | 0 | No worktree changes detected by the classifier; clean-tree minimum `fast` selected. Operational work-record files are excluded from the product fingerprint. |
+| `make quality-changed QUALITY_EXECUTE=1` | 0 | Passed `fast`; manifest `artifacts/quality/20261018-042717-60618-0001/manifest.json`, SHA-256 `aea31f66b0a59f1849bc90dd488c761157f299f2e5322ba2d5afbe2ad5928349`; self-registry, compile, scalafmt/scalafix, forbidden APIs, license, contracts, compile fixtures, plan validation, and tests passed. |
+| `make quality-profile PROFILES="static unit contracts runtime"` | 0 | All requested profiles passed; manifest `artifacts/quality/20261018-043438-71846-0001/manifest.json`, SHA-256 `1bf98b85cb73639baf38e10a16e5e00d5702f4d390acfc36d36ba749cc5b9f29`; contracts, runtime, static, unit reported passed. |
+
+Final status against the rescoped basis: LIN3-02 live fold-error diagnostic,
+unchanged successful session exit, and readable prior pointer snapshot were
+already implemented and covered by the existing live fixture; the RED-first
+comparison confirms the diagnostic API was absent at `e74f621^`. LIN3-01's
+200-round production-path requirement and LIN3-03's crash-between-publication
+checkpoint remain incomplete. Therefore LIN-03 is not accepted and LIN-04
+remains blocked. No frozen schema or GraphHash changes were made. No paid calls
+were made.
+
 ## Live invalid-fold acceptance fixture (2026-10-18)
 
 Status: partial completion of the assigned fixture task; baseline `e74f621` on
