@@ -1,5 +1,61 @@
 # LIN-03: work record
 
+## Live invalid-fold acceptance fixture (2026-10-18)
+
+Status: partial completion of the assigned fixture task; baseline `e74f621` on
+`lane/lin-03`, clean before edits. Reporting implementation was already at tip.
+No production runtime code, frozen schema, GraphHash, build, gate policy, or
+board was changed.
+
+### Fixture mechanism and result
+
+`LiveInvalidSession` starts a real `JobManager` campaign, subscribes its real
+`EventHub` stream, and feeds ordered envelopes through production
+`MultiJobExport` and `LoopEvents`' phase sink. The campaign emits phase-start, a
+matching finish, then a duplicate finish without another start. The third live
+phase envelope is invalid to the incremental reducer; `currentProjection`
+retains the fold error while the campaign completes successfully. The fixture
+passes this live result through `HeadlessRunner.liveProjectionDiagnostic` and
+its summary-line renderer.
+
+Before this invalid session, the fixture runs a valid mock HeadlessRunner
+session and resolves its committed snapshot through `lineage-commit.json` using
+`LineageSnapshot.read`. It checks that the invalid session exit equals the valid
+session exit (both 0), the diagnostic has a fold error and an invalid report
+line, and both pointed source/data files remain readable. This checks the
+prior committed snapshot, not an invalid-session snapshot or crash checkpoint.
+
+This fixture does not cause a dotc compilation failure. `MultiJobExport
+currentProjection` returns only `(Option[LiveLineageProjection], Option[String])`;
+the second member records fold/reduce/view rejection from
+`LiveLineageProjection.append`. No compiler is invoked by incremental append,
+and no compiler result exists in that tuple. The fold-invalid test therefore
+proves diagnostic/exit/pointer behavior only, not compiler-failure recovery.
+
+| Criterion | Actual result | Evidence |
+| --- | --- | --- |
+| LIN3-01 | Partial: scripted 200-round fold evidence exists from prior work; no 200-round production stream in this fixture. | `LiveLineageProjectionSpec`; `LiveInvalidSession`. |
+| LIN3-02 | Partial: live fold-invalid input reaches HeadlessRunner diagnostic formatting without changing the session exit. No live dotc failure was tested. | `LineageSummarySpec` LIN3-03; `currentProjection` semantics. |
+| LIN3-03 | Partial: earlier committed pointer resolves to readable files after later fold-invalid campaign; no crash-between-nodes persisted checkpoint. | `LineageSummarySpec` LIN3-03 and `LineageSnapshot.read`. |
+| Report/exit/pointer assertions | Pass: fold-error diagnostic + invalid report line; both exits 0; both pointed files readable. | Targeted test output below. |
+| RED-first | `e74f621^` lacks `HeadlessRunner.liveProjectionDiagnostic`; this test statically references it and is incompatible with the parent. Parent-revision test was not executed, so no failing pre-fix output is claimed. At tip the test passes. | Parent source inspection; targeted tip run. |
+| GraphHash/frozen schema | Unchanged; no production source changed. | Diff inventory. |
+
+| Command | Exit | Evidence |
+| --- | --- | --- |
+| `git status --short --branch && git log -1 --oneline` | 0 | Clean baseline, `lane/lin-03`, `e74f621`. |
+| `sbt --batch 'raiderCli/testOnly raider.cli.run.LineageSummarySpec'` | 0 | 4 passed, 0 failed, 0 ignored. |
+| `sbt --batch scalafmtAll` | 0 | Two CLI test sources formatted. |
+| `make quality-changed` | Pending | Run after pre-gate record finalization. |
+| `make quality-changed QUALITY_EXECUTE=1` | Pending | Run after classification. |
+| `make quality-profile PROFILES="static unit contracts runtime"` | Pending | Required profiles. |
+
+Changed: `modules/cli/src/test/scala/raider/cli/run/LineageSummarySpec.scala`,
+new `modules/cli/src/test/scala/raider/cli/run/LiveInvalidSession.scala`, and
+this record. No paid calls. LIN3-01..03 remain partial; LIN-03 is not accepted
+and LIN-04 remains dependent on LIN-03. Outstanding: live pinned-compiler
+validation, 200 production rounds, and crash-between-nodes checkpoint proof.
+
 ## Live projection diagnostic completion round (2026-10-18)
 
 Status: partial; the reviewed HeadlessRunner reporting gap is wired. Baseline:

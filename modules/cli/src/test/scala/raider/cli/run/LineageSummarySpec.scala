@@ -168,27 +168,31 @@ object LineageSummarySpec extends ZIOSpecDefault:
       }
     },
     test(
-      "LIN3-03: live projection failure is report-only and snapshot stays readable"
+      "LIN3-03: a real invalid live phase fold is diagnostic-only and prior committed snapshot stays readable"
     ) {
       ZIO.scoped {
         for
           work <- ZIO.attempt(tempDir()).orDie
-          outcome <- HeadlessRunner.run(mockAgentArgs(work))
-          summary <- ZIO.attempt(summaryOf(outcome.workDir)).orDie
-          prior <- ZIO.attempt(LineageSnapshot.read(outcome.workDir)).orDie
-          diagnostic = HeadlessRunner.liveProjectionDiagnostic(
-            (None, Some("Reduce(InvalidEvent): live projection rejected event"))
-          )
+          // Establish a valid, committed session snapshot before the bad live
+          // input arrives. This is deliberately the source of the pointer used
+          // below, rather than a hand-built manifest.
+          priorOutcome <- HeadlessRunner.run(mockAgentArgs(work))
+          prior <- ZIO.attempt(LineageSnapshot.read(priorOutcome.workDir)).orDie
+          (invalidOutcome, live) <- LiveInvalidSession.run(work)
+          diagnostic = HeadlessRunner.liveProjectionDiagnostic(live)
           reportLine = diagnostic.map(HeadlessRunner.liveProjectionSummaryLine)
         yield assertTrue(
-          outcome.exitCode == 0,
+          priorOutcome.exitCode == invalidOutcome,
+          invalidOutcome == 0,
           diagnostic.exists(_.contains("fold error:")),
           reportLine.exists(_.contains("lineage live projection: invalid")),
           prior.isRight,
           prior.toOption.exists(s =>
             Files.isRegularFile(s.sourcePath) && Files.isRegularFile(s.dataPath)
           ),
-          summary.contains("- lineage: graph ")
+          prior.toOption.exists(s =>
+            Files.isReadable(s.sourcePath) && Files.isReadable(s.dataPath)
+          )
         )
       }
     }
