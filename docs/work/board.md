@@ -1,5 +1,21 @@
 # Raider Execution Board
 
+## 2026-10-18 — PLANUI-02 integrated red diagnostic
+
+- Focused `PlanPanelSpec` suite filtered with `-t "PLANUI-02"` passed 10/10
+  isolated and 10/10 under load; each run verified exactly five PLANUI-02 tests
+  executed (not the other PlanPanelSpec suites). Loaded 18-CPU host reached
+  sampled 1-minute load 48.8–114.9 with ambient build activity and 40 temporary
+  CPU burners. Logs, matrices, analysis, and source hashes:
+  `artifacts/planui02-diag/` (`REPORT.md`).
+- Verdict: **ambiguous**, not cleared as a flake. The watcher outcomeRef race
+  could explain stale `ready2Fresh`, but cannot by itself explain the missing
+  `plan-exec`; the test did not capture plan-2 settlement/approval outcome.
+  RAI-123's per-job outcomeRef trigger is not established; do not start that
+  fix card from this evidence. No bisect was triggered because focused runs
+  remained green; `wt/diag-pre` was not created. Recommended next step is an
+  authorized reproducer capturing plan settlement and approval outcome.
+
 ## 2026-10-18 — RAI-173 merged; LIN-03 integration staged
 
 - **RAI-173 merged** from `lane/rai-173` as
@@ -1035,3 +1051,32 @@ Historical audit snapshot, verified 2026-10-13 against main `acca49f` (file:line
 | 2026-10-04 (RAI-012) | SSE streaming slice: SseFramer (byte-level, UTF-8-safe) + ChatChunkParser + streaming backend. Partition property, typed negatives, cancel-mid-stream. 17/17 ×3; full 151. Record: RAI-012-SLICE.md |
 | 2026-10-04 (RAI-011) | OpenAI transport slice: provider-chat module, JDK HttpClient, non-streaming + tool_calls. Capstone: AgentLoop over HTTP. 4/4 ×3. Record: RAI-011-SLICE.md |
 | 2026-10-03 (40h session final) | Full test 188/0, gates 6/6, all smokes green. Records: RAI-010-A through RAI-011-SLICE |
+
+## 2026-10-18 — RAI-174 merged; PLANUI-02 diagnosed; LIN-03 remainder
+
+- **RAI-174 merged** from `lane/rai-174` as
+  `f9ad80e0cbfa1c4bf0a3edf8ad70019cff1a0eef` (merge commit;
+  round-3 review approved). The schema-v2 additive carrier is complete for
+  card scope; RAI-164 completion is unblocked for its persistence wiring.
+- **PLANUI-02:** integrated-only red was diagnosed as ambiguous; 20 focused
+  attempts were green (10 isolated, 10 under load). RAI-123's mechanism is
+  not established. An authorized reproducer capturing plan settlement and
+  approval outcome is recommended before any fix card; artifacts:
+  `artifacts/planui02-diag/`.
+- **LIN-03 is NOT accepted.** Honest remainder: executed RED-first for the
+  live fixture; decide compile-failure ↔ fold-error mapping (card clarification
+  or evidence); add the 200-live-round production fixture; and test a crash
+  between nodes. The lane iterates next cycle; LIN-04 stays blocked.
+- **Integrated gates after merge:** `make quality-changed` exit 0 (docs
+  classification); `make quality-changed QUALITY_EXECUTE=1` exit 0, passed,
+  no timeout (`artifacts/quality/20261018-040545-93656-0001/manifest.json`);
+  `make quality-profile PROFILES="static unit contracts runtime ci docs"`
+  exit 0, all listed profiles passed, no timeout
+  (`artifacts/quality/20261018-040609-95076-0001/manifest.json`). MJE-03c
+  remains RAI-157's documented known-red (lane fix exists; full matrix remains
+  load-held); TAB-02 remains RAI-172's conditional determinism follow-up. These
+  documented exceptions were not observed as failures in this green run and
+  are not claimed fixed. PLANUI-02 is a separate diagnosed integrated-only
+  red, not reproduced by the focused matrix; do not infer the RAI-123 cause.
+- `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json`
+  exit 0; 194 cards. PLANUI-02 diagnostic note retained above.
