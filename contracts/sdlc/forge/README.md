@@ -8,6 +8,7 @@
 | SDLC-FORGE-02a | Stale-ref and conflict injection | `Stale`, `Conflict` |
 | SDLC-FORGE-02b | Repeated operation identity | `Duplicate`; no repeated mutation |
 | SDLC-FORGE-02c | Timeout/unknown after effect | `TimedOutUncertain`, blind retry `ReconcileRequired`, read-only reconcile `AlreadyApplied` |
+| SDLC-FORGE-02f | Unknown result without a committed effect | `Unknown`, blind retry `ReconcileRequired`, read-only reconcile observes unchanged state and settles as `Rejected` |
 | SDLC-FORGE-02d | Disposable Git commit, PR branch/status, merge, stale ref | Actual temporary `refs/heads/main` and `refs/heads/pr/<id>` change; stale expected object ID returns `Stale` |
 | SDLC-FORGE-02e | Asynchronous pending-to-timeout window | Injected async commit is `Pending` before virtual-clock deadline, then `TimedOutUncertain`; mutation retry is blocked until read-only reconcile |
 | SDLC-FORGE-03 | Competing owners serialize; stale state is read-only reconciled before explicit retry | one concurrent request `Applied`, the other `Stale`; fresh-ref retry `Applied` |

@@ -89,6 +89,31 @@ object LocalForgeStandSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SDLC-FORGE-02f: unknown result blocks retry until read-only reconcile observes no effect"
+    ) {
+      val stand = LocalForgeStand("base")
+      val operation =
+        request(
+          "unknown-result",
+          OperationKind.Commit,
+          "base",
+          Some("candidate")
+        )
+      stand.inject(FaultMode.UnknownResult)
+      val unknown = stand.commit(operation)
+      val blindRetry = stand.commit(operation)
+      val reconciled = stand.reconcile(operation.operationId)
+      val retryAfterReconcile = stand.commit(operation)
+      assertTrue(
+        unknown.outcome == Outcome.Unknown,
+        unknown.snapshot.ref == "base",
+        blindRetry.outcome == Outcome.ReconcileRequired,
+        reconciled.outcome == Outcome.Rejected,
+        reconciled.snapshot.ref == "base",
+        retryAfterReconcile.outcome == Outcome.Duplicate
+      )
+    },
+    test(
       "SDLC-FORGE-03: stale state is read-only reconciled before a fresh retry"
     ) {
       val stand = LocalForgeStand("base")

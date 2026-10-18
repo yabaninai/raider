@@ -12,7 +12,7 @@ object ForgeProtocol:
     case Open, Merged, Closed
 
   enum FaultMode:
-    case None, StaleRef, Conflict, Duplicate, UnknownOutcome
+    case None, StaleRef, Conflict, Duplicate, UnknownOutcome, UnknownResult
 
   enum AsyncState:
     case Pending, TimedOutUncertain

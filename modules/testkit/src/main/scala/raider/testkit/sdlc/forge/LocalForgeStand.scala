@@ -15,6 +15,7 @@ final class LocalForgeStand(initialRef: String = "main-0"):
   private var pullRequests = Map.empty[String, PullRequestState]
   private var operations = Map.empty[OperationId, Response]
   private var uncertain = Set.empty[OperationId]
+  private var unknownBefore = Map.empty[OperationId, Snapshot]
   private var asynchronous = Map.empty[OperationId, AsyncState]
   private var nextFault: FaultMode = FaultMode.None
   private var nextPullRequest = 1
@@ -54,11 +55,22 @@ final class LocalForgeStand(initialRef: String = "main-0"):
     val observed = operations.get(operationId) match
       case Some(applied)
           if applied.outcome == Outcome.TimedOutUncertain || applied.outcome == Outcome.Unknown =>
-        val result =
-          applied.copy(outcome = Outcome.AlreadyApplied, snapshot = snapshot)
-        operations = operations.updated(operationId, result)
-        uncertain -= operationId
-        result
+        if applied.outcome == Outcome.Unknown then
+          val before = unknownBefore.get(operationId)
+          if before.contains(snapshot) then
+            val result =
+              applied.copy(outcome = Outcome.Rejected, snapshot = snapshot)
+            operations = operations.updated(operationId, result)
+            uncertain -= operationId
+            unknownBefore -= operationId
+            result
+          else applied.copy(snapshot = snapshot)
+        else
+          val result =
+            applied.copy(outcome = Outcome.AlreadyApplied, snapshot = snapshot)
+          operations = operations.updated(operationId, result)
+          uncertain -= operationId
+          result
       case Some(existing) => existing.copy(snapshot = snapshot)
       case None =>
         uncertain -= operationId
@@ -138,6 +150,18 @@ final class LocalForgeStand(initialRef: String = "main-0"):
         snapshot,
         request.pullRequestId
       )
+
+    if fault == FaultMode.UnknownResult then
+      val unknown = Response(
+        request.operationId,
+        Outcome.Unknown,
+        before,
+        request.pullRequestId
+      )
+      operations = operations.updated(request.operationId, unknown)
+      unknownBefore = unknownBefore.updated(request.operationId, before)
+      uncertain += request.operationId
+      return unknown
 
     val applied = applyRequest(request, before)
     if applied.outcome != Outcome.Applied then applied
