@@ -6,6 +6,14 @@ Owner decision: LIN-03 acceptance is based on live fold-error evidence (invalid 
 
 RAI-175 is registered as ready to instrument PLANUI-02 structured capture of plan-2 settlement and approval state, then run authorized isolated and loaded probes until recurrence or exoneration. The card makes no product fix authorized without a captured reproducer; RAI-123 remains conditional because its mechanism is unestablished.
 
+## 2026-10-18 — RAI-164 + LIN-03 accepted
+
+- **RAI-164:** merged `lane/rai-164` as `c041662` (source tip `b019883`); completion review approved. Stage runtime and the four typed evidence records persist through the RAI-174 carrier into `run.json`/`events.jsonl`, retaining v1 bytes when SDLC evidence is absent. Unblocks RAI-165/166/167.
+- **LIN-03:** merged `lane/lin-03` as `37645f2` (source tip `f29c41f`); completion review approved under the 2026-10-18 owner scope basis. The 200-round production-path campaign, live fold-error reporting with unchanged session exit/prior pointer snapshot readable, and interrupted-publication checkpoint all passed. Live pinned-dotc compile-failure validation remains with RAI-173 and is not claimed here. LIN-04 is ready; its only declared dependency is LIN-03, now accepted.
+- **Integrated gates:** `make quality-changed` exit 0 (clean tree, minimum `fast`); `make quality-changed QUALITY_EXECUTE=1` exit 0, manifest `artifacts/quality/20261018-055427-30454-0001/manifest.json`; `make quality-profile PROFILES="static unit contracts runtime ci docs"` exit 0, manifest `artifacts/quality/20261018-060138-46106-0001/manifest.json`; `make quality-profile PROFILES="repl"` exit 0, manifest `artifacts/quality/20261018-060851-57143-0001/manifest.json`. After status metadata updates, `make quality-changed` selected `docs`, and its `QUALITY_EXECUTE=1` rerun passed with manifest `artifacts/quality/20261018-061801-71830-0001/manifest.json`. No timeout or real red occurred in these requested runs.
+- **Tracked exceptions, not cleared by these runs:** MJE-03c is RAI-157's known-red and its 10-run matrix remains load-held; TAB-02 is RAI-172's conditional determinism follow-up; PLANUI-02 still awaits the RAI-175 reproducer probe. No exception is represented as fixed or as a failed result in the requested gate runs.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 195 cards. **Queue:** RAI-165 lane next; LIN-04 lane next; 157×10/136 storm and RAI-175 probe remain load-held.
+
 ## 2026-10-18 — PLANUI-02 integrated red diagnostic
 
 - Focused `PlanPanelSpec` suite filtered with `-t "PLANUI-02"` passed 10/10

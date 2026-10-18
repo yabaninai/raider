@@ -56,7 +56,7 @@ Status: accepted. Milestone: LIN. Dependencies: LIN-01, RAI-017.
 
 ## LIN-03: Live incremental graph and projection support
 
-Status: todo. Milestone: LIN. Dependencies: LIN-01, LIN-02.
+Status: accepted. Milestone: LIN. Dependencies: LIN-01, LIN-02.
 
 Scope note (owner decision 2026-10-18): LIN-03 acceptance basis = live fold-error evidence (invalid projection reported, session exit unchanged, prior committed snapshot readable through the pointer); live compile-failure validation transfers to the pinned-dotc validation mechanism (RAI-173 scope) — not a LIN-03 acceptance condition.
 
@@ -106,7 +106,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 ## LIN-04: Lineage tab in the TUI
 
-Status: todo. Milestone: LIN. Dependencies: LIN-03.
+Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 **Scenario and contract.** Minimal tab host (one tab, without P2 drafts): session tree, lineage.scala source, and validity status; accessible during a live session without blocking input.
 

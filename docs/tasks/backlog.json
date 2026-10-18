@@ -3088,7 +3088,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "accepted"
     },
     {
       "id": "LIN-04",
@@ -3115,7 +3115,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "ready"
     },
     {
       "id": "LIN-05",
@@ -5206,7 +5206,7 @@
       "title": "Implement SDLC stages and typed evidence schemas",
       "milestone": "M1",
       "dependencies": ["RAI-117", "RAI-163"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "examples/workflows/sdlc/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "ci"],
       "behavior": "ADR-030 §2 stage model and §2.1 evidence identity using reviewed RAI-163 contract. Typed Scala schemas in contracts/ for check-result, review-verdict, candidate-identity and integration-result; versioned JSON in run.json/events.jsonl. Estimate 24–36 h, allocated with RAI-163 within packet A1's 32–48 h.",
