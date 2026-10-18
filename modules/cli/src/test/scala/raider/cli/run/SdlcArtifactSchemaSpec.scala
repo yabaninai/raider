@@ -242,6 +242,14 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
           dir <- zio.ZIO
             .attempt(java.nio.file.Files.createTempDirectory("sdlc-stage-run"))
             .orDie
+          _ <- zio.ZIO
+            .attempt(
+              java.nio.file.Files.writeString(dir.resolve("run.json"), run)
+            )
+            .orDie
+          runArtifact <- zio.ZIO
+            .attempt(java.nio.file.Files.readString(dir.resolve("run.json")))
+            .orDie
           writer <- EventsJsonlWriter.open(dir.resolve("events.jsonl"))
           _ <- zio.ZIO.foreachDiscard(records)(writer.appendSdlc)
           _ <- writer.close
@@ -257,7 +265,7 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
           eventResults = SdlcArtifactSchema.decodeMixed(lines)
         yield assertTrue(
           records.map(_.kind).toSet == Kind.values.toSet,
-          SdlcArtifactSchema.decodeRunJson(run).contains(records),
+          SdlcArtifactSchema.decodeRunJson(runArtifact).contains(records),
           eventResults.toOption.exists(_.collect { case Right(record) =>
             record
           } == records)
