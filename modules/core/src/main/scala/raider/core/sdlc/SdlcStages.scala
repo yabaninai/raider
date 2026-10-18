@@ -48,7 +48,8 @@ object SdlcStages:
       context: Context,
       successful: Boolean,
       detail: String,
-      repairNeeded: Boolean = false
+      repairNeeded: Boolean = false,
+      typedEvidence: List[SdlcEvidence.Record] = Nil
   )
 
   type Handler = Program[Context, StageResult]

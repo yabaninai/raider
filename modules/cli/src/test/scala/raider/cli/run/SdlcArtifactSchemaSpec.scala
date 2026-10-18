@@ -4,16 +4,80 @@ import zio.Chunk
 import zio.json.ast.Json
 import zio.json.EncoderOps
 import zio.test.*
+import raider.core.{Program, Task}
+import raider.core.sdlc.{SdlcEvidence, SdlcStages}
+import zio.json.*
 
 object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
   import SdlcArtifactSchema.*
 
-  private val records = Kind.values.toList.zipWithIndex.map { case (kind, i) =>
-    Record(
-      kind,
-      s"evidence-$i",
-      Json.Obj(Chunk("digest" -> Json.Str(s"sha-$i")))
+  private val sampleCandidate = SdlcEvidence.CandidateIdentity(
+    "repo",
+    "worktree",
+    Some("base"),
+    Some("head"),
+    None,
+    "tree",
+    "task",
+    "plan",
+    "policy",
+    "config"
+  )
+
+  private val typedEvidence = List(
+    SdlcEvidence.artifact(
+      "check-result",
+      SdlcEvidence.CheckResult(
+        "compile",
+        "definition",
+        "argv",
+        SdlcEvidence.CheckOutcome.Passed,
+        Some(0),
+        "scala",
+        "verifier",
+        sampleCandidate,
+        "output",
+        "policy"
+      )
+    ),
+    SdlcEvidence.artifact(
+      "review-verdict",
+      SdlcEvidence.ReviewVerdict(
+        "reviewer",
+        SdlcEvidence.ReviewDecision.Acceptable,
+        "findings",
+        "task",
+        "plan",
+        sampleCandidate,
+        List("check-digest"),
+        "policy"
+      )
+    ),
+    SdlcEvidence.artifact("candidate-identity", sampleCandidate),
+    SdlcEvidence.artifact(
+      "integration-result",
+      SdlcEvidence.IntegrationResult(
+        "operation",
+        "local",
+        sampleCandidate,
+        "target",
+        "preconditions",
+        Some("observed"),
+        SdlcEvidence.IntegrationOutcome.Applied,
+        List("review-digest"),
+        "policy"
+      )
     )
+  )
+
+  private val records = typedEvidence.zipWithIndex.map { case (json, index) =>
+    SdlcArtifactSchema
+      .fromEvidence(
+        s"evidence-$index",
+        SdlcEvidence.decodeArtifact(json).toOption.get
+      )
+      .toOption
+      .get
   }
 
   private val v1Line =
@@ -86,14 +150,129 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SDLC-WIRE-01c: a completed SDLC stage run persists all typed records in both artifacts"
+    ) {
+      import SdlcEvidence.*
+      import SdlcStages.*
+      val candidate = CandidateIdentity(
+        "repo",
+        "worktree",
+        Some("base"),
+        Some("head"),
+        None,
+        "tree",
+        "task",
+        "plan",
+        "policy",
+        "config"
+      )
+      val check = CheckResult(
+        "compile",
+        "definition",
+        "argv",
+        CheckOutcome.Passed,
+        Some(0),
+        "scala",
+        "verifier",
+        candidate,
+        "output",
+        "policy"
+      )
+      val review = ReviewVerdict(
+        "reviewer",
+        ReviewDecision.Acceptable,
+        "findings",
+        "task",
+        "plan",
+        candidate,
+        List("check-digest"),
+        "policy"
+      )
+      val integration = IntegrationResult(
+        "operation",
+        "local",
+        candidate,
+        "target",
+        "preconditions",
+        Some("observed"),
+        IntegrationOutcome.Applied,
+        List("review-digest"),
+        "policy"
+      )
+      val stages = List(
+        Stage.Task,
+        Stage.Plan,
+        Stage.Implement,
+        Stage.Checks,
+        Stage.Review,
+        Stage.Integration
+      )
+      val typed = Map(
+        Stage.Checks -> List(SdlcEvidence.Record.Check(check)),
+        Stage.Review -> List(SdlcEvidence.Record.Review(review)),
+        Stage.Integration -> List(SdlcEvidence.Record.Integration(integration))
+      )
+      val handlers = stages.map { stage =>
+        stage -> Program.fromFunction[Context, StageResult](stage.toString) {
+          context =>
+            Task.succeed(
+              StageResult(
+                context,
+                successful = true,
+                stage.toString,
+                typedEvidence = typed.getOrElse(stage, Nil)
+              )
+            )
+        }
+      }.toMap
+      val program = SdlcStages
+        .program(
+          WorkflowDescription(
+            stages.map(s => StageDescription(s, Nil, Nil, Nil)),
+            Limits(0, 0)
+          ),
+          handlers
+        )
+        .toOption
+        .get
+      Task.zio(program(Context(candidate))).flatMap { results =>
+        val records = SdlcArtifactSchema.fromStageResults(results).toOption.get
+        val run = SdlcArtifactSchema.addToRunJson(v1Run, records)
+        for
+          dir <- zio.ZIO
+            .attempt(java.nio.file.Files.createTempDirectory("sdlc-stage-run"))
+            .orDie
+          writer <- EventsJsonlWriter.open(dir.resolve("events.jsonl"))
+          _ <- zio.ZIO.foreachDiscard(records)(writer.appendSdlc)
+          _ <- writer.close
+          lines <- zio.ZIO
+            .attempt(
+              java.nio.file.Files
+                .readAllLines(dir.resolve("events.jsonl"))
+                .toArray
+                .toVector
+                .map(_.toString)
+            )
+            .orDie
+          eventResults = SdlcArtifactSchema.decodeMixed(lines)
+        yield assertTrue(
+          records.map(_.kind).toSet == Kind.values.toSet,
+          SdlcArtifactSchema.decodeRunJson(run).contains(records),
+          eventResults.toOption.exists(_.collect { case Right(record) =>
+            record
+          } == records)
+        )
+      }
+    },
+    test(
       "SDLC-WIRE-02: typed record refuses unknown envelope/payload fields and unsupported versions"
     ) {
       val unknown = encode(records.head).dropRight(1) + ",\"unexpected\":true}"
       val version = encode(records.head)
         .replace("\"schemaVersion\":2", "\"schemaVersion\":3")
       val unknownPayload = encode(records.head).replace(
-        "\"digest\":\"sha-0\"",
-        "\"digest\":\"sha-0\",\"unexpected\":true"
+        "\"checkId\":\"compile\"",
+        "\"checkId\":\"compile\",\"unexpected\":true"
       )
       assertTrue(
         decode(unknown) == Left(DecodeError.UnknownField("unexpected")),
@@ -104,14 +283,14 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
         decode(version) == Left(DecodeError.UnsupportedVersion(3L))
       )
     },
-    test("SDLC-WIRE-02: non-string digest returns the exact typed refusal") {
-      val nonStringDigest =
-        """{"schemaVersion":2,"type":"check-result","id":"evidence-0","data":{"digest":17}}"""
+    test("SDLC-WIRE-02: malformed typed interior returns a typed refusal") {
+      val malformed = encode(records.head)
+        .replace("\"checkId\":\"compile\"", "\"checkId\":17")
       assertTrue(
-        decode(nonStringDigest) ==
+        decode(malformed) ==
           Left(
             DecodeError.Malformed(
-              "check-result.data.digest must be a string"
+              ".checkId(expected string)"
             )
           )
       )

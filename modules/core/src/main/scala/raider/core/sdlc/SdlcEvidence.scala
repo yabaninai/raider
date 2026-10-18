@@ -147,6 +147,21 @@ object SdlcEvidence:
   object IntegrationResult:
     given JsonCodec[IntegrationResult] = DeriveJsonCodec.gen
 
+  /** Closed typed union emitted by stage handlers; wire names remain the
+    * versioned artifact discriminators below.
+    */
+  enum Record:
+    case Check(value: CheckResult)
+    case Review(value: ReviewVerdict)
+    case Candidate(value: CandidateIdentity)
+    case Integration(value: IntegrationResult)
+
+  def artifactOf(record: Record): String = record match
+    case Record.Check(value)       => artifact("check-result", value)
+    case Record.Review(value)      => artifact("review-verdict", value)
+    case Record.Candidate(value)   => artifact("candidate-identity", value)
+    case Record.Integration(value) => artifact("integration-result", value)
+
   /** Evidence is valid only for exact candidate and policy identities. */
   def checksApply(
       candidate: CandidateIdentity,
