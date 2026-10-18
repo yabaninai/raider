@@ -1,5 +1,9 @@
 # Raider Execution Board
 
+## 2026-10-18 — Owner decision: checkpoint declaration = launcher policy
+
+Owner decision: declare SDLC checkpoints through launch-time policy, not workflows; workflows remain neutral because this keeps authority owner-granted and checkpoints can only narrow or pause it. This unblocks RAI-179 seam design → RAI-165 completion → RAI-167/168.
+
 ## 2026-10-18 — RAI-177 merged; LIN-04 track closed
 
 - **RAI-177:** merged `lane/rai-177` as `2379fc5` (lane source tip `a9064da`); round-2 review verdict: approve. Integrated behavior consumes only RAI-173 pointer-resolved snapshots, displays typed unavailable/invalid statuses, and passes real PTY live-render/switching/invalid-state acceptance (`LIN4B-01..03`; record `docs/work/records/RAI-177.md`). The LIN-04 parent is accepted: its LIN4-01/02/03 acceptance is covered by the accepted LIN-04A `:aux` + LIN-04B provider slices together with RAI-177's real product-PTY checks. Statuses are synchronized in `docs/tasks/lineage.md` and `backlog.json`.
