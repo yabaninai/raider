@@ -254,6 +254,22 @@ object LineageTabSpec extends ZIOSpecDefault:
             Vector("aux tab [Lineage]:", LineageTab.emptyProjection)
         )
       },
+      test("typed invalid and unavailable states remain distinct and honest") {
+        val invalid = LineageTab.provider(() =>
+          LineageTab.State.Invalid("bad pointer\nno fallback")
+        )
+        val unavailable = LineageTab.provider(() =>
+          LineageTab.State.Unavailable("no run directory")
+        )
+        assertTrue(
+          invalid.available,
+          invalid.render ==
+            "lineage invalid | validity unknown: bad pointer no fallback",
+          !unavailable.available,
+          unavailable.render ==
+            "lineage unavailable | validity unknown: no run directory"
+        )
+      },
       test(
         "LIN4-B-03: render is deterministic — repeated renders are byte-for-byte identical and repeated executor runs give identical feedback"
       ) {

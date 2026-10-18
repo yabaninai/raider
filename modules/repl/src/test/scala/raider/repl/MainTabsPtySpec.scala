@@ -2,6 +2,8 @@ package raider.repl
 
 import zio._
 import zio.test._
+import raider.cli.lineage.{LineageSnapshot, ReplayHarness}
+import zio.json.*
 
 import java.lang.System as JSystem
 import java.nio.charset.StandardCharsets
@@ -94,7 +96,8 @@ object MainTabsPtySpec extends ZIOSpecDefault:
   private final class PtySession(
       name: String,
       tabs: Boolean,
-      evidenceDir: Path
+      evidenceDir: Path,
+      lineageDir: Option[Path]
   ):
 
     private val javaBin =
@@ -128,6 +131,9 @@ object MainTabsPtySpec extends ZIOSpecDefault:
     // Pinned mock provider: the scripted fixture backend, no network, no
     // paid calls — regardless of anything ambient in the driver's env.
     pb.environment().put("RAIDER_PROVIDER", "mock")
+    lineageDir.foreach(dir =>
+      pb.environment().put("RAIDER_LINEAGE_DIR", dir.toString)
+    )
 
     private val rawLock = new Object
     private val raw = new java.io.ByteArrayOutputStream()
@@ -247,14 +253,18 @@ object MainTabsPtySpec extends ZIOSpecDefault:
   private def boolJson(b: Boolean): String = if b then "true" else "false"
 
   /** Drive one session; persist evidence even on failure; always close. */
-  private def drive[A](name: String, tabs: Boolean)(
+  private def drive[A](
+      name: String,
+      tabs: Boolean,
+      lineageDir: Option[Path] = None
+  )(
       body: PtySession => A
   ): ZIO[Any, Throwable, A] =
     ZIO.attempt {
       val evidence = sys.env.get("RAI108_PTY_EVIDENCE_DIR") match
         case Some(dir) => Path.of(dir)
         case None      => Files.createTempDirectory(s"rai108-pty-$name-ev")
-      val session = PtySession(name, tabs, evidence)
+      val session = PtySession(name, tabs, evidence, lineageDir)
       try body(session)
       catch
         case e: Throwable =>
@@ -533,6 +543,107 @@ object MainTabsPtySpec extends ZIOSpecDefault:
       assertTrue(code == 0)
     }
 
+  /** LIN4B-01..03: a real committed-snapshot producer updates while the product
+    * REPL is running; :aux renders each generation, a malformed pointer is
+    * explicit, and switching back leaves input/session live.
+    */
+  private def lin4bPty: ZIO[Any, Throwable, TestResult] =
+    def refreshUntil(
+        s: PtySession,
+        expected: String,
+        timeout: Duration
+    ): Boolean =
+      val deadline = JSystem.nanoTime() + timeout.toNanos
+      var found = false
+      while !found && JSystem.nanoTime() < deadline do
+        s.send(":aux\r")
+        found = s.waitFor(expected, 2.seconds)
+        if !found then
+          s.send(":tabs\r")
+          s.waitFor(Prompt, 2.seconds)
+      found
+
+    ZIO.attempt(Files.createTempDirectory("rai177-lineage-run-")).flatMap {
+      dir =>
+        drive("lin4b-live", tabs = true, Some(dir)) { s =>
+          val prompt = s.waitFor(Prompt, 120.seconds)
+          val firstPublished = LineageSnapshot
+            .publish(
+              dir,
+              ReplayHarness.document.toJson.getBytes(StandardCharsets.UTF_8),
+              "object LiveFixture { val generation = \"first\" }\n"
+                .getBytes(StandardCharsets.UTF_8)
+            )
+            .isRight
+          val firstShown =
+            refreshUntil(s, "val generation = \"first\"", 20.seconds)
+          s.send(":tabs\r")
+          val firstReturned = s.waitFor("Lineage", 20.seconds)
+
+          val secondPublished = LineageSnapshot
+            .publish(
+              dir,
+              ReplayHarness.document.toJson.getBytes(StandardCharsets.UTF_8),
+              "object LiveFixture { val generation = \"second\" }\n"
+                .getBytes(StandardCharsets.UTF_8)
+            )
+            .isRight
+          val secondShown =
+            refreshUntil(s, "val generation = \"second\"", 20.seconds)
+
+          Files.writeString(
+            dir.resolve(LineageSnapshot.CommitName),
+            "{not-json"
+          )
+          val invalidShown =
+            refreshUntil(s, "lineage invalid | validity unknown:", 20.seconds)
+          s.send(":tabs\r")
+          val tabsAfterInvalid = s.waitFor("raider> ", 20.seconds)
+          s.send(":new still-alive\r")
+          val sessionContinues =
+            s.waitFor("tab created: still-alive", 20.seconds)
+          s.send(":quit\r")
+          val code = s.finishWait(60.seconds)
+          val text = s.cleaned
+          s.persist(
+            text,
+            summaryJson(
+              "LIN4B-01..03",
+              "prompt" -> boolJson(prompt),
+              "firstPublished" -> boolJson(firstPublished),
+              "firstShown" -> boolJson(firstShown),
+              "firstReturned" -> boolJson(firstReturned),
+              "secondPublished" -> boolJson(secondPublished),
+              "secondShown" -> boolJson(secondShown),
+              "invalidShown" -> boolJson(invalidShown),
+              "tabsAfterInvalid" -> boolJson(tabsAfterInvalid),
+              "sessionContinues" -> boolJson(sessionContinues),
+              "exit" -> code.toString
+            )
+          )
+          assertTrue(
+            prompt,
+            firstPublished,
+            firstShown,
+            firstReturned,
+            secondPublished,
+            secondShown,
+            invalidShown,
+            tabsAfterInvalid,
+            sessionContinues,
+            code == 0,
+            !text.contains("Exception")
+          )
+        }.ensuring(ZIO.attempt {
+          val files = Files.walk(dir)
+          try
+            files
+              .sorted(java.util.Comparator.reverseOrder[Path]())
+              .forEach(p => Files.deleteIfExists(p))
+          finally files.close()
+        }.ignore)
+    }
+
   def spec =
     suite("MainTabsPtySpec (RAI-108: product entry --tabs under PTY)")(
       test("P2E-01: --tabs lifts the shell; A→B→A draft byte-for-byte (PTY)")(
@@ -541,7 +652,10 @@ object MainTabsPtySpec extends ZIOSpecDefault:
       test("P2E-02: typed errors; shell and run alive (PTY)")(p2e02),
       test(
         "P2E-03: burst while typing — one writer, editable prompt; legacy no-flag regression (PTY)"
-      )(p2e03)
+      )(p2e03),
+      test(
+        "LIN4B-01..03: committed lineage updates, invalid status and tab switching (PTY)"
+      )(lin4bPty)
     ) @@ TestAspect.sequential @@ TestAspect
       .timeout(900.seconds)
 

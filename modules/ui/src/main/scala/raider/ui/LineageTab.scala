@@ -25,6 +25,14 @@ package raider.ui
   */
 object LineageTab:
 
+  /** Typed state returned by a host-owned lineage reader. Invalid is distinct
+    * from unavailable and from a valid empty projection; none implies validity.
+    */
+  enum State:
+    case Available(source: String)
+    case Invalid(detail: String)
+    case Unavailable(detail: String)
+
   /** The tab title (fixed by the card: the ONE Lineage tab). */
   final val title: String = "Lineage"
 
@@ -33,6 +41,18 @@ object LineageTab:
     */
   final val emptyProjection: String =
     "no lineage yet: the connected source has no projection"
+
+  def status(state: State): String = state match
+    case State.Available(source) if source.trim.isEmpty => emptyProjection
+    case State.Available(source)                        => source
+    case State.Invalid(detail) =>
+      s"lineage invalid | validity unknown: ${oneLine(detail)}"
+    case State.Unavailable(detail) =>
+      s"lineage unavailable | validity unknown: ${oneLine(detail)}"
+
+  private def oneLine(text: String): String =
+    val safe = text.replace('\n', ' ').replace('\r', ' ').trim
+    if safe.isEmpty then "no diagnostic" else safe.take(240)
 
   /** Build the provider over the pure `connected`/`projection` readers. */
   def provider(
@@ -47,3 +67,14 @@ object LineageTab:
       def render: String =
         val text = projection()
         if text.trim.isEmpty then emptyProjection else text
+
+  /** Typed provider used by live hosts; readers remain synchronous and
+    * non-blocking from the shell's perspective, and are consulted per switch.
+    */
+  def provider(state: () => State): AuxTabProvider =
+    new AuxTabProvider:
+      def title: String = LineageTab.title
+      def available: Boolean = state() match
+        case State.Unavailable(_) => false
+        case _                    => true
+      def render: String = status(state())
