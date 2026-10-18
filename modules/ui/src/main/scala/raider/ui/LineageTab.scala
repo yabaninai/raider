@@ -12,9 +12,10 @@ package raider.ui
   *     composition root. NOTE (LIN-04B): the full live-graph acceptance is a
   *     separate card after LIN-03 full — this slice is the pure provider
   *     contract only.
-  *   - `available` re-asks `connected` on every `:aux` (honest, never cached);
-  *     while it is false the shell renders the typed unavailable hint and
-  *     `projection` is never consulted (the LIN-04A discipline).
+  *   - `available` re-asks `connected` on every `:aux` (honest, never cached)
+  *     for the simple provider. A typed state, including `Unavailable`, is
+  *     renderable by this tab so its ADR-024 status is not replaced by the
+  *     shell's generic hint.
   *   - `render` re-asks `projection` on every switch; a whitespace-only
   *     projection renders the honest empty-state line — never a blank screen.
   *   - Both readers MUST be pure and total (no IO, no blocking, no throw) — the
@@ -75,6 +76,5 @@ object LineageTab:
     new AuxTabProvider:
       def title: String = LineageTab.title
       def available: Boolean = state() match
-        case State.Unavailable(_) => false
-        case _                    => true
+        case _ => true
       def render: String = status(state())

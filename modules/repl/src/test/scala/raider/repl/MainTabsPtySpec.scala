@@ -128,6 +128,9 @@ object MainTabsPtySpec extends ZIOSpecDefault:
     pb.environment().put("TERM", "xterm-256color")
     pb.environment().put("NO_COLOR", "1")
     pb.environment().put("HOME", home.toString)
+    // Do not let the driver's configuration leak into the product acceptance:
+    // the default-path case must genuinely start without this setting.
+    pb.environment().remove("RAIDER_LINEAGE_DIR")
     // Pinned mock provider: the scripted fixture backend, no network, no
     // paid calls — regardless of anything ambient in the driver's env.
     pb.environment().put("RAIDER_PROVIDER", "mock")
@@ -644,6 +647,37 @@ object MainTabsPtySpec extends ZIOSpecDefault:
         }.ignore)
     }
 
+  /** LIN4B-02: the product :aux path must render the typed unavailable status
+    * when the environment does not configure a lineage directory.
+    */
+  private def lineageUnavailablePty: ZIO[Any, Throwable, TestResult] =
+    drive("lin4b-unavailable", tabs = true) { s =>
+      val prompt = s.waitFor(Prompt, 120.seconds)
+      s.send(":aux\r")
+      val typedStatus = s.waitFor(
+        "lineage unavailable | validity unknown: set RAIDER_LINEAGE_DIR to a run directory",
+        20.seconds
+      )
+      s.send(":quit\r")
+      val code = s.finishWait(60.seconds)
+      val text = s.cleaned
+      s.persist(
+        text,
+        summaryJson(
+          "LIN4B-02-unavailable",
+          "prompt" -> boolJson(prompt),
+          "typedStatus" -> boolJson(typedStatus),
+          "exit" -> code.toString
+        )
+      )
+      assertTrue(
+        prompt,
+        typedStatus,
+        !text.contains("auxiliary tab [Lineage] is not available"),
+        code == 0
+      )
+    }
+
   def spec =
     suite("MainTabsPtySpec (RAI-108: product entry --tabs under PTY)")(
       test("P2E-01: --tabs lifts the shell; A→B→A draft byte-for-byte (PTY)")(
@@ -655,7 +689,12 @@ object MainTabsPtySpec extends ZIOSpecDefault:
       )(p2e03),
       test(
         "LIN4B-01..03: committed lineage updates, invalid status and tab switching (PTY)"
-      )(lin4bPty)
+      )(lin4bPty),
+      test(
+        "LIN4B-02: unset lineage directory renders typed status in product :aux (PTY)"
+      )(
+        lineageUnavailablePty
+      )
     ) @@ TestAspect.sequential @@ TestAspect
       .timeout(900.seconds)
 

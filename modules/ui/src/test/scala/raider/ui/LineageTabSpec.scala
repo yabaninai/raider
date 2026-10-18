@@ -265,7 +265,7 @@ object LineageTabSpec extends ZIOSpecDefault:
           invalid.available,
           invalid.render ==
             "lineage invalid | validity unknown: bad pointer no fallback",
-          !unavailable.available,
+          unavailable.available,
           unavailable.render ==
             "lineage unavailable | validity unknown: no run directory"
         )
