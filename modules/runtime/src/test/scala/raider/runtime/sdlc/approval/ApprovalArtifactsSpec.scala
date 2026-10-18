@@ -193,5 +193,61 @@ object ApprovalArtifactsSpec extends ZIOSpecDefault:
         ) == Left(CapabilityMissing),
         decision.schemaVersion == SchemaVersion
       )
+    },
+    test(
+      "SDLC-DISPATCH-01 request dispatch stops with NeedsApproval; a new dispatch reads request and decision files and rechecks owner state"
+    ) {
+      val dir = Files.createTempDirectory("checkpoint-dispatch-")
+      val requestPath = dir.resolve("request.json")
+      val decisionPath = dir.resolve("decision.json")
+      val newRequest = CheckpointDispatch(
+        "before-merge",
+        candidate,
+        expires,
+        requestPath,
+        None,
+        "merge",
+        () => Right(state()),
+        () => now
+      )
+      val requested = newRequest.evaluate()
+      Files.writeString(decisionPath, decisionJson(decision))
+      var reads = 0
+      val approved = CheckpointDispatch(
+        "before-merge",
+        candidate,
+        expires,
+        requestPath,
+        Some(decisionPath),
+        "merge",
+        () => {
+          reads += 1
+          Right(state())
+        },
+        () => now
+      ).evaluate()
+      val stale = CheckpointDispatch(
+        "before-merge",
+        candidate,
+        expires,
+        requestPath,
+        Some(decisionPath),
+        "merge",
+        () => Right(state(candidate.copy(treeDigest = "changed"))),
+        () => now
+      ).evaluate()
+      assertTrue(
+        requested.isInstanceOf[CheckpointOutcome.NeedsApproval],
+        requested match
+          case CheckpointOutcome.NeedsApproval(value) =>
+            value.exitCode == 25 && Files.isRegularFile(requestPath)
+          case _ => false,
+        approved match
+          case CheckpointOutcome.Authorized(value) =>
+            value.candidateDigest == CandidateIdentity.digest(candidate)
+          case _ => false,
+        reads == 1,
+        stale == CheckpointOutcome.Refused(CandidateMismatch)
+      )
     }
   )
