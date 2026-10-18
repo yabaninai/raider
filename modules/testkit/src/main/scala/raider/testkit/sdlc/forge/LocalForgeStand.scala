@@ -1,6 +1,9 @@
 package raider.testkit.sdlc.forge
 
 import ForgeProtocol.*
+import zio.Duration
+import zio.UIO
+import zio.ZIO
 
 /** Deterministic in-process implementation of the vendor-neutral forge
   * protocol. All mutations first compare their supplied ref with a fresh
@@ -12,6 +15,7 @@ final class LocalForgeStand(initialRef: String = "main-0"):
   private var pullRequests = Map.empty[String, PullRequestState]
   private var operations = Map.empty[OperationId, Response]
   private var uncertain = Set.empty[OperationId]
+  private var asynchronous = Map.empty[OperationId, AsyncState]
   private var nextFault: FaultMode = FaultMode.None
   private var nextPullRequest = 1
 
@@ -19,6 +23,29 @@ final class LocalForgeStand(initialRef: String = "main-0"):
 
   /** Inject one deterministic fault into the next mutating request. */
   def inject(fault: FaultMode): Unit = synchronized { nextFault = fault }
+
+  /** Model a request that remains pending for a bounded interval before its
+    * outcome times out after the mutation has taken effect.
+    */
+  def commitAsync(request: Request, pendingWindow: Duration): UIO[Response] =
+    ZIO.succeed(synchronized {
+      asynchronous =
+        asynchronous.updated(request.operationId, AsyncState.Pending)
+    }) *>
+      ZIO.sleep(pendingWindow) *>
+      ZIO.succeed {
+        synchronized {
+          asynchronous = asynchronous.updated(
+            request.operationId,
+            AsyncState.TimedOutUncertain
+          )
+        }
+        mutateWithFault(request, FaultMode.UnknownOutcome)
+      }
+
+  def asyncState(operationId: OperationId): Option[AsyncState] = synchronized {
+    asynchronous.get(operationId)
+  }
 
   /** Read-only current state. Calling this resolves the retry barrier for an
     * uncertain operation only when no effect is found in its recorded state.
@@ -51,6 +78,15 @@ final class LocalForgeStand(initialRef: String = "main-0"):
   }
 
   private def mutate(request: Request): Response = synchronized {
+    val fault = nextFault
+    nextFault = FaultMode.None
+    mutateWithFault(request, fault)
+  }
+
+  private def mutateWithFault(
+      request: Request,
+      injectedFault: FaultMode
+  ): Response = synchronized {
     if uncertain.contains(request.operationId) then
       return Response(
         request.operationId,
@@ -79,8 +115,7 @@ final class LocalForgeStand(initialRef: String = "main-0"):
         request.pullRequestId
       )
 
-    val fault = nextFault
-    nextFault = FaultMode.None
+    val fault = injectedFault
     if fault == FaultMode.StaleRef then
       currentRef = s"${currentRef}-advanced"
       return Response(

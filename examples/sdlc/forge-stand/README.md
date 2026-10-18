@@ -14,4 +14,6 @@ val pr = forge.createPullRequest(Request(OperationId("op-2"), OperationKind.Pull
 val status = forge.pullRequestStatus(pr.pullRequestId.get)
 ```
 
-Use a fresh operation identity for a new authorized attempt. On `TimedOutUncertain` or `Unknown`, call `reconcile` before any new mutation. Repeating an uncertain operation without that read returns `ReconcileRequired`. The fixture is local and in-process; it does not contact a forge or exercise Git plumbing.
+Use a fresh operation identity for a new authorized attempt. On `TimedOutUncertain` or `Unknown`, call `reconcile` before any new mutation. Repeating an uncertain operation without that read returns `ReconcileRequired`. This in-memory stand is the fast protocol layer.
+
+`DisposableGitForgeStand.create()` provides the slower filesystem-backed fixture. It initializes an isolated temporary repository, commits on `main`, creates a `pr/<id>` branch, reports local pull-request status, and merges that branch into `main`. It makes no remote calls or pushes and must be closed to remove the temporary repository. `LocalForgeStandSpec` also exercises an asynchronous `Pending` window with ZIO's virtual clock before the injected result transitions to `TimedOutUncertain` and is reconciled.

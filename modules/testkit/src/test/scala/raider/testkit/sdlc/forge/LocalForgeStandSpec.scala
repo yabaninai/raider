@@ -2,6 +2,7 @@ package raider.testkit.sdlc.forge
 
 import ForgeProtocol.*
 import zio.test.*
+import zio.test.TestClock
 
 object LocalForgeStandSpec extends ZIOSpecDefault:
 
@@ -116,5 +117,92 @@ object LocalForgeStandSpec extends ZIOSpecDefault:
         retried.outcome == Outcome.Applied,
         retried.snapshot.ref == "new-candidate"
       )
+    },
+    test(
+      "SDLC-FORGE-02e: asynchronous operation stays pending before timeout and reconciles"
+    ) {
+      val stand = LocalForgeStand("base")
+      val operation = request(
+        "async-timeout",
+        OperationKind.Commit,
+        "base",
+        Some("candidate")
+      )
+      for
+        fiber <- stand.commitAsync(operation, zio.Duration.fromMillis(200)).fork
+        _ <- TestClock.adjust(zio.Duration.fromMillis(50))
+        pending = stand.asyncState(operation.operationId)
+        _ <- TestClock.adjust(zio.Duration.fromMillis(200))
+        timedOut <- fiber.join
+        blocked = stand.commit(operation)
+        reconciled = stand.reconcile(operation.operationId)
+      yield assertTrue(
+        pending.contains(AsyncState.Pending),
+        timedOut.outcome == Outcome.TimedOutUncertain,
+        timedOut.snapshot.ref == "candidate",
+        blocked.outcome == Outcome.ReconcileRequired,
+        reconciled.outcome == Outcome.AlreadyApplied
+      )
+    },
+    test(
+      "SDLC-FORGE-02d: disposable Git commit, PR status, merge, and stale real ref"
+    ) {
+      zio.ZIO.succeed {
+        val stand = DisposableGitForgeStand.create()
+        try {
+          val base = stand.refs("main")
+          val committed = stand.commit(
+            request(
+              "git-commit",
+              OperationKind.Commit,
+              base,
+              Some("candidate tree")
+            )
+          )
+          val candidate = stand.refs("main")
+          val opened = stand.createPullRequest(
+            request(
+              "git-pr",
+              OperationKind.PullRequest,
+              candidate,
+              pr = Some("review-1")
+            )
+          )
+          val merge = stand.merge(
+            request(
+              "git-merge",
+              OperationKind.Merge,
+              candidate,
+              pr = opened.pullRequestId
+            )
+          )
+          val stale = stand.commit(
+            request(
+              "git-stale",
+              OperationKind.Commit,
+              candidate,
+              Some("must-not-commit")
+            )
+          )
+          val hasPrRef = stand.refs.contains("pr/review-1")
+          val mergedRef = stand.refs("main")
+          val prMerged = stand
+            .pullRequestStatus("review-1")
+            .contains(PullRequestState.Merged)
+          val reconciledMerge =
+            stand.reconcile(OperationId("git-merge")).outcome
+          assertTrue(
+            committed.outcome == Outcome.Applied,
+            candidate != base,
+            opened.outcome == Outcome.Applied,
+            hasPrRef,
+            merge.outcome == Outcome.Applied,
+            prMerged,
+            mergedRef != candidate,
+            stale.outcome == Outcome.Stale,
+            reconciledMerge == Outcome.AlreadyApplied
+          )
+        } finally stand.close()
+      }
     }
   )

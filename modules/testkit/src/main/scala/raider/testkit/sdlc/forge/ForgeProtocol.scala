@@ -14,6 +14,9 @@ object ForgeProtocol:
   enum FaultMode:
     case None, StaleRef, Conflict, Duplicate, UnknownOutcome
 
+  enum AsyncState:
+    case Pending, TimedOutUncertain
+
   enum Outcome:
     case Applied
     case AlreadyApplied
