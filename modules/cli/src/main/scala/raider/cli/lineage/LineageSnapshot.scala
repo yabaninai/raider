@@ -50,6 +50,17 @@ object LineageSnapshot:
       dataBytes: Array[Byte],
       sourceBytes: Array[Byte]
   ): Either[Error, Unit] =
+    publishAfterGeneration(directory, dataBytes, sourceBytes)(())
+
+  /** Test seam for the publication crash window. The hook runs only after both
+    * immutable generation files are complete and before the pointer temp file
+    * is created/replaced. Production callers use [[publish]].
+    */
+  private[cli] def publishAfterGeneration(
+      directory: Path,
+      dataBytes: Array[Byte],
+      sourceBytes: Array[Byte]
+  )(afterGeneration: => Unit): Either[Error, Unit] =
     val generation = UUID.randomUUID().toString
     val dataName = s"lineage-$generation-data.json"
     val sourceName = s"lineage-$generation.scala"
@@ -57,6 +68,7 @@ object LineageSnapshot:
       Files.createDirectories(directory)
       Files.write(directory.resolve(dataName), dataBytes)
       Files.write(directory.resolve(sourceName), sourceBytes)
+      afterGeneration
       val manifest = Commit(
         "raider-lineage-snapshot-v1",
         generation,

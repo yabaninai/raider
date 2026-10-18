@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.Files
 import java.util.concurrent.{CountDownLatch, Executors, TimeUnit}
 import zio.test.*
+import zio.ZIO
 
 object LineageSnapshotProtocolSpec extends ZIOSpecDefault:
 
@@ -89,6 +90,74 @@ object LineageSnapshotProtocolSpec extends ZIOSpecDefault:
         }
         assertTrue(partial == 0)
       finally pool.shutdownNow()
+    },
+    test(
+      "LIN3-03: interruption after generation writes preserves the old pointer until a complete publication"
+    ) {
+      val dir = Files.createTempDirectory("lineage-commit-crash-window")
+      val oldData = fixture
+      val oldSource = "old committed source".getBytes(UTF_8)
+      val newData = fixture
+      val newSource = "new complete source".getBytes(UTF_8)
+      val seeded = LineageSnapshot.publish(dir, oldData, oldSource)
+      if seeded.isLeft then
+        throw new AssertionError("could not seed old snapshot: " + seeded)
+      val old = LineageSnapshot
+        .read(dir)
+        .fold(
+          error => throw new AssertionError("old pointer unreadable: " + error),
+          identity
+        )
+      val atWindow = new CountDownLatch(1)
+      val neverRelease = new CountDownLatch(1)
+      val publication = ZIO.attemptBlockingInterrupt {
+        LineageSnapshot.publishAfterGeneration(dir, newData, newSource) {
+          atWindow.countDown()
+          neverRelease.await()
+        }
+      }.fork
+      for
+        fiber <- publication
+        reached <- ZIO
+          .attemptBlocking(atWindow.await(10, TimeUnit.SECONDS))
+          .orDie
+        _ <- fiber.interrupt
+        during = LineageSnapshot.read(dir)
+        remaining = Files.list(dir)
+        generated =
+          try
+            remaining.toArray
+              .map(_.asInstanceOf[java.nio.file.Path])
+              .filter(p =>
+                p.getFileName.toString.startsWith("lineage-") &&
+                  p.getFileName.toString != LineageSnapshot.CommitName
+              )
+              .toVector
+          finally remaining.close()
+        generationReadable = generated.exists(p =>
+          Files.isReadable(p) && Files.readAllBytes(p).sameElements(newData)
+        ) && generated.exists(p =>
+          Files.isReadable(p) && Files.readAllBytes(p).sameElements(newSource)
+        )
+        _ <- ZIO.unit
+        completed = LineageSnapshot.publish(dir, newData, newSource)
+        after = LineageSnapshot.read(dir)
+      yield assertTrue(
+        reached,
+        during.isRight,
+        during.toOption.exists(_.generation == old.generation),
+        during.toOption.exists(s =>
+          Files.isReadable(s.dataPath) && Files.isReadable(s.sourcePath)
+        ),
+        generationReadable,
+        completed.isRight,
+        after.isRight,
+        after.toOption.exists(_.generation != old.generation),
+        after.toOption.exists(s =>
+          Files.readAllBytes(s.dataPath).sameElements(newData) &&
+            Files.readAllBytes(s.sourcePath).sameElements(newSource)
+        )
+      )
     }
   )
 
