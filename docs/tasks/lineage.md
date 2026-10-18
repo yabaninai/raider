@@ -128,6 +128,30 @@ Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 **Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
+## RAI-177: LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance
+
+Status: ready. Milestone: LIN. Dependencies: LIN-04, LIN-03, RAI-173.
+
+**Scenario and contract.** Complete the accepted LineageTab slice in the product REPL by wiring a live provider into the REPL host. Consume the LIN-03 live incremental projection and/or snapshots resolved exclusively through the RAI-173 commit-pointer protocol; never read a fixed artifact path or bypass the protocol. Surface invalid projections through a typed status that the tab renders honestly under ADR-024. Prove tab switching while a live producer updates the projection, using real PTY acceptance rather than only scripted-terminal tests.
+
+**Context.** LIN-04 currently has only scripted-terminal acceptance and no lineage provider in the REPL host. The live projection and pointer-aware snapshot reader are owned by LIN-03/RAI-173 in CLI lineage/run paths, outside LIN-04's allowed paths; this card consumes their accepted interfaces rather than moving or duplicating those readers. Invalid-projection status must preserve ADR-024 honest-unknowns semantics. Use P2W/P2U PTY house patterns and RAI-119's drain/refresh-retry determinism discipline. The LIN-04 lane record is absent at registration; this context is based on the observed blocker described here.
+
+**Allowed paths.** `modules/repl/src/main/scala/raider/repl/**` `modules/repl/src/test/scala/raider/repl/**` `modules/ui/src/main/scala/raider/ui/LineageTab.scala` `modules/ui/src/test/scala/raider/ui/LineageTabSpec.scala` `docs/work/records/**`. Do not modify LIN-03/RAI-173-owned CLI projection, writer, or snapshot-reader paths; consume their published interfaces. Confirm concrete files before assignment; expanding this boundary requires a separate scope card.
+
+**Acceptance.**
+
+- Normal: LIN4B-01: product REPL host supplies a live lineage provider; a real producer's successive committed updates appear in the Lineage tab without blocking editable input, and rendering uses only complete pointer-resolved snapshots or the accepted live projection.
+- Error/adversarial: LIN4B-02: malformed, unavailable, or invalid projection produces the typed ADR-024 status and honest tab text; no fixed-path lookup, torn pair, stale-good fallback, or fabricated validity is presented as current.
+- Cancellation/concurrency: LIN4B-03: real PTY switches away from and back to Lineage during live production without desynchronizing the view or draft; drain/refresh-retry discipline prevents flaky observation, and the producer/terminal are cleaned up on exit.
+
+**Required gates.** After dependencies are accepted: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable static/unit/repl/docs profiles and evidence verification for each required profile. Run the new real-PTY acceptance, including live-producer tab switching and invalid-projection status; use P2W/P2U and RAI-119 drain/refresh-retry patterns without weakening assertions. Full/release aggregates are allowed only if they actually include the complete required list. Missing PTY/tooling or unavailable execution is not a pass.
+
+**Non-goals.** Changing LIN-03 projection/writer behavior or RAI-173 pointer/reader protocol; fixed-path snapshot reads; new lineage schema or public API; replacing real PTY acceptance with scripted-terminal tests; unrelated TUI work or paid provider calls.
+
+**Compatibility/rollback.** Preserve frozen lineage schemas, the RAI-173 commit-pointer protocol, and ADR-024 status semantics. Do not silently change public APIs or downstream fixtures; versioned changes require a separate ADR. Rollback may remove the REPL adapter, but must not expose a fixed-path fallback or imply a valid projection when state is unavailable/invalid.
+
+**Deliverables.** Minimal implementation within allowed paths; real PTY fixtures with listed IDs, including a live producer and tab switching; typed invalid-projection display evidence; work record with exact commands, exits, and evidence/log hashes. No paid calls or publication are implied.
+
 ## LIN-05: Replay-recorded interpreter and graph comparator
 
 Status: todo. Milestone: LIN. Dependencies: LIN-02, LIN-03.

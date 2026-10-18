@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 187,
+  "raider_count": 188,
   "companion_count": 3,
   "cards": [
     {
@@ -5448,6 +5448,29 @@
       },
       "non_goals": "XML scraping, model/template changes, public contract changes, dependencies, unrelated runtime changes, paid providers or gate-policy changes.",
       "context": "Owner local Qwen interactive chat reproducer; direct local-server SSE probe returned structured tool_calls when tools were provided."
+    },
+    {
+      "id": "RAI-177",
+      "title": "LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance",
+      "milestone": "LIN",
+      "dependencies": ["LIN-04", "LIN-03", "RAI-173"],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/ui/src/main/scala/raider/ui/LineageTab.scala",
+        "modules/ui/src/test/scala/raider/ui/LineageTabSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": ["static", "unit", "repl", "docs"],
+      "behavior": "Complete the accepted LineageTab slice in the product REPL by wiring a live provider into the REPL host. Consume the LIN-03 live incremental projection and/or snapshots resolved exclusively through the RAI-173 commit-pointer protocol; never read a fixed artifact path or bypass the protocol. Surface invalid projections through a typed status that the tab renders honestly under ADR-024. Prove tab switching while a live producer updates the projection, using real PTY acceptance rather than only scripted-terminal tests.",
+      "acceptance": {
+        "normal": "LIN4B-01: product REPL host supplies a live lineage provider; a real producer's successive committed updates appear in the Lineage tab without blocking editable input, and rendering uses only complete pointer-resolved snapshots or the accepted live projection.",
+        "error": "LIN4B-02: malformed, unavailable, or invalid projection produces the typed ADR-024 status and honest tab text; no fixed-path lookup, torn pair, stale-good fallback, or fabricated validity is presented as current.",
+        "concurrency": "LIN4B-03: real PTY switches away from and back to Lineage during live production without desynchronizing the view or draft; drain/refresh-retry discipline prevents flaky observation, and the producer/terminal are cleaned up on exit."
+      },
+      "non_goals": "Changing LIN-03 projection/writer behavior or RAI-173 pointer/reader protocol; fixed-path snapshot reads; new lineage schema or public API; replacing real PTY acceptance with scripted-terminal tests; unrelated TUI work or paid provider calls.",
+      "context": "LIN-04 currently has only scripted-terminal acceptance and no lineage provider in the REPL host. The live projection and pointer-aware snapshot reader are owned by LIN-03/RAI-173 in CLI lineage/run paths, outside LIN-04's allowed paths; this card consumes their accepted interfaces rather than moving or duplicating those readers. Invalid-projection status must preserve ADR-024 honest-unknowns semantics. Use P2W/P2U PTY house patterns and RAI-119's drain/refresh-retry determinism discipline. The LIN-04 lane record is absent at registration; this context is based on the observed blocker described here."
     }
   ]
 }
