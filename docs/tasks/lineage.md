@@ -132,6 +132,8 @@ Status: ready. Milestone: LIN. Dependencies: LIN-03.
 
 Status: ready. Milestone: LIN. Dependencies: LIN-04, LIN-03, RAI-173.
 
+Scope note (coordinator, 2026-10-18): build edge raiderRepl→raiderCli authorized (RAI-102 precedent) to consume the accepted lineage interfaces; pointer-protocol-only reads unchanged.
+
 **Scenario and contract.** Complete the accepted LineageTab slice in the product REPL by wiring a live provider into the REPL host. Consume the LIN-03 live incremental projection and/or snapshots resolved exclusively through the RAI-173 commit-pointer protocol; never read a fixed artifact path or bypass the protocol. Surface invalid projections through a typed status that the tab renders honestly under ADR-024. Prove tab switching while a live producer updates the projection, using real PTY acceptance rather than only scripted-terminal tests.
 
 **Context.** LIN-04 currently has only scripted-terminal acceptance and no lineage provider in the REPL host. The live projection and pointer-aware snapshot reader are owned by LIN-03/RAI-173 in CLI lineage/run paths, outside LIN-04's allowed paths; this card consumes their accepted interfaces rather than moving or duplicating those readers. Invalid-projection status must preserve ADR-024 honest-unknowns semantics. Use P2W/P2U PTY house patterns and RAI-119's drain/refresh-retry determinism discipline. The LIN-04 lane record is absent at registration; this context is based on the observed blocker described here.
