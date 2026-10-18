@@ -11,7 +11,7 @@ import raider.runtime.lineage.wire.{
   LineageWire
 }
 import raider.runtime.loop.LoopEvents
-import zio.{Fiber, Ref, Semaphore, UIO, ZIO}
+import zio.{Duration, Fiber, Ref, Semaphore, UIO, ZIO}
 
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -195,6 +195,8 @@ final class MultiJobExport private (
     hub.subscribe(jobId).flatMap { case (snapshot, stream) =>
       for
         pending <- Ref.make(Vector.empty[EventEnvelope])
+        observed <- Ref.make(snapshot.lastSeq)
+        terminal <- Ref.make(false)
         // `.interruptible` is MANDATORY here: this fiber is forked from inside
         // the JobManager's transition hook, which runs in an
         // uninterruptibleMask (the registration section) — a bare forkDaemon
@@ -203,11 +205,26 @@ final class MultiJobExport private (
         // JobManager/EventHub).
         fiber <- EventExport
           .inOrder(snapshot.lastSeq)(stream)
-          .foreach(e => deliver(jobId, pending, e))
+          .foreach(e =>
+            deliver(jobId, pending, e) *>
+              observed.set(e.seq) *>
+              (e.payload match
+                case _: EventPayload.Terminal => terminal.set(true)
+                case _                        => ZIO.unit)
+          )
           .interruptible
           .forkDaemon
         _ <- ZIO.succeed(
-          captures.put(jobId.value, MultiJobExport.ChildCapture(fiber, pending))
+          captures.put(
+            jobId.value,
+            MultiJobExport.ChildCapture(
+              jobId,
+              fiber,
+              pending,
+              observed,
+              terminal
+            )
+          )
         )
       yield ()
     }
@@ -387,7 +404,16 @@ final class MultiJobExport private (
     * carries the run_provenance record BEFORE it when segments were joined.
     */
   def exportParent(env: EventEnvelope): UIO[Unit] =
-    joinLock.withPermit {
+    // Settle captured child streams BEFORE exporting the campaign Terminal.
+    // Otherwise a child introduction delivered while the terminal is being
+    // exported is correctly classified as post-terminal/native-only, and its
+    // completed prefix can disappear from the joined stream. The settle is
+    // bounded by drain's budget and runs outside joinLock so capture delivery
+    // can append the connected segment.
+    val settle = env.payload match
+      case _: EventPayload.Terminal => drain()
+      case _                        => ZIO.unit
+    settle *> joinLock.withPermit {
       val campaignEnvelope = env.payload match
         case _: EventPayload.Terminal => true
         case _                        => false
@@ -450,18 +476,34 @@ final class MultiJobExport private (
     */
   def campaignWritten: UIO[Long] = campaignLines.get
 
-  /** Bounded best-effort wait until every CONNECTED segment reached its
-    * Terminal (the same "close the tiny settle-to-export window" discipline as
-    * [[EventExport.awaitCaughtUp]]): a child that already settled must have its
-    * tail joined before the run's reduction reads the stream, or an honest
-    * complete child would export as a torn one. Never a gate: a detached child
-    * simply lets the budget expire. Call BEFORE [[close]].
+  /** Bounded best-effort settle of captures before the run's reduction reads
+    * the stream. For every captured job, wait until the capture consumer
+    * reaches the current hub watermark. Also wait for a connected segment's
+    * Terminal, or an unconnected capture's Terminal: this lets a committed
+    * introduction in flight connect before close drops any held prefix. A
+    * still-live detached child is bounded by `budgetMs` (default 2000 ms),
+    * never an unbounded wait. Call BEFORE [[close]].
     */
   def drain(budgetMs: Long = 2000L): UIO[Unit] =
     pollUntil(
-      segmentsRef.get.flatMap(segs =>
-        ZIO.foreach(segs)(_.isComplete).map(_.forall(identity))
-      ),
+      ZIO.succeed(captures.values.asScala.toVector).flatMap { all =>
+        for
+          frontier <- ZIO.foreach(all) { capture =>
+            hub.snapshot(capture.jobId).flatMap {
+              case None => ZIO.succeed(true)
+              case Some(snapshot) =>
+                capture.observed.get.map(_ >= snapshot.lastSeq)
+            }
+          }
+          segments <- segmentsRef.get
+          complete <- ZIO.foreach(segments)(_.isComplete)
+          terminal <- ZIO.foreach(all)(_.terminal.get)
+        yield frontier.forall(identity) &&
+          complete.forall(identity) &&
+          all.zip(terminal).forall { case (capture, ended) =>
+            ended || segments.exists(_.childJobId == capture.jobId)
+          }
+      },
       budgetMs
     )
 
@@ -593,11 +635,7 @@ final class MultiJobExport private (
     def loop: UIO[Unit] =
       cond.flatMap { ok =>
         if ok || System.currentTimeMillis() >= deadline then ZIO.unit
-        else
-          ZIO.succeed {
-            java.util.concurrent.TimeUnit.MILLISECONDS.sleep(2L)
-            ()
-          } *> loop
+        else ZIO.sleep(Duration.fromMillis(2L)) *> loop
       }
     loop
 
@@ -681,8 +719,11 @@ object MultiJobExport:
   )
 
   private final case class ChildCapture(
+      jobId: JobId,
       fiber: Fiber.Runtime[Nothing, Unit],
-      pending: Ref[Vector[EventEnvelope]]
+      pending: Ref[Vector[EventEnvelope]],
+      observed: Ref[Long],
+      terminal: Ref[Boolean]
   )
 
   /** Builds the exporter over the run's hub and events sink. */
