@@ -1,5 +1,69 @@
 # LIN-03: work record
 
+## Final fixture completion round (2026-10-18)
+
+Baseline: `637ab0ae716e72d1a8a43b3d6b34ceb22de97789` on `lane/lin-03`; the
+worktree was clean before the two fixtures were added. Scope is limited to the
+two previously missing fixtures plus the crash-window test seam and this
+record. The frozen lineage schema and GraphHash implementation are unchanged.
+
+### Fixture mechanisms and results
+
+- **LIN3-01 — production-path 200-round fixture:** the campaign uses the real
+  `JobManager` transition listener, `EventHub` subscription/collector,
+  `MultiJobExport`, and its phase sink. Each of 200 ordered model-call rounds
+  emits start/finish records and a matching phase start/finish through the
+  production sink. At rounds 25, 50, 75, 100, 125, 150, 175, and 200, the test
+  reads `currentProjection` while the campaign is still running and checks the
+  projection wire equals the export prefix, the graph hash equals
+  `GraphHash(graph)`, source rendering is present, and completed model/phase
+  counts match the checkpoint. The final wire is also compared with the
+  `events.jsonl` read. This extends the former fold-only 200-round evidence.
+- **LIN3-03 — publication interruption fixture:** the production
+  `LineageSnapshot.publish` path delegates to a package-scoped hookable helper;
+  the test pauses an interruptible publication fiber after both generation
+  files are written and before the manifest/pointer operation, then interrupts
+  it. During the window, `LineageSnapshot.read` still resolves the original
+  generation, both committed files remain readable, and the uncommitted pair
+  is present/readable. A subsequent normal publication replaces the pointer;
+  reading it verifies the new generation and both complete byte contents (the
+  reader validates the committed SHA-256 digests). Existing three-repetition,
+  eight-reader concurrent publication coverage continues to pass.
+
+### Final acceptance mapping against the rescoped basis
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| LIN3-01 | Pass: ordered 200 live production-path rounds, sampled-prefix validity/consistency. | `PhaseEmissionExportSpec` test `LIN3-01`; three consecutive targeted-suite passes. |
+| LIN3-02 | Pass under the rescoped basis: live fold-error diagnostic is observable without changing the successful session exit; live dotc compile failure is explicitly outside this basis and remains pinned-compiler work. | Existing `LineageSummarySpec` / `LiveInvalidSession` evidence recorded above; not relabeled as compiler validation. |
+| LIN3-03 | Pass under the rescoped basis: injected interruption between generation writes and pointer replacement leaves the old pointer valid; completing publication exposes the new complete pair, with no torn snapshot observed. | `LineageSnapshotProtocolSpec` test `LIN3-03`; three consecutive targeted-suite passes plus existing 8-reader × 3 publication race test. |
+
+The two newly required fixtures each passed in three consecutive executions.
+The targeted invocation was
+`sbt --batch 'raiderCli/testOnly raider.cli.run.PhaseEmissionExportSpec raider.cli.lineage.LineageSnapshotProtocolSpec'`;
+each execution reported 7 passed, 0 failed, 0 ignored. One initial compile
+attempt failed because the new fixture passed `None` where the
+`modelCallStarted` API expects an integer; the test argument was corrected and
+the targeted suites then passed three times. This compile error was not a
+phantom compile; no target/BSP purge was needed.
+
+**Pre-gate record finalized before quality commands.** The only code/test files
+changed are `LineageSnapshot.scala`, `LineageSnapshotProtocolSpec.scala`, and
+`PhaseEmissionExportSpec.scala`, plus this operational record. No frozen schema,
+GraphHash, build, quality policy, task card, or board was changed.
+
+**Pre-gate record finalized before quality commands.** This document records
+the fixture criteria and results and is an operational work record, not product
+evidence. Required commands, in order: `make quality-changed`,
+`make quality-changed QUALITY_EXECUTE=1`, then
+`make quality-profile PROFILES="static unit contracts runtime"`. Manifests and
+quality-verifier output are reported in the completion message only, as required
+for this lane.
+
+No paid calls were made. This status closes the LIN3-01/02/03 fixtures under
+the rescoped basis only; it does not claim a live pinned-dotc compile gate or
+accept LIN-04/the wider LIN milestone.
+
 ## Final consolidation attempt (2026-10-18)
 
 Owner's final acceptance basis for this round: a live fold-invalid projection is
