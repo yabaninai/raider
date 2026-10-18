@@ -99,10 +99,8 @@ object EventExport:
     * "forwarder relayed the last envelope into the consumer", so a following
     * interrupt cannot cut off the tail (e.g. Terminal).
     *
-    * The wait is WALL-CLOCK based and deliberately does NOT use `ZIO.sleep`:
-    * under a zio-test TestClock a sleeping poll would freeze forever, and this
-    * helper runs inside production paths exercised by tests. A 2ms blocking nap
-    * between probes is bounded, negligible, and clock-independent.
+    * The wait is WALL-CLOCK based; the short ZIO sleep yields the worker
+    * between probes without changing the wall-clock deadline.
     */
   def awaitCaughtUp(
       hub: EventHub,
@@ -118,11 +116,7 @@ object EventExport:
           observed.flatMap { have =>
             if have >= snap.lastSeq then ZIO.unit
             else if System.currentTimeMillis() >= deadline then ZIO.unit
-            else
-              ZIO.succeed {
-                java.util.concurrent.TimeUnit.MILLISECONDS.sleep(2L)
-                ()
-              } *> loop
+            else ZIO.sleep(zio.Duration.fromMillis(2L)) *> loop
           }
       }
     loop

@@ -325,7 +325,7 @@ object CiAdapterBatchSpec extends ZIOSpecDefault:
                 )
                 fiber <- HeadlessRunner.run(args).forkDaemon
                 // bounded mid-run window: wait for the events file to appear
-                _ <- ZIO.attempt {
+                _ <- {
                   val deadline = java.lang.System.currentTimeMillis() + 20000L
                   val events =
                     (p: Path) =>
@@ -335,11 +335,15 @@ object CiAdapterBatchSpec extends ZIOSpecDefault:
                         .asScala
                         .filter(Files.isRegularFile(_))
                         .exists(_.getFileName.toString == "events.jsonl")
-                  while !events(work) &&
-                    java.lang.System.currentTimeMillis() < deadline
-                  do Thread.sleep(2L)
-                  ()
-                }.orDie
+                  def awaitEvents: UIO[Unit] =
+                    ZIO.attempt(events(work)).orDie.flatMap { found =>
+                      if found || java.lang.System
+                          .currentTimeMillis() >= deadline
+                      then ZIO.unit
+                      else ZIO.sleep(zio.Duration.fromMillis(2L)) *> awaitEvents
+                    }
+                  awaitEvents
+                }
                 _ <- fiber.interrupt // joins finalizers (bounded)
                 honest <- ZIO.attempt {
                   Files

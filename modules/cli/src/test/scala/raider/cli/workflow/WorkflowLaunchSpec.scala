@@ -444,49 +444,54 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
           env.stand.hang.set(true) // arm: the next request hangs in-flight
           // Wait until THIS child's model work is actively in flight (the
           // delta: the stand counter is cumulative across the suite).
-          val t0 = System.currentTimeMillis()
-          val deadline = t0 + 90000L
-          while env.stand.requestCount - countBefore < 1 && System
-              .currentTimeMillis() < deadline
-          do Thread.sleep(100)
-          val delta = env.stand.requestCount - countBefore
-          val inFlight = delta >= 1
-          // SIGTERM (Process.destroy sends SIGTERM on POSIX).
-          p.destroy()
-          val done = p.waitFor(25, TimeUnit.SECONDS)
-          val exit = if done then p.exitValue() else -1
-          env.stand.hang.set(false) // disarm for the remaining suite
-          val workDirs = workDirsOf(out)
-          val runJson = runJsonOf(out)
-          val eventsExist =
-            workDirs.nonEmpty && Files.isRegularFile(
-              workDirs.head.resolve("events.jsonl")
+          val deadline = System.currentTimeMillis() + 90000L
+          def awaitRequest: ZIO[Any, Nothing, Unit] =
+            if env.stand.requestCount - countBefore >= 1 ||
+              System.currentTimeMillis() >= deadline
+            then ZIO.unit
+            else ZIO.sleep(zio.Duration.fromMillis(100L)) *> awaitRequest
+          awaitRequest *> ZIO.succeed {
+            val delta = env.stand.requestCount - countBefore
+            val inFlight = delta >= 1
+            // SIGTERM (Process.destroy sends SIGTERM on POSIX).
+            p.destroy()
+            val done = p.waitFor(25, TimeUnit.SECONDS)
+            val exit = if done then p.exitValue() else -1
+            env.stand.hang.set(false) // disarm for the remaining suite
+            val workDirs = workDirsOf(out)
+            val runJson = runJsonOf(out)
+            val eventsExist =
+              workDirs.nonEmpty && Files.isRegularFile(
+                workDirs.head.resolve("events.jsonl")
+              )
+            // Truthful incomplete evidence: EITHER the run's own finalizers
+            // landed (Interrupted run.json) OR the bounded stop expired and
+            // the hook wrote the interrupted marker (never green either way).
+            val interruptedMarker =
+              Files
+                .list(out)
+                .iterator()
+                .asScala
+                .map(_.getFileName.toString)
+                .exists(n =>
+                  n.startsWith("interrupted-") && n.endsWith(".json")
+                )
+            drainThread.join(2000)
+            assertTrue(
+              inFlight,
+              done, // bounded stop: the launcher returned within the wait
+              exit == 143, // POSIX SIGTERM death after the bounded shutdown hook
+              delta >= 1 && delta <= 3,
+              workDirs.nonEmpty,
+              eventsExist,
+              // Truthful incomplete evidence: Interrupted, never green.
+              (
+                runJson.contains("\"status\":\"Interrupted\"") ||
+                  interruptedMarker
+              ),
+              !runJson.contains("\"status\":\"Succeeded\"")
             )
-          // Truthful incomplete evidence: EITHER the run's own finalizers
-          // landed (Interrupted run.json) OR the bounded stop expired and
-          // the hook wrote the interrupted marker (never green either way).
-          val interruptedMarker =
-            Files
-              .list(out)
-              .iterator()
-              .asScala
-              .map(_.getFileName.toString)
-              .exists(n => n.startsWith("interrupted-") && n.endsWith(".json"))
-          drainThread.join(2000)
-          assertTrue(
-            inFlight,
-            done, // bounded stop: the launcher returned within the wait
-            exit == 143, // POSIX SIGTERM death after the bounded shutdown hook
-            delta >= 1 && delta <= 3,
-            workDirs.nonEmpty,
-            eventsExist,
-            // Truthful incomplete evidence: Interrupted, never green.
-            (
-              runJson.contains("\"status\":\"Interrupted\"") ||
-                interruptedMarker
-            ),
-            !runJson.contains("\"status\":\"Succeeded\"")
-          )
+          }
         }
       },
       test(
