@@ -1,7 +1,13 @@
 package raider.repl
 
 import raider.runtime.events.EventHub
-import raider.ui.{CloseChoiceResolver, SessionRegistry, ShellTerminal, TabShell}
+import raider.ui.{
+  AuxTabProvider,
+  CloseChoiceResolver,
+  SessionRegistry,
+  ShellTerminal,
+  TabShell
+}
 import zio.{Scope, UIO, ZIO}
 
 /** Product host of the accepted raider.ui TabShell inside the product REPL
@@ -115,6 +121,29 @@ object TabShellHost:
         wiring.registry,
         scrollback.commandTerminal(terminal),
         resolver
+      )
+    yield ()
+
+  /** Product lineage wiring. The provider is refreshed by its scoped adapter;
+    * TabShell only reads its atomic snapshot on `:aux` and never does IO.
+    */
+  def run(
+      wiring: Wiring,
+      scrollback: ScrollbackCommands,
+      lineage: AuxTabProvider
+  ): ZIO[Scope, Throwable, Unit] =
+    for
+      terminal <- paletteTerminal
+      resolver = CloseChoiceResolver.fromTerminal(
+        terminal,
+        TabShell.Config().closePrompt
+      )
+      _ <- TabShell.run(
+        wiring.hub,
+        wiring.registry,
+        scrollback.commandTerminal(terminal),
+        resolver,
+        aux = Some(lineage)
       )
     yield ()
 

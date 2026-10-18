@@ -16,6 +16,9 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | RAI-171 | [Live-wire provider verification preparation (no paid execution)](m1.md) |
 | RAI-173 | [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md) |
 | RAI-175 | [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md) |
+| RAI-177 | [LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance](lineage.md) |
+| RAI-178 | [Full-suite stability: WIR-01 internal timeout + suite-duration investigation](full-suite-stability.md) |
+| RAI-179 | [SDLC checkpoint dispatch boundary (workflow→launcher seam)](m1.md#rai-179-sdlc-checkpoint-dispatch-boundary-workflowlauncher-seam) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -244,3 +247,8 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-160** [Wire :export-workflow into ChatLoop — TaskSelection-to-StsSelection adapter + export command (RAI-155 chain gap)](lineage.md); dependencies: RAI-155.b, RAI-155.c; profiles: static, unit, contracts, ci.
 - **RAI-162** [WorkflowRun SIGTERM: interruption evidence for chat-exported workflow runs](lineage.md); dependencies: RAI-155.d; profiles: static, unit, contracts, ci.
 - **RAI-161** [Quality runner: implement the documented operational-record exclusion](m0.md); dependencies: none; profiles: self, docs.
+
+- **RAI-176** [Preserve tool definitions in streaming Chat requests](m2-p2.md); dependencies: RAI-012; profiles: static, unit, contracts, transport.
+- **RAI-177** [LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance](lineage.md); dependencies: LIN-04, LIN-03, RAI-173; profiles: static, unit, repl, docs.
+- **RAI-178** [Full-suite stability: WIR-01 internal timeout + suite-duration investigation](full-suite-stability.md); dependencies: none; profiles: static, unit, runtime, ci, docs.
+- **RAI-179** [SDLC checkpoint dispatch boundary (workflow→launcher seam)](m1.md#rai-179-sdlc-checkpoint-dispatch-boundary-workflowlauncher-seam); dependencies: RAI-165, RAI-166, RAI-164; profiles: static, unit, contracts, runtime, ci, docs.
