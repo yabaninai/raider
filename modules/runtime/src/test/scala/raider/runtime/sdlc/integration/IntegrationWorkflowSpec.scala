@@ -195,14 +195,26 @@ object IntegrationWorkflowSpec extends ZIOSpecDefault:
       )
     },
     test(
-      "SDLC-INT-03b: unknown outcome takes a read-only reconcile path, never retries"
+      "SDLC-INT-03b: unknown and timed-out outcomes retain distinct evidence"
     ) {
-      val forge = new FakeForge(Some(Verb.Commit -> ForgeOutcome.Unknown))
-      val run = workflow(forge).execute(input(), "unknown")
+      val unknownForge =
+        new FakeForge(Some(Verb.Commit -> ForgeOutcome.Unknown))
+      val unknownRun = workflow(unknownForge).execute(input(), "unknown")
+      val timedOutForge =
+        new FakeForge(Some(Verb.Commit -> ForgeOutcome.TimedOutUncertain))
+      val timedOutRun = workflow(timedOutForge).execute(input(), "timed-out")
       assertTrue(
-        run.records.head.refusal.exists(_.isInstanceOf[Refusal.UnknownOutcome]),
-        forge.mutations == List(Verb.Commit),
-        forge.reconciles == 2
+        unknownRun.records.head.refusal
+          .contains(Refusal.UnknownOutcome("unknown-1")),
+        unknownRun.records.head.result.outcome == IntegrationOutcome.Unknown,
+        unknownForge.mutations == List(Verb.Commit),
+        unknownForge.reconciles == 2,
+        timedOutRun.records.head.refusal
+          .contains(Refusal.TimedOutUncertain("timed-out-1")),
+        timedOutRun.records.head.result.outcome ==
+          IntegrationOutcome.TimedOutUncertain,
+        timedOutForge.mutations == List(Verb.Commit),
+        timedOutForge.reconciles == 2
       )
     },
     test("SDLC-INT-02c: duplicate PR outcome is a typed refusal") {
