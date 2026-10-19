@@ -11,7 +11,7 @@ import raider.runtime.lineage.wire.{
   LineageWire
 }
 import raider.runtime.loop.LoopEvents
-import zio.{Duration, Fiber, Ref, Semaphore, UIO, ZIO}
+import zio.{Clock, Duration, Fiber, Ref, Semaphore, UIO, ZIO}
 
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
@@ -627,17 +627,11 @@ final class MultiJobExport private (
       case None      => ZIO.unit
     }
 
-  /** Bounded wall-clock poll (TestClock-safe, same discipline as
-    * [[EventExport.awaitCaughtUp]]).
+  /** Bounded wall-clock poll. Sleep on the live clock so the wall-clock
+    * deadline remains reachable when called under a frozen virtual clock.
     */
   private def pollUntil(cond: UIO[Boolean], budgetMs: Long): UIO[Unit] =
-    val deadline = System.currentTimeMillis() + budgetMs
-    def loop: UIO[Unit] =
-      cond.flatMap { ok =>
-        if ok || System.currentTimeMillis() >= deadline then ZIO.unit
-        else ZIO.sleep(Duration.fromMillis(2L)) *> loop
-      }
-    loop
+    MultiJobExport.pollUntil(cond, budgetMs)
 
   /** The export-canonical per-job seq: dense 1,2,3,… in file order. MUST be
     * called under the export lock.
@@ -692,6 +686,17 @@ final class MultiJobExport private (
 end MultiJobExport
 
 object MultiJobExport:
+
+  private[run] def pollUntil(cond: UIO[Boolean], budgetMs: Long): UIO[Unit] =
+    val deadline = System.currentTimeMillis() + budgetMs
+    def loop: UIO[Unit] =
+      cond.flatMap { ok =>
+        if ok || System.currentTimeMillis() >= deadline then ZIO.unit
+        else
+          ZIO.withClock(Clock.ClockLive)(ZIO.sleep(Duration.fromMillis(2L))) *>
+            loop
+      }
+    loop
 
   /** A connected child segment: the correlation key plus the REAL per-job
     * native artifacts the provenance record points at.

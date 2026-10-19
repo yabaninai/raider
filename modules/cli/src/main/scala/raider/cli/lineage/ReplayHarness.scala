@@ -25,7 +25,7 @@ import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
 import raider.runtime.lineage.replay.{GraphComparator, GraphDiff}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
 import raider.tools.CodingToolset
-import zio.{Duration as ZDuration, Ref, ZIO}
+import zio.{Clock, Duration as ZDuration, Ref, ZIO}
 
 import java.nio.file.Path
 
@@ -383,9 +383,10 @@ object ReplayHarness:
       hub: EventHub,
       jobId: JobId,
       startAfter: Long,
-      sink: Ref[Vector[EventEnvelope]]
+      sink: Ref[Vector[EventEnvelope]],
+      outerBound: ZDuration = ZDuration.fromSeconds(10)
   ): ZIO[Any, String, Unit] =
-    val deadline = System.nanoTime() + ZDuration.fromSeconds(10).toNanos
+    val deadline = System.nanoTime() + outerBound.toNanos
     def loop: ZIO[Any, String, Unit] =
       for
         envs <- sink.get
@@ -401,7 +402,11 @@ object ReplayHarness:
             ZIO.fail(
               s"terminal stream did not reach hub watermark $watermark within the outer bound"
             )
-          else ZIO.sleep(ZDuration.fromMillis(20)) *> loop
+          else
+            ZIO.withClock(Clock.ClockLive)(
+              ZIO.sleep(ZDuration.fromMillis(20))
+            ) *>
+              loop
       yield result
     loop
 
