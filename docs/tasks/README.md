@@ -19,6 +19,8 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | RAI-177 | [LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance](lineage.md) |
 | RAI-178 | [Full-suite stability: WIR-01 internal timeout + suite-duration investigation](full-suite-stability.md) |
 | RAI-179 | [SDLC checkpoint dispatch boundary (workflow→launcher seam)](m1.md#rai-179-sdlc-checkpoint-dispatch-boundary-workflowlauncher-seam) |
+| RAI-180 | [Clock contract for embeddable poll loops](m1.md#rai-180-clock-contract-for-embeddable-poll-loops) |
+| Live-wire budget request | [RAI-171 owner-gated request (no paid execution)](live-wire-request.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
 ## Assigning work
@@ -252,3 +254,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-177** [LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance](lineage.md); dependencies: LIN-04, LIN-03, RAI-173; profiles: static, unit, repl, docs.
 - **RAI-178** [Full-suite stability: WIR-01 internal timeout + suite-duration investigation](full-suite-stability.md); dependencies: none; profiles: static, unit, runtime, ci, docs.
 - **RAI-179** [SDLC checkpoint dispatch boundary (workflow→launcher seam)](m1.md#rai-179-sdlc-checkpoint-dispatch-boundary-workflowlauncher-seam); dependencies: RAI-165, RAI-166, RAI-164; profiles: static, unit, contracts, runtime, ci, docs.
+- **RAI-180** [Clock contract for embeddable poll loops](m1.md#rai-180-clock-contract-for-embeddable-poll-loops); dependencies: RAI-178; profiles: static, unit, contracts, runtime, ci, docs.

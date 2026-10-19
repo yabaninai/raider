@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 190,
+  "raider_count": 191,
   "companion_count": 3,
   "cards": [
     {
@@ -5522,6 +5522,23 @@
       },
       "non_goals": "New scheduler/daemon, durable workflow resume, widening owner capabilities, changing frozen public APIs without reviewed migration, real forge operations, or paid calls.",
       "context": "RAI-165 approval artifact and fresh-invocation recheck currently have no HeadlessRunner Agent/Bundle dispatch or raider workflow run launcher surface for checkpoint inputs/callbacks. ADR-030 D1 and ADR-034 §composition define the intended composition seam; RAI-165 completion depends on this boundary."
+    },
+    {
+      "id": "RAI-180",
+      "title": "Clock contract for embeddable poll loops",
+      "milestone": "M1",
+      "dependencies": ["RAI-178"],
+      "status": "todo",
+      "allowed_paths": ["docs/runtime-contracts.md", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/main/scala/raider/cli/lineage/**", "modules/cli/src/test/scala/raider/cli/lineage/**", "docs/tasks/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "ci", "docs"],
+      "behavior": "Define the clock source and deadline contract for runtime poll loops used by embedders. Harden affected main-source loops, including EventExport.awaitCaughtUp, so a wall-clock-bounded escape remains reachable regardless of ambient clock source while preserving live-clock cadence and semantics. Add fixtures proving termination under a frozen virtual clock.",
+      "acceptance": {
+        "normal": "CLOCK-POLL-01: runtime documentation defines clock/deadline behavior; affected loops preserve live-clock cadence and completion behavior.",
+        "error": "CLOCK-POLL-02: with a frozen virtual clock and never-satisfied condition, the real-time bounded escape reaches the existing timeout outcome rather than hanging.",
+        "concurrency": "CLOCK-POLL-03: virtual-clock termination and interruption complete with resources/fibers cleaned up; live-clock regressions retain prior semantics."
+      },
+      "non_goals": "Changing export/capture schemas or public APIs; redefining live-process timeout behavior; unbounded waits; unrelated clock abstraction or scheduler work; paid calls or neighboring-repository changes.",
+      "context": "RAI-178 accepted record: ambient ZIO.sleep suspends under frozen TestClock, making EventExport.awaitCaughtUp's wall-deadline check unreachable. Main-source clock hardening was explicitly deferred to a separate card."
     }
   ]
 }
