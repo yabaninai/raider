@@ -293,14 +293,19 @@ final class IntegrationWorkflow(port: ForgePort, rules: IntegrationRules):
                   case ForgeOutcome.TimedOutUncertain =>
                     // Unknown results are reconciled read-only; they are never retried here.
                     val observed = port.reconcile().toOption
+                    val record = refused(
+                      verb,
+                      candidate.identity,
+                      id,
+                      Refusal.UnknownOutcome(id),
+                      Some(fresh),
+                      observed
+                    )
                     Left(
-                      refused(
-                        verb,
-                        candidate.identity,
-                        id,
-                        Refusal.TimedOutUncertain(id),
-                        Some(fresh),
-                        observed
+                      record.copy(
+                        result = record.result.copy(
+                          outcome = IntegrationOutcome.TimedOutUncertain
+                        )
                       )
                     )
                   case ForgeOutcome.Unknown | ForgeOutcome.ReconcileRequired =>

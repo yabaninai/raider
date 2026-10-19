@@ -210,7 +210,7 @@ object IntegrationWorkflowSpec extends ZIOSpecDefault:
         unknownForge.mutations == List(Verb.Commit),
         unknownForge.reconciles == 2,
         timedOutRun.records.head.refusal
-          .contains(Refusal.TimedOutUncertain("timed-out-1")),
+          .contains(Refusal.UnknownOutcome("timed-out-1")),
         timedOutRun.records.head.result.outcome ==
           IntegrationOutcome.TimedOutUncertain,
         timedOutForge.mutations == List(Verb.Commit),
