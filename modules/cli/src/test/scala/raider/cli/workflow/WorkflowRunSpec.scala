@@ -5,6 +5,8 @@ import zio.test.Assertion.*
 import zio.{Chunk, Unsafe, ZIO}
 
 import raider.core.RaiderError
+import raider.core.sdlc.SdlcEvidence.CandidateIdentity
+import raider.runtime.sdlc.approval.ApprovalArtifacts
 import raider.dsl.workflow.{
   ChatWorkflowRenderer,
   NamedCheck,
@@ -22,6 +24,7 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.attribute.PosixFilePermission
 import java.nio.file.{Files, Path}
 import java.util.concurrent.TimeUnit
+import java.time.Instant
 import scala.jdk.CollectionConverters.*
 
 /** RAI-155.d `raider workflow run` typed-failure corpus (CWF-D02):
@@ -287,6 +290,108 @@ object WorkflowRunSpec extends ZIOSpecDefault:
         }
       },
       test(
+        "SDLC-DISPATCH-01/02: launcher policy pauses with request artifact, then fresh decision invocation reaches workflow dispatch"
+      ) {
+        val (buildDir, _) = build
+        val ws = freshWorkspace()
+        val input =
+          Files.createTempDirectory("rai179-input").resolve("input.json")
+        Files.writeString(input, inputJson(ws))
+        val out = freshRunDir()
+        val (checkpointId, scope) = "before-run" -> "workflow-run"
+        val requestPath = out.resolve(s"approval-$checkpointId.json")
+        val args = WorkflowRun.Args(
+          buildDir,
+          input,
+          out,
+          None,
+          Some(checkpointId -> scope),
+          None,
+          None
+        )
+        exec(args, Map.empty).flatMap { paused =>
+          val request = ApprovalArtifacts
+            .decodeRequestArtifact(Files.readString(requestPath))
+            .toOption
+            .get
+          val identity = WorkflowBuildIdentity.load(buildDir).toOption.get
+          val inputDigest =
+            WorkflowBuildIdentity.sha256Hex(Files.readString(input))
+          val treeDigest = workspaceDigest(ws)
+          val candidate = CandidateIdentity(
+            ws.toAbsolutePath.normalize.toString,
+            ws.toAbsolutePath.normalize.toString,
+            None,
+            Some(identity.classDigest),
+            Some(identity.sourceDigest),
+            treeDigest,
+            inputDigest,
+            identity.sourceDigest,
+            WorkflowBuildIdentity.sha256Hex("workflow-run:" + scope),
+            WorkflowBuildIdentity.sha256Hex(identity.toolchain.toString)
+          )
+          val decisionPath = out.resolve("decision.json")
+          Files.writeString(
+            decisionPath,
+            ApprovalArtifacts.decisionJson(
+              ApprovalArtifacts.Decision(
+                ApprovalArtifacts.SchemaVersion,
+                checkpointId,
+                request.candidateDigest,
+                request.expiresAt,
+                approved = true
+              )
+            )
+          )
+          val resumedInvocation = args.copy(decisionFile = Some(decisionPath))
+          exec(resumedInvocation, Map("RAIDER_API_KEY" -> "stand-key"))
+            .flatMap { proceeded =>
+              Files.writeString(
+                ws.resolve("changed-after-request.txt"),
+                "state changed"
+              )
+              exec(args.copy(decisionFile = Some(decisionPath)), Map.empty)
+                .flatMap { stale =>
+                  val expired = request.copy(expiresAt = "2000-01-01T00:00:00Z")
+                  ApprovalArtifacts.writeRequest(requestPath, expired)
+                  val expiredDecision = out.resolve("expired-decision.json")
+                  Files.writeString(
+                    expiredDecision,
+                    ApprovalArtifacts.decisionJson(
+                      ApprovalArtifacts.Decision(
+                        ApprovalArtifacts.SchemaVersion,
+                        checkpointId,
+                        expired.candidateDigest,
+                        expired.expiresAt,
+                        approved = true
+                      )
+                    )
+                  )
+                  exec(
+                    args.copy(decisionFile = Some(expiredDecision)),
+                    Map.empty
+                  ).map { refused =>
+                    assertTrue(
+                      paused.exitCode == raider.core.result.ExitCodes.NeedsApproval,
+                      Files.isRegularFile(requestPath),
+                      request.candidateDigest == CandidateIdentity.digest(
+                        candidate
+                      ),
+                      proceeded.exitCode == 20,
+                      proceeded.error.exists(_.code == "RA-UNAVAIL"),
+                      stale.exitCode == 21,
+                      stale.error.exists(
+                        _.detail.contains("CandidateMismatch")
+                      ),
+                      refused.exitCode == 21,
+                      refused.error.exists(_.detail.contains("Expired"))
+                    )
+                  }
+                }
+            }
+        }
+      },
+      test(
         "CWF-D02: invalid input JSON fails typed at the decode boundary (21, CWF-input prefix, zero dispatch)"
       ) {
         val (buildDir, _) = build
@@ -426,5 +531,29 @@ object WorkflowRunSpec extends ZIOSpecDefault:
       ()
     }
     to
+
+  private def workspaceDigest(workspace: Path): String =
+    val files = Files.walk(workspace)
+    val ordered =
+      try
+        files
+          .iterator()
+          .asScala
+          .toVector
+          .filter(Files.isRegularFile(_))
+          .sortBy(p => workspace.relativize(p).toString)
+      finally files.close()
+    val digest = java.security.MessageDigest.getInstance("SHA-256")
+    ordered.foreach { file =>
+      val bytes = Files.readAllBytes(file)
+      digest.update(
+        (workspace
+          .relativize(file)
+          .toString + "\n" + bytes.length.toString + "\n")
+          .getBytes(StandardCharsets.UTF_8)
+      )
+      digest.update(bytes)
+    }
+    digest.digest().map(b => f"${b & 0xff}%02x").mkString
 
 end WorkflowRunSpec

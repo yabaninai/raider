@@ -20,6 +20,12 @@ import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.events.{EventEnvelope, EventPayload}
 import raider.runtime.jobs.JobStatus
+import raider.runtime.sdlc.approval.{
+  ApprovalArtifacts,
+  CheckpointDispatch,
+  CheckpointOutcome
+}
+import raider.core.sdlc.SdlcEvidence.CandidateIdentity
 
 import zio.json.EncoderOps
 import zio.{Ref, Scope, ZIO, Unsafe}
@@ -30,6 +36,7 @@ import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.control.NonFatal
+import scala.jdk.CollectionConverters.*
 
 /** `raider workflow run --classes <dir> --input <file> --out <dir> [--source
   * <file>]` (RAI-155.d; ADR-033 §7 — the reserved proposal names become real
@@ -80,7 +87,10 @@ object WorkflowRun:
       classes: Path,
       input: Path,
       out: Path,
-      source: Option[Path]
+      source: Option[Path],
+      checkpoint: Option[(String, String)] = None,
+      decisionFile: Option[Path] = None,
+      approvalRequest: Option[Path] = None
   )
 
   // ------------------------------------------------------------------//
@@ -91,7 +101,15 @@ object WorkflowRun:
     * routing, so run/chat flags can never be confused with launch flags).
     */
   def parse(argv: List[String]): Either[RaiderError, Args] =
-    val flagsWithValue = Set("--classes", "--input", "--out", "--source")
+    val flagsWithValue = Set(
+      "--classes",
+      "--input",
+      "--out",
+      "--source",
+      "--checkpoint",
+      "--decision-file",
+      "--approval-request"
+    )
     @scala.annotation.tailrec
     def loop(
         rest: List[String],
@@ -108,17 +126,49 @@ object WorkflowRun:
         Left(
           RaiderError.Configuration(
             s"unknown argument '$unknown' (usage: raider workflow run " +
-              "--classes <dir> --input <file> --out <dir> [--source <edited.scala>])"
+              "--classes <dir> --input <file> --out <dir> [--source <edited.scala>] [--checkpoint <id>:<scope> [--decision-file <json>]])"
           )
         )
     loop(argv, Map.empty)
 
   private def assemble(acc: Map[String, String]): Either[RaiderError, Args] =
+    val checkpoint: Either[RaiderError, Option[(String, String)]] =
+      acc.get("--checkpoint") match
+        case None => Right(None)
+        case Some(value) =>
+          value.split(":", 2) match
+            case Array(id, scope)
+                if id.matches(
+                  "[A-Za-z0-9][A-Za-z0-9._-]{0,127}"
+                ) && scope.trim.nonEmpty =>
+              Right(Some(id -> scope))
+            case _ =>
+              Left(
+                RaiderError.Configuration("--checkpoint must be <id>:<scope>")
+              )
     for
       classes <- requirePath(acc, "--classes")
       input <- requirePath(acc, "--input")
       out <- requirePath(acc, "--out")
-    yield Args(classes, input, out, acc.get("--source").map(Paths.get(_)))
+      parsed <- checkpoint
+      decision = acc.get("--decision-file").map(Paths.get(_))
+      request = acc.get("--approval-request").map(Paths.get(_))
+      _ <- Either.cond(
+        !(decision.nonEmpty || request.nonEmpty) || parsed.nonEmpty,
+        (),
+        RaiderError.Configuration(
+          "--decision-file and --approval-request require --checkpoint"
+        )
+      )
+    yield Args(
+      classes,
+      input,
+      out,
+      acc.get("--source").map(Paths.get(_)),
+      parsed,
+      decision,
+      request
+    )
 
   private def requirePath(
       acc: Map[String, String],
@@ -224,11 +274,188 @@ object WorkflowRun:
       env: Map[String, String],
       workDir: Path
   ): ZIO[Any, Nothing, Outcome] =
-    ZIO.scoped:
-      body(args, env, workDir).fold(
-        err => Outcome(HeadlessRunner.exitCodeFor(err), args.out, Some(err)),
-        _ => Outcome(raider.core.result.ExitCodes.Success, args.out, None)
-      )
+    checkpointOutcome(args) match
+      case Some(Left(err)) =>
+        ZIO.succeed(
+          Outcome(HeadlessRunner.exitCodeFor(err), args.out, Some(err))
+        )
+      case Some(Right(false)) =>
+        ZIO.succeed(
+          Outcome(raider.core.result.ExitCodes.NeedsApproval, args.out, None)
+        )
+      case _ =>
+        ZIO.scoped:
+          body(args, env, workDir).fold(
+            err =>
+              Outcome(HeadlessRunner.exitCodeFor(err), args.out, Some(err)),
+            _ => Outcome(raider.core.result.ExitCodes.Success, args.out, None)
+          )
+
+  /** Checkpoint policy is declared by the launcher and gates dispatch only. The
+    * request/decision never supplies candidate or capability authority.
+    */
+  private def checkpointOutcome(
+      args: Args
+  ): Option[Either[RaiderError, Boolean]] =
+    args.checkpoint.map { case (checkpointId, scope) =>
+      val evaluated = for
+        identity <- preflightBuild(args)
+        input <- readInput(args.input)
+        inputDigest = WorkflowBuildIdentity.sha256Hex(input)
+        workspace <- workspaceFromInput(input)
+        treeDigest <- digestWorkspace(workspace)
+        policyDigest = WorkflowBuildIdentity.sha256Hex("workflow-run:" + scope)
+        candidate = CandidateIdentity(
+          workspace.toString,
+          workspace.toString,
+          None,
+          Some(identity.classDigest),
+          Some(identity.sourceDigest),
+          treeDigest,
+          inputDigest,
+          identity.sourceDigest,
+          policyDigest,
+          WorkflowBuildIdentity.sha256Hex(identity.toolchain.toString)
+        )
+        _ <- CandidateIdentity
+          .validate(candidate)
+          .left
+          .map(RaiderError.InputValidation.apply)
+        requestPath = args.approvalRequest.getOrElse(
+          args.out.resolve(s"approval-$checkpointId.json")
+        )
+        expiry <-
+          if args.decisionFile.nonEmpty then
+            try
+              Right(
+                Instant.parse(
+                  ApprovalArtifacts
+                    .decodeRequestArtifact(
+                      Files.readString(requestPath, StandardCharsets.UTF_8)
+                    )
+                    .toOption
+                    .get
+                    .expiresAt
+                )
+              )
+            catch
+              case _: Throwable =>
+                Left(
+                  RaiderError.InputValidation(
+                    "checkpoint request artifact is missing or invalid"
+                  )
+                )
+          else Right(Instant.now().plusSeconds(3600))
+        dispatch = CheckpointDispatch(
+          checkpointId,
+          candidate,
+          expiry,
+          requestPath,
+          args.decisionFile,
+          "workflow-run",
+          () => {
+            val currentIdentity = preflightBuild(args).left.map(_ =>
+              ApprovalArtifacts.Refusal.CandidateMismatch
+            )
+            val currentInput = readInput(args.input).left.map(_ =>
+              ApprovalArtifacts.Refusal.CandidateMismatch
+            )
+            val currentTree = digestWorkspace(workspace).left.map(_ =>
+              ApprovalArtifacts.Refusal.CandidateMismatch
+            )
+            for
+              freshIdentity <- currentIdentity
+              freshInput <- currentInput
+              freshTree <- currentTree
+              _ <- Either.cond(
+                freshIdentity == identity && WorkflowBuildIdentity.sha256Hex(
+                  freshInput
+                ) == inputDigest && freshTree == treeDigest,
+                (),
+                ApprovalArtifacts.Refusal.CandidateMismatch
+              )
+            yield ApprovalArtifacts.CurrentState(
+              candidate,
+              candidate.policyDigest,
+              candidate.treeDigest,
+              candidate.taskDigest,
+              candidate.baseRevision,
+              List(
+                "compiled-workflow:" + identity.classDigest,
+                "workspace:" + freshTree
+              ),
+              CandidateIdentity.digest(candidate),
+              Set("workflow-run")
+            )
+          }
+        )
+      yield dispatch.evaluate() match
+        case CheckpointOutcome.Authorized(_)    => Right(true)
+        case CheckpointOutcome.NeedsApproval(_) => Right(false)
+        case CheckpointOutcome.Refused(reason) =>
+          Left(RaiderError.InputValidation(s"checkpoint refused: $reason"))
+      evaluated.flatMap(identity)
+    }
+
+  private def workspaceFromInput(input: String): Either[RaiderError, Path] =
+    import zio.json.ast.Json
+    Json.decoder.decodeJson(input) match
+      case Right(Json.Obj(fields)) =>
+        fields.collectFirst { case ("workspace", Json.Str(value)) =>
+          value
+        } match
+          case Some(value) if value.trim.nonEmpty =>
+            Right(Paths.get(value).toAbsolutePath.normalize)
+          case _ =>
+            Left(
+              RaiderError.InputValidation(
+                "checkpoint requires a workspace string in workflow input"
+              )
+            )
+      case _ =>
+        Left(
+          RaiderError.InputValidation(
+            "checkpoint requires valid workflow input JSON"
+          )
+        )
+
+  private def digestWorkspace(workspace: Path): Either[RaiderError, String] =
+    try
+      if !Files.isDirectory(workspace) then
+        Left(
+          RaiderError.InputValidation(
+            s"checkpoint workspace is not a directory: $workspace"
+          )
+        )
+      else
+        val stream = Files.walk(workspace)
+        val files =
+          try
+            stream
+              .iterator()
+              .asScala
+              .toVector
+              .filter(Files.isRegularFile(_))
+              .sortBy(p => workspace.relativize(p).toString)
+          finally stream.close()
+        val digest = java.security.MessageDigest.getInstance("SHA-256")
+        files.foreach { file =>
+          val relative = workspace.relativize(file).toString
+          val bytes = Files.readAllBytes(file)
+          digest.update(
+            (relative + "\n" + bytes.length.toString + "\n")
+              .getBytes(StandardCharsets.UTF_8)
+          )
+          digest.update(bytes)
+        }
+        Right(digest.digest().map(b => f"${b & 0xff}%02x").mkString)
+    catch
+      case t: Throwable =>
+        Left(
+          RaiderError.InputValidation(
+            s"cannot inspect checkpoint workspace: ${t.getClass.getSimpleName}"
+          )
+        )
 
   private def body(
       args: Args,
@@ -371,6 +598,15 @@ object WorkflowRun:
       launch <- record(state, buildLaunch(module, decoded, keyOpt, maxRounds))
       _ <- state.update(_.copy(phase = Phase.Assembled))
       program <- record(state, loadWorkflow(module, launch))
+      _ <- checkpointOutcome(args) match
+        case None | Some(Right(true)) => ZIO.unit
+        case Some(Left(err))          => ZIO.fail(err)
+        case Some(Right(false)) =>
+          ZIO.fail(
+            RaiderError.InputValidation(
+              "checkpoint policy requires approval before dispatch"
+            )
+          )
       _ <- state.update(_.copy(phase = Phase.Dispatched))
       result <- Task.zio(program(rawInput)).either
       _ <- result match
@@ -900,6 +1136,8 @@ object WorkflowRun:
               System.out.println(
                 s"""{"status":"${
                     if outcome.exitCode == 0 then "succeeded"
+                    else if outcome.exitCode == raider.core.result.ExitCodes.NeedsApproval
+                    then "needs-approval"
                     else "failed"
                   },"exitCode":${outcome.exitCode},""" +
                   s""""workDir":"${outcome.workDir}"}"""
