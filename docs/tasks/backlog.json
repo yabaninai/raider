@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 191,
+  "raider_count": 192,
   "companion_count": 3,
   "cards": [
     {
@@ -5539,6 +5539,36 @@
       },
       "non_goals": "Changing export/capture schemas or public APIs; redefining live-process timeout behavior; unbounded waits; unrelated clock abstraction or scheduler work; paid calls or neighboring-repository changes.",
       "context": "RAI-178 accepted record: ambient ZIO.sleep suspends under frozen TestClock, making EventExport.awaitCaughtUp's wall-deadline check unreachable. Main-source clock hardening was explicitly deferred to a separate card."
+    },
+    {
+      "id": "RAI-181",
+      "title": "SDLC release contract extension: LocalRelease stage + typed release evidence",
+      "milestone": "M1",
+      "dependencies": ["RAI-168", "RAI-174", "RAI-179"],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/release/**",
+        "contracts/sdlc/**",
+        "modules/cli/src/main/scala/raider/cli/release/**",
+        "modules/cli/src/test/scala/raider/cli/release/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/core/src/main/scala/raider/core/sdlc/**",
+        "modules/core/src/test/scala/raider/core/sdlc/**",
+        "modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**",
+        "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**",
+        "docs/tasks/m1.md",
+        "docs/work/records/**"
+      ],
+      "profiles": ["static", "unit", "contracts", "runtime", "ci", "release"],
+      "behavior": "Complete RAI-168 by adding an additive release record kind to the RAI-174 SdlcArtifactSchema carrier, preserving v1 bytes without SDLC evidence and refusing unknown typed fields. Wire SdlcStages.LocalRelease to compose the existing bounded ReleaseStage service and emit typed release evidence to run.json/events.jsonl. Parse and cross-validate accepted check, review, and integration records against one identical candidate digest; absence, rejection, or mismatch refuses release. At the stage boundary require owner-granted release authority and the configured checkpoint under the RAI-165/179 launcher-policy discipline; checkpoints may narrow or pause capability, never grant it.",
+      "acceptance": {
+        "normal": "SDLC-REL-STAGE-01: a bounded LocalRelease stage composes the existing local release service and persists a typed release record through run.json and events.jsonl; valid parsed check/review/integration records all bind to the same accepted candidate digest.",
+        "error": "SDLC-REL-STAGE-02: v1 output remains bit-for-bit unchanged without SDLC evidence; unknown release-record fields are refused; absent, rejected, or mismatched check/review/integration evidence and missing/insufficient owner-granted release authority or configured checkpoint refuse before release effects.",
+        "concurrency": "SDLC-REL-STAGE-03: candidate/policy/checkpoint changes at the stage boundary invalidate authorization; interruption preserves truthful release evidence and existing local-only refusal/reconciliation semantics, with no push, publish, or deploy."
+      },
+      "non_goals": "Remote tag push, package/image publication, deployment, widening owner capabilities, changing v1 fields, weakening unknown-field refusal, or changing protected verifier expectations.",
+      "context": "RAI-168 has the local release service and disposable-Git fixtures, but the release stage lies outside its allowed paths, the RAI-174 carrier has no release record kind, evidence references are not cross-validated against parsed records for one candidate digest, and stage-boundary release authority/checkpoint refusal is missing. This card closes the remainder of RAI-168; RAI-170 independently verifies the integrated local-only release contract."
     }
   ]
 }
