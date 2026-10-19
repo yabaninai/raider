@@ -535,6 +535,11 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
     )
 
   def spec =
-    (suiteSpec @@ TestAspect.sequential).provideLayerShared(envLayer)
+    // RAI-178: WorkflowRun.run ensurings + the in-flight readiness poll sleep
+    // on the ambient clock and freeze on the never-advanced TestClock
+    // (fiber-verified family root cause; docs/work/records/RAI-178.md).
+    // Live clock = production discipline; assertions unchanged.
+    (suiteSpec @@ TestAspect.sequential @@ TestAspect.withLiveClock)
+      .provideLayerShared(envLayer)
 
 end WorkflowLaunchSpec

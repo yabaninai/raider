@@ -169,6 +169,15 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
       )
       .fold(e => throw e, identity)
 
+  // RAI-178 (WIR-01 stability): the suite drives the REAL product runner
+  // (HeadlessRunner.run) whose settle/export path polls with ZIO.sleep on the
+  // ambient clock (EventExport.awaitCaughtUp, MultiJobExport.drain). On the
+  // default zio-test TestClock those waits never advance and the run freezes
+  // idle until the 5-minute budget (fiber-verified root cause; see
+  // docs/work/records/RAI-178.md). The house pattern for specs that drive the
+  // live headless runner is a live clock (ResumeCommandSpec,
+  // CiAdapterBatchSpec): a real `raider run` process never runs on a frozen
+  // clock. Assertions and the 300 s budget are unchanged.
   def spec = suite(
     "headless coder delegation through the product entry (RAI-154 WIR-01)"
   )(
@@ -331,6 +340,8 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
         }
       }
     }
-  ) @@ TestAspect.timeout(zio.Duration.fromSeconds(300))
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(
+    zio.Duration.fromSeconds(300)
+  )
 
 end CoderDelegationRunSpec

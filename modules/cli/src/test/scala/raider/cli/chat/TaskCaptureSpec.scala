@@ -367,4 +367,8 @@ object TaskCaptureSpec extends ZIOSpecDefault:
             Right(after.map(_.turnId).toList)
         )
       }
-    )
+    ) @@ TestAspect.withLiveClock
+    // RAI-178: runJob's bounded ensurings (awaitCaughtUp) poll on the ambient
+    // clock; a fiber.interrupt mid-run freezes them on the never-advanced
+    // TestClock (fiber-verified; docs/work/records/RAI-178.md). Live clock =
+    // the production CLI discipline; assertions unchanged.

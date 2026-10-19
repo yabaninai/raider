@@ -515,7 +515,10 @@ object WorkflowRunSpec extends ZIOSpecDefault:
             }.ensuring(restore(parent))
           }
       }
-    ) @@ TestAspect.sequential
+    ) @@ TestAspect.sequential @@ TestAspect.withLiveClock
+    // RAI-178: WorkflowRun.run's ensurings poll on the ambient clock;
+    // live-clock discipline (docs/work/records/RAI-178.md). Assertions
+    // unchanged.
 
   private def copyTree(from: Path, to: Path): Path =
     Files.walk(from).forEach { p =>

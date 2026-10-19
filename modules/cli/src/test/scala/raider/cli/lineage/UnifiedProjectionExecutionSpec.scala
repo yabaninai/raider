@@ -1514,6 +1514,11 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
           }
         }
       }
-    ) @@ TestAspect.timeout(ZDuration.fromSeconds(900))
+    ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(
+      ZDuration.fromSeconds(900)
+    )
+    // RAI-178: export readiness polls sleep on the ambient clock; live-clock
+    // discipline (docs/work/records/RAI-178.md). Assertions and budget
+    // unchanged.
 
 end UnifiedProjectionExecutionSpec
