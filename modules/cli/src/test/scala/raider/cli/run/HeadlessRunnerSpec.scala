@@ -463,4 +463,8 @@ object HeadlessRunnerSpec extends ZIOSpecDefault:
         )
       }
     }
-  )
+  ) @@ TestAspect.withLiveClock
+  // RAI-178: HeadlessRunner.run's ensurings (awaitCaughtUp/drain) poll on the
+  // ambient clock and freeze on the TestClock under suite load (fiber-verified
+
+  // family root cause; docs/work/records/RAI-178.md). Assertions unchanged.

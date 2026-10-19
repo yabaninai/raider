@@ -453,6 +453,8 @@ object LiveRerunScriptedAcceptanceSpec extends ZIOSpecDefault:
           }
         }
       }
-    )
+    ) @@ TestAspect.withLiveClock
+    // RAI-178: readiness/export polls sleep on the ambient clock; live-clock
+    // discipline (docs/work/records/RAI-178.md). Assertions unchanged.
 
 end LiveRerunScriptedAcceptanceSpec
