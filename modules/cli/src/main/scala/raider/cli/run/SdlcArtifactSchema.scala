@@ -18,6 +18,7 @@ object SdlcArtifactSchema:
     case ReviewVerdict extends Kind("review-verdict")
     case CandidateIdentity extends Kind("candidate-identity")
     case IntegrationResult extends Kind("integration-result")
+    case LocalReleaseResult extends Kind("local-release-result")
 
   final case class Record(kind: Kind, id: String, data: Json.Obj)
 
@@ -45,6 +46,8 @@ object SdlcArtifactSchema:
               strictPayload[CandidateIdentity](evidence.payload)
             case Kind.IntegrationResult =>
               strictPayload[IntegrationResult](evidence.payload)
+            case Kind.LocalReleaseResult =>
+              strictPayload[LocalReleaseResult](evidence.payload)
           validated
             .flatMap(_ => validateInterior(recordKind, obj))
             .map(_ => Record(recordKind, id, obj))
@@ -144,6 +147,15 @@ object SdlcArtifactSchema:
           "outcome",
           "evidenceDigests",
           "policyDigest"
+        )
+      case Kind.LocalReleaseResult =>
+        Set(
+          "version",
+          "tag",
+          "revision",
+          "candidateDigest",
+          "artifactDigest",
+          "localOnly"
         )
     data.fields.find(kv => !allowed(kv._1)) match
       case Some((field, _)) =>
@@ -269,6 +281,8 @@ object SdlcArtifactSchema:
                         strictPayload[CandidateIdentity](payload).map(_ => ())
                       case Kind.IntegrationResult =>
                         strictPayload[IntegrationResult](payload).map(_ => ())
+                      case Kind.LocalReleaseResult =>
+                        strictPayload[LocalReleaseResult](payload).map(_ => ())
                     decoded
                       .flatMap(_ => validateInterior(kind, obj))
                       .map(_ => obj)
