@@ -29,6 +29,7 @@ enum Refusal:
   case Conflict(detail: String)
   case Duplicate(operationId: String)
   case UnknownOutcome(operationId: String)
+  case TimedOutUncertain(operationId: String)
   case ForgeRejected(outcome: String)
 
 final case class ForgeSnapshot(
@@ -158,12 +159,13 @@ final class IntegrationWorkflow(port: ForgePort, rules: IntegrationRules):
       observed: Option[ForgeSnapshot] = None
   ): StageRecord =
     val outcome = reason match
-      case Refusal.StaleRef(_, _)      => IntegrationOutcome.Stale
-      case Refusal.Conflict(_)         => IntegrationOutcome.Conflict
-      case Refusal.Duplicate(_)        => IntegrationOutcome.Conflict
-      case Refusal.UnknownOutcome(_)   => IntegrationOutcome.Unknown
-      case Refusal.CapabilityDenied(_) => IntegrationOutcome.Denied
-      case _                           => IntegrationOutcome.Rejected
+      case Refusal.StaleRef(_, _)       => IntegrationOutcome.Stale
+      case Refusal.Conflict(_)          => IntegrationOutcome.Conflict
+      case Refusal.Duplicate(_)         => IntegrationOutcome.Conflict
+      case Refusal.UnknownOutcome(_)    => IntegrationOutcome.Unknown
+      case Refusal.TimedOutUncertain(_) => IntegrationOutcome.TimedOutUncertain
+      case Refusal.CapabilityDenied(_)  => IntegrationOutcome.Denied
+      case _                            => IntegrationOutcome.Rejected
     StageRecord(
       verb,
       candidate,
@@ -288,8 +290,25 @@ final class IntegrationWorkflow(port: ForgePort, rules: IntegrationRules):
                         Some(response.snapshot)
                       )
                     )
-                  case ForgeOutcome.TimedOutUncertain | ForgeOutcome.Unknown |
-                      ForgeOutcome.ReconcileRequired =>
+                  case ForgeOutcome.TimedOutUncertain =>
+                    // Unknown results are reconciled read-only; they are never retried here.
+                    val observed = port.reconcile().toOption
+                    val record = refused(
+                      verb,
+                      candidate.identity,
+                      id,
+                      Refusal.UnknownOutcome(id),
+                      Some(fresh),
+                      observed
+                    )
+                    Left(
+                      record.copy(
+                        result = record.result.copy(
+                          outcome = IntegrationOutcome.TimedOutUncertain
+                        )
+                      )
+                    )
+                  case ForgeOutcome.Unknown | ForgeOutcome.ReconcileRequired =>
                     // Unknown results are reconciled read-only; they are never retried here.
                     val observed = port.reconcile().toOption
                     Left(
