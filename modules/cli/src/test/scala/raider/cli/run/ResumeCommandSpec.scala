@@ -345,13 +345,18 @@ object ResumeCommandSpec extends ZIOSpecDefault:
           for
             work <- tempDir("raider-resume-rec03")
             fiber <- HeadlessRunner.run(agentArgs(work)).forkDaemon
-            _ <- ZIO.attempt {
+            _ <- {
               val deadline = java.lang.System.currentTimeMillis() + 20000L
-              while !midRunObserved(work) &&
-                java.lang.System.currentTimeMillis() < deadline
-              do Thread.sleep(2L)
-              ()
-            }.orDie
+              def awaitObservation: UIO[Unit] =
+                ZIO.attempt(midRunObserved(work)).orDie.flatMap { observed =>
+                  if observed || java.lang.System
+                      .currentTimeMillis() >= deadline
+                  then ZIO.unit
+                  else
+                    ZIO.sleep(zio.Duration.fromMillis(2L)) *> awaitObservation
+                }
+              awaitObservation
+            }
             observed = midRunObserved(work)
             _ <- fiber.interrupt // the SIGTERM path (LIN3-A-02)
             runDir <- ZIO.attempt {

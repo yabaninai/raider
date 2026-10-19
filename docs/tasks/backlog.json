@@ -3115,7 +3115,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "ready"
+      "status": "accepted"
     },
     {
       "id": "LIN-05",
@@ -3170,7 +3170,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "ready"
     },
     {
       "id": "LIN-07",
@@ -3195,7 +3195,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "ready"
     },
     {
       "id": "LIN-08",
@@ -3223,7 +3223,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "todo"
+      "status": "ready"
     },
     {
       "id": "RAI-102",
@@ -5454,7 +5454,7 @@
       "title": "LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance",
       "milestone": "LIN",
       "dependencies": ["LIN-04", "LIN-03", "RAI-173"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**",

@@ -205,13 +205,16 @@ object HeadlessRunnerCrashSpec extends ZIOSpecDefault:
           // Deterministic mid-run observation: wait until event lines are on
           // disk while run.json (the last artifact) is still absent — the
           // whole job duration is the window, the events file opens first.
-          _ <- ZIO.attempt {
+          _ <- {
             val deadline = java.lang.System.currentTimeMillis() + 20000L
-            while !midRunObserved(work) &&
-              java.lang.System.currentTimeMillis() < deadline
-            do Thread.sleep(2L)
-            ()
-          }.orDie
+            def awaitObservation: UIO[Unit] =
+              ZIO.attempt(midRunObserved(work)).orDie.flatMap { observed =>
+                if observed || java.lang.System.currentTimeMillis() >= deadline
+                then ZIO.unit
+                else ZIO.sleep(zio.Duration.fromMillis(2L)) *> awaitObservation
+              }
+            awaitObservation
+          }
           observed = midRunObserved(work)
           _ <- fiber.interrupt // joins finalizers (bounded, ≤ awaitCaughtUp)
           (complete, tail) <- ZIO
