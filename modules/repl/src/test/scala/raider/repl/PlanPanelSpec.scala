@@ -18,6 +18,7 @@ import zio.stream.ZStream
 import zio.test.*
 
 import java.nio.file.Files
+import java.util.concurrent.atomic.AtomicReference
 
 /** RAI-110 behavioral acceptance (unit level; the PTY layer is PlanTabPtySpec):
   * the PlanPanel edges over a REAL PlanSession + JobManager + AgentLoop driven
@@ -40,6 +41,40 @@ object PlanPanelSpec extends ZIOSpecDefault:
 
   private val validProposal =
     PlanProposal("Ship it", Vector("read the file", "write the test"))
+
+  /** Structured per-attempt capture is preserved in the redirected sbt log. */
+  private def capture(event: String, fields: (String, String)*): UIO[Unit] =
+    val json =
+      (Vector("event" -> event) ++ fields)
+        .map { case (key, value) =>
+          s"\"${jsonEscape(key)}\":\"${jsonEscape(value)}\""
+        }
+        .mkString("{", ",", "}")
+    ZIO.succeed(println(s"PLANUI02_CAPTURE $json"))
+
+  private def jsonEscape(value: String): String =
+    value.flatMap {
+      case '"'          => "\\\""
+      case '\\'         => "\\\\"
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
+      case c if c < ' ' => f"\\u${c.toInt}%04x"
+      case c            => c.toString
+    }
+
+  /** Test-only observation of the read model's existing private outcomeRef. */
+  private def outcomeRefValue(rig: Rig): String =
+    val field = rig.panel.getClass.getDeclaredFields
+      .find(_.getName.contains("outcomeRef"))
+    field match
+      case None => "unavailable:field-not-found"
+      case Some(refField) =>
+        refField.setAccessible(true)
+        refField.get(rig.panel) match
+          case ref: AtomicReference[?] => String.valueOf(ref.get())
+          case other =>
+            s"unavailable:${Option(other).fold("null")(_.getClass.getName)}"
 
   private def limits: BudgetLimits =
     BudgetLimits.make(maxAttempts = 16).fold(e => throw e, identity)
@@ -258,7 +293,28 @@ object PlanPanelSpec extends ZIOSpecDefault:
               .startPlan(List(RequestMessage("user", "p2")), limits, 8)
               .orDie
             _ <- r.panel.track(planJob2).forkDaemon.unit
+            _ <- capture(
+              "plan2_started",
+              "planJobId" -> planJob2.id.value,
+              "sessionState" -> "Planning",
+              "outcomeRef" -> outcomeRefValue(r)
+            )
+            settlement <- r.session.awaitPlan(planJob2).either
+            _ <- capture(
+              "plan2_settled",
+              "planJobId" -> planJob2.id.value,
+              "settlement" -> settlement.fold(_.toString, _.toString),
+              "sessionState" -> "Planning",
+              "outcomeRef" -> outcomeRefValue(r)
+            )
             ready2 <- awaitPhase(r, PlanTab.Phase.Ready)
+            _ <- capture(
+              "panel_refresh_observed",
+              "planJobId" -> planJob2.id.value,
+              "phase" -> r.panel.snapshot.phase.toString,
+              "ready2" -> ready2.toString,
+              "outcomeRef" -> outcomeRefValue(r)
+            )
             // RAI-119 determinism (precedent 91a6575, retry with a FRESH
             // render): the watcher refreshes the snapshot in the background;
             // under load the last refresh can lag the settled plan. On a miss
@@ -266,10 +322,33 @@ object PlanPanelSpec extends ZIOSpecDefault:
             // assertion is NOT weakened (Phase.Ready must still hold).
             ready2Fresh <-
               if ready2 then ZIO.succeed(true)
-              else r.panel.refresh *> awaitPhase(r, PlanTab.Phase.Ready)
+              else
+                r.panel.refresh *>
+                  capture(
+                    "manual_refresh",
+                    "planJobId" -> planJob2.id.value,
+                    "phase" -> r.panel.snapshot.phase.toString,
+                    "outcomeRef" -> outcomeRefValue(r)
+                  ) *> awaitPhase(r, PlanTab.Phase.Ready)
             _ <- typeThrough(r, ":approve", "")
             approved2 <- r.awaitPrinted("plan approved: execution job ")
             labels <- r.labels
+            stateAfterApproval <- r.session.state
+            transcriptAfterApproval <- r.printedText
+            _ <- capture(
+              "approval_outcome",
+              "planJobId" -> planJob2.id.value,
+              "approvalLine" -> transcriptAfterApproval.linesIterator
+                .find(_.contains("plan approved: execution job "))
+                .getOrElse("approval-denied-or-no-line"),
+              "approvalPrintedApproved" -> approved2.toString,
+              "ready2Fresh" -> ready2Fresh.toString,
+              "approved2" -> approved2.toString,
+              "sessionState" -> stateAfterApproval.toString,
+              "labels" -> labels.mkString(","),
+              "planExecPresent" -> labels.contains("plan-exec").toString,
+              "outcomeRef" -> outcomeRefValue(r)
+            )
           yield assertTrue(
             seenAfterReject == "",
             rejectedPrinted,
