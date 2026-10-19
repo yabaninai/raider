@@ -1,5 +1,12 @@
 # Raider Execution Board
 
+## 2026-10-19 — RAI-178 merged: suite healed
+
+- **RAI-178:** merged `lane/rai-178` as `9763ad18eadd63ce982583a03e2378d383627748`; root cause was export/readiness `ZIO.sleep` polling on frozen zio-test TestClock suspending forever; fixture-only remedy adds the established `withLiveClock` aspect to 21 specs, with no assertion, budget, threshold, skip, or gate-policy changes. Fiber-dump diagnosis and lane evidence are in `docs/work/records/RAI-178.md`.
+- **Integrated gates:** `make quality-changed` exit 0 (clean tree, minimum `fast`); `make quality-changed QUALITY_EXECUTE=1` exit 0, including **`sbt-test` passed, exit 0, timeout false** (manifest `artifacts/quality/20261019-181232-76504-0001/manifest.json`); `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exit 0, including `sbt-test` passed, exit 0, timeout false (manifest `artifacts/quality/20261019-181951-86045-0001/manifest.json`); `python3 scripts/quality/quality.py self-check` exit 0. Plan validation passed, 199 cards.
+- **Exceptions remain distinct and uncleared:** TAB-02 (RAI-172), PLANUI-02 (RAI-175), and MJE-03c (RAI-157). MJE-03c's matrix is pending; the suite fix does not itself close that item.
+- **Cascade unblocked:** RAI-179 integrated gates rerun and RAI-157 matrix (MJE-03c closure path). **Deferred:** register a separate clock-contract card for main-source TestClock-hostile polls; that source change is outside RAI-178 scope.
+
 ## 2026-10-18 — Owner decision: checkpoint declaration = launcher policy
 
 Owner decision: declare SDLC checkpoints through launch-time policy, not workflows; workflows remain neutral because this keeps authority owner-granted and checkpoints can only narrow or pause it. This unblocks RAI-179 seam design → RAI-165 completion → RAI-167/168.
