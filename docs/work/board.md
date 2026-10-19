@@ -1,5 +1,14 @@
 # Raider Execution Board
 
+## 2026-10-19 — SDLC-01..04 verified (RAI-169); clock contract (RAI-180)
+
+- **Integrated merges:** RAI-169 from `lane/rai-169` merged as `7bbb265ddb82c0abd14432c1013e951d91063626`; RAI-180 from `lane/rai-180` merged as `8265689c047359791c197f8559fa2e94c46b3a4e`.
+- **Verifier finding and correction:** RAI-169's round-1 verifier caught `TimedOutUncertain` being collapsed into `Unknown`; lane/RAI-167 restored distinct typed evidence while keeping the refusal carrier stable, with RED→GREEN 5/5 ×3 confirmation and matrices 5/5, 9/9, 16/16, 15/15 ×3.
+- **Clock contract:** RAI-180 makes EventExport, MultiJobExport, and ReplayHarness poll sleeps use `withClock(ClockLive)` so wall-clock deadlines remain reachable under a frozen ambient clock; §15.1 and EPOCH-set/no-virtual-time-advance fixtures cover the contract.
+- **Statuses and chain:** RAI-169 and RAI-180 accepted; RAI-170 ready after verifying dependencies RAI-117/164/165/166/167/169 in the backlog. RAI-181 is registered; RAI-168 completes under RAI-181, then RAI-170 closes the SDLC chain.
+- **Integrated gates:** `make quality-changed` exit 0 (clean tree, minimum `fast` classification); `make quality-changed QUALITY_EXECUTE=1` exit 0, all 10 fast gates passed, timeout false; manifest `artifacts/quality/20261019-235825-32795-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exit 0; all 8 listed gates passed, timeout false; manifest `artifacts/quality/20261020-000551-44853-0001/manifest.json`. No EXECUTE timeout occurred, so RAI-180's owed integrated EXECUTE rerun is repaid by the successful merged-candidate run.
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and is distinct from these passing gates; no recurrence/red was observed in these runs.
+
 ## 2026-10-19 — RAI-167 + RAI-175 accepted
 
 - **Integrated merges:** RAI-167 from `lane/rai-167` merged as `4e917ad597bb81f4d5decd06c36c3140cf926dfe`; RAI-175 from `lane/rai-175` merged as `10c0ca452749761b124e3af5db9b07c2cef3f2d9`. RAI-167 supplies bounded commit/PR/status/merge stages with workflow-config preconditions, candidate-bound checks/review/capabilities, read-only reconcile before mutation, typed refusals and no retry for uncertain outcomes, per-instance serialization, and RAI-174 evidence records. Independent RAI-169 still owes LocalForgeStand integration verification.
