@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 192,
+  "raider_count": 193,
   "companion_count": 3,
   "cards": [
     {
@@ -5569,6 +5569,32 @@
       },
       "non_goals": "Remote tag push, package/image publication, deployment, widening owner capabilities, changing v1 fields, weakening unknown-field refusal, or changing protected verifier expectations.",
       "context": "RAI-168 has the local release service and disposable-Git fixtures, but the release stage lies outside its allowed paths, the RAI-174 carrier has no release record kind, evidence references are not cross-validated against parsed records for one candidate digest, and stage-boundary release authority/checkpoint refusal is missing. This card closes the remainder of RAI-168; RAI-170 independently verifies the integrated local-only release contract."
+    },
+    {
+      "id": "RAI-182",
+      "title": "LIN-06.b: CLI live-rerun wiring scope",
+      "milestone": "LIN",
+      "dependencies": ["LIN-06", "LIN-03", "RAI-173"],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/lineage/**",
+        "modules/runtime/src/test/scala/raider/runtime/lineage/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "docs/tasks/lineage.md",
+        "docs/work/records/**"
+      ],
+      "profiles": ["static", "unit", "contracts", "runtime"],
+      "behavior": "Authorize the runtime-owned live-rerun seam needed by LIN-06 without widening its parent paths: a runtime lineage rerun backend implemented by CLI ReplayHarness, fresh live execution against fresh inputs resolved through pointer-aware LineageSnapshot, and IsolatedRerun live-mode wiring. Preserve recorded provenance and ADR-033/ADR-031 honesty: no replay of historical mutations and no durable-resume claims. Add LIN6-live acceptance for success, budget-bound refusal, and mid-rerun cancellation with honest interruption and prior-snapshot readability.",
+      "acceptance": {
+        "normal": "LIN6-LIVE-01: CLI ReplayHarness implements the runtime-owned rerun seam; live IsolatedRerun executes fresh against pointer-resolved LineageSnapshot inputs, records provenance, and reports the live-vs-recorded result without replaying historical mutations.",
+        "error": "LIN6-LIVE-02: a rerun that reaches its configured budget is refused/stopped with a truthful typed outcome; the fixture proves no fallback to recorded-only execution is presented as live success.",
+        "concurrency": "LIN6-LIVE-03: cancellation mid-rerun reports honest interruption, cleans up owned work, does not claim durable resume or retry historical mutations, and leaves the prior committed snapshot readable."
+      },
+      "non_goals": "Changing the LIN-06 parent scope; replaying historical mutations; durable resume/exactly-once claims; bypassing the LineageSnapshot commit-pointer reader; unrelated replay, lineage schema, or provider changes; paid calls.",
+      "context": "LIN-06's live rerun path is CLI-owned: ReplayHarness hard-wires ReplayModelBackend and the recorded prompt, IsolatedRerun invokes that recorded-only harness, and pointer-resolved input comes from LineageSnapshot. Those CLI files are outside LIN-06's allowed runtime-lineage and tools paths. This card authorizes the runtime/CLI seam and live acceptance scope needed for end-to-end live rerun. Dependencies: LIN-06 (in progress), LIN-03, and accepted RAI-173."
     }
   ]
 }

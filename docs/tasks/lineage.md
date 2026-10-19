@@ -202,6 +202,30 @@ Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
 **Deliverables.** A minimal diff in allowed paths, the listed executable fixtures with actual IDs, an updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied. If the task is too large, split it into independent child cards before coding; the parent accepts their combined contract gate.
 
+## RAI-182: LIN-06.b: CLI live-rerun wiring scope
+
+Status: ready. Milestone: LIN. Dependencies: LIN-06, LIN-03, RAI-173.
+
+**Scenario and contract.** Authorize the runtime-owned live-rerun seam needed by LIN-06 without widening its parent paths: a runtime lineage rerun backend implemented by CLI ReplayHarness, fresh live execution against fresh inputs resolved through pointer-aware LineageSnapshot, and IsolatedRerun live-mode wiring. Preserve recorded provenance and ADR-033/ADR-031 honesty: no replay of historical mutations and no durable-resume claims. Add LIN6-live acceptance for success, budget-bound refusal, and mid-rerun cancellation with honest interruption and prior-snapshot readability.
+
+**Context.** LIN-06's live rerun path is CLI-owned: ReplayHarness hard-wires ReplayModelBackend and the recorded prompt, IsolatedRerun invokes that recorded-only harness, and pointer-resolved input comes from LineageSnapshot. Those CLI files are outside LIN-06's allowed runtime-lineage and tools paths. This card authorizes the runtime/CLI seam and live acceptance scope needed for end-to-end live rerun. Dependencies: LIN-06 (in progress), LIN-03, and accepted RAI-173.
+
+**Allowed paths.** `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/lineage/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/test/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/run/**` `docs/tasks/lineage.md` `docs/work/records/**`
+
+**Acceptance.**
+
+- Normal: LIN6-LIVE-01: CLI ReplayHarness implements the runtime-owned rerun seam; live IsolatedRerun executes fresh against pointer-resolved LineageSnapshot inputs, records provenance, and reports the live-vs-recorded result without replaying historical mutations.
+- Error/adversarial: LIN6-LIVE-02: a rerun that reaches its configured budget is refused/stopped with a truthful typed outcome; the fixture proves no fallback to recorded-only execution is presented as live success.
+- Cancellation/concurrency: LIN6-LIVE-03: cancellation mid-rerun reports honest interruption, cleans up owned work, does not claim durable resume or retry historical mutations, and leaves the prior committed snapshot readable.
+
+**Required gates.** After LIN-06, LIN-03, and RAI-173: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable `static`, `unit`, `contracts`, and `runtime` profiles; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
+
+**Non-goals.** Changing the LIN-06 parent scope; replaying historical mutations; durable resume/exactly-once claims; bypassing the LineageSnapshot commit-pointer reader; unrelated replay, lineage schema, or provider changes; paid calls.
+
+**Compatibility/rollback.** Keep the runtime seam internal to the authorized implementation scope unless a separately reviewed contract change is approved. Preserve pointer-resolved snapshot semantics and truthful interruption; rollback does not replay side effects or turn uncertain work into success.
+
+**Deliverables.** Runtime-owned rerun seam and CLI `ReplayHarness` implementation, live `IsolatedRerun` wiring, LIN6-live normal/budget/cancellation fixtures, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied.
+
 ## LIN-07: Partial replay of phases/subtrees
 
 Status: ready. Milestone: LIN. Dependencies: LIN-05.

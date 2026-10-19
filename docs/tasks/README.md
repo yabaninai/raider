@@ -21,6 +21,7 @@ Current IDs, statuses, and dependencies are in [backlog.json](backlog.json) and 
 | RAI-179 | [SDLC checkpoint dispatch boundary (workflow→launcher seam)](m1.md#rai-179-sdlc-checkpoint-dispatch-boundary-workflowlauncher-seam) |
 | RAI-180 | [Clock contract for embeddable poll loops](m1.md#rai-180-clock-contract-for-embeddable-poll-loops) |
 | RAI-181 | [SDLC release contract extension: LocalRelease stage + typed release evidence](m1.md#rai-181-sdlc-release-contract-extension-localrelease-stage--typed-release-evidence) |
+| **RAI-182** | [LIN-06.b: CLI live-rerun wiring scope](lineage.md#rai-182-lin-06b-cli-live-rerun-wiring-scope) |
 | Live-wire budget request | [RAI-171 owner-gated request (no paid execution)](live-wire-request.md) |
 | Machine metadata/dependencies | [backlog.json](backlog.json) |
 
