@@ -108,6 +108,10 @@ object LiveLineageProjectionSpec extends ZIOSpecDefault:
         prior.toOption.exists(_.wire == Vector(first))
       )
     }
-  )
+  ) @@ TestAspect.withLiveClock
+  // RAI-178: the shared LiveInvalidSession export fixture polls on the
+  // ambient clock; live-clock discipline (docs/work/records/RAI-178.md).
+
+  // Assertions unchanged.
 
 end LiveLineageProjectionSpec

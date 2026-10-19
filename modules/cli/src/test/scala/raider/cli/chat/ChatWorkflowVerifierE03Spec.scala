@@ -226,7 +226,10 @@ object ChatWorkflowVerifierE03Spec extends ZIOSpecDefault:
           }
         }
       } @@ TestAspect.timeout(600.seconds)
-    )
+    ) @@ TestAspect.withLiveClock
+    // RAI-178: export paths poll on the ambient clock (awaitCaughtUp/drain);
+    // live-clock discipline per docs/work/records/RAI-178.md. Budgets and
+    // assertions unchanged.
 
   private def sigtermAndRepeats(
       delayStand: Stand,

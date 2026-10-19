@@ -326,6 +326,13 @@ object PhaseEmissionExportSpec extends ZIOSpecDefault:
         )
       }
     }
-  ) @@ TestAspect.timeout(zio.Duration.fromSeconds(120))
+    // RAI-178: the live phase sink polls on the ambient clock
+    // (EventExport.awaitCaughtUp / MultiJobExport drain); on the frozen zio-test
+    // TestClock those waits never advance (fiber-verified root cause, see
+    // docs/work/records/RAI-178.md). House live-clock pattern for specs driving
+    // the live export machinery; assertions and budgets unchanged.
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(
+    zio.Duration.fromSeconds(120)
+  )
 
 end PhaseEmissionExportSpec

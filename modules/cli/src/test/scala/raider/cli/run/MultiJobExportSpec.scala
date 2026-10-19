@@ -1066,6 +1066,13 @@ object MultiJobExportSpec extends ZIOSpecDefault:
         }
       }
     }
-  ) @@ TestAspect.timeout(ZDuration.fromSeconds(300))
+  ) @@ TestAspect.withLiveClock @@ TestAspect.timeout(
+    ZDuration.fromSeconds(300)
+  )
+  // RAI-178: exportParent/drain/pollUntil polls sleep on the ambient clock;
+  // under suite load the first check can miss and freeze on the never-advanced
+  // TestClock (fiber-verified family root cause; docs/work/records/RAI-178.md).
+
+  // Live clock = production discipline; assertions and budget unchanged.
 
 end MultiJobExportSpec
