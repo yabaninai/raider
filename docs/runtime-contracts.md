@@ -230,6 +230,12 @@ An error includes a stable code, public explanation, retryability, safe details,
 
 Do not build in MVP: distributed scheduling, daemon attach, arbitrary durable Scala replay, self-modifying plugins, auto-merge/push, custom DSL parser, macro/direct-style transformation, general cross-effect API, independent repetition of gateway routing, marketplace/signing infrastructure. Their absence does not prevent a full local REPL and native agent loop.
 
+## 15.1 Clock and Deadline Contract for Runtime Poll Loops
+
+An embeddable poll loop that declares a wall-clock deadline must keep that escape reachable under every ambient ZIO clock, including a frozen virtual clock. A loop must check its wall-clock deadline before suspending and must not use an ambient-clock sleep that can remain suspended forever; when its deadline is wall-clock based, polling sleeps use the live clock. This preserves the existing live-process cadence while decoupling deadline progress from the embedding application's clock.
+
+Virtual-clock tests must leave the virtual clock frozen and verify that a never-satisfied condition reaches the loop's existing bounded outcome. Live-clock regression tests preserve existing completion conditions, poll cadence, deadline result, interruption behavior, and cleanup. A poller's timeout semantics remain those of its owning API; this contract does not add a new scheduler or change the public clock API.
+
 ## 16. Workflow SDK launch boundary (ADR-029)
 
 Proposed contract ([ADR-029](adr/ADR-029-workflow-sdk.md), card RAI-116; signatures there are non-frozen until reviewed with the §7.3 consumer migration plan):
