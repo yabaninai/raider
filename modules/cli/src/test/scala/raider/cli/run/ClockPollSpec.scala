@@ -4,8 +4,11 @@ import raider.core.{JobId, RootId}
 import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
 import raider.runtime.jobs.StatusLedger
 import raider.cli.lineage.ReplayHarness
-import zio.{Ref, ZIO}
+import java.util.concurrent.TimeUnit
+import java.time.Instant
+import zio.{Clock, Ref, ZIO}
 import zio.test.*
+import zio.test.TestClock
 
 /** Clock contract acceptance: all production wall-clock polls terminate while
   * the enclosing ZIO TestClock remains frozen.
@@ -22,6 +25,8 @@ object ClockPollSpec extends ZIOSpecDefault:
     test("CLOCK-POLL-02: awaitCaughtUp reaches its deadline") {
       val jobId = JobId("frozen-clock-event-export")
       for
+        // ZIO 2.1 TestClock is frozen unless explicitly adjusted or set.
+        _ <- TestClock.setTime(Instant.EPOCH)
         hub <- EventHub.make()
         _ <- hub.publish(
           jobId,
@@ -31,6 +36,7 @@ object ClockPollSpec extends ZIOSpecDefault:
             raider.runtime.events.WaitReason.Slot
           )
         )
+        virtualTimeBefore <- Clock.currentTime(TimeUnit.NANOSECONDS)
         started <- ZIO.succeed(java.lang.System.nanoTime())
         _ <- EventExport.awaitCaughtUp(
           hub,
@@ -39,22 +45,38 @@ object ClockPollSpec extends ZIOSpecDefault:
           budgetMs = 40L
         )
         elapsed <- elapsedMillis(started)
-      yield assertTrue(elapsed >= 30L, elapsed < 1000L)
+        virtualTimeAfter <- Clock.currentTime(TimeUnit.NANOSECONDS)
+      yield assertTrue(
+        elapsed >= 30L,
+        elapsed < 1000L,
+        virtualTimeAfter == virtualTimeBefore
+      )
     },
     test("CLOCK-POLL-02: MultiJobExport.pollUntil reaches its deadline") {
       for
+        // ZIO 2.1 TestClock is frozen unless explicitly adjusted or set.
+        _ <- TestClock.setTime(Instant.EPOCH)
+        virtualTimeBefore <- Clock.currentTime(TimeUnit.NANOSECONDS)
         started <- ZIO.succeed(java.lang.System.nanoTime())
         _ <- MultiJobExport.pollUntil(ZIO.succeed(false), budgetMs = 40L)
         elapsed <- elapsedMillis(started)
-      yield assertTrue(elapsed >= 30L, elapsed < 1000L)
+        virtualTimeAfter <- Clock.currentTime(TimeUnit.NANOSECONDS)
+      yield assertTrue(
+        elapsed >= 30L,
+        elapsed < 1000L,
+        virtualTimeAfter == virtualTimeBefore
+      )
     },
     test(
       "CLOCK-POLL-02: eventuallyTerminal preserves its typed deadline error"
     ) {
       val jobId = JobId("frozen-clock-replay")
       for
+        // ZIO 2.1 TestClock is frozen unless explicitly adjusted or set.
+        _ <- TestClock.setTime(Instant.EPOCH)
         hub <- EventHub.make()
         sink <- Ref.make(Vector.empty[EventEnvelope])
+        virtualTimeBefore <- Clock.currentTime(TimeUnit.NANOSECONDS)
         started <- ZIO.succeed(java.lang.System.nanoTime())
         result <- ReplayHarness
           .eventuallyTerminal(
@@ -66,10 +88,12 @@ object ClockPollSpec extends ZIOSpecDefault:
           )
           .either
         elapsed <- elapsedMillis(started)
+        virtualTimeAfter <- Clock.currentTime(TimeUnit.NANOSECONDS)
       yield assertTrue(
         result.left.toOption.exists(_.contains("within the outer bound")),
         elapsed >= 30L,
-        elapsed < 1000L
+        elapsed < 1000L,
+        virtualTimeAfter == virtualTimeBefore
       )
     }
   ) @@ TestAspect.timeout(zio.Duration.fromSeconds(5))
