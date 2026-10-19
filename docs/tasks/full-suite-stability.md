@@ -1,6 +1,6 @@
 # RAI-178: Full-suite stability — WIR-01 internal timeout + suite-duration investigation
 
-Status: ready. Milestone: M2. Dependencies: none.
+Status: accepted. Milestone: M2. Dependencies: none.
 
 **Scenario and contract.** After the ZIO.sleep sweep replaced blocking polls at six sites, the focused `MultiJobExportSpec` matrix passed 10/10, but the full `raiderCli/test` suite exceeded the 2700-second tool budget. WIR-01 (`WorkflowLaunchSpec`) hit its internal five-minute deadline, and multiple export/verifier suites also reported internal timeouts. Diagnose WIR-01 under full-suite load with fiber trace/timeline capture and measure per-suite wall times using the sbt test timing report. Determine whether the cause is real-process wall time in WIR/SIGTERM-family fixtures, suite-duration growth from verifier/SDLC/forge suites under unchanged gate budgets, or residual blocking waits in process-based fixtures. Select the minimal justified correction: fixture/process behavior, parallelism/ordering, and/or evidence-based `sbt-test` budget calibration. The `e846d84` repl-smoke/secrets-scan calibration is precedent for measured budget calibration with identical assertions; it is not permission to change an acceptance bar.
 

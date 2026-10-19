@@ -5025,7 +5025,7 @@
         "RAI-144",
         "RAI-156"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala",
         "modules/cli/src/test/scala/raider/cli/run/**"
@@ -5240,7 +5240,7 @@
       "title": "Implement approval artifacts and new-invocation recheck",
       "milestone": "M1",
       "dependencies": ["RAI-117", "RAI-163", "RAI-164"],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "contracts/sdlc/approval/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "ci"],
       "behavior": "ADR-030 §3/D1 approval request artifact (checkpoint ID, candidate digest, expiry), separate decision file, headless NeedsApproval without stdin wait/auto-approval, and a new invocation re-reading current policy/repository/task/base/candidate/expiry/evidence. No fiber resume. Estimate 16–24 h (packet A2).",
@@ -5477,7 +5477,7 @@
       "title": "Full-suite stability: WIR-01 internal timeout + suite-duration investigation",
       "milestone": "M2",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/**",
         "scripts/quality-policy/registry.json",
@@ -5501,7 +5501,7 @@
       "title": "SDLC checkpoint dispatch boundary (workflow→launcher seam)",
       "milestone": "M1",
       "dependencies": ["RAI-165", "RAI-166", "RAI-164"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**",
         "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**",

@@ -972,7 +972,7 @@ Status: accepted. Milestone: LIN. Dependencies: RAI-152.
 
 ## RAI-157: MultiJobExport settle window: captured-but-unconnected introductions must not vanish silently
 
-Status: ready. Milestone: LIN. Dependencies: RAI-144, RAI-156.
+Status: accepted. Milestone: LIN. Dependencies: RAI-144, RAI-156.
 
 **Scenario and contract.** RAI-146/156 adjudication finding (small, real): a mid-campaign introduction whose capture fiber has not delivered by drain(2000ms)+close is dropped with NO wire trace — zero observability of an incomplete child in a live run. The RAI-152 pattern applied to the exporter: the runner's settle must wait for captured-but-unconnected introductions (bounded: introduction queue/watermark), so every correlated child is either JOINED (complete), PARTIAL (LIN5-03 discipline), or NATIVE-ONLY-with-fork-record — never absent. Product determinism, not test retry.
 
