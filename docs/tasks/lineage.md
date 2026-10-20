@@ -254,6 +254,8 @@ Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-03, RAI-173.
 
 Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
+Scope note (coordinator, 2026-10-20): CLI wiring authorized — `modules/cli/src/main/scala/raider/cli/lineage/PartialLiveRerun.scala` and its test are in scope (live composition of the runtime PartialRerun over the RerunBackend seam; RAI-182 pattern).
+
 **Scenario and contract.** Replay a named phase/subtree with an explicit input contract; isolate non-overlapping phases; report contract errors instead of substituting empty values.
 
 **Context.** ADR-027; roadmap-12k P-LIN; runtime-contracts §14
