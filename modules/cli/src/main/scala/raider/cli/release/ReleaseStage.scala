@@ -35,7 +35,9 @@ object ReleaseStage:
       version: String,
       notes: String,
       acceptance: AcceptanceEvidence,
-      build: Path => RaiderTask[Unit]
+      build: Path => RaiderTask[Unit],
+      afterStagedArtifacts: () => RaiderTask[Unit] = () =>
+        RaiderTask.succeed(())
   )
 
   final case class Result(
@@ -44,6 +46,13 @@ object ReleaseStage:
       revision: String,
       directory: Path
   )
+
+  final case class Reconciliation(artifacts: List[String], tagPresent: Boolean)
+
+  final class Interrupted(val reconciliation: Reconciliation)
+      extends RuntimeException(
+        s"release materialization interrupted; artifacts=${reconciliation.artifacts.mkString(",")}; tagPresent=${reconciliation.tagPresent}"
+      )
 
   private val semVer =
     "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$".r
@@ -87,9 +96,18 @@ object ReleaseStage:
             )
           )
       )(staging => ZIO.attempt(deleteTree(staging)).orDie)(staging =>
-        ZIO.uninterruptible(
-          materialize(repo, staging, destination, request, revision, tag)
-        )
+        ZIO.uninterruptibleMask { restore =>
+          restore(
+            materialize(repo, staging, destination, request, revision, tag)
+          ).exit.flatMap {
+            case Exit.Success(value) => ZIO.succeed(value)
+            case Exit.Failure(cause) if cause.isInterrupted =>
+              reconcile(repo, staging, destination, tag).flatMap(state =>
+                ZIO.fail(new Interrupted(state))
+              )
+            case Exit.Failure(cause) => ZIO.refailCause(cause)
+          }
+        }
       )
     yield result
 
@@ -151,6 +169,9 @@ object ReleaseStage:
         .mapError(e =>
           new Refusal("cannot write staged release artifacts: " + e.getMessage)
         )
+      _ <- raider.core.Task
+        .zio(request.afterStagedArtifacts())
+        .mapError(e => new Refusal("materialization hook failed: " + e.detail))
       _ <- ZIO
         .attempt {
           Files.createDirectories(changelog.getParent)
@@ -173,6 +194,28 @@ object ReleaseStage:
         else Files.deleteIfExists(changelog)
       }.orDie *> ZIO.fail(error)
     )
+
+  /** Read-only inspection after an interrupted materialization. A tag is valid
+    * only when the complete artifact set is installed; this path never creates
+    * a tag or retries any mutation.
+    */
+  private def reconcile(
+      repo: Path,
+      staging: Path,
+      destination: Path,
+      tag: String
+  ): Task[Reconciliation] =
+    val names = List("CHANGELOG.md", "release.json", "SHA256SUMS")
+    for
+      artifacts <- ZIO.attempt {
+        names.filter(name =>
+          Files.isRegularFile(staging.resolve(name)) || Files.isRegularFile(
+            destination.resolve(name)
+          )
+        )
+      }.orDie
+      tagOutput <- git(repo, List("tag", "--list", tag)).orDie
+    yield Reconciliation(artifacts, tagOutput.trim.nonEmpty)
 
   private def updateChangelog(
       old: String,

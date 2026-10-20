@@ -71,7 +71,11 @@ object ApprovalArtifacts:
   object Refusal:
     given JsonCodec[Refusal] = DeriveJsonCodec.gen
 
-  final case class Authorized(candidateDigest: String, checkpointId: String)
+  final case class Authorized(
+      candidateDigest: String,
+      checkpointId: String,
+      expiresAt: Instant
+  )
 
   final case class NeedsApproval(
       request: Request,
@@ -163,7 +167,7 @@ object ApprovalArtifacts:
         (),
         CapabilityMissing
       )
-    yield Authorized(currentDigest, request.checkpointId)
+    yield Authorized(currentDigest, request.checkpointId, requestExpiry)
 
   /** New-invocation entry point: load all current inputs again for every call.
     */

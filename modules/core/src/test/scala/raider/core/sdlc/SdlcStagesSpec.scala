@@ -283,26 +283,24 @@ object SdlcStagesSpec extends ZIOSpecDefault:
         Record.Review(review),
         Record.Integration(integration)
       )
+      val foreignPolicyIntegration =
+        integration.copy(policyDigest = "policy-other")
       val authorized = Context(
         candidate,
-        typedEvidence = records,
-        ownerCapabilities = Set("release"),
-        authorizedCheckpoint = Some("release-approval")
+        typedEvidence = records
       )
       assertTrue(
         validateReleaseEvidence(candidate, records).isRight,
+        validateReleaseEvidence(
+          candidate,
+          records.updated(2, Record.Integration(foreignPolicyIntegration))
+        ).left.toOption.contains(ReleaseRefusal.IntegrationRejected),
         validateReleaseEvidence(
           candidate.copy(treeDigest = "changed"),
           records
         ).isLeft,
         validateReleaseEvidence(candidate, records.dropRight(1)).isLeft,
-        authorizeLocalRelease(authorized).isRight,
-        authorizeLocalRelease(
-          authorized.copy(ownerCapabilities = Set.empty)
-        ).isLeft,
-        authorizeLocalRelease(
-          authorized.copy(authorizedCheckpoint = None)
-        ).isLeft
+        authorizeLocalRelease(authorized).isRight
       )
     }
   )

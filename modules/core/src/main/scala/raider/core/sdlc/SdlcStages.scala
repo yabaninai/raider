@@ -42,9 +42,7 @@ object SdlcStages:
   final case class Context(
       candidate: SdlcEvidence.CandidateIdentity,
       evidence: List[String] = Nil,
-      typedEvidence: List[SdlcEvidence.Record] = Nil,
-      ownerCapabilities: Set[String] = Set.empty,
-      authorizedCheckpoint: Option[String] = None
+      typedEvidence: List[SdlcEvidence.Record] = Nil
   )
 
   final case class StageResult(
@@ -52,7 +50,8 @@ object SdlcStages:
       successful: Boolean,
       detail: String,
       repairNeeded: Boolean = false,
-      typedEvidence: List[SdlcEvidence.Record] = Nil
+      typedEvidence: List[SdlcEvidence.Record] = Nil,
+      interrupted: Boolean = false
   )
 
   type Handler = Program[Context, StageResult]
@@ -60,7 +59,6 @@ object SdlcStages:
   enum ReleaseRefusal:
     case MissingChecks, ChecksRejected, MissingReview, ReviewRejected
     case MissingIntegration, IntegrationRejected, CandidateMismatch
-    case MissingCapability, MissingCheckpoint
 
   /** Validate parsed records by their typed candidate identity, never by IDs or
     * caller-provided string references.
@@ -104,7 +102,9 @@ object SdlcStages:
           Set(
             SdlcEvidence.IntegrationOutcome.Applied,
             SdlcEvidence.IntegrationOutcome.AlreadyApplied
-          )(i.outcome) && i.candidate == candidate
+          )(
+            i.outcome
+          ) && i.candidate == candidate && i.policyDigest == candidate.policyDigest
         ),
         (),
         IntegrationRejected
@@ -119,23 +119,7 @@ object SdlcStages:
     yield digest
 
   def authorizeLocalRelease(context: Context): Either[ReleaseRefusal, String] =
-    import ReleaseRefusal.*
-    for
-      digest <- validateReleaseEvidence(
-        context.candidate,
-        context.typedEvidence
-      )
-      _ <- Either.cond(
-        context.ownerCapabilities("release"),
-        (),
-        MissingCapability
-      )
-      _ <- Either.cond(
-        context.authorizedCheckpoint.exists(_.trim.nonEmpty),
-        (),
-        MissingCheckpoint
-      )
-    yield digest
+    validateReleaseEvidence(context.candidate, context.typedEvidence)
 
   private val requiredPrefix =
     List(Stage.Task, Stage.Plan, Stage.Implement, Stage.Checks)

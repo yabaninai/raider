@@ -2,6 +2,11 @@ package raider.cli.release
 
 import raider.core.{Program, Task}
 import raider.core.sdlc.{SdlcEvidence, SdlcStages}
+import raider.runtime.sdlc.approval.{
+  ApprovalArtifacts,
+  CheckpointDispatch,
+  CheckpointOutcome
+}
 
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -11,14 +16,37 @@ import scala.jdk.CollectionConverters.*
   * service.
   */
 object LocalReleaseHandler:
+  private val CheckpointId = "local-release"
 
   def apply(
-      request: SdlcStages.Context => ReleaseStage.Request
+      request: SdlcStages.Context => ReleaseStage.Request,
+      dispatch: CheckpointDispatch
   ): SdlcStages.Handler =
     Program.fromFunction[SdlcStages.Context, SdlcStages.StageResult](
       "local-release"
     ) { context =>
-      SdlcStages.authorizeLocalRelease(context) match
+      val authorization = dispatch.evaluate() match
+        case CheckpointOutcome.Authorized(value) =>
+          val digest = SdlcEvidence.CandidateIdentity.digest(context.candidate)
+          if value.checkpointId != CheckpointId then
+            Left(
+              ApprovalArtifacts.Refusal.InvalidRequest(
+                "checkpoint does not authorize local release"
+              )
+            )
+          else if value.candidateDigest != digest then
+            Left(ApprovalArtifacts.Refusal.CandidateMismatch)
+          else if !value.expiresAt.isAfter(java.time.Instant.now()) then
+            Left(ApprovalArtifacts.Refusal.Expired)
+          else Right(digest)
+        case CheckpointOutcome.NeedsApproval(_) =>
+          Left(ApprovalArtifacts.Refusal.MissingDecision)
+        case CheckpointOutcome.Refused(reason) => Left(reason)
+      val result = for
+        _ <- authorization
+        digest <- SdlcStages.authorizeLocalRelease(context)
+      yield digest
+      result match
         case Left(refusal) =>
           Task.succeed(
             SdlcStages.StageResult(
@@ -74,9 +102,22 @@ object LocalReleaseHandler:
                 )
             }
           Task(
-            action.mapError(error =>
-              raider.core.RaiderError.InputValidation(error.getMessage)
-            )
+            action.either.flatMap {
+              case Right(result) => zio.ZIO.succeed(result)
+              case Left(error: ReleaseStage.Interrupted) =>
+                zio.ZIO.succeed(
+                  SdlcStages.StageResult(
+                    context,
+                    successful = false,
+                    error.getMessage,
+                    interrupted = true
+                  )
+                )
+              case Left(error) =>
+                zio.ZIO.fail(
+                  raider.core.RaiderError.InputValidation(error.getMessage)
+                )
+            }
           )
     }
 

@@ -5,6 +5,7 @@ import zio.test.*
 import raider.core.Task
 import raider.core.sdlc.{SdlcEvidence, SdlcStages}
 import raider.cli.run.SdlcArtifactSchema
+import raider.runtime.sdlc.approval.{ApprovalArtifacts, CheckpointDispatch}
 
 import java.nio.file.Files
 import java.security.MessageDigest
@@ -156,6 +157,50 @@ object ReleaseStageSpec extends ZIOSpecDefault:
       }
     },
     test(
+      "SDLC-REL-STAGE-03 materialization interruption reconciles staged artifacts without a tag"
+    ) {
+      withRepo { repo =>
+        for
+          head <- ReleaseStage.git(repo, List("rev-parse", "HEAD")).map(_.trim)
+          entered <- Promise.make[Nothing, Unit]
+          continue <- Promise.make[Nothing, Unit]
+          fiber <- ReleaseStage
+            .release(
+              ReleaseStage.Request(
+                repo,
+                "1.2.4",
+                "Interrupted materialization",
+                ReleaseStage
+                  .AcceptanceEvidence(head, "checks", "review", "integration"),
+                _ => Task.succeed(()),
+                () => Task(entered.succeed(()).unit *> continue.await)
+              )
+            )
+            .fork
+          _ <- entered.await
+          exit <- fiber.interrupt
+          tags <- ReleaseStage.git(repo, List("tag", "--list", "v1.2.4"))
+          directoryExists <- ZIO.attempt(
+            Files.exists(repo.resolve("artifacts/release/1.2.4"))
+          )
+          interrupted = exit.causeOption.flatMap(_.failureOption).collect {
+            case value: ReleaseStage.Interrupted => value
+          }
+        yield assertTrue(
+          interrupted.exists(
+            _.reconciliation.artifacts.sorted == List(
+              "CHANGELOG.md",
+              "SHA256SUMS",
+              "release.json"
+            )
+          ),
+          interrupted.exists(!_.reconciliation.tagPresent),
+          tags.trim.isEmpty,
+          !directoryExists
+        )
+      }
+    },
+    test(
       "SDLC-REL-STAGE-01 adapter releases the accepted candidate and persists typed result"
     ) {
       withRepo { repo =>
@@ -218,23 +263,24 @@ object ReleaseStageSpec extends ZIOSpecDefault:
           )
           context = Context(
             candidate,
-            typedEvidence = evidence,
-            ownerCapabilities = Set("release"),
-            authorizedCheckpoint = Some("release-approval")
+            typedEvidence = evidence
           )
-          handler = LocalReleaseHandler(_ =>
-            ReleaseStage.Request(
-              repo,
-              "1.2.3",
-              "Adapter release fixture",
-              ReleaseStage.AcceptanceEvidence(
-                head,
-                "checks",
-                "review",
-                "integration"
+          dispatch <- approvedDispatch(repo, candidate, Set("release"))
+          handler = LocalReleaseHandler(
+            _ =>
+              ReleaseStage.Request(
+                repo,
+                "1.2.3",
+                "Adapter release fixture",
+                ReleaseStage.AcceptanceEvidence(
+                  head,
+                  "checks",
+                  "review",
+                  "integration"
+                ),
+                _ => Task.succeed(())
               ),
-              _ => Task.succeed(())
-            )
+            dispatch
           )
           result <- Task.zio(handler(context))
           directory = repo.resolve("artifacts/release/1.2.3")
@@ -361,22 +407,39 @@ object ReleaseStageSpec extends ZIOSpecDefault:
             )
           )
           base = Context(candidate, typedEvidence = evidence)
-          handler = LocalReleaseHandler(_ =>
-            ReleaseStage.Request(
-              repo,
-              "2.0.0",
-              "Refusal fixture",
-              ReleaseStage
-                .AcceptanceEvidence(head, "checks", "review", "integration"),
-              _ => Task.succeed(())
-            )
+          missingDecision = checkpointDispatch(
+            repo,
+            candidate,
+            None,
+            Set("release")
           )
-          noCapability <- Task.zio(
-            handler(base.copy(authorizedCheckpoint = Some("approved")))
+          handler = LocalReleaseHandler(
+            _ =>
+              ReleaseStage.Request(
+                repo,
+                "2.0.0",
+                "Refusal fixture",
+                ReleaseStage
+                  .AcceptanceEvidence(head, "checks", "review", "integration"),
+                _ => Task.succeed(())
+              ),
+            missingDecision
           )
-          noCheckpoint <- Task.zio(
-            handler(base.copy(ownerCapabilities = Set("release")))
+          noCheckpoint <- Task.zio(handler(base))
+          noCapabilityDispatch <- approvedDispatch(repo, candidate, Set.empty)
+          noCapabilityHandler = LocalReleaseHandler(
+            _ =>
+              ReleaseStage.Request(
+                repo,
+                "2.0.2",
+                "Refusal fixture",
+                ReleaseStage
+                  .AcceptanceEvidence(head, "checks", "review", "integration"),
+                _ => Task.succeed(())
+              ),
+            noCapabilityDispatch
           )
+          noCapability <- Task.zio(noCapabilityHandler(base))
           artifacts <- ZIO.attempt(
             Files.exists(repo.resolve("artifacts/release/2.0.0"))
           )
@@ -384,8 +447,8 @@ object ReleaseStageSpec extends ZIOSpecDefault:
         yield assertTrue(
           !noCapability.successful,
           !noCheckpoint.successful,
-          noCapability.detail.contains("MissingCapability"),
-          noCheckpoint.detail.contains("MissingCheckpoint"),
+          noCapability.detail.contains("CapabilityMissing"),
+          noCheckpoint.detail.contains("MissingDecision"),
           !artifacts,
           tags.trim.isEmpty
         )
@@ -486,6 +549,80 @@ object ReleaseStageSpec extends ZIOSpecDefault:
         _ <- ReleaseStage.git(p, List("commit", "-qm", "accepted baseline"))
         value <- f(p)
       yield value
+    )
+
+  private def approvedDispatch(
+      repo: java.nio.file.Path,
+      candidate: SdlcEvidence.CandidateIdentity,
+      capabilities: Set[String]
+  ): ZIO[Any, Throwable, CheckpointDispatch] =
+    val expiry = java.time.Instant.now().plusSeconds(3600)
+    val requestPath = repo.resolve(".git/approval-release.json")
+    val decisionPath = repo.resolve(".git/decision-release.json")
+    for
+      request <- ZIO.fromEither(
+        ApprovalArtifacts
+          .request("local-release", candidate, expiry)
+          .left
+          .map(error => new IllegalStateException(error.toString))
+      )
+      _ <- ZIO.fromEither(
+        ApprovalArtifacts
+          .writeRequest(requestPath, request)
+          .left
+          .map(error => new IllegalStateException(error.toString))
+      )
+      _ <- ZIO.attempt(
+        Files.writeString(
+          decisionPath,
+          ApprovalArtifacts.decisionJson(
+            ApprovalArtifacts.Decision(
+              ApprovalArtifacts.SchemaVersion,
+              request.checkpointId,
+              request.candidateDigest,
+              request.expiresAt,
+              approved = true
+            )
+          )
+        )
+      )
+    yield checkpointDispatch(
+      repo,
+      candidate,
+      Some(decisionPath),
+      capabilities,
+      requestPath
+    )
+
+  private def checkpointDispatch(
+      repo: java.nio.file.Path,
+      candidate: SdlcEvidence.CandidateIdentity,
+      decision: Option[java.nio.file.Path],
+      capabilities: Set[String],
+      requestPath: java.nio.file.Path = null
+  ): CheckpointDispatch =
+    val request =
+      Option(requestPath).getOrElse(repo.resolve(".git/approval-release.json"))
+    CheckpointDispatch(
+      "local-release",
+      candidate,
+      java.time.Instant.now().plusSeconds(3600),
+      request,
+      decision,
+      "release",
+      () =>
+        Right(
+          ApprovalArtifacts.CurrentState(
+            candidate,
+            candidate.policyDigest,
+            candidate.treeDigest,
+            candidate.taskDigest,
+            candidate.baseRevision,
+            List("check", "review", "integration"),
+            SdlcEvidence.CandidateIdentity.digest(candidate),
+            capabilities
+          )
+        )
     )
 
   private def hex(bytes: Array[Byte]): String =
