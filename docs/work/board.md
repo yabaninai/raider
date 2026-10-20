@@ -1,5 +1,12 @@
 # Raider Execution Board
 
+## 2026-10-20 — SDLC release chain complete (RAI-168/181); one card left
+
+- **Integrated merge:** RAI-181 from `lane/rai-181` merged as `84d895faca61ed5ed4994275e1728ff52a8d7832`.
+- **Ruling and statuses:** Round-2 review approved. RAI-181 closes RAI-168's remaining LocalRelease stage/evidence work; RAI-168 is accepted per reviewer ruling for SDLC-REL-01..03, and RAI-181 is accepted. Chain status: 164/165/166/167/168/169/174/179/180/181 done — ONLY RAI-170 (independent release verification) remains to close ADR-030's implementation line. RAI-182 is registered (LIN-06.b).
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification). `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10 fast gates passed, timeout false; manifest `artifacts/quality/20261020-033013-27442-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 listed gate entries passed, timeout false; manifest `artifacts/quality/20261020-033847-49382-0001/manifest.json`. After status/board edits, `make quality-changed` selected `docs`; the execute rerun exited 0 with `plan-validate` passed and no timeout, manifest `artifacts/quality/20261020-034755-54870-0001/manifest.json`. Plan validator exited 0 with 202 cards.
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and distinct from the passing gates; it was not observed as a red.
+
 ## 2026-10-19 — SDLC-01..04 verified (RAI-169); clock contract (RAI-180)
 
 - **Integrated merges:** RAI-169 from `lane/rai-169` merged as `7bbb265ddb82c0abd14432c1013e951d91063626`; RAI-180 from `lane/rai-180` merged as `8265689c047359791c197f8559fa2e94c46b3a4e`.

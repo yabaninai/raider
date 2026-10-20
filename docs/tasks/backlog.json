@@ -5291,7 +5291,7 @@
       "title": "Create strictly local SemVer release artifacts",
       "milestone": "M1",
       "dependencies": ["RAI-117", "RAI-163", "RAI-164", "RAI-165", "RAI-167"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/cli/src/main/scala/raider/cli/release/**", "modules/cli/src/test/scala/raider/cli/release/**", "contracts/release/**", "docs/release/**", "examples/release/**", "artifacts/release/**"],
       "profiles": ["static", "unit", "contracts", "release"],
       "behavior": "ADR-030 §5/D5 and SDLC-05: SemVer, Keep a Changelog, local v<semver> tag, checksummed/provenance-linked artifacts under artifacts/release/<version>/. Existing version/tag refuses without overwrite. Strictly local; no push/publish/deploy. Estimate 16–24 h (packet A4).",
@@ -5545,7 +5545,7 @@
       "title": "SDLC release contract extension: LocalRelease stage + typed release evidence",
       "milestone": "M1",
       "dependencies": ["RAI-168", "RAI-174", "RAI-179"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/release/**",
         "contracts/sdlc/**",
