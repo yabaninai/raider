@@ -18,6 +18,8 @@ final case class RerunRequest(
     model: String,
     snapshotGeneration: String,
     recordedGraph: SessionGraph,
+    selectedGraph: SessionGraph,
+    inputs: PartialReplayInputs,
     limits: BudgetLimits,
     maxRounds: Int
 )

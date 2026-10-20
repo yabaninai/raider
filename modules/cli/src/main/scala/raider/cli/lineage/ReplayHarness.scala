@@ -405,15 +405,31 @@ object ReplayHarness:
     private def runFresh(
         request: RerunRequest
     ): ZIO[zio.Scope, RaiderError, RerunExecution] =
+      val selectedSubtree = request.selectedGraph.nodes
+        .map(node => s"- $node")
+        .mkString("\n")
+      val resolvedInputs = request.inputs.values.toVector
+        .sortBy(_._1.value)
+        .map { case (id, value) => s"${id.value}: $value" }
+        .mkString("\n")
+      val executionPrompt =
+        if request.selectedGraph == request.recordedGraph && request.inputs.values.isEmpty
+        then request.prompt
+        else
+          s"${request.prompt}\n\nSelected lineage subtree:\n$selectedSubtree\n" +
+            s"Resolved boundary inputs:\n$resolvedInputs"
       replay(
         workspace = request.workspace,
+        // This fixture supplies provenance/reference data for the replay
+        // harness's normalized comparison. The live ModelBackend below is the
+        // sole response source for execution.
         doc = document.copy(
           runId = s"live-${request.snapshotGeneration}",
           generator = document.generator
         ),
         limits = request.limits,
         maxRounds = request.maxRounds,
-        prompt = request.prompt,
+        prompt = executionPrompt,
         modelName = request.model,
         backendOverride = Some(model)
       ).flatMap { result =>

@@ -4,7 +4,12 @@ import raider.core.RaiderError
 import raider.dsl.lineage.data.{LineageDataDocument, NodeData}
 import raider.dsl.lineage.replay.RecordedSource
 import raider.runtime.lineage.model.{RecoveryTaxonomy, SessionGraph}
-import raider.runtime.lineage.replay.{LiveRerun, RerunBackend, RerunRequest}
+import raider.runtime.lineage.replay.{
+  LiveRerun,
+  PartialReplayInputs,
+  RerunBackend,
+  RerunRequest
+}
 import raider.runtime.lineage.reduce.ReduceError
 import raider.runtime.budget.BudgetLimits
 
@@ -184,6 +189,8 @@ object IsolatedRerun:
               model = liveModel,
               snapshotGeneration = snapshot.generation,
               recordedGraph = expected,
+              selectedGraph = expected,
+              inputs = PartialReplayInputs(Map.empty),
               limits = limits,
               maxRounds = maxRounds
             )
