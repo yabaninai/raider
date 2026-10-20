@@ -123,31 +123,53 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
             repo,
             candidate,
             Some(true),
+            label = "expired",
             expires = java.time.Instant.now().minusSeconds(5)
           )
           staleDispatch <- dispatch(
             repo,
             candidate.copy(policyDigest = "stale"),
-            Some(true)
+            Some(true),
+            label = "stale"
           )
-          noDecision <- dispatch(repo, candidate, None)
-          deniedDispatch <- dispatch(repo, candidate, Some(false))
+          noDecision <- dispatch(repo, candidate, None, label = "missing")
+          deniedDispatch <- dispatch(
+            repo,
+            candidate,
+            Some(false),
+            label = "denied"
+          )
           cases = List(
-            ("3.4.6", foreignContext, validDispatch),
-            ("3.4.7", digestContext, validDispatch),
-            ("3.4.8", noEvidence, validDispatch),
-            ("3.4.9", rejectedContext, validDispatch),
-            ("3.4.10", acceptedContext(candidate), expiredDispatch),
-            ("3.4.11", acceptedContext(candidate), staleDispatch),
-            ("3.4.12", acceptedContext(candidate), noDecision),
-            ("3.4.13", acceptedContext(candidate), deniedDispatch)
+            ("3.4.6", foreignContext, validDispatch, "IntegrationRejected"),
+            ("3.4.7", digestContext, validDispatch, "ChecksRejected"),
+            ("3.4.8", noEvidence, validDispatch, "MissingChecks"),
+            ("3.4.9", rejectedContext, validDispatch, "ChecksRejected"),
+            (
+              "3.4.10",
+              acceptedContext(candidate),
+              expiredDispatch,
+              "Expired"
+            ),
+            (
+              "3.4.11",
+              acceptedContext(candidate),
+              staleDispatch,
+              "CandidateMismatch"
+            ),
+            (
+              "3.4.12",
+              acceptedContext(candidate),
+              noDecision,
+              "MissingDecision"
+            ),
+            ("3.4.13", acceptedContext(candidate), deniedDispatch, "Denied")
           )
-          outcomes <- ZIO.foreach(cases) { case (version, context, auth) =>
+          outcomes <- ZIO.foreach(cases) { case (version, context, auth, _) =>
             Task
               .zio(handler(repo, auth, version)(context))
               .map(result => version -> result)
           }
-          absent <- ZIO.foreach(cases) { case (version, _, _) =>
+          absent <- ZIO.foreach(cases) { case (version, _, _, _) =>
             for
               absentDirectory <- ZIO.attempt(
                 !Files.exists(repo.resolve(s"artifacts/release/$version"))
@@ -158,6 +180,9 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           localTags <- ReleaseStage.git(repo, List("tag", "--list", "v3.4.*"))
         yield assertTrue(
           outcomes.forall(!_._2.successful),
+          outcomes.zip(cases).forall { case ((_, result), (_, _, _, reason)) =>
+            result.detail.contains(reason)
+          },
           absent.forall(identity),
           localTags.trim.isEmpty
         )
@@ -171,35 +196,83 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           first <- Task.zio(
             handler(repo, approved, "4.0.0")(acceptedContext(candidate))
           )
+          // The successful release creates local artifacts and a changelog.
+          // Commit them as fixture state so probes reach the version/tag and
+          // build branches rather than the clean-tree precondition.
+          _ <- ReleaseStage.git(
+            repo,
+            List("add", "CHANGELOG.md", "artifacts/release/4.0.0")
+          )
+          _ <- ReleaseStage.git(
+            repo,
+            List("commit", "-qm", "record local release fixture")
+          )
+          releaseCandidate <- candidateFor(repo)
+          releaseApproval <- authorized(repo, releaseCandidate)
           duplicate <- Task
-            .zio(handler(repo, approved, "4.0.0")(acceptedContext(candidate)))
+            .zio(
+              handler(repo, releaseApproval, "4.0.0")(
+                acceptedContext(releaseCandidate)
+              )
+            )
             .either
           invalid <- Task
-            .zio(handler(repo, approved, "04.0.0")(acceptedContext(candidate)))
+            .zio(
+              handler(repo, releaseApproval, "04.0.0")(
+                acceptedContext(releaseCandidate)
+              )
+            )
             .either
           buildFailure <- Task
             .zio(
               handler(
                 repo,
-                approved,
+                releaseApproval,
                 "4.0.2",
                 build = _ =>
                   Task.fail(
                     raider.core.RaiderError.Compilation("fixture build failure")
                   )
-              )(acceptedContext(candidate))
+              )(acceptedContext(releaseCandidate))
             )
             .either
           existingTag <- ReleaseStage.git(
             repo,
-            List("tag", "v4.0.1", candidate.headRevision.get)
+            List("tag", "v4.0.1", releaseCandidate.headRevision.get)
           )
           existingTagResult <- Task
-            .zio(handler(repo, approved, "4.0.1")(acceptedContext(candidate)))
+            .zio(
+              handler(repo, releaseApproval, "4.0.1")(
+                acceptedContext(releaseCandidate)
+              )
+            )
             .either
+          duplicateRefusal <- releaseRefusal(
+            repo,
+            releaseCandidate,
+            "4.0.0"
+          )
+          invalidRefusal <- releaseRefusal(repo, releaseCandidate, "04.0.0")
+          buildRefusal <- releaseRefusal(
+            repo,
+            releaseCandidate,
+            "4.0.3",
+            _ =>
+              Task.fail(
+                raider.core.RaiderError.Compilation("fixture build failure")
+              )
+          )
+          existingTagRefusal <- releaseRefusal(
+            repo,
+            releaseCandidate,
+            "4.0.1"
+          )
           existingTagList <- ReleaseStage.git(
             repo,
             List("tag", "--list", "v4.0.1")
+          )
+          existingTagArtifacts <- ZIO.attempt(
+            !Files.exists(repo.resolve("artifacts/release/4.0.1"))
           )
           invalidArtifacts <- ZIO.attempt(
             !Files.exists(repo.resolve("artifacts/release/04.0.0"))
@@ -209,6 +282,7 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
               repo.resolve("artifacts/release/4.0.0/CHANGELOG.md")
             )
           )
+          _ <- ZIO.attempt(Files.deleteIfExists(repo.resolve("CHANGELOG.md")))
           duplicateTags <- ReleaseStage.git(
             repo,
             List("tag", "--list", "v4.0.0")
@@ -222,12 +296,35 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           )
         yield assertTrue(
           first.successful,
-          duplicate.isLeft,
-          invalid.isLeft,
-          buildFailure.isLeft,
+          isInputValidation(
+            duplicate,
+            "release version or local tag already exists"
+          ),
+          isInputValidation(invalid, "invalid SemVer"),
+          isInputValidation(
+            buildFailure,
+            "release build failed: fixture build failure"
+          ),
           buildFailureArtifacts,
           buildFailureTag.trim.isEmpty,
-          existingTagResult.isLeft,
+          isInputValidation(
+            existingTagResult,
+            "release version or local tag already exists"
+          ),
+          isTypedReleaseRefusal(
+            duplicateRefusal,
+            "release version or local tag already exists"
+          ),
+          isTypedReleaseRefusal(invalidRefusal, "invalid SemVer"),
+          isTypedReleaseRefusal(
+            buildRefusal,
+            "release build failed: fixture build failure"
+          ),
+          isTypedReleaseRefusal(
+            existingTagRefusal,
+            "release version or local tag already exists"
+          ),
+          existingTagArtifacts,
           invalidArtifacts,
           unchanged.contains("release notes"),
           duplicateTags.trim == "v4.0.0",
@@ -382,10 +479,11 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
       repo: Path,
       candidate: CandidateIdentity,
       approved: Option[Boolean],
+      label: String = "default",
       expires: java.time.Instant = java.time.Instant.now().plusSeconds(3600)
   ): ZIO[Any, Throwable, CheckpointDispatch] =
-    val requestPath = repo.resolve(".git/release-request.json")
-    val decisionPath = repo.resolve(".git/release-decision.json")
+    val requestPath = repo.resolve(s".git/release-request-$label.json")
+    val decisionPath = repo.resolve(s".git/release-decision-$label.json")
     for
       request <- ZIO.fromEither(
         ApprovalArtifacts
@@ -456,6 +554,47 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
         }
       }
       .map(values => rows.size == 2 && values.forall(identity))
+
+  private def isInputValidation(
+      result: Either[raider.core.RaiderError, StageResult],
+      expectedReason: String
+  ): Boolean =
+    result match
+      case Left(error: raider.core.RaiderError.InputValidation) =>
+        error.detail == expectedReason
+      case _ => false
+
+  private def releaseRefusal(
+      repo: Path,
+      candidate: CandidateIdentity,
+      version: String,
+      build: Path => Task[Unit] = _ => Task.succeed(())
+  ) =
+    ReleaseStage
+      .release(
+        ReleaseStage.Request(
+          repo,
+          version,
+          "release notes",
+          ReleaseStage.AcceptanceEvidence(
+            candidate.revision.orElse(candidate.headRevision).getOrElse(""),
+            "checks",
+            "review",
+            "integration"
+          ),
+          build
+        )
+      )
+      .either
+
+  private def isTypedReleaseRefusal(
+      result: Either[Throwable, ReleaseStage.Result],
+      expectedReason: String
+  ): Boolean =
+    result match
+      case Left(refusal: ReleaseStage.Refusal) =>
+        refusal.getMessage == expectedReason
+      case _ => false
 
   private def withRepo[A](
       f: Path => ZIO[Any, Throwable, A]
