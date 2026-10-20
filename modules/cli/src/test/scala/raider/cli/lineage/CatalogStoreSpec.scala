@@ -207,6 +207,16 @@ object CatalogStoreSpec extends ZIOSpecDefault:
   private def currentPinned: PinnedSummary =
     PinnedSummary.of(EnvPinning.currentEnv())
 
+  private def pointer(directory: Path): CatalogSnapshotRef =
+    LineageSnapshot.read(directory) match
+      case Right(snapshot) =>
+        CatalogSnapshotRef(
+          manifest = directory.resolve(LineageSnapshot.CommitName).toString,
+          generation = snapshot.generation
+        )
+      case Left(error) =>
+        throw new IllegalStateException(s"fixture snapshot is invalid: $error")
+
   /** Scope-managed temp directory, deleted with its content on release. */
   private def tempDir(prefix: String): ZIO[Scope, Nothing, Path] =
     ZIO.acquireRelease(
@@ -400,7 +410,15 @@ object CatalogStoreSpec extends ZIOSpecDefault:
                   sessionId = Some("sess-2")
                 )
               )
-              CatalogStore.append(file, records)
+              CatalogStore
+                .append(file, records)
+                .fold(
+                  error =>
+                    throw new IllegalStateException(
+                      s"fixture append failed: $error"
+                    ),
+                  identity
+                )
               val text = Files.readString(file, UTF_8)
               // the document is a schemaVersion-1 OBJECT holding the records
               val memberKeys: Option[Chunk[Set[String]]] =
@@ -448,7 +466,9 @@ object CatalogStoreSpec extends ZIOSpecDefault:
                     "nodeCount",
                     "hash",
                     "complete",
-                    "scannedAtMs"
+                    "scannedAtMs",
+                    "scope",
+                    "pinned"
                   ),
                 headlessKeys == chatKeys + "sessionId",
                 reloaded == Vector(headless, chat),
@@ -792,6 +812,230 @@ object CatalogStoreSpec extends ZIOSpecDefault:
               assertTrue(
                 result == Right(()),
                 !Files.exists(file) // no invented empty catalog on disk
+              )
+            }
+          }
+        }
+      }
+    ),
+    suite("LIN-08 scopes, pinning, and committed catalog references")(
+      test(
+        "LIN8-SCOPE-02 older schema-version-1 records load as campaign scope"
+      ) {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            ZIO.attempt {
+              val file = CatalogStore.catalogFile(runsRoot)
+              Files.writeString(
+                file,
+                """{"schemaVersion":1,"records":[{"path":"/campaigns/runs/old","rootId":"old-root","nodeCount":1,"hash":"old-hash","complete":true,"scannedAtMs":10}]}""",
+                UTF_8
+              )
+              val loaded = CatalogStore.load(file)
+              assertTrue(
+                loaded.toOption.exists(_.head.scope == CatalogScope.Campaign),
+                loaded.toOption.exists(_.head.snapshot.isEmpty),
+                loaded.toOption.exists(records => !records.head.pinned)
+              )
+            }
+          }
+        }
+      },
+      test("LIN8-SCOPE-01 scopes categorize chat, headless, and campaigns") {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            ZIO.attempt {
+              val file = CatalogStore.catalogFile(runsRoot)
+              val records = Vector(
+                record("chat-one", 1, 300L, None)
+                  .copy(scope = CatalogScope.Chat),
+                record("headless-one", 2, 200L, Some("s2"))
+                  .copy(scope = CatalogScope.Headless),
+                record("campaign-one", 3, 100L, Some("s3"))
+                  .copy(scope = CatalogScope.Campaign)
+              )
+              CatalogStore.append(file, records)
+              val chat = CatalogStore.query(file, CatalogScope.Chat)
+              val headless = CatalogStore.query(file, CatalogScope.Headless)
+              val campaigns = CatalogStore.query(file, CatalogScope.Campaign)
+              assertTrue(
+                chat == Right(Vector(records(0))),
+                headless == Right(Vector(records(1))),
+                campaigns == Right(Vector(records(2)))
+              )
+            }
+          }
+        }
+      },
+      test(
+        "LIN8-PIN-01 pin retains immutable manifest reference across updates and eviction"
+      ) {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            tempDir("raider-catalog-pin").flatMap { run =>
+              ZIO.attempt {
+                LineageSnapshot.publish(
+                  run,
+                  ReplayHarness.document.toJson.getBytes(UTF_8),
+                  "first source".getBytes(UTF_8)
+                )
+                val current = pointer(run)
+                val file = CatalogStore.catalogFile(runsRoot)
+                val entry = record("pinned-run", 1, 300L, Some("s1")).copy(
+                  path = run.toString,
+                  scope = CatalogScope.Headless,
+                  snapshot = Some(current)
+                )
+                CatalogStore
+                  .append(file, Vector(entry))
+                  .fold(
+                    error =>
+                      throw new IllegalStateException(
+                        s"fixture append failed: $error"
+                      ),
+                    identity
+                  )
+                CatalogStore
+                  .pin(file, run.toString)
+                  .fold(
+                    error =>
+                      throw new IllegalStateException(
+                        s"fixture pin failed: $error"
+                      ),
+                    identity
+                  )
+                val original =
+                  CatalogStore.load(file).toOption.get.head.snapshot.get
+                LineageSnapshot.publish(
+                  run,
+                  ReplayHarness.document.toJson.getBytes(UTF_8),
+                  "updated source".getBytes(UTF_8)
+                )
+                CatalogStore
+                  .append(
+                    file,
+                    Vector(
+                      entry.copy(hash = "new-catalog-hash", scannedAtMs = 400L)
+                    )
+                  )
+                  .fold(
+                    error =>
+                      throw new IllegalStateException(
+                        s"fixture update failed: $error"
+                      ),
+                    identity
+                  )
+                CatalogStore.evictTo(file, 0)
+                val stored = CatalogStore.load(file).toOption.get
+                val currentSnapshot = LineageSnapshot.read(run)
+                val pinnedSnapshot =
+                  LineageSnapshot.readManifest(Path.of(original.manifest))
+                val pinnedManifestExists =
+                  Files.isRegularFile(Path.of(original.manifest))
+                assertTrue(
+                  stored.size == 1,
+                  stored.head.pinned,
+                  stored.head.hash == "new-catalog-hash",
+                  stored.head.snapshot.contains(original),
+                  currentSnapshot.toOption.exists(
+                    _.generation != original.generation
+                  ),
+                  pinnedManifestExists,
+                  pinnedSnapshot.toOption.exists(
+                    _.generation == original.generation
+                  )
+                )
+              }
+            }
+          }
+        }
+      },
+      test("LIN8-PIN-02 eviction refuses when pinned entries exceed capacity") {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            ZIO.attempt {
+              val file = CatalogStore.catalogFile(runsRoot)
+              val pinned =
+                record("pinned", 1, 200L, Some("s1")).copy(pinned = true)
+              val recent = record("recent", 2, 100L, Some("s2"))
+              CatalogStore
+                .append(file, Vector(pinned, recent))
+                .fold(
+                  error =>
+                    throw new IllegalStateException(
+                      s"fixture append failed: $error"
+                    ),
+                  identity
+                )
+              val before = Files.readAllBytes(file).toSeq
+              val result = CatalogStore.evictTo(file, 0)
+              val after = Files.readAllBytes(file).toSeq
+              val afterRecords = CatalogStore.load(file)
+              assertTrue(
+                result == Left(CatalogStoreError.PinnedCapacity(file, 1, 0)),
+                before == after,
+                afterRecords == Right(Vector(pinned, recent))
+              )
+            }
+          }
+        }
+      },
+      test(
+        "LIN8-POINTER-01 catalog resolves and preserves only verified commit manifests"
+      ) {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            ZIO.attempt {
+              writeRun(runsRoot, "work-pointed", seed = 4, mtimeMs = 4000L)
+              val runDir = runsRoot.resolve("work-pointed")
+              LineageSnapshot.publish(
+                runDir,
+                ReplayHarness.document.toJson.getBytes(UTF_8),
+                "pointer fixture source".getBytes(UTF_8)
+              )
+              val file = CatalogStore.catalogFile(runsRoot)
+              val expectedRef = pointer(runDir)
+              val refreshed = CatalogStore.refresh(runsRoot)
+              val catalogResult =
+                CatalogStore.query(file, CatalogScope.Campaign)
+              val resolved =
+                LineageSnapshot.readManifest(Path.of(expectedRef.manifest))
+              assertTrue(
+                refreshed.isRight,
+                catalogResult.toOption.exists(
+                  _.head.snapshot.contains(expectedRef)
+                ),
+                resolved.toOption.exists(
+                  _.generation == expectedRef.generation
+                )
+              )
+            }
+          }
+        }
+      },
+      test(
+        "LIN8-POINTER-02 invalid commit metadata refuses refresh without fallback"
+      ) {
+        ZIO.scoped {
+          tempCampaign.flatMap { runsRoot =>
+            ZIO.attempt {
+              val runDir = writeRun(runsRoot, "work-invalid-pointer", 5, 5000L)
+              Files.writeString(
+                runDir.resolve(LineageSnapshot.CommitName),
+                "{\"protocol\":\"bad\"}",
+                UTF_8
+              )
+              val result = CatalogStore.refresh(runsRoot)
+              val fileExists = Files.exists(CatalogStore.catalogFile(runsRoot))
+              assertTrue(
+                result.left.exists {
+                  case RefreshError.Store(
+                        CatalogStoreError.InvalidSnapshot(path, _)
+                      ) =>
+                    path == runDir.resolve(LineageSnapshot.CommitName)
+                  case _ => false
+                },
+                !fileExists
               )
             }
           }

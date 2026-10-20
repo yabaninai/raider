@@ -94,6 +94,19 @@ object LineageSnapshot:
 
   def read(directory: Path): Either[Error, Snapshot] =
     val pointer = directory.resolve(CommitName)
+    readManifest(directory, pointer)
+
+  /** Resolve a commit manifest by its explicit path. Catalog pins use an
+    * immutable copy of the commit manifest so a later pointer update cannot
+    * redirect the pinned generation.
+    */
+  def readManifest(manifest: Path): Either[Error, Snapshot] =
+    readManifest(manifest.getParent, manifest)
+
+  private def readManifest(
+      directory: Path,
+      pointer: Path
+  ): Either[Error, Snapshot] =
     if !Files.isRegularFile(pointer) then Left(Error.Missing(pointer))
     else
       try
