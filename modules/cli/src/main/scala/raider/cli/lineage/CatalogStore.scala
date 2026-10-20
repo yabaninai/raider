@@ -60,6 +60,29 @@ object PinnedSummary:
 
 end PinnedSummary
 
+/** Origin category of a lineage record. Chat and headless retain the same
+  * record shape; scope is metadata used to filter catalog views.
+  */
+enum CatalogScope:
+  case Chat, Headless, Campaign
+
+object CatalogScope:
+  given JsonDecoder[CatalogScope] = DeriveJsonDecoder.gen[CatalogScope]
+  given JsonEncoder[CatalogScope] = DeriveJsonEncoder.gen[CatalogScope]
+
+/** Stable identity of a committed snapshot. The reference names the commit
+  * manifest and generation; it never points at the mutable legacy filenames.
+  */
+final case class CatalogSnapshotRef(manifest: String, generation: String)
+
+object CatalogSnapshotRef:
+
+  given JsonDecoder[CatalogSnapshotRef] =
+    DeriveJsonDecoder.gen[CatalogSnapshotRef]
+
+  given JsonEncoder[CatalogSnapshotRef] =
+    DeriveJsonEncoder.gen[CatalogSnapshotRef]
+
 /** One PERSISTED record of the campaign-catalog (LIN-12, ADR-027 §5): the
   * scan-record identity the card fixes — run-dir, graph-hash, the verifyPartial
   * verdict (complete/tail/nodeCount), the pinned-env summary — plus the
@@ -87,7 +110,10 @@ final case class CatalogRecord(
     complete: Boolean,
     tail: Option[CatalogRecord.TailInfo],
     scannedAtMs: Long,
-    pinnedEnv: Option[PinnedSummary]
+    pinnedEnv: Option[PinnedSummary],
+    scope: CatalogScope = CatalogScope.Campaign,
+    snapshot: Option[CatalogSnapshotRef] = None,
+    pinned: Boolean = false
 ):
 
   /** Restores the FULL [[CatalogEntry]] the record was persisted from — the
@@ -137,6 +163,8 @@ enum CatalogStoreError:
   case Missing(path: Path)
   case Corrupt(path: Path, record: String, detail: String)
   case Io(path: Path, detail: String)
+  case InvalidSnapshot(path: Path, detail: String)
+  case PinnedCapacity(path: Path, pinned: Int, requested: Int)
 
 /** Typed failure of [[CatalogStore.refresh]]: the scan layer and the store
   * layer report SEPARATELY — a damaged tree is a different fact than a damaged
@@ -218,7 +246,8 @@ object CatalogStore:
     */
   def recordsOf(
       entries: Vector[CatalogEntry],
-      pinned: Option[PinnedSummary]
+      pinned: Option[PinnedSummary],
+      scope: CatalogScope = CatalogScope.Campaign
   ): Vector[CatalogRecord] =
     entries.map { entry =>
       CatalogRecord(
@@ -232,7 +261,8 @@ object CatalogStore:
           CatalogRecord.TailInfo(t.lineNo, t.rawPrefixLen)
         ),
         scannedAtMs = entry.scannedAtMs,
-        pinnedEnv = pinned
+        pinnedEnv = pinned,
+        scope = scope
       )
     }
 
@@ -270,6 +300,95 @@ object CatalogStore:
     if records.isEmpty then Right(())
     else updateLocked(file, records).map(_ => ())
 
+  /** Reads records from one category only, preserving the catalog ordering. */
+  def query(
+      file: Path,
+      scope: CatalogScope
+  ): Either[CatalogStoreError, Vector[CatalogRecord]] =
+    load(file).map(_.filter(_.scope == scope))
+
+  /** Pin a record to the currently committed immutable generation. The pointer
+    * is resolved and digest-checked before the pin is written.
+    */
+  def pin(file: Path, runDirectory: String): Either[CatalogStoreError, Unit] =
+    updateRecord(file, runDirectory) { record =>
+      val directory = Path.of(runDirectory)
+      LineageSnapshot.read(directory) match
+        case Left(error) =>
+          Left(
+            snapshotError(directory.resolve(LineageSnapshot.CommitName), error)
+          )
+        case Right(snapshot) =>
+          val stableManifest = directory.resolve(
+            s"lineage-commit-${snapshot.generation}.json"
+          )
+          try
+            if !Files.exists(stableManifest) then
+              publishPinnedManifest(
+                directory.resolve(LineageSnapshot.CommitName),
+                stableManifest
+              )
+            LineageSnapshot.readManifest(stableManifest) match
+              case Left(error) =>
+                Left(snapshotError(stableManifest, error))
+              case Right(stable) if stable.generation != snapshot.generation =>
+                Left(
+                  CatalogStoreError.Io(
+                    stableManifest,
+                    "pinned generation mismatch"
+                  )
+                )
+              case Right(stable) =>
+                Right(
+                  record.copy(
+                    snapshot = Some(
+                      CatalogSnapshotRef(
+                        stableManifest.toString,
+                        stable.generation
+                      )
+                    ),
+                    pinned = true
+                  )
+                )
+          catch
+            case error: java.io.IOException =>
+              Left(
+                CatalogStoreError.Io(
+                  stableManifest,
+                  String.valueOf(error.getMessage)
+                )
+              )
+    }
+
+  /** Remove a pin without deleting its immutable generation files. */
+  def unpin(file: Path, runDirectory: String): Either[CatalogStoreError, Unit] =
+    updateRecord(file, runDirectory)(record =>
+      Right(record.copy(pinned = false))
+    )
+
+  /** Retain at most `maxEntries`, newest first. Pinned records are never
+    * removed; insufficient capacity is a typed, non-mutating refusal.
+    */
+  def evictTo(file: Path, maxEntries: Int): Either[CatalogStoreError, Unit] =
+    if maxEntries < 0 then
+      Left(CatalogStoreError.PinnedCapacity(file, 0, maxEntries))
+    else
+      val lock = writeLockFor(file)
+      lock.lock()
+      try
+        load(file).flatMap { records =>
+          val pins = records.filter(_.pinned)
+          if pins.size > maxEntries then
+            Left(CatalogStoreError.PinnedCapacity(file, pins.size, maxEntries))
+          else
+            val keepUnpinned =
+              records.filterNot(_.pinned).take(maxEntries - pins.size)
+            write(file, sortRecords(pins ++ keepUnpinned))
+        }
+      finally
+        lock.unlock()
+        ()
+
   /** The scan+persist roundtrip of one campaigns root (LIN-12): loads the
     * persisted catalog FIRST — damaged state refuses TYPED before any fresh
     * scan can be published over it (LINC-02) — then scans the tree through
@@ -282,6 +401,12 @@ object CatalogStore:
     * byte-identical.
     */
   def refresh(runsRoot: Path): Either[RefreshError, Vector[CatalogRecord]] =
+    refresh(runsRoot, CatalogScope.Campaign)
+
+  def refresh(
+      runsRoot: Path,
+      scope: CatalogScope
+  ): Either[RefreshError, Vector[CatalogRecord]] =
     val file = catalogFile(runsRoot)
     for
       // The persisted state is probed FIRST: DAMAGED CONTENT refuses the
@@ -297,10 +422,12 @@ object CatalogStore:
           )
         case _ => Right(())
       entries <- LineageCatalog.scan(runsRoot).left.map(RefreshError.Scan(_))
-      fresh = recordsOf(
+      scanned = recordsOf(
         entries,
-        Some(PinnedSummary.of(EnvPinning.currentEnv()))
+        Some(PinnedSummary.of(EnvPinning.currentEnv())),
+        scope
       )
+      fresh <- resolveSnapshots(scanned).left.map(RefreshError.Store(_))
       merged <- updateLocked(file, fresh).left.map(RefreshError.Store(_))
     yield merged
 
@@ -341,13 +468,88 @@ object CatalogStore:
     val byPath =
       scala.collection.mutable.LinkedHashMap.empty[String, CatalogRecord]
     existing.foreach(r => byPath.update(r.path, r))
-    incoming.foreach(r => byPath.update(r.path, r))
+    incoming.foreach { record =>
+      val updated = byPath.get(record.path) match
+        case Some(previous) if previous.pinned =>
+          record.copy(pinned = true, snapshot = previous.snapshot)
+        case _ => record
+      byPath.update(record.path, updated)
+    }
     sortRecords(byPath.values.toVector)
 
   private def sortRecords(
       records: Vector[CatalogRecord]
   ): Vector[CatalogRecord] =
     records.sortBy(r => (-r.scannedAtMs, r.path))
+
+  private def updateRecord(
+      file: Path,
+      runDirectory: String
+  )(
+      update: CatalogRecord => Either[CatalogStoreError, CatalogRecord]
+  ): Either[CatalogStoreError, Unit] =
+    val lock = writeLockFor(file)
+    lock.lock()
+    try
+      load(file).flatMap { records =>
+        records.find(_.path == runDirectory) match
+          case None => Left(CatalogStoreError.Missing(Path.of(runDirectory)))
+          case Some(record) =>
+            update(record).flatMap { changed =>
+              write(
+                file,
+                sortRecords(
+                  records.map(r =>
+                    if r.path == runDirectory then changed else r
+                  )
+                )
+              )
+            }
+      }
+    finally
+      lock.unlock()
+      ()
+
+  private def resolveSnapshots(
+      records: Vector[CatalogRecord]
+  ): Either[CatalogStoreError, Vector[CatalogRecord]] =
+    records.foldLeft[Either[CatalogStoreError, Vector[CatalogRecord]]](
+      Right(Vector.empty)
+    ) { (acc, record) =>
+      acc.flatMap { resolved =>
+        val directory = Path.of(record.path)
+        val pointer = directory.resolve(LineageSnapshot.CommitName)
+        if !Files.exists(pointer) then Right(resolved :+ record)
+        else
+          LineageSnapshot.read(directory) match
+            case Left(error) => Left(snapshotError(pointer, error))
+            case Right(snapshot) =>
+              val ref =
+                CatalogSnapshotRef(pointer.toString, snapshot.generation)
+              Right(resolved :+ record.copy(snapshot = Some(ref)))
+      }
+    }
+
+  private def snapshotError(
+      path: Path,
+      error: LineageSnapshot.Error
+  ): CatalogStoreError =
+    error match
+      case LineageSnapshot.Error.Invalid(_, detail) =>
+        CatalogStoreError.InvalidSnapshot(path, detail)
+      case other => CatalogStoreError.Io(path, other.toString)
+
+  private def publishPinnedManifest(source: Path, destination: Path): Unit =
+    val tmp =
+      Files.createTempFile(destination.getParent, ".lineage-pin-", ".tmp")
+    try
+      Files.copy(source, tmp, StandardCopyOption.REPLACE_EXISTING)
+      Files.move(
+        tmp,
+        destination,
+        StandardCopyOption.ATOMIC_MOVE
+      )
+    finally deleteTempQuietly(tmp)
 
   /** Atomically replaces the catalog at `path` with `records` — the
     * `LineageDataStore` discipline (canonical bytes → unique tmp file →

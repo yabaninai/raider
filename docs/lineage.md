@@ -127,9 +127,19 @@ Lineage is built for all session scopes (ADR-027 §2, “Scope”):
 Catalog requirements:
 
 - catalog entries have the **same** format for chat and headless (chat==headless);
+- each entry is categorized as `Chat`, `Headless`, or `Campaign`; catalog reads
+  may filter by that scope without changing graph identity;
 - every entry carries a **graph-hash** and **reproducibility status** (successfully
   replayed / divergent / not checked);
 - parallel runs add entries through **atomic append** (LIN8-03).
+- entries with run artifacts refer to the `lineage-commit.json` manifest and its
+  generation, never to the mutable `lineage-data.json` or `lineage.scala` names;
+  the reader verifies the committed pair before recording the reference;
+- an explicit pin copies the verified commit manifest to an immutable
+  generation-specific manifest. Catalog updates do not redirect that pin.
+  Eviction retains pinned entries; when the requested capacity is below the
+  pinned count, eviction is refused with a typed capacity error and leaves the
+  catalog unchanged. Unpinning does not delete snapshot files.
 
 ### 5.1 Multi-job graph (reported accurately)
 
@@ -236,6 +246,11 @@ in `toolchain.json` (LIN-08): toolchain (Scala/JDK), Raider version, and model.
 - If reproduction runs in a different environment, the diff report explicitly
   marks it as **“reproduced in a different environment”** (LIN8-02). Pinning
   mismatches must not be hidden.
+- `raider replay` reads `<run-dir>/toolchain.json` when present. Matching pins
+  leave the replay report unchanged; divergent pins emit the warning before the
+  isolated replay and annotate its resulting report. A missing pin is treated
+  as a legacy run with no environment comparison; malformed pin data is a typed
+  input failure rather than an implicit match.
 - The compiler checks the projection **with pinning** (LIN2-01): projecting the
   same graph again produces byte-identical output.
 

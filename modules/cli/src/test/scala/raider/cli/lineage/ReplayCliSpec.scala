@@ -83,6 +83,14 @@ object ReplayCliSpec extends ZIOSpecDefault:
           ZIO.dieMessage(s"fixture bug: store write failed: $error")
       }
 
+  private def writeToolchain(runDir: Path, scalaVersion: String): Unit =
+    val current = EnvPinning.currentEnv()
+    Files.writeString(
+      runDir.resolve("toolchain.json"),
+      s"""{"scala":"$scalaVersion","jdk":"${current.jdkVersion}","raider":"${current.raiderVersion}"}""",
+      UTF_8
+    )
+
   /** The normalized hash of the graph recorded in `doc` (structural agreement ⇒
     * equal hashes — the comparator invariant, so expected-vs-expected is the
     * match hash).
@@ -167,6 +175,60 @@ object ReplayCliSpec extends ZIOSpecDefault:
             case other =>
               throw new IllegalStateException(
                 s"LIN10-01: expected Mismatch, got $other"
+              )
+        }
+      }
+    },
+    test("LIN8-02: matching pinned environment replays without a report") {
+      live {
+        ZIO.scoped {
+          for
+            ws <- freshWorkspace
+            runDir <- freshRunDir("pin-match")
+            _ <- writeDoc(runDir, ReplayHarness.document)
+            _ <- ZIO
+              .attempt(
+                writeToolchain(runDir, EnvPinning.currentEnv().scalaVersion)
+              )
+              .orDie
+            verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
+          yield assertTrue(
+            verdict.isInstanceOf[ReplayCli.Verdict.Match],
+            !ReplayCli
+              .render(verdict)
+              .contains("reproduced in a different environment"),
+            ReplayCli.exitCode(verdict) == ExitCodes.Success
+          )
+        }
+      }
+    },
+    test(
+      "LIN8-02: divergent pinned environment warns, attempts replay, and annotates its report"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            ws <- freshWorkspace
+            runDir <- freshRunDir("pin-mismatch")
+            _ <- writeDoc(runDir, ReplayHarness.document)
+            _ <- ZIO.attempt(writeToolchain(runDir, "3.8.2-cts")).orDie
+            verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
+          yield verdict match
+            case ReplayCli.Verdict.DifferentEnvironment(inner, fields) =>
+              assertTrue(
+                inner.isInstanceOf[ReplayCli.Verdict.Match],
+                fields == Vector(
+                  ("scala", "3.8.2-cts", EnvPinning.currentEnv().scalaVersion)
+                ),
+                ReplayCli
+                  .render(verdict)
+                  .startsWith("reproduced in a different environment:"),
+                ReplayCli.render(verdict).contains("verdict: match"),
+                ReplayCli.exitCode(verdict) == ExitCodes.Success
+              )
+            case other =>
+              throw new IllegalStateException(
+                s"expected reported pin divergence, got $other"
               )
         }
       }
