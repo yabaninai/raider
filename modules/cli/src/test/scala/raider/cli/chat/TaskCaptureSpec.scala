@@ -269,15 +269,23 @@ object TaskCaptureSpec extends ZIOSpecDefault:
         )
       },
       test(
-        "LIN8B-01: a scripted chat turn publishes its real terminal, readable artifacts, pin, and Chat catalog entry"
+        "LIN8B-01: a real tool-using chat run is cataloged and ReplayCli reports its matching and divergent pin"
       ) {
         for
           workspace <- ZIO
             .attempt(Files.createTempDirectory("raider-chat-lineage"))
             .orDie
+          toolset <- raider.tools.CodingToolset.make(workspace.toString).orDie
+          registry <- ZIO.fromEither(toolset.registry).orDie
           ctx <- makeCtx(
-            Scripted(List(Text("The scripted chat session completed."))),
-            Some(workspace.toString)
+            Scripted(
+              List(
+                ToolCall("fs_read", "{\"path\":\"README.md\"}"),
+                Text("The fixture was read successfully.")
+              )
+            ),
+            Some(workspace.toString),
+            registry
           )
           _ <- ChatLoop.processMessage(ctx, "summarize the fixture project")
           checked <- ZIO.attempt {
@@ -300,10 +308,26 @@ object TaskCaptureSpec extends ZIOSpecDefault:
             (runsRoot, chat, runDir, events, pin, snapshot)
           }.orDie
           (runsRoot, chat, runDir, events, pin, snapshot) = checked
+          matching <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(runDir, workspace, None)
+          )
+          _ <- ZIO.attempt {
+            val current = raider.cli.lineage.EnvPinning.currentEnv()
+            Files.writeString(
+              runDir.resolve("toolchain.json"),
+              s"""{"scala":"3.8.2-cts","jdk":"${current.jdkVersion}","raider":"${current.raiderVersion}"}""",
+              UTF_8
+            )
+          }.orDie
+          divergent <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(runDir, workspace, None)
+          )
         yield assertTrue(
           chat.size == 1,
           Files.isRegularFile(runDir.resolve("events.jsonl")),
           events.contains("Terminal"),
+          events.contains("fs_read"),
+          events.contains("Succeeded"),
           Files.isRegularFile(runDir.resolve("lineage.scala")),
           Files.isRegularFile(runDir.resolve("lineage-data.json")),
           Files.isRegularFile(runDir.resolve("lineage-commit.json")),
@@ -319,7 +343,50 @@ object TaskCaptureSpec extends ZIOSpecDefault:
           chat.headOption.exists(_.path == runDir.toString),
           Files.isRegularFile(
             raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
-          )
+          ),
+          matching.isInstanceOf[raider.cli.lineage.ReplayCli.Verdict.Match],
+          !raider.cli.lineage.ReplayCli
+            .render(matching)
+            .contains("reproduced in a different environment"),
+          divergent.isInstanceOf[
+            raider.cli.lineage.ReplayCli.Verdict.DifferentEnvironment
+          ],
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .startsWith("reproduced in a different environment:"),
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .contains("verdict: match")
+        )
+      },
+      test(
+        "LIN8B-02: failed chat publication leaves no successful catalog record"
+      ) {
+        for
+          runsRoot <- ZIO
+            .attempt(Files.createTempDirectory("raider-chat-failed-publish"))
+            .orDie
+          result <- ZIO.attempt {
+            ChatLineageExport.publish(
+              runsRoot,
+              JobId("failed-publication"),
+              Vector.empty,
+              None
+            )
+          }.orDie
+          catalog <- ZIO
+            .attempt(
+              raider.cli.lineage.CatalogStore.load(
+                raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
+              )
+            )
+            .orDie
+        yield assertTrue(
+          result.isLeft,
+          catalog.left.exists(
+            _.isInstanceOf[raider.cli.lineage.CatalogStoreError.Missing]
+          ),
+          !Files.exists(raider.cli.lineage.CatalogStore.catalogFile(runsRoot))
         )
       },
       test(
