@@ -234,6 +234,62 @@ object ReplayCliSpec extends ZIOSpecDefault:
       }
     },
     test(
+      "LIN8B-02: absent legacy pin replays without a fabricated pin report"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            ws <- freshWorkspace
+            runDir <- freshRunDir("legacy-no-pin")
+            _ <- writeDoc(runDir, ReplayHarness.document)
+            verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
+          yield assertTrue(
+            verdict.isInstanceOf[ReplayCli.Verdict.Match],
+            !ReplayCli.render(verdict).contains("environment"),
+            ReplayCli.exitCode(verdict) == ExitCodes.Success
+          )
+        }
+      }
+    },
+    test("LIN8B-02: malformed pin is a typed ReplayCli failure report") {
+      live {
+        ZIO.scoped {
+          for
+            ws <- freshWorkspace
+            runDir <- freshRunDir("malformed-pin")
+            _ <- writeDoc(runDir, ReplayHarness.document)
+            _ <- ZIO
+              .attempt(
+                Files.writeString(
+                  runDir.resolve("toolchain.json"),
+                  "{broken",
+                  UTF_8
+                )
+              )
+              .orDie
+            verdict <- ReplayCli.run(ReplayCli.Config(runDir, ws, None))
+          yield verdict match
+            case ReplayCli.Verdict.Failed(
+                  ReplayCli.Failure.Pinning(
+                    EnvPinning.PinError.Malformed(path, _)
+                  )
+                ) =>
+              val report = ReplayCli.render(verdict)
+              assertTrue(
+                path == runDir.resolve("toolchain.json"),
+                report.startsWith("typed-error:"),
+                report.contains("pinned environment invalid"),
+                ReplayCli.exitCode(verdict) == ExitCodes.ConfigInvalid,
+                ReplayCli.exitCode(verdict) != ExitCodes.Success
+              )
+            case other =>
+              throw new IllegalStateException(
+                s"expected typed malformed-pin report, got $other"
+              )
+        }
+      }
+    },
+    test(
       "LIN3B-02: missing commit pointer is an explicit invalid snapshot"
     ) {
       live {

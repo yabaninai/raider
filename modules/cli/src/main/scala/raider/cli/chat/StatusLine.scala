@@ -119,7 +119,8 @@ object StatusLine:
     */
   final case class Running(
       fiber: Fiber.Runtime[Nothing, Unit],
-      foldedSeq: Ref[Long]
+      foldedSeq: Ref[Long],
+      exported: Ref[Vector[EventEnvelope]]
   )
 
   /** Subscribe (no loss window: snapshot + watermark in one transaction) and
@@ -136,6 +137,7 @@ object StatusLine:
       state <- Ref.make(Fold.initial(snapshot))
       lastLine <- Ref.make(Option.empty[String])
       foldedSeq <- Ref.make(snapshot.lastSeq)
+      exported <- Ref.make(EventExport.startTransition(snapshot).toVector)
       fiber <- EventExport
         .inOrder(snapshot.lastSeq)(stream)
         .foreach { e =>
@@ -148,13 +150,14 @@ object StatusLine:
               lastLine.get.flatMap { prev =>
                 val write =
                   if prev.contains(line) then ZIO.unit else sink(line)
-                write *> lastLine.set(Some(line)) *> foldedSeq.set(e.seq)
+                write *> lastLine.set(Some(line)) *>
+                  exported.update(_ :+ e) *> foldedSeq.set(e.seq)
               }
             }
         }
         .interruptible
         .forkDaemon
-    yield Running(fiber, foldedSeq)
+    yield Running(fiber, foldedSeq, exported)
 
 end StatusLine
 

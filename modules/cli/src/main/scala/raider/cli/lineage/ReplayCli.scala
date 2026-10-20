@@ -225,7 +225,7 @@ object ReplayCli:
           isolated <- isolate(config.workspace, parent)
           before <- snapshotOf(config.workspace)
           replayRun <- ReplayHarness
-            .replay(isolated, doc)
+            .replay(isolated, doc, modelName = modelIn(doc))
             .mapError(Failure.Replay(_))
           verdict = withEnvironment(
             compareStep(expected, replayRun),
@@ -275,6 +275,14 @@ object ReplayCli:
       case Left(error) => ZIO.fail(Failure.Pinning(error))
       case Right(pinned) =>
         ZIO.succeed(EnvPinning.compare(pinned, EnvPinning.currentEnv()))
+
+  private def modelIn(doc: LineageDataDocument): String =
+    doc.data.values
+      .collectFirst {
+        case model: raider.dsl.lineage.data.NodeData.ModelCallData =>
+          model.model
+      }
+      .getOrElse(ReplayHarness.ModelName)
 
   private def warnBeforeAttempt(
       verdict: EnvPinning.PinVerdict

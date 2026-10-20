@@ -2,6 +2,13 @@ package raider.cli.run
 
 import raider.core.*
 import raider.cli.CoderPrompts
+import raider.cli.lineage.{
+  CatalogScope,
+  CatalogStore,
+  EnvPinning,
+  PinnedSummary,
+  ToolchainPin
+}
 import raider.core.bundle.BundleManifest
 import raider.core.result.{
   CheckOutcome,
@@ -877,6 +884,54 @@ object HeadlessRunner:
       val liveProjectionLine = liveProjectionStatus.map { diagnostic =>
         liveProjectionSummaryLine(diagnostic)
       }
+      // LIN-08: the pin is written beside the committed lineage snapshot and
+      // events for this invocation only. Fixture runs have no factual model
+      // identity, so they deliberately omit the optional model field.
+      val toolchainLine = lineage.flatMap { _ =>
+        ToolchainPin.write(
+          workDir,
+          if args.mock then None else Some(args.model)
+        ) match
+          case Right(path) => Some(s"- toolchain pin: ${path.getFileName}")
+          case Left(error) =>
+            Some(s"- toolchain pin: unavailable (${error.take(200)})")
+      }
+      // Each producer appends only its own completed run and stamps its origin
+      // at the catalog write boundary. A bundled workflow is a campaign run;
+      // the built-in headless agent is a headless run.
+      val catalogLine = lineage.flatMap { _ =>
+        val scope = args.target match
+          case _: CliArgs.Target.Bundle => CatalogScope.Campaign
+          case _                        => CatalogScope.Headless
+        val file = CatalogStore.catalogFile(args.out)
+        val result = for
+          entries <- raider.cli.lineage.LineageCatalog
+            .scan(args.out)
+            .left
+            .map(error => s"catalog scan failed: $error")
+          own = entries.filter(
+            _.path.toAbsolutePath.normalize == workDir.toAbsolutePath.normalize
+          )
+          _ <- Either.cond(
+            own.nonEmpty,
+            (),
+            "run was not present in the catalog scan"
+          )
+          records = CatalogStore.recordsOf(
+            own,
+            Some(PinnedSummary.of(EnvPinning.currentEnv())),
+            scope
+          )
+          _ <- CatalogStore
+            .append(file, records)
+            .left
+            .map(error => s"catalog write failed: $error")
+        yield ()
+        result match
+          case Right(_) => Some(s"- catalog: ${scope.toString.toLowerCase}")
+          case Left(error) =>
+            Some(s"- catalog: unavailable (${error.take(200)})")
+      }
       val summary = s"""# raider run
            |
            |$statusLine
@@ -895,6 +950,8 @@ object HeadlessRunner:
         // artifacts line rides behind the lineage line for the same reason
         summary + lineageLine.fold("")(l => l + "\n") +
           artifactsLine.fold("")(l => l + "\n") +
+          toolchainLine.fold("")(l => l + "\n") +
+          catalogLine.fold("")(l => l + "\n") +
           liveProjectionLine.fold("")(l => l + "\n"),
         UTF_8
       )

@@ -5,6 +5,7 @@ import raider.runtime.admission.Admission
 import raider.runtime.budget.{BudgetLimits, CostEstimate}
 import raider.runtime.events.EventHub
 import raider.runtime.jobs.JobManager
+import raider.runtime.jobs.StatusLedger
 import raider.runtime.loop.AgentLoop
 import zio.*
 import zio.stream.ZStream
@@ -86,16 +87,30 @@ object TaskCaptureSpec extends ZIOSpecDefault:
       ZStream.fromZIO(ZIO.never)
 
   private def makeCtx(
-      backend: ModelBackend
+      backend: ModelBackend,
+      workspacePath: Option[String] = None,
+      registry: ToolRegistry = ToolRegistry.empty
   ): ZIO[Any, Nothing, ChatLoop.RunCtx] =
     for
+      workspace <- workspacePath.fold(
+        ZIO
+          .attempt(Files.createTempDirectory("raider-chat-capture").toString)
+          .orDie
+      )(ZIO.succeed(_))
+      _ <- ZIO.attempt {
+        val root = java.nio.file.Path.of(workspace)
+        Files.createDirectories(root)
+        Files.writeString(root.resolve("README.md"), "chat fixture\n", UTF_8)
+      }.orDie
       limits <- ZIO.succeed(
         BudgetLimits.make(maxConcurrentTools = 2, maxAttempts = 48).toOption.get
       )
       admission <- Admission.make(Right(limits)).orDie
       root <- ZIO.succeed(AgentLoop.newRoot())
       hub <- EventHub.make()
-      manager <- JobManager.make(onTransition = None)
+      manager <- JobManager.make(
+        onTransition = Some(StatusLedger.onTransition(hub, root))
+      )
       historyRef <- Ref.make(List.empty[RequestMessage])
       traceRef <- Ref.make(Vector.empty[raider.core.trace.TraceEvent])
       ledgerRef <- Ref.make(Vector.empty[TurnRecord])
@@ -104,7 +119,7 @@ object TaskCaptureSpec extends ZIOSpecDefault:
       loop <- ZIO.succeed(
         AgentLoop(
           backend,
-          ToolRegistry.empty,
+          registry,
           "test-model",
           admission,
           root,
@@ -121,7 +136,7 @@ object TaskCaptureSpec extends ZIOSpecDefault:
       checksRef,
       selectionRef,
       provider = "mock",
-      workspacePath = "/tmp/ws-capture-fixture",
+      workspacePath = workspace,
       hub,
       manager,
       root,
@@ -148,24 +163,82 @@ object TaskCaptureSpec extends ZIOSpecDefault:
     Files.createTempDirectory("raider-capture-test")
   }
 
+  private[cli] def produceChatFixture(
+      workspace: java.nio.file.Path
+  ): UIO[java.nio.file.Path] =
+    for
+      _ <- ZIO.attempt {
+        Files.createDirectories(workspace)
+        Files.writeString(
+          workspace.resolve("README.md"),
+          "chat fixture\n",
+          UTF_8
+        )
+      }.orDie
+      toolset <- raider.tools.CodingToolset.make(workspace.toString).orDie
+      registry <- ZIO.fromEither(toolset.registry).orDie
+      ctx <- makeCtx(
+        Scripted(
+          List(
+            ToolCall("fs_read", "{\"path\":\"README.md\"}"),
+            Text("The fixture was read successfully.")
+          )
+        ),
+        Some(workspace.toString),
+        registry
+      )
+      _ <- ChatLoop.processMessage(ctx, "summarize the fixture project").orDie
+      runDir <- ZIO.attempt {
+        val entries = raider.cli.lineage.CatalogStore
+          .load(
+            raider.cli.lineage.CatalogStore.catalogFile(
+              workspace.resolve(".raider").resolve("runs")
+            )
+          )
+          .fold(
+            error => throw new IllegalStateException(error.toString),
+            identity
+          )
+        java.nio.file.Path.of(
+          entries
+            .find(_.scope == raider.cli.lineage.CatalogScope.Chat)
+            .getOrElse(throw new IllegalStateException("chat entry missing"))
+            .path
+        )
+      }.orDie
+    yield runDir
+
   override def spec: Spec[Any, Any] =
     suite("TaskCapture")(
       test(
         "B01: three turns (one REAL tool round) capture; marks + select; compaction rewrite and save/load keep the ledger stable"
       ) {
         for
+          workspace <- ZIO
+            .attempt(Files.createTempDirectory("raider-chat-capture-tool"))
+            .orDie
+          _ <- ZIO
+            .attempt(
+              Files.writeString(
+                workspace.resolve("README.md"),
+                "chat fixture\n",
+                UTF_8
+              )
+            )
+            .orDie
+          toolset <- raider.tools.CodingToolset.make(workspace.toString).orDie
+          registry <- ZIO.fromEither(toolset.registry).orDie
           ctx <- makeCtx(
             Scripted(
               List(
                 Text("[fixture] plan"),
-                ToolCall(
-                  "fs_edit",
-                  "{}"
-                ), // drives a real dispatch (refused: empty registry)
+                ToolCall("fs_read", "{\"path\":\"README.md\"}"),
                 Text("[fixture] edited"),
                 Text("[fixture] refinement ack")
               )
-            )
+            ),
+            Some(workspace.toString),
+            registry
           )
           _ <- ChatLoop.processMessage(
             ctx,
@@ -205,7 +278,7 @@ object TaskCaptureSpec extends ZIOSpecDefault:
           _ <- SessionStore.save(base, session)
           back <- SessionStore.load(base, "b01")
         yield assertTrue(
-          // capture: completed, distinct job ids, REAL tool-refused summary on turn 2
+          // Capture: completed, distinct job ids, and a real successful tool call on turn 2.
           ledger0.size == 3,
           ledger0.map(_.status) == List(
             TurnLedger.Status.Completed,
@@ -214,10 +287,10 @@ object TaskCaptureSpec extends ZIOSpecDefault:
           ),
           ledger0.map(_.jobId).distinct.size == 3,
           ledger0(1).toolSummary ==
-            List(ToolOutcomeSummary("fs_edit", ToolOutcomeSummary.Refused)),
+            List(ToolOutcomeSummary("fs_read", ToolOutcomeSummary.Ok)),
           ledger0(0).request == "make module X compile and keep checks green",
           ledger0(0).configRefs == ConfigRefs(
-            "/tmp/ws-capture-fixture",
+            ctx.workspacePath,
             "mock",
             "test-model"
           ),
@@ -238,6 +311,138 @@ object TaskCaptureSpec extends ZIOSpecDefault:
           // save/load roundtrip is identity on the ledger + checks
           back.turns == afterCompact.toList,
           back.checks == checksAfter
+        )
+      },
+      test(
+        "LIN8B-01: a real tool-using chat run is cataloged and ReplayCli reports its matching and divergent pin"
+      ) {
+        for
+          workspace <- ZIO
+            .attempt(Files.createTempDirectory("raider-chat-lineage"))
+            .orDie
+          toolset <- raider.tools.CodingToolset.make(workspace.toString).orDie
+          registry <- ZIO.fromEither(toolset.registry).orDie
+          ctx <- makeCtx(
+            Scripted(
+              List(
+                ToolCall("fs_read", "{\"path\":\"README.md\"}"),
+                Text("The fixture was read successfully.")
+              )
+            ),
+            Some(workspace.toString),
+            registry
+          )
+          _ <- ChatLoop.processMessage(ctx, "summarize the fixture project")
+          checked <- ZIO.attempt {
+            val runsRoot = workspace.resolve(".raider").resolve("runs")
+            val entries =
+              raider.cli.lineage.CatalogStore.load(
+                raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
+              )
+            val chat = entries.toOption.toVector.flatten.filter(
+              _.scope == raider.cli.lineage.CatalogScope.Chat
+            )
+            val runDir = chat.headOption
+              .map(record => java.nio.file.Path.of(record.path))
+              .getOrElse(workspace)
+            val events = Files.readString(runDir.resolve("events.jsonl"), UTF_8)
+            val pin = raider.cli.lineage.EnvPinning.readPinned(
+              runDir.resolve("toolchain.json")
+            )
+            val snapshot = raider.cli.lineage.LineageSnapshot.read(runDir)
+            (runsRoot, chat, runDir, events, pin, snapshot)
+          }.orDie
+          (runsRoot, chat, runDir, events, pin, snapshot) = checked
+          matching <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(runDir, workspace, None)
+          )
+          recordedFinal = snapshot.toOption.toVector
+            .flatMap(_.document.data.values)
+            .collect {
+              case model: raider.dsl.lineage.data.NodeData.ModelCallData =>
+                model
+            }
+            .lastOption
+          _ <- ZIO.attempt {
+            val current = raider.cli.lineage.EnvPinning.currentEnv()
+            Files.writeString(
+              runDir.resolve("toolchain.json"),
+              s"""{"scala":"3.8.2-cts","jdk":"${current.jdkVersion}","raider":"${current.raiderVersion}"}""",
+              UTF_8
+            )
+          }.orDie
+          divergent <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(runDir, workspace, None)
+          )
+        yield assertTrue(
+          chat.size == 1,
+          Files.isRegularFile(runDir.resolve("events.jsonl")),
+          events.contains("Terminal"),
+          events.contains("fs_read"),
+          events.contains("Succeeded"),
+          Files.isRegularFile(runDir.resolve("lineage.scala")),
+          Files.isRegularFile(runDir.resolve("lineage-data.json")),
+          Files.isRegularFile(runDir.resolve("lineage-commit.json")),
+          pin == Right(
+            raider.cli.lineage.EnvPinning.PinnedEnv(
+              raider.cli.lineage.EnvPinning.currentEnv().scalaVersion,
+              raider.cli.lineage.EnvPinning.currentEnv().jdkVersion,
+              raider.cli.lineage.EnvPinning.currentEnv().raiderVersion,
+              None
+            )
+          ),
+          snapshot.isRight,
+          recordedFinal.exists(
+            _.response == "The fixture was read successfully."
+          ),
+          chat.headOption.exists(_.path == runDir.toString),
+          Files.isRegularFile(
+            raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
+          ),
+          matching.isInstanceOf[raider.cli.lineage.ReplayCli.Verdict.Match],
+          !raider.cli.lineage.ReplayCli
+            .render(matching)
+            .contains("reproduced in a different environment"),
+          divergent.isInstanceOf[
+            raider.cli.lineage.ReplayCli.Verdict.DifferentEnvironment
+          ],
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .startsWith("reproduced in a different environment:"),
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .contains("verdict: match")
+        )
+      },
+      test(
+        "LIN8B-02: failed chat publication leaves no successful catalog record"
+      ) {
+        for
+          runsRoot <- ZIO
+            .attempt(Files.createTempDirectory("raider-chat-failed-publish"))
+            .orDie
+          result <- ZIO.attempt {
+            ChatLineageExport.publish(
+              runsRoot,
+              JobId("failed-publication"),
+              Vector.empty,
+              Map.empty,
+              None
+            )
+          }.orDie
+          catalog <- ZIO
+            .attempt(
+              raider.cli.lineage.CatalogStore.load(
+                raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
+              )
+            )
+            .orDie
+        yield assertTrue(
+          result.isLeft,
+          catalog.left.exists(
+            _.isInstanceOf[raider.cli.lineage.CatalogStoreError.Missing]
+          ),
+          !Files.exists(raider.cli.lineage.CatalogStore.catalogFile(runsRoot))
         )
       },
       test(
@@ -367,8 +572,9 @@ object TaskCaptureSpec extends ZIOSpecDefault:
             Right(after.map(_.turnId).toList)
         )
       }
-    ) @@ TestAspect.withLiveClock
-    // RAI-178: runJob's bounded ensurings (awaitCaughtUp) poll on the ambient
-    // clock; a fiber.interrupt mid-run freezes them on the never-advanced
-    // TestClock (fiber-verified; docs/work/records/RAI-178.md). Live clock =
-    // the production CLI discipline; assertions unchanged.
+    ) @@ TestAspect.sequential @@ TestAspect.withLiveClock
+  // RAI-178: runJob's bounded ensurings (awaitCaughtUp) poll on the ambient
+  // clock; a fiber.interrupt mid-run freezes them on the never-advanced
+  // TestClock (fiber-verified; docs/work/records/RAI-178.md). Live clock =
+
+  // the production CLI discipline; assertions unchanged.

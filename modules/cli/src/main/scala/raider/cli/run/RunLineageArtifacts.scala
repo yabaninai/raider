@@ -98,7 +98,8 @@ object RunLineageArtifacts:
       workDir: Path,
       graph: SessionGraph,
       wire: Vector[LineageEnvelope],
-      provenance: Option[LineagePayload.RunProvenance]
+      provenance: Option[LineagePayload.RunProvenance],
+      modelResponses: Map[Int, String] = Map.empty
   ): Either[ArtifactError, Written] =
     try
       val source = workDir.resolve(SourceName)
@@ -116,7 +117,7 @@ object RunLineageArtifacts:
           workDir,
           data,
           source,
-          documentOf(graph, wire, provenance),
+          documentOf(graph, wire, provenance, modelResponses),
           rendered
         )
       yield Written(source, data)
@@ -160,7 +161,8 @@ object RunLineageArtifacts:
   private def documentOf(
       graph: SessionGraph,
       wire: Vector[LineageEnvelope],
-      provenance: Option[LineagePayload.RunProvenance]
+      provenance: Option[LineagePayload.RunProvenance],
+      modelResponses: Map[Int, String]
   ): LineageDataDocument =
     // One pass over the run's own envelopes (frozen payloads, joined child
     // segments included): the two payload summaries the wire actually exports
@@ -198,7 +200,7 @@ object RunLineageArtifacts:
           m.model,
           m.round,
           prompt = "",
-          response = "",
+          response = modelResponses.getOrElse(m.round, ""),
           usage
             .get((jobOf(m.id.value), m.round))
             .map(s =>
