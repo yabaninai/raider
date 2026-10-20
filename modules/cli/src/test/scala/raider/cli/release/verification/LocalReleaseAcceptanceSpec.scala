@@ -177,6 +177,19 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           invalid <- Task
             .zio(handler(repo, approved, "04.0.0")(acceptedContext(candidate)))
             .either
+          buildFailure <- Task
+            .zio(
+              handler(
+                repo,
+                approved,
+                "4.0.2",
+                build = _ =>
+                  Task.fail(
+                    raider.core.RaiderError.Compilation("fixture build failure")
+                  )
+              )(acceptedContext(candidate))
+            )
+            .either
           existingTag <- ReleaseStage.git(
             repo,
             List("tag", "v4.0.1", candidate.headRevision.get)
@@ -200,10 +213,20 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
             repo,
             List("tag", "--list", "v4.0.0")
           )
+          buildFailureTag <- ReleaseStage.git(
+            repo,
+            List("tag", "--list", "v4.0.2")
+          )
+          buildFailureArtifacts <- ZIO.attempt(
+            !Files.exists(repo.resolve("artifacts/release/4.0.2"))
+          )
         yield assertTrue(
           first.successful,
           duplicate.isLeft,
           invalid.isLeft,
+          buildFailure.isLeft,
+          buildFailureArtifacts,
+          buildFailureTag.trim.isEmpty,
           existingTagResult.isLeft,
           invalidArtifacts,
           unchanged.contains("release notes"),
@@ -267,7 +290,8 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
       repo: Path,
       auth: CheckpointDispatch,
       version: String,
-      after: () => Task[Unit] = () => Task.succeed(())
+      after: () => Task[Unit] = () => Task.succeed(()),
+      build: Path => Task[Unit] = _ => Task.succeed(())
   ): Handler =
     LocalReleaseHandler(
       context =>
@@ -283,7 +307,7 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
             "review",
             "integration"
           ),
-          _ => Task.succeed(()),
+          build,
           after
         ),
       auth
