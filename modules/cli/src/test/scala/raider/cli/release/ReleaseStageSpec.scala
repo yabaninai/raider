@@ -591,7 +591,7 @@ object ReleaseStageSpec extends ZIOSpecDefault:
       candidate,
       Some(decisionPath),
       capabilities,
-      requestPath
+      Some(requestPath)
     )
 
   private def checkpointDispatch(
@@ -599,10 +599,10 @@ object ReleaseStageSpec extends ZIOSpecDefault:
       candidate: SdlcEvidence.CandidateIdentity,
       decision: Option[java.nio.file.Path],
       capabilities: Set[String],
-      requestPath: java.nio.file.Path = null
+      requestPath: Option[java.nio.file.Path] = None
   ): CheckpointDispatch =
     val request =
-      Option(requestPath).getOrElse(repo.resolve(".git/approval-release.json"))
+      requestPath.getOrElse(repo.resolve(".git/approval-release.json"))
     CheckpointDispatch(
       "local-release",
       candidate,
