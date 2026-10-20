@@ -3170,7 +3170,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "ready"
+      "status": "accepted"
     },
     {
       "id": "LIN-07",
@@ -5325,7 +5325,7 @@
       "title": "Independently verify the local-only release contract",
       "milestone": "M1",
       "dependencies": ["RAI-117", "RAI-164", "RAI-165", "RAI-166", "RAI-167", "RAI-169"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/cli/src/test/scala/raider/cli/release/verification/**", "contracts/acceptance/sdlc/release/**", "docs/acceptance/sdlc/release/**"],
       "profiles": ["static", "unit", "contracts", "release"],
       "behavior": "Independent SDLC-05 verifier in disposable repositories: SemVer/changelog/local tag/artifacts/checksums/provenance, existing version/tag, build failure, interruption/reconcile; assert absence of push/publish/deploy. Estimate 8–16 h (packet V2).",
@@ -5575,7 +5575,7 @@
       "title": "LIN-06.b: CLI live-rerun wiring scope",
       "milestone": "LIN",
       "dependencies": ["LIN-06", "LIN-03", "RAI-173"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/lineage/**",
         "modules/runtime/src/test/scala/raider/runtime/lineage/**",

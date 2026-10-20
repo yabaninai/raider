@@ -180,7 +180,7 @@ Status: accepted. Milestone: LIN. Dependencies: LIN-02, LIN-03.
 
 ## LIN-06: Live rerun, mutation isolation, and diff report
 
-Status: ready. Milestone: LIN. Dependencies: LIN-05.
+Status: accepted. Milestone: LIN. Dependencies: LIN-05.
 
 **Scenario and contract.** Opt-in live rerun makes real calls. Mutating operations run only in an isolated WS copy (RecoveryClass policy); enforce a budget; report the diff between the live and recorded graphs.
 
@@ -204,7 +204,7 @@ Status: ready. Milestone: LIN. Dependencies: LIN-05.
 
 ## RAI-182: LIN-06.b: CLI live-rerun wiring scope
 
-Status: ready. Milestone: LIN. Dependencies: LIN-06, LIN-03, RAI-173.
+Status: accepted. Milestone: LIN. Dependencies: LIN-06, LIN-03, RAI-173.
 
 **Scenario and contract.** Authorize the runtime-owned live-rerun seam needed by LIN-06 without widening its parent paths: a runtime lineage rerun backend implemented by CLI ReplayHarness, fresh live execution against fresh inputs resolved through pointer-aware LineageSnapshot, and IsolatedRerun live-mode wiring. Preserve recorded provenance and ADR-033/ADR-031 honesty: no replay of historical mutations and no durable-resume claims. Add LIN6-live acceptance for success, budget-bound refusal, and mid-rerun cancellation with honest interruption and prior-snapshot readability.
 

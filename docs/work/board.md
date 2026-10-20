@@ -1,6 +1,15 @@
 # Raider Execution Board
 
-## 2026-10-20 — SDLC release chain complete (RAI-168/181); one card left
+## 2026-10-20 — ADR-030 SDLC implementation line COMPLETE
+
+- **Integrated merges:** RAI-170 from `lane/rai-170` merged as `dbb1e71ce2b055ed65c45bf68801ddd6d6fbf8e7`; RAI-182 from `lane/rai-182` merged as `2469e04ca6e2c695c29c874494e725f036b5e433`. RAI-170's independent local-release verification and RAI-182's authorized LIN-06 live-rerun wiring are integrated.
+- **Statuses and dependency ripple:** RAI-164/165/166/167/168/169/170/174/179/180/181 are accepted; RAI-182 is accepted. LIN-06 is accepted on integrated evidence from LIN-15 scripted acceptance, RAI-182 live-wiring acceptance, and the protocol/regression suites. LIN-07 remains ready (LIN-05 accepted); LIN-08 remains ready (LIN-03 and LIN-05 accepted). These are readiness statuses, not acceptance claims.
+- **LIN-06 acceptance:** `sbt --batch 'raiderCli/testOnly raider.cli.lineage.LiveRerunAcceptanceSpec'` exited 0 (3 passed); `sbt --batch 'raiderCli/testOnly raider.cli.lineage.LiveRerunScriptedAcceptanceSpec raider.cli.lineage.IsolatedRerunSpec raider.cli.lineage.ReplayHarnessSpec raider.cli.lineage.WorkspaceIsolationSpec'` exited 0 (16 passed). Live fixtures use a local scripted backend; no real-provider call or paid call is claimed.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification); `make quality-changed QUALITY_EXECUTE=1` exited 0, all 10 fast gates passed, timeout false, manifest `artifacts/quality/20261020-063032-24528-0001/manifest.json`; `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0, all 8 listed gates passed, timeout false, manifest `artifacts/quality/20261020-063731-29297-0001/manifest.json`; `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0, 202 cards. After task-status synchronization, changed classification selected `docs`, and the execute rerun passed `plan-validate`, exit 0, timeout false; manifest `artifacts/quality/20261020-064718-41662-0001/manifest.json`. No retry was needed; no timeout or real red occurred. The `release` profile is not present in the registry and is not claimed passed.
+- **Scope honesty:** verification used local stands/disposable repositories only; no hosted-forge claim, push/publish/deploy release action, or real provider execution is made. TokenRouter consumer recheck remains pending its packet, and the live-wire cap remains awaited from the owner.
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and distinct from the passing integrated gates; it was not observed red.
+
+## 2026-10-20 — SDLC release chain complete before RAI-170 verification
 
 - **Integrated merge:** RAI-181 from `lane/rai-181` merged as `84d895faca61ed5ed4994275e1728ff52a8d7832`.
 - **Ruling and statuses:** Round-2 review approved. RAI-181 closes RAI-168's remaining LocalRelease stage/evidence work; RAI-168 is accepted per reviewer ruling for SDLC-REL-01..03, and RAI-181 is accepted. Chain status: 164/165/166/167/168/169/174/179/180/181 done — ONLY RAI-170 (independent release verification) remains to close ADR-030's implementation line. RAI-182 is registered (LIN-06.b).
