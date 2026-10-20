@@ -3,6 +3,7 @@ package raider.runtime.lineage.replay
 import raider.core.RaiderError
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.lineage.model.{NodeId, SessionGraph, SessionNode}
+import java.nio.file.Path
 import zio.{Scope, ZIO}
 
 /** A typed selection of a phase or any graph node whose descendants form a
@@ -129,6 +130,46 @@ object PartialRerun:
           }
           Right(graph.copy(nodes = graphSlice))
     }
+
+  /** Execute a planned partial graph through the live rerun seam. The committed
+    * graph and resolved input values provide provenance only; the backend is
+    * given the selected slice and the caller's fresh prompt/model. A backend
+    * failure or interruption remains a failure/interruption and never returns
+    * partial state as a completed result.
+    */
+  def executeLive(
+      backend: RerunBackend,
+      graph: SessionGraph,
+      selection: ReplaySelection,
+      inputs: PartialReplayInputs,
+      workspace: Path,
+      prompt: String,
+      model: String,
+      snapshotGeneration: String,
+      limits: BudgetLimits,
+      maxRounds: Int
+  ): ZIO[Scope, RaiderError, PartialRerunExecution] =
+    val partialBackend = new PartialRerunBackend:
+      override def execute(
+          request: PartialRerunRequest
+      ): ZIO[Scope, RaiderError, PartialRerunExecution] =
+        LiveRerun
+          .execute(
+            backend,
+            RerunRequest(
+              workspace,
+              prompt,
+              model,
+              snapshotGeneration,
+              request.selectedGraph,
+              request.limits,
+              request.maxRounds
+            )
+          )
+          .map(result =>
+            PartialRerunExecution(request.invocationId, result.graph)
+          )
+    execute(partialBackend, graph, selection, inputs, limits, maxRounds)
 
   def execute(
       backend: PartialRerunBackend,

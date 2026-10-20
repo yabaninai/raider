@@ -3,7 +3,7 @@ package raider.runtime.lineage.replay
 import raider.core.{RaiderError, RootId, SessionId}
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.lineage.model.{DataRef, NodeId, SessionGraph, SessionNode}
-import zio.{Scope, ZIO}
+import zio.{Promise, Scope, ZIO}
 import zio.test.*
 
 object PartialRerunSpec extends ZIOSpecDefault:
@@ -123,5 +123,69 @@ object PartialRerunSpec extends ZIOSpecDefault:
         )
         .either
         .map(outcome => assertTrue(outcome.isLeft))
+    },
+    test("LIN7-BUDGET-EXHAUSTED returns typed refusal during backend work") {
+      val limits = BudgetLimits.make(maxAttempts = 1).toOption.get
+      for
+        entered <- Promise.make[Nothing, Unit]
+        outcome <- PartialRerun
+          .execute(
+            new PartialRerunBackend:
+              def execute(
+                  request: PartialRerunRequest
+              ): ZIO[Scope, RaiderError, PartialRerunExecution] =
+                entered.succeed(()) *> ZIO.fail(
+                  RaiderError.LocalBudgetExceeded("partial rerun attempt limit")
+                )
+            ,
+            graph,
+            ReplaySelection.Phase(phaseA),
+            PartialReplayInputs(Map.empty),
+            limits,
+            2
+          )
+          .either
+          .fork
+        _ <- entered.await.timeoutFail(
+          new AssertionError("backend did not start")
+        )(
+          zio.Duration.fromSeconds(2)
+        )
+        result <- outcome.join
+      yield assertTrue(
+        result == Left(
+          RaiderError.LocalBudgetExceeded("partial rerun attempt limit")
+        )
+      )
+    },
+    test("LIN7-CANCEL interrupts partial work without producing a result") {
+      val limits = BudgetLimits.make().toOption.get
+      for
+        entered <- Promise.make[Nothing, Unit]
+        finalized <- Promise.make[Nothing, Unit]
+        fiber <- PartialRerun
+          .execute(
+            new PartialRerunBackend:
+              def execute(
+                  request: PartialRerunRequest
+              ): ZIO[Scope, RaiderError, PartialRerunExecution] =
+                (entered.succeed(()) *> ZIO.never)
+                  .ensuring(finalized.succeed(()).unit)
+            ,
+            graph,
+            ReplaySelection.Phase(phaseA),
+            PartialReplayInputs(Map.empty),
+            limits,
+            2
+          )
+          .fork
+        _ <- entered.await.timeoutFail(
+          new AssertionError("backend did not start")
+        )(
+          zio.Duration.fromSeconds(2)
+        )
+        exit <- fiber.interrupt
+        cleaned <- finalized.await.as(true).timeout(zio.Duration.fromSeconds(2))
+      yield assertTrue(exit.isInterrupted, cleaned.contains(true))
     }
   )
