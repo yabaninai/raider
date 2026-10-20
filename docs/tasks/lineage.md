@@ -226,6 +226,30 @@ Status: accepted. Milestone: LIN. Dependencies: LIN-06, LIN-03, RAI-173.
 
 **Deliverables.** Runtime-owned rerun seam and CLI `ReplayHarness` implementation, live `IsolatedRerun` wiring, LIN6-live normal/budget/cancellation fixtures, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied.
 
+## RAI-183: LIN-08.b: producer-origin lineage scopes + toolchain-pin production
+
+Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-03, RAI-173.
+
+**Scenario and contract.** Complete the LIN-08 producer side: chat sessions publish lineage artifacts through the existing LIN-03 export machinery with scope=chat; headless and campaign entrypoints stamp their respective scopes and write a toolchain.json beside each produced run. The pin uses the ReplayCli consumer contract: scala, jdk, raider, and optional model; unknown model identity remains absent rather than guessed. A chat-produced run is discoverable in the catalog under chat scope with a readable pin, and replay exercises the environment-pin report end to end.
+
+**Context.** LIN-08's catalog, pin reader/comparison, and environment-pin consumer are delivered, but origins are not produced consistently: CHAT has no lineage artifact producer, headless/export paths do not write toolchain.json, and chat/headless/campaign scopes are not auto-assigned. Use the existing LIN-03 publication protocol and ReplayCli environment-pin contract; do not add a parallel export or reader protocol.
+
+**Allowed paths.** `modules/cli/src/main/scala/raider/cli/chat/**` `modules/cli/src/main/scala/raider/cli/run/**` `modules/cli/src/main/scala/raider/cli/lineage/**` `modules/cli/src/test/scala/raider/cli/**` `modules/runtime/src/main/scala/raider/runtime/lineage/**` `modules/runtime/src/test/scala/raider/runtime/**` `docs/lineage.md` `docs/tasks/lineage.md` `docs/work/records/**`
+
+**Acceptance.**
+
+- Normal: LIN8B-01: chat sessions publish lineage using the existing LIN-03 machinery, stamped scope=chat; headless and campaign entrypoints stamp their scopes and write a readable toolchain.json with scala, jdk, raider, and optional model; a chat-produced run is cataloged under chat scope and replay completes with its environment-pin report.
+- Error/adversarial: LIN8B-02: absent or malformed toolchain pins produce the ReplayCli consumer's typed pin status/report without fabricating unknown model identity or hiding a pin discrepancy; failed artifact publication is reported truthfully without a false successful artifact claim.
+- Cancellation/concurrency: LIN8B-03: concurrent chat/headless/campaign runs publish scope and pin artifacts only in their own run directories through the LIN-03 commit-pointer protocol; interruption cannot expose a torn lineage snapshot or a cross-run scope/pin.
+
+**Required gates.** After LIN-08, LIN-03, and RAI-173: `make quality-changed`; `make quality-changed QUALITY_EXECUTE=1`; applicable `static`, `unit`, `contracts`, `ci`, `repl`, and `docs` profiles; verify evidence for each required profile. Full/release aggregates are allowed only if they actually include the complete list. State external prerequisites explicitly; unavailable is not passed.
+
+**Non-goals.** Changing frozen lineage schemas or the RAI-173 commit-pointer protocol; adding a second export/reader path; changing ReplayCli's pin contract or warning-and-attempt behavior; guessing model identity; unrelated catalog, replay, campaign scheduling, or provider behavior; paid calls.
+
+**Compatibility/rollback.** Preserve the existing lineage artifact schemas, commit-pointer semantics, ReplayCli pin field names, and honest unknown-model behavior. Rollback must not leave an artifact that falsely claims successful publication or a pin that was not observed.
+
+**Deliverables.** Chat lineage producer integration, headless/campaign scope and toolchain-pin production, LIN8B-01/02/03 executable fixtures including catalog-to-replay environment-pin reporting, updated relevant contract/example, an actual work record using the template, and current evidence/log hashes. Real paid calls or publication are not implied.
+
 ## LIN-07: Partial replay of phases/subtrees
 
 Status: ready. Milestone: LIN. Dependencies: LIN-05.

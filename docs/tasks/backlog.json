@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 193,
+  "raider_count": 194,
   "companion_count": 3,
   "cards": [
     {
@@ -5595,6 +5595,33 @@
       },
       "non_goals": "Changing the LIN-06 parent scope; replaying historical mutations; durable resume/exactly-once claims; bypassing the LineageSnapshot commit-pointer reader; unrelated replay, lineage schema, or provider changes; paid calls.",
       "context": "LIN-06's live rerun path is CLI-owned: ReplayHarness hard-wires ReplayModelBackend and the recorded prompt, IsolatedRerun invokes that recorded-only harness, and pointer-resolved input comes from LineageSnapshot. Those CLI files are outside LIN-06's allowed runtime-lineage and tools paths. This card authorizes the runtime/CLI seam and live acceptance scope needed for end-to-end live rerun. Dependencies: LIN-06 (in progress), LIN-03, and accepted RAI-173."
+    },
+    {
+      "id": "RAI-183",
+      "title": "LIN-08.b: producer-origin lineage scopes + toolchain-pin production",
+      "milestone": "LIN",
+      "dependencies": ["LIN-08", "LIN-03", "RAI-173"],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "modules/runtime/src/main/scala/raider/runtime/lineage/**",
+        "modules/runtime/src/test/scala/raider/runtime/**",
+        "docs/lineage.md",
+        "docs/tasks/lineage.md",
+        "docs/work/records/**"
+      ],
+      "profiles": ["static", "unit", "contracts", "ci", "repl", "docs"],
+      "behavior": "Complete the LIN-08 producer side: chat sessions publish lineage artifacts through the existing LIN-03 export machinery with scope=chat; headless and campaign entrypoints stamp their respective scopes and write a toolchain.json beside each produced run. The pin uses the ReplayCli consumer contract: scala, jdk, raider, and optional model; unknown model identity remains absent rather than guessed. A chat-produced run is discoverable in the catalog under chat scope with a readable pin, and replay exercises the environment-pin report end to end.",
+      "acceptance": {
+        "normal": "LIN8B-01: chat sessions publish lineage using the existing LIN-03 machinery, stamped scope=chat; headless and campaign entrypoints stamp their scopes and write a readable toolchain.json with scala, jdk, raider, and optional model; a chat-produced run is cataloged under chat scope and replay completes with its environment-pin report.",
+        "error": "LIN8B-02: absent or malformed toolchain pins produce the ReplayCli consumer's typed pin status/report without fabricating unknown model identity or hiding a pin discrepancy; failed artifact publication is reported truthfully without a false successful artifact claim.",
+        "concurrency": "LIN8B-03: concurrent chat/headless/campaign runs publish scope and pin artifacts only in their own run directories through the LIN-03 commit-pointer protocol; interruption cannot expose a torn lineage snapshot or a cross-run scope/pin."
+      },
+      "non_goals": "Changing frozen lineage schemas or the RAI-173 commit-pointer protocol; adding a second export/reader path; changing ReplayCli's pin contract or warning-and-attempt behavior; guessing model identity; unrelated catalog, replay, campaign scheduling, or provider behavior; paid calls.",
+      "context": "LIN-08's catalog, pin reader/comparison, and environment-pin consumer are delivered, but origins are not produced consistently: CHAT has no lineage artifact producer, headless/export paths do not write toolchain.json, and chat/headless/campaign scopes are not auto-assigned. Use the existing LIN-03 publication protocol and ReplayCli environment-pin contract; do not add a parallel export or reader protocol."
     }
   ]
 }
