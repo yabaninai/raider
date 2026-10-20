@@ -28,6 +28,7 @@ No frozen schema, GraphHash, build, gate registry, or task-card changes.
 | LIN7-CANCEL | passed: interrupted work runs finalizer; no result is emitted | `PartialRerunSpec` |
 | LIN7-LIVE-01 | passed: pointer-resolved selected graph dispatched through `RerunBackend`; fresh graph diff detects changed selected output; committed sibling remains unchanged/readable | `PartialLiveRerunAcceptanceSpec` |
 | LIN7-LIVE-HARNESS | passed: CLI `ReplayHarness.liveBackend` executes the selected request through the live seam with a fresh prompt and a local scripted model | `PartialLiveRerunAcceptanceSpec` |
+| LIN7-BUDGET-LIVE | passed: live `ReplayHarness` backend consumes the one-attempt budget during fresh tool/model work and returns typed `LocalBudgetExceeded` | `PartialLiveRerunAcceptanceSpec` |
 | LIN7-CANCEL-LIVE | passed: cancellation interrupts; pointer remains readable; original workspace bytes unchanged; isolated workspace removed | `PartialLiveRerunAcceptanceSpec` |
 
 ## Commands
@@ -35,9 +36,10 @@ No frozen schema, GraphHash, build, gate registry, or task-card changes.
 | argv / command | Exit | Log / manifest |
 | --- | --- | --- |
 | `sbt --batch 'raiderRuntime/testOnly raider.runtime.lineage.replay.PartialRerunSpec' 'raiderCli/compile'` | 0 | runtime six tests passed; CLI compile passed |
-| `sbt --batch scalafmtAll 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | CLI three tests passed, including the real `ReplayHarness.liveBackend` seam |
-| `sbt --batch scalafmtAll 'raiderRuntime/testOnly raider.runtime.lineage.replay.PartialRerunSpec' 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | runtime six and CLI three tests passed |
-| `make quality-changed` (final pre-gates classification) | 0 | classified `contracts`, `static`, `unit`; four intended Scala source/test paths only |
+| `sbt --batch scalafmtAll 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | CLI four tests passed, including live harness budget exhaustion |
+| `sbt --batch scalafmtAll 'raiderRuntime/testOnly raider.runtime.lineage.replay.PartialRerunSpec' 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | runtime six and CLI four tests passed |
+| Focused `LIN7-BUDGET-LIVE` fixture attempt with `maxRounds=2`, `maxAttempts=1` | failed as expected for invalid fixture configuration (`RaiderError.Configuration`); fixture corrected to a valid explicit one-attempt run | Local fixture output; no product change to validation behavior |
+| `make quality-changed` (final pre-gates classification) | 0 | classified `contracts`, `static`, `unit`; the final source delta is the updated CLI acceptance fixture (runtime and CLI wiring are committed in the preceding lane commit) |
 | `make quality-changed QUALITY_EXECUTE=1` | executed after this record was frozen; result and manifest are reported in the completion message | Verification output is reported in the completion message only, as assigned |
 | `make quality-profile PROFILES="static unit contracts runtime"` | executed after this record was frozen; result and manifest are reported in the completion message | Verification output is reported in the completion message only, as assigned |
 | `python3 scripts/quality/quality.py verify <generated manifest> --require <each required profile>` | executed after this record was frozen; result is reported in the completion message | stdout is reported in the completion message only, as assigned |

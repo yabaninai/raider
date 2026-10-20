@@ -10,7 +10,8 @@ import raider.core.{
   CapabilityStatus,
   ModelBackend,
   ModelCapabilities,
-  ModelRequest
+  ModelRequest,
+  ToolCallId
 }
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.lineage.model.{DataRef, NodeId, SessionGraph, SessionNode}
@@ -47,6 +48,40 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
           ModelEvent.Finished(attempt, "stop")
         )
       )
+
+  private final class ToolThenTextStand extends ModelBackend:
+    private val calls = new java.util.concurrent.atomic.AtomicInteger(0)
+
+    override val capabilities = ModelCapabilities(
+      streaming = CapabilityStatus.Supported,
+      tools = CapabilityStatus.Supported,
+      cancellationAck = CapabilityStatus.Supported
+    )
+
+    override def stream(
+        input: ModelRequest
+    ): ZStream[Scope, RaiderError, ModelEvent] =
+      if calls.getAndIncrement() == 0 then
+        ZStream.fromIterable(
+          Vector(
+            ModelEvent.Started(attempt),
+            ModelEvent.ToolCallReady(
+              attempt,
+              ToolCallId("partial-budget-read"),
+              "fs_read",
+              "{\"path\":\"notes.txt\"}"
+            ),
+            ModelEvent.Finished(attempt, "tool_calls")
+          )
+        )
+      else
+        ZStream.fromIterable(
+          Vector(
+            ModelEvent.Started(attempt),
+            ModelEvent.TextDelta(attempt, "unreached second-round answer"),
+            ModelEvent.Finished(attempt, "stop")
+          )
+        )
 
   private def fixture(
       effect: (Path, Path) => ZIO[Any, Throwable, TestResult]
@@ -169,7 +204,7 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
                 freshPrompt,
                 "scripted-partial-model",
                 limits,
-                2,
+                1,
                 backend
               )
               .fork
@@ -225,6 +260,35 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
               result.result.graph.nodes.nonEmpty,
               result.snapshot.generation.nonEmpty
             )
+          }
+      }
+    },
+    test("LIN7-BUDGET-LIVE exhausts the explicit budget during fresh work") {
+      fixture { (workspace, pointer) =>
+        val limits = BudgetLimits.make(maxAttempts = 1).toOption.get
+        val backend = ReplayHarness.liveBackend(new ToolThenTextStand)
+        ZIO
+          .scoped(
+            PartialLiveRerun
+              .run(
+                pointer,
+                workspace,
+                workspace.getParent.resolve("isolated-budget"),
+                ReplaySelection.Subtree(selectedId),
+                freshPrompt,
+                "scripted-partial-model",
+                limits,
+                1,
+                backend
+              )
+              .either
+          )
+          .map {
+            case Left(_: RaiderError.LocalBudgetExceeded) => assertTrue(true)
+            case other =>
+              throw new IllegalStateException(
+                s"expected typed mid-work budget refusal, got $other"
+              )
           }
       }
     }
