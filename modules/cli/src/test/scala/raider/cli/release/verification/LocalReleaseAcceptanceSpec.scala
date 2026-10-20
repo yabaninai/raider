@@ -140,29 +140,54 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
             label = "denied"
           )
           cases = List(
-            ("3.4.6", foreignContext, validDispatch, "IntegrationRejected"),
-            ("3.4.7", digestContext, validDispatch, "ChecksRejected"),
-            ("3.4.8", noEvidence, validDispatch, "MissingChecks"),
-            ("3.4.9", rejectedContext, validDispatch, "ChecksRejected"),
+            (
+              "3.4.6",
+              foreignContext,
+              validDispatch,
+              "release refused: IntegrationRejected"
+            ),
+            (
+              "3.4.7",
+              digestContext,
+              validDispatch,
+              "release refused: ChecksRejected"
+            ),
+            (
+              "3.4.8",
+              noEvidence,
+              validDispatch,
+              "release refused: MissingChecks"
+            ),
+            (
+              "3.4.9",
+              rejectedContext,
+              validDispatch,
+              "release refused: ChecksRejected"
+            ),
             (
               "3.4.10",
               acceptedContext(candidate),
               expiredDispatch,
-              "Expired"
+              "release refused: Expired"
             ),
             (
               "3.4.11",
               acceptedContext(candidate),
               staleDispatch,
-              "CandidateMismatch"
+              "release refused: CandidateMismatch"
             ),
             (
               "3.4.12",
               acceptedContext(candidate),
               noDecision,
-              "MissingDecision"
+              "release refused: MissingDecision"
             ),
-            ("3.4.13", acceptedContext(candidate), deniedDispatch, "Denied")
+            (
+              "3.4.13",
+              acceptedContext(candidate),
+              deniedDispatch,
+              "release refused: Denied"
+            )
           )
           outcomes <- ZIO.foreach(cases) { case (version, context, auth, _) =>
             Task
@@ -180,8 +205,9 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           localTags <- ReleaseStage.git(repo, List("tag", "--list", "v3.4.*"))
         yield assertTrue(
           outcomes.forall(!_._2.successful),
-          outcomes.zip(cases).forall { case ((_, result), (_, _, _, reason)) =>
-            result.detail.contains(reason)
+          outcomes.zip(cases).forall {
+            case ((_, result), (_, _, _, expectedDetail)) =>
+              result.detail == expectedDetail
           },
           absent.forall(identity),
           localTags.trim.isEmpty
@@ -330,6 +356,22 @@ object LocalReleaseAcceptanceSpec extends ZIOSpecDefault:
           duplicateTags.trim == "v4.0.0",
           existingTag.trim.isEmpty,
           existingTagList.trim == "v4.0.1"
+        )
+      }
+    },
+    test("SDLC-VREL-02 dirty repository is refused by the clean-tree guard") {
+      withRepo { repo =>
+        for
+          candidate <- candidateFor(repo)
+          _ <- ZIO.attempt(
+            Files.writeString(repo.resolve("uncommitted.txt"), "dirty\n")
+          )
+          result <- releaseRefusal(repo, candidate, "4.1.0")
+        yield assertTrue(
+          isTypedReleaseRefusal(
+            result,
+            "release requires a clean accepted revision"
+          )
         )
       }
     },

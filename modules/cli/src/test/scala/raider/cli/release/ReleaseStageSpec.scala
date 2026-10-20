@@ -447,8 +447,8 @@ object ReleaseStageSpec extends ZIOSpecDefault:
         yield assertTrue(
           !noCapability.successful,
           !noCheckpoint.successful,
-          noCapability.detail.contains("CapabilityMissing"),
-          noCheckpoint.detail.contains("MissingDecision"),
+          noCapability.detail == "release refused: CapabilityMissing",
+          noCheckpoint.detail == "release refused: MissingDecision",
           !artifacts,
           tags.trim.isEmpty
         )
