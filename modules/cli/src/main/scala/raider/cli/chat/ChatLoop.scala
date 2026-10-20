@@ -467,6 +467,9 @@ object ChatLoop:
             .zipRight(renderer.fiber.interrupt)
         )
       exported <- renderer.exported.get
+      // StatusLedger publishes the JobManager's actual Terminal before await
+      // settles. Export the captured stream as-is; the lineage publisher must
+      // refuse an incomplete stream rather than synthesize a closing marker.
       _ <- onSettled(handle.id, exported)
     yield result
 

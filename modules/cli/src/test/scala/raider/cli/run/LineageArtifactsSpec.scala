@@ -522,12 +522,144 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           jar <- ZIO.attempt(makeBundleJar(work)).orDie
           outcome <- HeadlessRunner.run(bundleArgs(jar, work))
           summary <- ZIO.attempt(summaryOf(outcome.workDir)).orDie
+          catalog <- ZIO
+            .attempt(
+              raider.cli.lineage.CatalogStore.load(
+                raider.cli.lineage.CatalogStore.catalogFile(work)
+              )
+            )
+            .orDie
         yield assertTrue(
           outcome.exitCode == 0,
           summary.contains("- lineage artifacts: unavailable ("),
           !Files.exists(outcome.workDir.resolve("lineage.scala")),
           !Files.exists(outcome.workDir.resolve("lineage-data.json")),
-          Files.isRegularFile(outcome.workDir.resolve("toolchain.json"))
+          Files.isRegularFile(outcome.workDir.resolve("toolchain.json")),
+          catalog.toOption.exists(
+            _.exists(record =>
+              record.path == outcome.workDir.toString &&
+                record.scope == raider.cli.lineage.CatalogScope.Campaign &&
+                record.complete
+            )
+          )
+        )
+      }
+    },
+    test(
+      "LIN8B-01: catalog-referenced run replays with a clean matching pin and an annotated divergent pin"
+    ) {
+      ZIO.scoped {
+        for
+          output <- ZIO.attempt(tempDir()).orDie
+          runDir <- ZIO
+            .attempt(
+              Files.createDirectory(output.resolve("work-catalog-replay"))
+            )
+            .orDie
+          document = raider.cli.lineage.ReplayHarness.document
+          graph <- ZIO
+            .attempt(
+              raider.cli.lineage.ReplayHarness.recordedGraph(document)
+            )
+            .orDie
+          _ <- ZIO.attempt {
+            val published = raider.cli.lineage.LineageSnapshot.publish(
+              runDir,
+              document.toJson.getBytes(UTF_8),
+              "// catalog replay fixture\n".getBytes(UTF_8)
+            )
+            published.fold(
+              error => throw new IllegalStateException(error.toString),
+              identity
+            )
+            raider.cli.lineage.ToolchainPin
+              .write(runDir, None)
+              .fold(
+                error => throw new IllegalStateException(error),
+                identity
+              )
+            val entry = raider.cli.lineage.CatalogEntry(
+              path = runDir,
+              rootId = graph.rootId.value,
+              sessionId = Some(graph.sessionId.value),
+              nodeCount = graph.nodes.size,
+              hash = raider.runtime.lineage.model.GraphHash(graph),
+              complete = true,
+              tailReported = None,
+              scannedAtMs = 0L
+            )
+            val file = raider.cli.lineage.CatalogStore.catalogFile(output)
+            raider.cli.lineage.CatalogStore
+              .append(
+                file,
+                raider.cli.lineage.CatalogStore.recordsOf(
+                  Vector(entry),
+                  Some(
+                    raider.cli.lineage.PinnedSummary.of(
+                      raider.cli.lineage.EnvPinning.currentEnv()
+                    )
+                  ),
+                  raider.cli.lineage.CatalogScope.Campaign
+                )
+              )
+              .fold(
+                error => throw new IllegalStateException(error.toString),
+                identity
+              )
+          }.orDie
+          workspace <- ZIO.attempt {
+            val path =
+              Files.createTempDirectory("raider-lin8b-replay-workspace")
+            Files.writeString(
+              path.resolve(raider.cli.lineage.ReplayHarness.FixtureFile),
+              raider.cli.lineage.ReplayHarness.FixtureFileContent,
+              UTF_8
+            )
+            path
+          }.orDie
+          catalog <- ZIO
+            .attempt(
+              raider.cli.lineage.CatalogStore.load(
+                raider.cli.lineage.CatalogStore.catalogFile(output)
+              )
+            )
+            .orDie
+          referenced = catalog.toOption.toVector.flatten.find(_.complete)
+          referencedRun = referenced
+            .map(record => Path.of(record.path))
+            .getOrElse(output)
+          matching <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(referencedRun, workspace, None)
+          )
+          _ <- ZIO.attempt {
+            val current = raider.cli.lineage.EnvPinning.currentEnv()
+            Files.writeString(
+              referencedRun.resolve("toolchain.json"),
+              s"""{"scala":"3.8.2-cts","jdk":"${current.jdkVersion}","raider":"${current.raiderVersion}"}""",
+              UTF_8
+            )
+          }.orDie
+          divergent <- raider.cli.lineage.ReplayCli.run(
+            raider.cli.lineage.ReplayCli.Config(referencedRun, workspace, None)
+          )
+        yield assertTrue(
+          referenced.exists(
+            _.scope == raider.cli.lineage.CatalogScope.Campaign
+          ),
+          referenced.exists(_.path == runDir.toString),
+          matching.isInstanceOf[raider.cli.lineage.ReplayCli.Verdict.Match],
+          !raider.cli.lineage.ReplayCli
+            .render(matching)
+            .contains("reproduced in a different environment"),
+          divergent.isInstanceOf[
+            raider.cli.lineage.ReplayCli.Verdict.DifferentEnvironment
+          ],
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .startsWith("reproduced in a different environment:"),
+          raider.cli.lineage.ReplayCli
+            .render(divergent)
+            .contains("verdict: match")
         )
       }
     },

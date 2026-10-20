@@ -20,6 +20,9 @@ import scala.util.control.NonFatal
 
 /** Publishes one completed chat turn through the existing event and lineage
   * exporters. Each turn has an isolated run directory and a Chat catalog scope.
+  * The captured stream must already contain the job manager's real terminal;
+  * strict reduction refuses an incomplete or contradictory stream, and this
+  * publisher never fabricates a terminal marker.
   */
 private[chat] object ChatLineageExport:
 

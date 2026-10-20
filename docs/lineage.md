@@ -123,10 +123,11 @@ Replay of a **named phase** or **subtree** is required (LIN-07):
 
 Lineage is built for all session scopes (ADR-027 §2, “Scope”):
 
-1. **Chat sessions**: the call tree of an interactive session.
-2. **Headless runs**: one run = one tree (currently, `raider run --out ...` writes
-   the run's `events.jsonl`; lineage artifacts arrive with P-LIN).
-3. **Nightly campaigns**: a **tree catalog** containing the campaign's runs, with
+1. **Chat sessions**: each completed chat turn publishes its captured job stream
+   through the existing event/lineage writers into an isolated `Chat` catalog run.
+2. **Headless runs**: one run = one tree; `raider run --out ...` writes its
+   lineage artifacts and toolchain pin beside the run events.
+3. **Campaigns**: a **tree catalog** containing the campaign's runs, with
    a graph-hash and reproducibility status for each (LIN8-01).
 
 Catalog requirements:
@@ -139,6 +140,13 @@ Catalog requirements:
 - parallel runs add entries through **atomic append** (LIN8-03).
 - producers assign the origin scope (`Chat`, `Headless`, or `Campaign`) when
   appending records; consumers filter catalog records by that stamped scope.
+- each chat turn is captured from subscription through settlement. The
+  `JobManager`/`StatusLedger` emits the actual terminal event before settlement;
+  the chat exporter writes that stream unchanged and strict reduction refuses a
+  missing terminal or unmatched finish. It does not append a synthetic marker.
+- headless and campaign producers write `toolchain.json` with the ReplayCli
+  fields `scala`, `jdk`, `raider`, and an optional observed `model`; unknown
+  model identity is omitted.
 - entries with run artifacts refer to the `lineage-commit.json` manifest and its
   generation, never to the mutable `lineage-data.json` or `lineage.scala` names;
   the reader verifies the committed pair before recording the reference;
