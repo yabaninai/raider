@@ -161,7 +161,9 @@ object PartialRerun:
               prompt,
               model,
               snapshotGeneration,
+              request.recordedGraph,
               request.selectedGraph,
+              request.inputs,
               request.limits,
               request.maxRounds
             )

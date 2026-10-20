@@ -14,7 +14,7 @@ import raider.core.{
   ToolCallId
 }
 import raider.runtime.budget.BudgetLimits
-import raider.runtime.lineage.model.{DataRef, NodeId, SessionGraph, SessionNode}
+import raider.runtime.lineage.model.NodeId
 import raider.runtime.lineage.replay.*
 import zio.*
 import zio.json.*
@@ -123,25 +123,13 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
 
   def spec = suite("PartialLiveRerun LIN-07")(
     test(
-      "LIN7-LIVE-01 reads the committed pointer and diffs fresh selected work"
+      "LIN7-LIVE-01 real ReplayHarness executes selected graph with resolved inputs"
     ) {
       fixture { (workspace, pointer) =>
-        val dispatched =
-          new java.util.concurrent.atomic.AtomicReference[SessionGraph]()
-        val backend = new RerunBackend:
-          override def execute(
-              request: RerunRequest
-          ): ZIO[Scope, RaiderError, RerunExecution] =
-            dispatched.set(request.recordedGraph)
-            val rerun = request.recordedGraph.copy(nodes =
-              request.recordedGraph.nodes.map {
-                case model: SessionNode.ModelCall =>
-                  model.copy(dataRef = DataRef("fresh-model-output"))
-                case other => other
-              }
-            )
-            ZIO.succeed(RerunExecution("fresh scripted result", rerun))
-
+        val observedPrompt =
+          new java.util.concurrent.atomic.AtomicReference[String]("")
+        val backend =
+          ReplayHarness.liveBackend(new FreshAnswerStand(observedPrompt))
         val limits = BudgetLimits.make().toOption.get
         ZIO
           .scoped(
@@ -165,14 +153,13 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
               val unchangedSibling = originalGraph.nodes.find(_.id == siblingId)
               assertTrue(
                 result.snapshot.generation == committedAgain.generation,
-                dispatched.get().nodes.map(_.id) == Vector(selectedId),
-                dispatched.get().nodes.head.inputs.isEmpty,
+                observedPrompt.get().contains(selectedId.value),
+                !observedPrompt.get().contains(siblingId.value),
+                observedPrompt
+                  .get()
+                  .contains("hello from the fixture workspace"),
                 result.diff.isLeft,
-                result.result.graph.nodes.exists {
-                  case model: SessionNode.ModelCall =>
-                    model.dataRef == DataRef("fresh-model-output")
-                  case _ => false
-                },
+                result.result.graph.nodes.nonEmpty,
                 unchangedSibling == originalGraph.nodes.find(_.id == siblingId),
                 result.snapshot.document == committedAgain.document
               )
@@ -255,10 +242,25 @@ object PartialLiveRerunAcceptanceSpec extends ZIOSpecDefault:
             )
           )
           .map { result =>
+            val committedAgain = LineageSnapshot.read(pointer).toOption.get
+            val committedGraph = ReplayHarness.recordedGraph(
+              committedAgain.document
+            )
             assertTrue(
-              observedPrompt.get() == freshPrompt,
+              observedPrompt.get().startsWith(freshPrompt),
+              observedPrompt.get().contains(selectedId.value),
+              !observedPrompt.get().contains(siblingId.value),
+              observedPrompt.get().contains("hello from the fixture workspace"),
               result.result.graph.nodes.nonEmpty,
-              result.snapshot.generation.nonEmpty
+              result.snapshot.generation.nonEmpty,
+              result.snapshot.document == committedAgain.document,
+              result.snapshot.document.nodes.find(_.id == siblingId.value) ==
+                committedAgain.document.nodes.find(_.id == siblingId.value),
+              ReplayHarness
+                .recordedGraph(result.snapshot.document)
+                .nodes
+                .find(_.id == siblingId) == committedGraph.nodes
+                .find(_.id == siblingId)
             )
           }
       }
