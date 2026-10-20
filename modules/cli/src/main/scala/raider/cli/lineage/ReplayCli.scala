@@ -89,7 +89,8 @@ object ReplayCli:
   final case class Config(
       runDir: Path,
       workspace: Path,
-      dataFile: Option[Path]
+      dataFile: Option[Path],
+      toolchainFile: Option[Path] = None
   )
 
   /** Closed typed-failure set of the CLI layer (LIN10-02): one case per frozen
@@ -105,6 +106,7 @@ object ReplayCli:
       */
     case Data(error: StoreError)
     case Snapshot(error: LineageSnapshot.Error)
+    case Pinning(error: EnvPinning.PinError)
 
     /** The pre-run byte snapshot of the original workspace was refused by the
       * LIN-06C guard (symlink/special entry, file-count bound).
@@ -139,6 +141,12 @@ object ReplayCli:
   enum Verdict:
     case Match(graphHash: String, nodes: Int)
     case Mismatch(diff: GraphDiff, meta: RunDiffMeta)
+
+    case DifferentEnvironment(
+        verdict: Verdict,
+        fields: Vector[(String, String, String)]
+    )
+
     case Failed(failure: Failure)
   end Verdict
 
@@ -209,6 +217,8 @@ object ReplayCli:
         for
           doc <- readDoc(config)
           expected <- recordedGraphOf(doc)
+          pinVerdict <- readEnvironment(config)
+          _ <- warnBeforeAttempt(pinVerdict)
           parent <- ZIO.acquireRelease(acquireStagingParent)(
             releaseStagingParent
           )
@@ -217,7 +227,10 @@ object ReplayCli:
           replayRun <- ReplayHarness
             .replay(isolated, doc)
             .mapError(Failure.Replay(_))
-          verdict = compareStep(expected, replayRun)
+          verdict = withEnvironment(
+            compareStep(expected, replayRun),
+            pinVerdict
+          )
           verified <- verifyIsolated(config.workspace, before).either
         yield verified match
           case Right(())   => verdict
@@ -246,6 +259,47 @@ object ReplayCli:
         ZIO.fromEither(LineageSnapshot.read(path)).mapError(Failure.Snapshot(_))
       )
       .map(_.document)
+
+  /** The pin is optional for older runs. When present, compare it before any
+    * replay execution; malformed pin data is an input failure, not an
+    * unreported fallback to the current environment.
+    */
+  private def readEnvironment(
+      config: Config
+  ): ZIO[Any, Failure, EnvPinning.PinVerdict] =
+    val path =
+      config.toolchainFile.getOrElse(config.runDir.resolve("toolchain.json"))
+    EnvPinning.readPinned(path) match
+      case Left(_: EnvPinning.PinError.Missing) =>
+        ZIO.succeed(EnvPinning.PinVerdict.Matching)
+      case Left(error) => ZIO.fail(Failure.Pinning(error))
+      case Right(pinned) =>
+        ZIO.succeed(EnvPinning.compare(pinned, EnvPinning.currentEnv()))
+
+  private def warnBeforeAttempt(
+      verdict: EnvPinning.PinVerdict
+  ): UIO[Unit] = verdict match
+    case EnvPinning.PinVerdict.Matching => ZIO.unit
+    case divergent: EnvPinning.PinVerdict.Divergent =>
+      val differences = divergent.fields
+        .map { case (name, expected, actual) =>
+          s"$name: expected $expected, actual $actual"
+        }
+        .mkString("; ")
+      ZIO.succeed(
+        System.err.println(
+          s"warning: pinned environment differs ($differences); " +
+            "replay will be attempted"
+        )
+      )
+
+  private def withEnvironment(
+      verdict: Verdict,
+      pin: EnvPinning.PinVerdict
+  ): Verdict = pin match
+    case EnvPinning.PinVerdict.Matching => verdict
+    case EnvPinning.PinVerdict.Divergent(fields) =>
+      Verdict.DifferentEnvironment(verdict, fields)
 
   /** The graph recorded in the document. [[ReplayHarness.recordedGraph]]
     * reports refusal conditions via `sys.error` (its fixture-bug channel); for
@@ -356,6 +410,11 @@ object ReplayCli:
         s"verdict: match\ngraph-hash: $hash\nnodes: $nodes"
       case Verdict.Mismatch(diff, meta) =>
         s"verdict: mismatch\n${RunDiffReport.render(diff, meta)}"
+      case Verdict.DifferentEnvironment(verdict, fields) =>
+        EnvPinning.annotate(
+          render(verdict),
+          EnvPinning.PinVerdict.Divergent(fields)
+        )
       case Verdict.Failed(failure) =>
         s"typed-error: ${renderFailure(failure)}"
 
@@ -368,6 +427,10 @@ object ReplayCli:
       case Failure.Data(StoreError.Io(path, detail)) =>
         s"lineage-data read failed at $path: $detail (StoreError.Io)"
       case Failure.Snapshot(error) => s"lineage snapshot invalid: $error"
+      case Failure.Pinning(EnvPinning.PinError.Missing(path)) =>
+        s"pinned environment missing: $path"
+      case Failure.Pinning(EnvPinning.PinError.Malformed(path, detail)) =>
+        s"pinned environment invalid at $path: $detail"
       case Failure.SnapshotGuard(what) =>
         s"workspace snapshot refused: $what"
       case Failure.Record(what) =>
@@ -392,9 +455,16 @@ object ReplayCli:
     */
   def exitCode(verdict: Verdict): Int =
     verdict match
-      case Verdict.Match(_, _)     => ExitCodes.Success
-      case Verdict.Mismatch(_, _)  => ExitCodes.TaskRejected
-      case Verdict.Failed(failure) => failureExitCode(failure)
+      case Verdict.Match(_, _)                      => ExitCodes.Success
+      case Verdict.Mismatch(_, _)                   => ExitCodes.TaskRejected
+      case Verdict.DifferentEnvironment(verdict, _) => exitCode(verdict)
+      case Verdict.Failed(failure)                  => failureExitCode(failure)
+
+  private def isFailure(verdict: Verdict): Boolean =
+    verdict match
+      case Verdict.Failed(_)                      => true
+      case Verdict.DifferentEnvironment(inner, _) => isFailure(inner)
+      case _                                      => false
 
   private def failureExitCode(failure: Failure): Int =
     failure match
@@ -415,6 +485,7 @@ object ReplayCli:
         ExitCodes.ConfigInvalid
       case Failure.Snapshot(_)      => ExitCodes.RuntimeFailure
       case Failure.SnapshotGuard(_) => ExitCodes.ConfigInvalid
+      case Failure.Pinning(_)       => ExitCodes.ConfigInvalid
       case Failure.Record(_)        => ExitCodes.ConfigInvalid
       case Failure.Isolation(IsolationError.OriginalMissing(_)) =>
         ExitCodes.ConfigInvalid
@@ -452,8 +523,8 @@ object ReplayCli:
         Unsafe.unsafe { implicit unsafe =>
           val verdict = zio.Runtime.default.unsafe.run(run(config)).getOrThrow()
           verdict match
-            case Verdict.Failed(failure) =>
-              val code = failureExitCode(failure)
+            case failed if isFailure(failed) =>
+              val code = exitCode(verdict)
               System.err.println(render(verdict))
               System.err.println(s"exit $code: ${failureExitReason(code)}")
               System.err.flush()

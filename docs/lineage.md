@@ -246,6 +246,11 @@ in `toolchain.json` (LIN-08): toolchain (Scala/JDK), Raider version, and model.
 - If reproduction runs in a different environment, the diff report explicitly
   marks it as **“reproduced in a different environment”** (LIN8-02). Pinning
   mismatches must not be hidden.
+- `raider replay` reads `<run-dir>/toolchain.json` when present. Matching pins
+  leave the replay report unchanged; divergent pins emit the warning before the
+  isolated replay and annotate its resulting report. A missing pin is treated
+  as a legacy run with no environment comparison; malformed pin data is a typed
+  input failure rather than an implicit match.
 - The compiler checks the projection **with pinning** (LIN2-01): projecting the
   same graph again produces byte-identical output.
 
