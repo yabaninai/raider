@@ -150,6 +150,35 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
       )
     },
     test(
+      "SDLC-REL-C-01 release evidence roundtrips and refuses unknown typed fields"
+    ) {
+      val payload = SdlcEvidence.artifact(
+        "local-release-result",
+        SdlcEvidence.LocalReleaseResult(
+          "1.2.3",
+          "v1.2.3",
+          "revision",
+          "candidate",
+          "artifact",
+          localOnly = true
+        )
+      )
+      val release = fromEvidence(
+        "release-1",
+        SdlcEvidence.decodeArtifact(payload).toOption.get
+      )
+      val unknown = encode(release.toOption.get).replace(
+        "\"version\":\"1.2.3\"",
+        "\"version\":\"1.2.3\",\"future\":true"
+      )
+      assertTrue(
+        release.isRight,
+        release.flatMap(r => decode(encode(r))).contains(release.toOption.get),
+        decode(unknown).isLeft,
+        addToRunJson(v1Run, Nil) == v1Run
+      )
+    },
+    test(
       "SDLC-WIRE-01c: a completed SDLC stage run persists all typed records in both artifacts"
     ) {
       import SdlcEvidence.*
@@ -264,7 +293,12 @@ object SdlcArtifactSchemaSpec extends ZIOSpecDefault:
             .orDie
           eventResults = SdlcArtifactSchema.decodeMixed(lines)
         yield assertTrue(
-          records.map(_.kind).toSet == Kind.values.toSet,
+          records.map(_.kind).toSet == Set(
+            Kind.CandidateIdentity,
+            Kind.CheckResult,
+            Kind.ReviewVerdict,
+            Kind.IntegrationResult
+          ),
           SdlcArtifactSchema.decodeRunJson(runArtifact).contains(records),
           eventResults.toOption.exists(_.collect { case Right(record) =>
             record

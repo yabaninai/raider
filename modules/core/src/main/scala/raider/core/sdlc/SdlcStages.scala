@@ -41,7 +41,8 @@ object SdlcStages:
 
   final case class Context(
       candidate: SdlcEvidence.CandidateIdentity,
-      evidence: List[String] = Nil
+      evidence: List[String] = Nil,
+      typedEvidence: List[SdlcEvidence.Record] = Nil
   )
 
   final case class StageResult(
@@ -49,10 +50,76 @@ object SdlcStages:
       successful: Boolean,
       detail: String,
       repairNeeded: Boolean = false,
-      typedEvidence: List[SdlcEvidence.Record] = Nil
+      typedEvidence: List[SdlcEvidence.Record] = Nil,
+      interrupted: Boolean = false
   )
 
   type Handler = Program[Context, StageResult]
+
+  enum ReleaseRefusal:
+    case MissingChecks, ChecksRejected, MissingReview, ReviewRejected
+    case MissingIntegration, IntegrationRejected, CandidateMismatch
+
+  /** Validate parsed records by their typed candidate identity, never by IDs or
+    * caller-provided string references.
+    */
+  def validateReleaseEvidence(
+      candidate: SdlcEvidence.CandidateIdentity,
+      records: List[SdlcEvidence.Record]
+  ): Either[ReleaseRefusal, String] =
+    import ReleaseRefusal.*
+    val checks = records.collect { case SdlcEvidence.Record.Check(value) =>
+      value
+    }
+    val reviews = records.collect { case SdlcEvidence.Record.Review(value) =>
+      value
+    }
+    val integrations = records.collect {
+      case SdlcEvidence.Record.Integration(value) => value
+    }
+    val digest = SdlcEvidence.CandidateIdentity.digest(candidate)
+    for
+      _ <- Either.cond(checks.nonEmpty, (), MissingChecks)
+      _ <- Either.cond(
+        checks.forall(c =>
+          c.outcome == SdlcEvidence.CheckOutcome.Passed && c.candidate == candidate && c.policyDigest == candidate.policyDigest
+        ),
+        (),
+        ChecksRejected
+      )
+      _ <- Either.cond(reviews.nonEmpty, (), MissingReview)
+      _ <- Either.cond(
+        reviews.forall(r =>
+          r.verdict == SdlcEvidence.ReviewDecision.Acceptable && SdlcEvidence
+            .reviewApplies(candidate, r)
+        ),
+        (),
+        ReviewRejected
+      )
+      _ <- Either.cond(integrations.nonEmpty, (), MissingIntegration)
+      _ <- Either.cond(
+        integrations.forall(i =>
+          Set(
+            SdlcEvidence.IntegrationOutcome.Applied,
+            SdlcEvidence.IntegrationOutcome.AlreadyApplied
+          )(
+            i.outcome
+          ) && i.candidate == candidate && i.policyDigest == candidate.policyDigest
+        ),
+        (),
+        IntegrationRejected
+      )
+      _ <- Either.cond(
+        (checks.map(_.candidate) ++ reviews.map(_.candidate) ++ integrations
+          .map(_.candidate))
+          .forall(SdlcEvidence.CandidateIdentity.digest(_) == digest),
+        (),
+        CandidateMismatch
+      )
+    yield digest
+
+  def authorizeLocalRelease(context: Context): Either[ReleaseRefusal, String] =
+    validateReleaseEvidence(context.candidate, context.typedEvidence)
 
   private val requiredPrefix =
     List(Stage.Task, Stage.Plan, Stage.Implement, Stage.Checks)
@@ -144,11 +211,38 @@ object SdlcStages:
                 stageDescription.stage == Stage.Repair
               if previousFailed && !repairContinuation then
                 Task.succeed(results)
-              else handlers(stageDescription.stage)(prior).map(results :+ _)
+              else if stageDescription.stage == Stage.LocalRelease then
+                authorizeLocalRelease(prior) match
+                  case Left(refusal) =>
+                    Task.succeed(
+                      results :+ StageResult(
+                        prior,
+                        successful = false,
+                        s"release refused: $refusal"
+                      )
+                    )
+                  case Right(_) =>
+                    executeHandler(stageDescription, prior, results, handlers)
+              else executeHandler(stageDescription, prior, results, handlers)
             }
           }
           executed.map(_.toList)
         })
+    }
+
+  private def executeHandler(
+      description: StageDescription,
+      context: Context,
+      results: Vector[StageResult],
+      handlers: Map[Stage, Handler]
+  ): Task[Vector[StageResult]] =
+    handlers(description.stage)(context).map { result =>
+      val updated = result.copy(context =
+        result.context.copy(typedEvidence =
+          result.context.typedEvidence ++ result.typedEvidence
+        )
+      )
+      results :+ updated
     }
 
 end SdlcStages

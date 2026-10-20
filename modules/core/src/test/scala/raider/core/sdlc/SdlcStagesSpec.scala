@@ -241,6 +241,67 @@ object SdlcStagesSpec extends ZIOSpecDefault:
           results.count(_.detail == "checks failed") == 1
         )
       }
+    },
+    test(
+      "SDLC-REL-C-02 parsed evidence binds release to one accepted candidate and authority"
+    ) {
+      val check = CheckResult(
+        "compile",
+        "definition",
+        "argv",
+        CheckOutcome.Passed,
+        Some(0),
+        "scala",
+        "verifier",
+        candidate,
+        "output",
+        candidate.policyDigest
+      )
+      val review = ReviewVerdict(
+        "reviewer",
+        ReviewDecision.Acceptable,
+        "findings",
+        candidate.taskDigest,
+        candidate.planDigest,
+        candidate,
+        Nil,
+        candidate.policyDigest
+      )
+      val integration = IntegrationResult(
+        "op",
+        "local",
+        candidate,
+        "target",
+        "preconditions",
+        None,
+        IntegrationOutcome.Applied,
+        Nil,
+        candidate.policyDigest
+      )
+      val records = List(
+        Record.Check(check),
+        Record.Review(review),
+        Record.Integration(integration)
+      )
+      val foreignPolicyIntegration =
+        integration.copy(policyDigest = "policy-other")
+      val authorized = Context(
+        candidate,
+        typedEvidence = records
+      )
+      assertTrue(
+        validateReleaseEvidence(candidate, records).isRight,
+        validateReleaseEvidence(
+          candidate,
+          records.updated(2, Record.Integration(foreignPolicyIntegration))
+        ).left.toOption.contains(ReleaseRefusal.IntegrationRejected),
+        validateReleaseEvidence(
+          candidate.copy(treeDigest = "changed"),
+          records
+        ).isLeft,
+        validateReleaseEvidence(candidate, records.dropRight(1)).isLeft,
+        authorizeLocalRelease(authorized).isRight
+      )
     }
   )
 

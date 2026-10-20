@@ -82,7 +82,13 @@ object ApprovalArtifactsSpec extends ZIOSpecDefault:
         ),
         decodeRequestArtifact(Files.readString(path)) == Right(approval),
         approval.candidateDigest == CandidateIdentity.digest(candidate),
-        result == Right(Authorized(approval.candidateDigest, "before-merge")),
+        result == Right(
+          Authorized(
+            approval.candidateDigest,
+            "before-merge",
+            Instant.parse(approval.expiresAt)
+          )
+        ),
         reads == 1
       )
     },
