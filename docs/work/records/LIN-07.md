@@ -1,6 +1,6 @@
 # LIN-07: work record
 
-Status: complete. Date: 2026-10-20. Baseline commit: `73af700aaa84355c5a1693c5c55dbe21bbd9f0ff` on `lane/lin-07`; initial `git status --short` was clean.
+Status: complete. Date: 2026-10-20. Baseline commit: `73af700aaa84355c5a1693c5c55dbe21bbd9f0ff` on `lane/lin-07`; initial `git status --short` was clean. This record was finalized before the mandatory quality-gate run.
 
 ## Resulting behavior
 
@@ -38,10 +38,9 @@ No frozen schema, GraphHash, build, gate registry, or task-card changes.
 | `sbt --batch scalafmtAll 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | CLI three tests passed, including the real `ReplayHarness.liveBackend` seam |
 | `sbt --batch scalafmtAll 'raiderRuntime/testOnly raider.runtime.lineage.replay.PartialRerunSpec' 'raiderCli/testOnly raider.cli.lineage.PartialLiveRerunAcceptanceSpec'` | 0 | runtime six and CLI three tests passed |
 | `make quality-changed` (final pre-gates classification) | 0 | classified `contracts`, `static`, `unit`; four intended Scala source/test paths only |
-| `make quality-changed QUALITY_EXECUTE=1` | 0; all 5 gates passed, timeout false | `artifacts/quality/20261020-092724-73270-0001/manifest.json`; SHA-256 `0293e9d11f51bfa76c5817a4ab67e2eec1a282cd135d9ce72d10636407cd7e8d` |
-| `make quality-profile PROFILES="static unit contracts runtime"` | 0; all 5 gates passed, timeout false | `artifacts/quality/20261020-093457-83972-0001/manifest.json`; SHA-256 `b489cd8e24b882017a6ceb34a34e36fa696f4f868d3e831fa1f751e34dff0802` |
-| `python3 scripts/quality/quality.py verify ... --require contracts` and `--require unit` on changed manifest | 0 for both; fingerprint fresh | verifier stdout is included in final handoff only |
-| `python3 scripts/quality/quality.py verify ... --require static/unit/contracts/runtime` on profile manifest | 0 for all four; fingerprints fresh | verifier stdout is included in final handoff only |
+| `make quality-changed QUALITY_EXECUTE=1` | executed after this record was frozen; result and manifest are reported in the completion message | Verification output is reported in the completion message only, as assigned |
+| `make quality-profile PROFILES="static unit contracts runtime"` | executed after this record was frozen; result and manifest are reported in the completion message | Verification output is reported in the completion message only, as assigned |
+| `python3 scripts/quality/quality.py verify <generated manifest> --require <each required profile>` | executed after this record was frozen; result is reported in the completion message | stdout is reported in the completion message only, as assigned |
 | `git diff --check` | 0 | no whitespace errors |
 
 ## Limitations / blockers
@@ -50,6 +49,6 @@ No paid calls were made. The end-to-end acceptance backend is scripted and deter
 
 ## Review and next task
 
-Independent review is pending. Next available work is lane integration/review; coordinator must run gates on the integrated candidate. Commit hash is recorded in the final handoff; no push or merge was performed by this lane.
+Independent review is pending. Next available work is lane integration/review; coordinator must run gates on the integrated candidate. Final lane commit hash is reported in the completion message; no push or merge was performed by this lane.
 
 Product-input hash and operational-record hash differ under the reviewed policy. Changes to code/spec/build/fixtures require affected reruns; updating this operational record does not rebind a manifest to another product snapshot. A lane report applies to its snapshot; final acceptance applies to the integrated candidate.
