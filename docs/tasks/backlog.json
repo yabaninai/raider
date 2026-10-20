@@ -3223,7 +3223,7 @@
       },
       "non_goals": "See the card in docs/tasks/lineage.md.",
       "context": "ADR-027; roadmap-12k P-LIN; runtime-contracts §14",
-      "status": "in-progress"
+      "status": "accepted"
     },
     {
       "id": "RAI-102",
@@ -5601,7 +5601,7 @@
       "title": "LIN-08.b: producer-origin lineage scopes + toolchain-pin production",
       "milestone": "LIN",
       "dependencies": ["LIN-08", "LIN-03", "RAI-173"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
         "modules/cli/src/main/scala/raider/cli/run/**",

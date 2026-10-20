@@ -1,5 +1,16 @@
 # Raider Execution Board
 
+## 2026-10-20 — P-LIN COMPLETE (LIN-01..08)
+
+- **Program arc:** P-LIN advanced from the session graph, through a valid Scala projection and live incremental wiring, into the snapshot pointer protocol, full live rerun, partial replay, and finally scopes/pins/catalog with producer origins.
+- **Integrated merge:** RAI-183 from `lane/rai-183` merged on main as `c8438df695574cbebdb4e4dda32af2b5bdf2b340`; the reviewed producer-origin and toolchain-pin work completes the LIN-08 remainder. Review approved; the nodeless campaign fixture limitation is accepted because it correctly creates no fabricated lineage pointer.
+- **Statuses:** RAI-183 accepted; LIN-08 accepted. P-LIN LIN-01..08 is complete.
+- **Integrated gates on the merged candidate:** `make quality-changed` exited 0 and selected minimum `fast` for the clean tree. `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10 fast gates passed, timeout false; manifest `artifacts/quality/20261020-205305-56902-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 registered gates passed, timeout false; manifest `artifacts/quality/20261020-210022-60024-0001/manifest.json`. No timeout or retry was needed.
+- **Post-status documentation gate:** after synchronizing the accepted statuses, `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed, timeout false; manifest `artifacts/quality/20261020-210919-62197-0001/manifest.json`.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 203 cards.
+- **Remaining open items:** live-wire cap (owner); TokenRouter packet (owner); TAB-02 (RAI-172 conditional follow-up).
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and distinct from passing integrated gates; it was not observed red in these runs.
+
 ## 2026-10-20 — LIN-07 accepted; LIN-08 slice merged (producer card RAI-183 registered)
 
 - **Integrated merges:** LIN-07 from `lane/lin-07` merged as `2ad46a8433162b5ffaf8ba41a131573b57777106`; LIN-08 slice from `lane/lin-08` merged as `076e3d3f9e6233874b4f60373cf8d8bb88d263`. LIN-07's selected-subtree live execution, pointer-resolved inputs, typed budget refusal, and cancellation cleanup are integrated. LIN-08 delivers scope-aware catalog/pins and ReplayCli environment-pin consumption; its producer-origin and toolchain-pin remainder is RAI-183.

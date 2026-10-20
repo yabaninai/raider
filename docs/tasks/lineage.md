@@ -228,7 +228,7 @@ Status: accepted. Milestone: LIN. Dependencies: LIN-06, LIN-03, RAI-173.
 
 ## RAI-183: LIN-08.b: producer-origin lineage scopes + toolchain-pin production
 
-Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-03, RAI-173.
+Status: accepted. Milestone: LIN. Dependencies: LIN-08, LIN-03, RAI-173.
 
 **Scenario and contract.** Complete the LIN-08 producer side: chat sessions publish lineage artifacts through the existing LIN-03 export machinery with scope=chat; headless and campaign entrypoints stamp their respective scopes and write a toolchain.json beside each produced run. The pin uses the ReplayCli consumer contract: scala, jdk, raider, and optional model; unknown model identity remains absent rather than guessed. A chat-produced run is discoverable in the catalog under chat scope with a readable pin, and replay exercises the environment-pin report end to end.
 
@@ -278,9 +278,9 @@ Scope note (coordinator, 2026-10-20): CLI wiring authorized — `modules/cli/src
 
 ## LIN-08: Scopes (chat/headless/campaigns), pinning, catalog
 
-Status: in-progress. Milestone: LIN. Dependencies: LIN-03, LIN-05.
+Status: accepted. Milestone: LIN. Dependencies: LIN-03, LIN-05.
 
-Scope note (coordinator, 2026-10-20): catalog/pin/ReplayCli consumer slice merged; LIN-08 remains open pending RAI-183 producer-origin scopes and toolchain-pin production.
+Completion note (coordinator, 2026-10-20): the catalog/pin/ReplayCli consumer slice and RAI-183 producer-origin scopes/toolchain-pin production are integrated and accepted. See the P-LIN completion record in `docs/work/board.md` and integrated evidence in `docs/work/records/RAI-183.md`.
 
 **Scenario and contract.** Lineage for chat, headless, and overnight campaigns (tree catalog); compare the pinned environment: warning + attempt + discrepancy report.
 
