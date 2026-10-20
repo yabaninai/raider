@@ -24,7 +24,7 @@ import zio.test._
 import java.io.File
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
-import java.util.concurrent.TimeUnit
+import java.util.concurrent.{CountDownLatch, TimeUnit}
 import java.util.jar.{JarEntry, JarOutputStream, Manifest}
 
 /** LIN-09 acceptance (lineage artifacts written by the settled headless run,
@@ -126,6 +126,113 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
         )
       )
       .fold(e => throw e, identity)
+
+  private def checkProducerConcurrency: zio.UIO[Boolean] = ZIO.scoped {
+    for
+      base <- ZIO.attempt(tempDir()).orDie
+      chatWorkspace = base.resolve("chat-workspace")
+      headlessOut = base.resolve("headless-out")
+      campaignOut = base.resolve("campaign-out")
+      _ <- ZIO.attempt {
+        Files.createDirectories(headlessOut)
+        Files.createDirectories(campaignOut)
+      }.orDie
+      jar <- ZIO.attempt(makeBundleJar(base)).orDie
+      produced <- ZIO.collectAllPar(
+        List(
+          raider.cli.chat.TaskCaptureSpec.produceChatFixture(chatWorkspace),
+          HeadlessRunner.run(mockAgentArgs(headlessOut)).map(_.workDir),
+          HeadlessRunner.run(bundleArgs(jar, campaignOut)).map(_.workDir)
+        )
+      )
+      chatDir = produced(0)
+      headlessDir = produced(1)
+      campaignDir = produced(2)
+      checked <- ZIO.attempt {
+        def entry(out: Path, scope: raider.cli.lineage.CatalogScope) =
+          raider.cli.lineage.CatalogStore
+            .load(raider.cli.lineage.CatalogStore.catalogFile(out))
+            .fold(
+              error => throw new IllegalStateException(error.toString),
+              identity
+            )
+            .find(_.scope == scope)
+        val chatEntry = entry(
+          chatWorkspace.resolve(".raider").resolve("runs"),
+          raider.cli.lineage.CatalogScope.Chat
+        )
+        val headlessEntry = entry(
+          headlessOut,
+          raider.cli.lineage.CatalogScope.Headless
+        )
+        val campaignEntry = entry(
+          campaignOut,
+          raider.cli.lineage.CatalogScope.Campaign
+        )
+        val snapshots = Vector(chatDir, headlessDir).map(
+          raider.cli.lineage.LineageSnapshot.read
+        )
+        val pins = Vector(chatDir, headlessDir, campaignDir).map(dir =>
+          raider.cli.lineage.EnvPinning.readPinned(
+            dir.resolve("toolchain.json")
+          )
+        )
+        (chatEntry, headlessEntry, campaignEntry, snapshots, pins)
+      }.orDie
+      (chatEntry, headlessEntry, campaignEntry, snapshots, pins) = checked
+      oldChat = snapshots(0).toOption.get
+      reached <- ZIO.succeed(new CountDownLatch(1))
+      hold <- ZIO.succeed(new CountDownLatch(1))
+      interrupted <- ZIO.attemptBlockingInterrupt {
+        raider.cli.lineage.LineageSnapshot.publishAfterGeneration(
+          chatDir,
+          Files.readAllBytes(oldChat.dataPath),
+          Files.readAllBytes(oldChat.sourcePath)
+        ) {
+          reached.countDown()
+          hold.await()
+        }
+      }.fork
+      window <- ZIO.attemptBlocking(reached.await(10, TimeUnit.SECONDS)).orDie
+      _ <- interrupted.interrupt
+      after = Vector(chatDir, headlessDir).map(
+        raider.cli.lineage.LineageSnapshot.read
+      )
+      afterPins <- ZIO.attempt {
+        Vector(chatDir, headlessDir, campaignDir).map(dir =>
+          raider.cli.lineage.EnvPinning.readPinned(
+            dir.resolve("toolchain.json")
+          )
+        )
+      }.orDie
+      _ <- ZIO.succeed(hold.countDown())
+    yield produced.distinct.size == 3 &&
+      chatDir != headlessDir && headlessDir != campaignDir && chatDir != campaignDir &&
+      chatEntry.exists(_.path == chatDir.toString) &&
+      headlessEntry.exists(_.path == headlessDir.toString) &&
+      campaignEntry.exists(_.path == campaignDir.toString) &&
+      chatEntry.exists(_.scope == raider.cli.lineage.CatalogScope.Chat) &&
+      headlessEntry.exists(
+        _.scope == raider.cli.lineage.CatalogScope.Headless
+      ) &&
+      campaignEntry.exists(
+        _.scope == raider.cli.lineage.CatalogScope.Campaign
+      ) &&
+      snapshots.forall(_.isRight) &&
+      raider.cli.lineage.LineageSnapshot.read(campaignDir).isLeft &&
+      pins.forall(_.isRight) &&
+      snapshots.forall(
+        _.toOption.exists(s =>
+          Files.isReadable(s.dataPath) && Files.isReadable(s.sourcePath)
+        )
+      ) &&
+      window &&
+      after(0).toOption.exists(_.generation == oldChat.generation) &&
+      after.drop(1).forall(_.isRight) &&
+      afterPins == pins &&
+      after.forall(_.isRight) &&
+      raider.cli.lineage.LineageSnapshot.read(campaignDir).isLeft
+  }
 
   // ----- artifact readers ----------------------------------------------------
 
@@ -692,6 +799,7 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
               (o, doc, proj, src, tmpLeftovers)
             }
           }.orDie
+          producerIsolation <- checkProducerConcurrency
         yield assertTrue(
           outcomes.map(_.exitCode).forall(_ == 0),
           outcomes.map(_.workDir).distinct.size == 6,
@@ -700,7 +808,8 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
             doc.map(_.runId) == Right(o.result.get.rootId.value) &&
             proj == Right(src) &&
             tmpLeftovers == 0
-          }
+          },
+          producerIsolation
         )
       }
     },

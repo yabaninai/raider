@@ -163,6 +163,51 @@ object TaskCaptureSpec extends ZIOSpecDefault:
     Files.createTempDirectory("raider-capture-test")
   }
 
+  private[cli] def produceChatFixture(
+      workspace: java.nio.file.Path
+  ): UIO[java.nio.file.Path] =
+    for
+      _ <- ZIO.attempt {
+        Files.createDirectories(workspace)
+        Files.writeString(
+          workspace.resolve("README.md"),
+          "chat fixture\n",
+          UTF_8
+        )
+      }.orDie
+      toolset <- raider.tools.CodingToolset.make(workspace.toString).orDie
+      registry <- ZIO.fromEither(toolset.registry).orDie
+      ctx <- makeCtx(
+        Scripted(
+          List(
+            ToolCall("fs_read", "{\"path\":\"README.md\"}"),
+            Text("The fixture was read successfully.")
+          )
+        ),
+        Some(workspace.toString),
+        registry
+      )
+      _ <- ChatLoop.processMessage(ctx, "summarize the fixture project").orDie
+      runDir <- ZIO.attempt {
+        val entries = raider.cli.lineage.CatalogStore
+          .load(
+            raider.cli.lineage.CatalogStore.catalogFile(
+              workspace.resolve(".raider").resolve("runs")
+            )
+          )
+          .fold(
+            error => throw new IllegalStateException(error.toString),
+            identity
+          )
+        java.nio.file.Path.of(
+          entries
+            .find(_.scope == raider.cli.lineage.CatalogScope.Chat)
+            .getOrElse(throw new IllegalStateException("chat entry missing"))
+            .path
+        )
+      }.orDie
+    yield runDir
+
   override def spec: Spec[Any, Any] =
     suite("TaskCapture")(
       test(
@@ -311,6 +356,13 @@ object TaskCaptureSpec extends ZIOSpecDefault:
           matching <- raider.cli.lineage.ReplayCli.run(
             raider.cli.lineage.ReplayCli.Config(runDir, workspace, None)
           )
+          recordedFinal = snapshot.toOption.toVector
+            .flatMap(_.document.data.values)
+            .collect {
+              case model: raider.dsl.lineage.data.NodeData.ModelCallData =>
+                model
+            }
+            .lastOption
           _ <- ZIO.attempt {
             val current = raider.cli.lineage.EnvPinning.currentEnv()
             Files.writeString(
@@ -340,6 +392,9 @@ object TaskCaptureSpec extends ZIOSpecDefault:
             )
           ),
           snapshot.isRight,
+          recordedFinal.exists(
+            _.response == "The fixture was read successfully."
+          ),
           chat.headOption.exists(_.path == runDir.toString),
           Files.isRegularFile(
             raider.cli.lineage.CatalogStore.catalogFile(runsRoot)
@@ -371,6 +426,7 @@ object TaskCaptureSpec extends ZIOSpecDefault:
               runsRoot,
               JobId("failed-publication"),
               Vector.empty,
+              Map.empty,
               None
             )
           }.orDie

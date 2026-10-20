@@ -446,8 +446,8 @@ object ChatLoop:
       sink: String => zio.UIO[Unit],
       label: String,
       onStart: JobHandle[?] => zio.UIO[Unit] = _ => ZIO.unit,
-      onSettled: (JobId, Vector[EventEnvelope]) => zio.UIO[Unit] = (_, _) =>
-        ZIO.unit
+      onSettled: (JobId, Vector[EventEnvelope], R) => zio.UIO[Unit] =
+        (_: JobId, _: Vector[EventEnvelope], _: R) => ZIO.unit
   )(body: JobId => ZIO[Any, RaiderError, R]): ZIO[Any, RaiderError, R] =
     for
       barrier <- Promise.make[Nothing, JobId]
@@ -470,7 +470,7 @@ object ChatLoop:
       // StatusLedger publishes the JobManager's actual Terminal before await
       // settles. Export the captured stream as-is; the lineage publisher must
       // refuse an incomplete stream rather than synthesize a closing marker.
-      _ <- onSettled(handle.id, exported)
+      _ <- onSettled(handle.id, exported, result)
     yield result
 
   /** One user message as ONE job (RAI-060) + capture (RAI-155.b, ADR-033 §5): a
@@ -487,27 +487,29 @@ object ChatLoop:
       ctx: RunCtx,
       input: String
   ): ZIO[Any, RaiderError, String] =
-    runJob(
+    runJob[SettledChat](
       ctx.hub,
       ctx.manager,
       ctx.root,
       ctx.sink,
       "chat-message",
-      onSettled = (jobId, events) =>
-        ZIO.succeed {
-          val runsRoot = Paths.get(ctx.workspacePath, ".raider", "runs")
-          ChatLineageExport.publish(
-            runsRoot,
-            jobId,
-            events,
-            if ctx.provider == "mock" then None else Some(ctx.loop.model)
-          ) match
-            case Right(_) => ()
-            case Left(error) =>
-              System.err.println(
-                s"chat lineage publication unavailable: ${error.take(200)}"
-              )
-        }
+      onSettled =
+        (jobId: JobId, events: Vector[EventEnvelope], settled: SettledChat) =>
+          ZIO.succeed {
+            val runsRoot = Paths.get(ctx.workspacePath, ".raider", "runs")
+            ChatLineageExport.publish(
+              runsRoot,
+              jobId,
+              events,
+              ChatLineageExport.responses(settled.trace, settled.answer),
+              if ctx.provider == "mock" then None else Some(ctx.loop.model)
+            ) match
+              case Right(_) => ()
+              case Left(error) =>
+                System.err.println(
+                  s"chat lineage publication unavailable: ${error.take(200)}"
+                )
+          }
     ) { jobId =>
       val loop = ctx.loop.copy(events =
         Some(LoopEvents(ctx.hub, jobId, ctx.root, StatusLedger.sessionId))
@@ -545,11 +547,16 @@ object ChatLoop:
                 System.currentTimeMillis()
               )
             else t
-        result <- outcome match
-          case Exit.Success(answer) => ZIO.succeed(answer)
-          case Exit.Failure(cause)  => ZIO.failCause(cause)
-      yield result
-    }
+        answer <- outcome match
+          case Exit.Success(value) => ZIO.succeed(value)
+          case Exit.Failure(cause) => ZIO.failCause(cause)
+      yield SettledChat(answer, traceAfter.drop(traceBefore))
+    }.map(_.answer)
+
+  private final case class SettledChat(
+      answer: String,
+      trace: Vector[raider.core.trace.TraceEvent]
+  )
 
   private def processMessageBody(
       loop: AgentLoop,
