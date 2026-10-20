@@ -4,12 +4,13 @@ import raider.core.RaiderError
 import raider.dsl.lineage.data.{LineageDataDocument, NodeData}
 import raider.dsl.lineage.replay.RecordedSource
 import raider.runtime.lineage.model.{RecoveryTaxonomy, SessionGraph}
+import raider.runtime.lineage.replay.{LiveRerun, RerunBackend, RerunRequest}
 import raider.runtime.lineage.reduce.ReduceError
 import raider.runtime.budget.BudgetLimits
 
 import zio.json.JsonDecoder
 import zio.json.ast.Json
-import zio.{Runtime, Unsafe}
+import zio.{Runtime, Scope, Unsafe, ZIO}
 
 import java.io.IOException
 import java.nio.file.{Files, NoSuchFileException, Path}
@@ -78,7 +79,8 @@ end RerunError
 final case class RerunOutcome(
     isolatedPath: Path,
     `match`: Boolean,
-    report: String
+    report: String,
+    liveAnswer: Option[String] = None
 )
 
 /** End-to-end isolated re-run of a recorded campaign (LIN-06D, packet R4,
@@ -152,6 +154,76 @@ object IsolatedRerun:
             }
           }
         }
+
+  /** Execute fresh against a pointer-resolved snapshot. `freshPrompt` is the
+    * current user input; the committed document supplies comparison/provenance
+    * only. Interruption remains ZIO interruption and is never converted to a
+    * successful or resumable outcome.
+    */
+  def live(
+      snapshot: LineageSnapshot.Snapshot,
+      freshPrompt: String,
+      liveModel: String,
+      originalWorkspace: Path,
+      parent: Path,
+      backend: RerunBackend,
+      limits: BudgetLimits = ReplayHarness.FixtureLimits,
+      maxRounds: Int = ReplayHarness.FixtureMaxRounds
+  ): ZIO[Scope, RerunError, RerunOutcome] =
+    ZIO
+      .fromEither(WorkspaceIsolation.isolate(originalWorkspace, parent))
+      .mapError(RerunError.Isolation(_))
+      .flatMap { isolated =>
+        ZIO
+          .fromEither(snapshotOriginal(originalWorkspace))
+          .flatMap { before =>
+            val expected = ReplayHarness.recordedGraph(snapshot.document)
+            val request = RerunRequest(
+              workspace = isolated,
+              prompt = freshPrompt,
+              model = liveModel,
+              snapshotGeneration = snapshot.generation,
+              recordedGraph = expected,
+              limits = limits,
+              maxRounds = maxRounds
+            )
+            LiveRerun
+              .execute(backend, request)
+              .mapError(RerunError.Replay(_))
+              .flatMap { execution =>
+                val (matched, report) = RunDiffReport.fromGraphs(
+                  expected,
+                  execution.graph,
+                  s"live-rerun-${snapshot.generation}"
+                ) match
+                  case Right(diff)   => (false, diff.render)
+                  case Left(message) => (true, message)
+                ZIO
+                  .fromEither(verifyUntouched(originalWorkspace, before))
+                  .map(_ =>
+                    RerunOutcome(
+                      isolated,
+                      matched,
+                      report,
+                      Some(execution.answer)
+                    )
+                  )
+              }
+          }
+          .onInterrupt(
+            ZIO.attempt(deleteTree(isolated)).orDie
+          )
+      }
+
+  private def deleteTree(root: Path): Unit =
+    if Files.exists(root) then
+      val stream = Files.walk(root)
+      try
+        stream
+          .sorted(java.util.Comparator.reverseOrder[Path]())
+          .forEach(path => Files.deleteIfExists(path))
+        ()
+      finally stream.close()
 
   /** Byte snapshot of the original (step 2): the baseline `verifyUntouched`
     * compares against — taken after the copy exists, so any later drift of the

@@ -1,6 +1,14 @@
 package raider.cli.lineage
 
-import raider.core.{JobId, RaiderError, RequestMessage, RootId, SessionId, Task}
+import raider.core.{
+  JobId,
+  ModelBackend,
+  RaiderError,
+  RequestMessage,
+  RootId,
+  SessionId,
+  Task
+}
 import raider.dsl.lineage.data.{
   DataNode,
   GeneratorInfo,
@@ -22,7 +30,13 @@ import raider.runtime.lineage.model.{
   SessionNode
 }
 import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
-import raider.runtime.lineage.replay.{GraphComparator, GraphDiff}
+import raider.runtime.lineage.replay.{
+  GraphComparator,
+  GraphDiff,
+  RerunBackend,
+  RerunExecution,
+  RerunRequest
+}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
 import raider.tools.CodingToolset
 import zio.{Clock, Duration as ZDuration, Ref, ZIO}
@@ -310,14 +324,19 @@ object ReplayHarness:
       workspace: Path,
       doc: LineageDataDocument = document,
       limits: BudgetLimits = FixtureLimits,
-      maxRounds: Int = FixtureMaxRounds
+      maxRounds: Int = FixtureMaxRounds,
+      prompt: String = UserMessage,
+      modelName: String = ModelName,
+      backendOverride: Option[ModelBackend] = None
   ): ZIO[Any, RaiderError, ReplayRun] =
     for
       toolset <- CodingToolset.make(workspace.toString)
       registry <- ZIO.fromEither(toolset.registry)
       hub <- EventHub.make()
       adm <- Admission.make(Right(limits): Either[RaiderError, BudgetLimits])
-      backend = ReplayModelBackend(RecordedSource(doc), doc)
+      backend = backendOverride.getOrElse(
+        ReplayModelBackend(RecordedSource(doc), doc)
+      )
       // Subscribe BEFORE the campaign starts (no loss window): the fresh
       // manager's first job is deterministically `j_1` (re-checked below).
       (initialSnapshot, stream) <- hub.subscribe(ReplayJob)
@@ -329,7 +348,7 @@ object ReplayHarness:
       loop = AgentLoop(
         backend,
         registry,
-        ModelName,
+        modelName,
         adm,
         ReplayRoot,
         events = Some(
@@ -341,7 +360,7 @@ object ReplayHarness:
         "replay-l48",
         Task(
           loop.runText(
-            List(RequestMessage("user", UserMessage)),
+            List(RequestMessage("user", prompt)),
             limits,
             maxRounds
           )
@@ -372,6 +391,41 @@ object ReplayHarness:
       graph = graph,
       comparison = comparison
     )
+
+  /** Runtime seam implementation for a fresh backend. The committed document
+    * contributes graph provenance and model identity only; its prompts and
+    * responses are not used to drive this execution.
+    */
+  def liveBackend(model: ModelBackend): RerunBackend = new RerunBackend:
+    override def execute(
+        request: RerunRequest
+    ): ZIO[zio.Scope, RaiderError, RerunExecution] =
+      runFresh(request)
+
+    private def runFresh(
+        request: RerunRequest
+    ): ZIO[zio.Scope, RaiderError, RerunExecution] =
+      replay(
+        workspace = request.workspace,
+        doc = document.copy(
+          runId = s"live-${request.snapshotGeneration}",
+          generator = document.generator
+        ),
+        limits = request.limits,
+        maxRounds = request.maxRounds,
+        prompt = request.prompt,
+        modelName = request.model,
+        backendOverride = Some(model)
+      ).flatMap { result =>
+        ZIO
+          .fromEither(result.graph)
+          .mapError(error =>
+            RaiderError.InputValidation(
+              s"live rerun graph reduction failed: $error"
+            )
+          )
+          .map(graph => RerunExecution(result.answer, graph))
+      }
 
   /** Generous outer bound around a GUARANTEED condition: the Terminal is
     * committed to the hub state before `jobs.await` returns; only the
