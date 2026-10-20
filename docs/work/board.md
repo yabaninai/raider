@@ -1,5 +1,13 @@
 # Raider Execution Board
 
+## 2026-10-20 — LIN-07 accepted; LIN-08 slice merged (producer card RAI-183 registered)
+
+- **Integrated merges:** LIN-07 from `lane/lin-07` merged as `2ad46a8433162b5ffaf8ba41a131573b57777106`; LIN-08 slice from `lane/lin-08` merged as `076e3d3f9e6233874b4f60373cf8d8bb88d263`. LIN-07's selected-subtree live execution, pointer-resolved inputs, typed budget refusal, and cancellation cleanup are integrated. LIN-08 delivers scope-aware catalog/pins and ReplayCli environment-pin consumption; its producer-origin and toolchain-pin remainder is RAI-183.
+- **Statuses:** LIN-01..07 accepted. LIN-08 remains in progress (slice integrated; RAI-183 pending). RAI-183 is registered and ready for producer-origin scopes and toolchain-pin production.
+- **Scope note:** The 2026-10-20 LIN-07 note authorizes `PartialLiveRerun.scala` and its test plus `ReplayHarness.scala` and `IsolatedRerun.scala` for live composition, `RerunRequest`, and live routing; round-2 review confirmed execution path and acceptance.
+- **Integrated gates on current task metadata:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0 (203 cards). `make quality-changed` exited 0 and selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0, `plan-validate` passed, timeout false, manifest `artifacts/quality/20261020-111819-16013-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 gates passed (`sbt-test`, `cli-smoke`, `core-contracts-spec`, `compile-fixtures`, `plan-validate`, `repl-smoke`, `sbt-compile`, `scalafmt-check`), timeout false; manifest `artifacts/quality/20261020-111836-16307-0001/manifest.json`. An earlier required `quality-changed QUALITY_EXECUTE=1` run also passed at `20261020-110819-96303-0001`; no timeout or retry was needed.
+- **Documented exception:** TAB-02 (RAI-172) remains a tracked conditional follow-up, distinct from these passing gates; it was not observed red in these runs.
+
 ## 2026-10-20 — ADR-030 SDLC implementation line COMPLETE
 
 - **Integrated merges:** RAI-170 from `lane/rai-170` merged as `dbb1e71ce2b055ed65c45bf68801ddd6d6fbf8e7`; RAI-182 from `lane/rai-182` merged as `2469e04ca6e2c695c29c874494e725f036b5e433`. RAI-170's independent local-release verification and RAI-182's authorized LIN-06 live-rerun wiring are integrated.

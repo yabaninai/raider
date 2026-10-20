@@ -252,9 +252,9 @@ Status: ready. Milestone: LIN. Dependencies: LIN-08, LIN-03, RAI-173.
 
 ## LIN-07: Partial replay of phases/subtrees
 
-Status: ready. Milestone: LIN. Dependencies: LIN-05.
+Status: accepted. Milestone: LIN. Dependencies: LIN-05.
 
-Scope note (coordinator, 2026-10-20): CLI wiring authorized — `modules/cli/src/main/scala/raider/cli/lineage/PartialLiveRerun.scala` and its test are in scope (live composition of the runtime PartialRerun over the RerunBackend seam; RAI-182 pattern).
+Scope note (coordinator, 2026-10-20): CLI wiring authorized — `modules/cli/src/main/scala/raider/cli/lineage/PartialLiveRerun.scala` and its test, plus `modules/cli/src/main/scala/raider/cli/lineage/ReplayHarness.scala` and `modules/cli/src/main/scala/raider/cli/lineage/IsolatedRerun.scala`, are in scope. These are the live composition points for the runtime PartialRerun over the RerunBackend seam, including the `RerunRequest` carrier and live routing; the round-2 reviewer confirmed the execution path and acceptance (RAI-182 pattern).
 
 **Scenario and contract.** Replay a named phase/subtree with an explicit input contract; isolate non-overlapping phases; report contract errors instead of substituting empty values.
 
@@ -278,7 +278,9 @@ Scope note (coordinator, 2026-10-20): CLI wiring authorized — `modules/cli/src
 
 ## LIN-08: Scopes (chat/headless/campaigns), pinning, catalog
 
-Status: ready. Milestone: LIN. Dependencies: LIN-03, LIN-05.
+Status: in-progress. Milestone: LIN. Dependencies: LIN-03, LIN-05.
+
+Scope note (coordinator, 2026-10-20): catalog/pin/ReplayCli consumer slice merged; LIN-08 remains open pending RAI-183 producer-origin scopes and toolchain-pin production.
 
 **Scenario and contract.** Lineage for chat, headless, and overnight campaigns (tree catalog); compare the pinned environment: warning + attempt + discrepancy report.
 
