@@ -7,6 +7,7 @@ import raider.core.result.ExitCodes
 import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.events.EventHub
+import raider.runtime.events.EventEnvelope
 import raider.runtime.jobs.{JobHandle, JobManager, StatusLedger}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
 import zio.{Exit, Promise, Ref, Scope, ZIO}
@@ -444,7 +445,9 @@ object ChatLoop:
       root: RootId,
       sink: String => zio.UIO[Unit],
       label: String,
-      onStart: JobHandle[?] => zio.UIO[Unit] = _ => ZIO.unit
+      onStart: JobHandle[?] => zio.UIO[Unit] = _ => ZIO.unit,
+      onSettled: (JobId, Vector[EventEnvelope]) => zio.UIO[Unit] = (_, _) =>
+        ZIO.unit
   )(body: JobId => ZIO[Any, RaiderError, R]): ZIO[Any, RaiderError, R] =
     for
       barrier <- Promise.make[Nothing, JobId]
@@ -463,6 +466,8 @@ object ChatLoop:
             .awaitCaughtUp(hub, handle.id, renderer.foldedSeq.get)
             .zipRight(renderer.fiber.interrupt)
         )
+      exported <- renderer.exported.get
+      _ <- onSettled(handle.id, exported)
     yield result
 
   /** One user message as ONE job (RAI-060) + capture (RAI-155.b, ADR-033 §5): a
@@ -479,7 +484,28 @@ object ChatLoop:
       ctx: RunCtx,
       input: String
   ): ZIO[Any, RaiderError, String] =
-    runJob(ctx.hub, ctx.manager, ctx.root, ctx.sink, "chat-message") { jobId =>
+    runJob(
+      ctx.hub,
+      ctx.manager,
+      ctx.root,
+      ctx.sink,
+      "chat-message",
+      onSettled = (jobId, events) =>
+        ZIO.succeed {
+          val runsRoot = Paths.get(ctx.workspacePath, ".raider", "runs")
+          ChatLineageExport.publish(
+            runsRoot,
+            jobId,
+            events,
+            if ctx.provider == "mock" then None else Some(ctx.loop.model)
+          ) match
+            case Right(_) => ()
+            case Left(error) =>
+              System.err.println(
+                s"chat lineage publication unavailable: ${error.take(200)}"
+              )
+        }
+    ) { jobId =>
       val loop = ctx.loop.copy(events =
         Some(LoopEvents(ctx.hub, jobId, ctx.root, StatusLedger.sessionId))
       )

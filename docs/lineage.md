@@ -57,6 +57,7 @@ The run directory is set by the `--out` flag. Actual headless runner behavior
 <out>/work-<uuid>/          # run directory; parallel runs do not share a directory
 ├── run.json                # run result (status, accounting, ci)
 ├── events.jsonl            # session events—the source of truth (schemaVersion 1)
+├── toolchain.json          # ReplayCli pin: scala, jdk, raider, optional model
 ├── summary.md              # human-readable summary
 └── transcript.json         # run trace
 ```
@@ -66,6 +67,7 @@ Lineage artifacts sit **alongside the run artifacts**, in the same run directory
 ```text
 <out>/work-<uuid>/lineage.scala        # graph projection (valid Scala)
 <out>/work-<uuid>/lineage-data.json    # data resource (prompts, node data)
+<out>/work-<uuid>/toolchain.json       # environment pin read by ReplayCli
 ```
 
 ADR-027 expresses this as `artifacts/<run>/lineage.scala` +
@@ -80,6 +82,9 @@ raider run --agent coder --input "..." --out artifacts/<run>   # + --mock/--prov
 - `events.jsonl` is the canonical export of per-job `EventEnvelope`s (actual
   `raider.runtime.events` events, sorted by per-job seq; duplicates are discarded
   and the coalescing marker is retained accurately).
+- `toolchain.json` is atomically written for runs that reach lineage reduction.
+  It records the active Scala, JDK, and Raider versions; the optional `model`
+  field is omitted for mock runs because they have no observed model identity.
 
 ## 4. Reproduction modes
 
@@ -132,6 +137,8 @@ Catalog requirements:
 - every entry carries a **graph-hash** and **reproducibility status** (successfully
   replayed / divergent / not checked);
 - parallel runs add entries through **atomic append** (LIN8-03).
+- producers assign the origin scope (`Chat`, `Headless`, or `Campaign`) when
+  appending records; consumers filter catalog records by that stamped scope.
 - entries with run artifacts refer to the `lineage-commit.json` manifest and its
   generation, never to the mutable `lineage-data.json` or `lineage.scala` names;
   the reader verifies the committed pair before recording the reference;

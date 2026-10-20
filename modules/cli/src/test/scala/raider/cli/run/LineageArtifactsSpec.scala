@@ -373,9 +373,15 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
                 throw new IllegalStateException("invalid document: " + e)
             val src = sourceOf(outcome.workDir)
             val summary = summaryOf(outcome.workDir)
-            (doc, src, summary)
+            val pin = raider.cli.lineage.EnvPinning.readPinned(
+              outcome.workDir.resolve("toolchain.json")
+            )
+            val catalog = raider.cli.lineage.CatalogStore.load(
+              raider.cli.lineage.CatalogStore.catalogFile(work)
+            )
+            (doc, src, summary, pin, catalog)
           }.orDie
-          (doc, src, summary) = checked
+          (doc, src, summary, pin, catalog) = checked
           rootId = outcome.result.get.rootId.value
           // the canonical generator block of the frozen schema
           gen = doc.generator
@@ -412,6 +418,24 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
             .usage
             .isDefined,
           summary.contains("- lineage: graph "),
+          pin == Right(
+            raider.cli.lineage.EnvPinning.PinnedEnv(
+              raider.cli.lineage.EnvPinning.currentEnv().scalaVersion,
+              raider.cli.lineage.EnvPinning.currentEnv().jdkVersion,
+              raider.cli.lineage.EnvPinning.currentEnv().raiderVersion,
+              None
+            )
+          ),
+          summary.contains("- toolchain pin: toolchain.json"),
+          catalog.toOption.exists(
+            _.exists(record =>
+              record.path == outcome.workDir.toString &&
+                record.scope == raider.cli.lineage.CatalogScope.Headless &&
+                record.pinnedEnv.exists(
+                  _.scalaVersion == pin.toOption.get.scalaVersion
+                )
+            )
+          ),
           summary.contains(
             "- lineage artifacts: lineage.scala, lineage-data.json (schemaVersion 1)"
           ),
@@ -502,7 +526,8 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           outcome.exitCode == 0,
           summary.contains("- lineage artifacts: unavailable ("),
           !Files.exists(outcome.workDir.resolve("lineage.scala")),
-          !Files.exists(outcome.workDir.resolve("lineage-data.json"))
+          !Files.exists(outcome.workDir.resolve("lineage-data.json")),
+          Files.isRegularFile(outcome.workDir.resolve("toolchain.json"))
         )
       }
     },
@@ -577,7 +602,8 @@ object LineageArtifactsSpec extends ZIOSpecDefault:
           !summary.contains("lineage artifacts"),
           !summary.contains("lineage:"),
           !Files.exists(outcome.workDir.resolve("lineage.scala")),
-          !Files.exists(outcome.workDir.resolve("lineage-data.json"))
+          !Files.exists(outcome.workDir.resolve("lineage-data.json")),
+          !Files.exists(outcome.workDir.resolve("toolchain.json"))
         )
       }
     },
