@@ -6,6 +6,7 @@ import raider.runtime.admission.Admission
 import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd}
 import raider.runtime.loop.AgentLoop
 import zio.json.{DecoderOps, JsonDecoder, DeriveJsonDecoder}
+import zio.json.ast.Json
 import zio.test.{live, *}
 import zio.{Duration as ZDuration, Exit as ZExit, ZIO}
 
@@ -99,12 +100,37 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
 
   // ---------- stand ----------
 
-  private final case class ReqWire(model: String, messages: List[ReqMessage])
+  private final case class ReqWire(
+      model: String,
+      messages: List[ReqMessage],
+      tools: Option[List[ReqTool]]
+  )
   private final case class ReqMessage(role: String, content: String)
+  private final case class ReqTool(`type`: String, function: ReqFunction)
+  private final case class ReqFunction(
+      name: String,
+      description: String,
+      parameters: Json
+  )
 
   private object ReqWire:
     given JsonDecoder[ReqMessage] = DeriveJsonDecoder.gen[ReqMessage]
+    given JsonDecoder[ReqFunction] = DeriveJsonDecoder.gen[ReqFunction]
+    given JsonDecoder[ReqTool] = DeriveJsonDecoder.gen[ReqTool]
     given JsonDecoder[ReqWire] = DeriveJsonDecoder.gen[ReqWire]
+
+  private val WireToolDescription = "Find \"café\" files 雪"
+  private val WireToolSchema =
+    """{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"options":{"type":"object","properties":{"enabled":{"type":"boolean"},"label":{"type":"string","description":"café \"雪\""}}}},"required":["limit"]}"""
+
+  private def hasExpectedTool(req: ReqWire): Boolean =
+    val expectedSchema = WireToolSchema.fromJson[Json]
+    req.tools.exists(_.exists { tool =>
+      tool.`type` == "function" &&
+      tool.function.name == "lookup" &&
+      tool.function.description == WireToolDescription &&
+      expectedSchema.contains(tool.function.parameters)
+    })
 
   private final case class StandHandle(
       url: String,
@@ -193,6 +219,34 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
                           "[DONE]"
                         )
                       )
+                    case "stream-tool-wire"
+                        if hasExpectedTool(req) && !hasToolMsg =>
+                      sse(
+                        Seq(
+                          """{"id":"wire-tool","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"wire-call","function":{"name":"lookup","arguments":"{\"limit\":2,\"options\":{\"enabled\":true,\"label\":\"café 雪\"}}"}}]},"finish_reason":null}]}""",
+                          """{"id":"wire-tool","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}""",
+                          "[DONE]"
+                        )
+                      )
+                    case "stream-tool-wire" if hasExpectedTool(req) =>
+                      sse(
+                        Seq(
+                          """{"id":"wire-final","choices":[{"index":0,"delta":{"content":"stream final"},"finish_reason":null}]}""",
+                          """{"id":"wire-final","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}""",
+                          "[DONE]"
+                        )
+                      )
+                    case "stream-tool-wire" =>
+                      ex.sendResponseHeaders(400, -1)
+                    case "stream-empty" if req.tools.isEmpty =>
+                      sse(
+                        Seq(
+                          """{"id":"empty-tools","choices":[{"index":0,"delta":{"content":"empty tools accepted"},"finish_reason":null}]}""",
+                          """{"id":"empty-tools","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}""",
+                          "[DONE]"
+                        )
+                      )
+                    case "stream-empty" => ex.sendResponseHeaders(400, -1)
                     case "stream-final" =>
                       sse(
                         Seq(
@@ -391,6 +445,65 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
               4
             )
           yield assertTrue(answer == "stream final")
+        }
+      },
+      test("CHATWIRE-01/02: valid streaming tool definition reaches the stand and executes") {
+        val invoked = new AtomicReference[String]("")
+        withStreamStand() { (backend, _) =>
+          for
+            adm <- Admission.make(lims())
+            root = AgentLoop.newRoot()
+            lookup = new Tool:
+              def name = "lookup"
+              def version = 1
+              def description = WireToolDescription
+              def recovery = RecoveryClass.ReadOnly
+              def timeoutMs = 5000L
+              def capabilities = ToolCapabilities(concurrentSafe = false)
+              override def parametersJsonSchema = WireToolSchema
+              def invoke(args: String) =
+                invoked.set(args)
+                ZIO.succeed("{\"ok\":true}")
+            registry = ToolRegistry.of(lookup).fold(e => throw e, identity)
+            loop = AgentLoop(backend, registry, "stream-tool-wire", adm, root)
+            answer <- loop.runText(
+              List(RequestMessage("user", "Find a file")),
+              lims().fold(e => throw e, identity),
+              4
+            )
+          yield assertTrue(
+            answer == "stream final",
+            invoked.get().contains("café 雪"),
+            invoked.get().contains("\"enabled\":true")
+          )
+        }
+      },
+      test("CHATWIRE-01: stand rejects a streaming request with absent tools") {
+        withStreamStand() { (backend, _) =>
+          for res <- ZIO.scoped(
+              backend
+                .stream(ModelRequest("stream-tool-wire", Nil, 16))
+                .runCollect
+                .either
+            )
+          yield assertTrue(
+            res.isLeft,
+            res.fold(_.code == "RA-STREAM", _ => false)
+          )
+        }
+      },
+      test("CHATWIRE-02: empty streaming tools stay absent and remain valid") {
+        withStreamStand() { (backend, _) =>
+          for
+            events <- ZIO.scoped(
+              backend
+                .stream(ModelRequest("stream-empty", Nil, 16))
+                .runCollect
+            )
+          yield assertTrue(
+            events.collect { case ModelEvent.TextDelta(_, t) => t }.mkString ==
+              "empty tools accepted"
+          )
         }
       },
       test("truncated stream (EOF before finish/DONE) → typed StreamProtocol") {
