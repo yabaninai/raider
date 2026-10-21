@@ -1,6 +1,6 @@
 # Live-wire budget request — RAI-171 preparation
 
-**Status: request only.** This document authorizes no live call, paid execution, credential provisioning, or provider configuration. Execution may begin only after the owner records the selected cap and providers in the board and separately authorizes the execution card.
+**Status: owner-authorized execution, strictly limited to the recorded cap.** The owner authorized live-wire execution for both listed provider kinds under a $5.00 total hard cap and a maximum of 100 requests; the runner must enforce the remaining budget before every call. No retries beyond the cap or automatic repeat of an ambiguous mutating call are permitted. Report actual/estimated/unknown spend truthfully. Credentials are environment-only; record per-call budget checks and a spend log without credential values or other secret leakage.
 
 ## Providers and endpoints
 
@@ -43,4 +43,4 @@ Credentials are supplied only through environment-variable references or an appr
 
 The owner fills this line, then records the same values in the board before any execution request:
 
-`CAP (USD, owner): ________   PROVIDERS (owner): ________`
+`CAP (USD, owner): 5.00   PROVIDERS (owner): openai-compatible + anthropic-compatible`

@@ -1,5 +1,12 @@
 # Raider Execution Board
 
+## 2026-10-21 — Owner decisions: live-wire $5 cap (execution authorized); CI program next; RAI-176 takeover
+
+- **Live-wire (RAI-171):** In progress; execution authorized only for openai-compatible + anthropic-compatible, $5.00 total and at most 100 requests, with runner-enforced per-call hard-stop, no retries beyond cap, environment-only credentials, per-call budget checks, a spend log, and no credential/secret-value leakage.
+- **TokenRouter packet:** Discovery started read-only on the sibling checkout; the owner chose “give now,” but checkout path and first target were not received, so the exact approved command list remains owed.
+- **Next program:** CI adapters full (RAI-023-full/024/026), toward PLAN.md’s First CI Acceptance; gap assessment is in flight.
+- **RAI-176 takeover:** External session’s uncommitted `OpenAIChatStreamSpec` diff in `wt/rai-176` is handed to the coordinator and preserved unchanged as the baseline for completion, review, and merge under the parallel-development runbook.
+
 ## 2026-10-21 — RAI-136 accepted; hygiene round
 
 - **Integrated merge:** RAI-136 from `lane/rai-136` merged on main as `93abb140f9542cb97b2704e9d495045eb679a9cd`; review approved. SOAK-01 sustained storm completed with three full `raiderRepl/test` runs (186 passed / 0 failed or ignored each, sampled load 60–145), SOAK-02 completed 18/18 focused PlanPanel attempts without `plan-exec` recurrence (RAI-123 stays conditional; no fix without a reproducer), and SOAK-03's two prior full-suite passes were verified. Evidence: `docs/work/records/RAI-136.md` and lane logs under `artifacts/rai-136/`.

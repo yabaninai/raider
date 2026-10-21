@@ -5342,7 +5342,7 @@
       "title": "Live-wire provider verification — scoped preparation",
       "milestone": "M1",
       "dependencies": [],
-      "status": "todo",
+      "status": "in-progress",
       "allowed_paths": ["docs/tasks/m1.md", "docs/provider-protocols.md"],
       "profiles": ["docs"],
       "behavior": "Prepare a scoped execution-card text with credential-free endpoint identities, model/build, explicit mode and per-profile/total budget cap, isolation/data handling, stop conditions and acceptance mapped to all seven provider-protocols §5 gates. Endpoint/budget values remain OWNER-GATED per the board Open Obligations row. Preparation only: no paid/live call; separate explicit owner budget authorization and endpoint configuration are required before any call.",
