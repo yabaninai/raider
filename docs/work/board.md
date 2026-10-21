@@ -8,7 +8,7 @@
 - **Documented exceptions and open items:** TAB-02 (RAI-172) remains conditional and is distinct from passing integrated gates; RAI-123 remains conditional because no reproducer was captured. Remaining open items: live-wire cap and TokenRouter packet (owner).
 - **Post-status documentation gate:** after synchronizing RAI-136 status, `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed, timeout false; manifest `artifacts/quality/20261021-180810-98667-0001/manifest.json`.
 - **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 203 cards.
-- **Push:** pending.
+- **Push:** `git push origin main` succeeded; main advanced from `8c1362f` to `0b742aa` (merge, lane record, and status/board commit).
 
 ## 2026-10-20 — P-LIN COMPLETE (LIN-01..08)
 
