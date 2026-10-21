@@ -82,7 +82,7 @@ Scope note (owner decision 2026-10-18): LIN-03 acceptance basis = live fold-erro
 
 ## RAI-173: LIN-03.b: Lineage snapshot commit protocol across readers
 
-Status: ready. Milestone: LIN. Dependencies: LIN-03.
+Status: accepted. Milestone: LIN. Dependencies: LIN-03.
 
 **Problem and scope.** LIN-03 pair-snapshot atomicity is effective only when readers honor its commit pointer. Authorize ReplayCli, HeadlessRunner, and live export to read a shared snapshot commit manifest or use equivalent write-then-rename discipline for the data/source pair. Prove zero torn reads with a concurrent-reader fixture aligned to LIN-14 expectations. Define the authorized mechanism for required live pinned-compiler validation. Parallel-safe reader changes only, after LIN-03 fold wiring merges.
 

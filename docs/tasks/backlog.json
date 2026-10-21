@@ -5223,7 +5223,7 @@
       "title": "SDLC evidence persistence: versioned event/run schema extension",
       "milestone": "M1",
       "dependencies": ["RAI-164"],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**"],
       "profiles": ["contracts"],
       "behavior": "Reviewed versioned extension of the event/run artifact schema with an additive record union carrying typed check-result, review-verdict, candidate-identity and integration-result records. Keep v1 consumers unaffected and pin v1 output bit-for-bit where no SDLC evidence exists; unknown-field typed refusal follows RAI-164's evolution policy. RAI-143 is the versioned additive-wire precedent.",
@@ -5382,7 +5382,7 @@
       "title": "LIN-03.b: Lineage snapshot commit protocol across readers",
       "milestone": "LIN",
       "dependencies": ["LIN-03"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/**",
         "modules/cli/src/main/scala/raider/cli/run/**",
