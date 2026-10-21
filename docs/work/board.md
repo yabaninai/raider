@@ -1,5 +1,15 @@
 # Raider Execution Board
 
+## 2026-10-21 — RAI-136 accepted; hygiene round
+
+- **Integrated merge:** RAI-136 from `lane/rai-136` merged on main as `93abb140f9542cb97b2704e9d495045eb679a9cd`; review approved. SOAK-01 sustained storm completed with three full `raiderRepl/test` runs (186 passed / 0 failed or ignored each, sampled load 60–145), SOAK-02 completed 18/18 focused PlanPanel attempts without `plan-exec` recurrence (RAI-123 stays conditional; no fix without a reproducer), and SOAK-03's two prior full-suite passes were verified. Evidence: `docs/work/records/RAI-136.md` and lane logs under `artifacts/rai-136/`.
+- **Statuses:** RAI-136 accepted in `docs/tasks/backlog.json` and `docs/tasks/m2-p2.md`. RAI-173/174 drift flips to accepted are in hygiene commit `8c1362f`. Hygiene removed 12 merged worktrees and branches; superseded lane tips (LIN-06 blocker record and original RAI-168 service) were backed up to the temporary archive.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast`). `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10 fast gates passed, timeout false; manifest `artifacts/quality/20261021-175246-82810-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 registered gates passed, timeout false; manifest `artifacts/quality/20261021-175938-87513-0001/manifest.json`. No timeout, retry, or real red occurred.
+- **Documented exceptions and open items:** TAB-02 (RAI-172) remains conditional and is distinct from passing integrated gates; RAI-123 remains conditional because no reproducer was captured. Remaining open items: live-wire cap and TokenRouter packet (owner).
+- **Post-status documentation gate:** after synchronizing RAI-136 status, `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed, timeout false; manifest `artifacts/quality/20261021-180810-98667-0001/manifest.json`.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 203 cards.
+- **Push:** pending.
+
 ## 2026-10-20 — P-LIN COMPLETE (LIN-01..08)
 
 - **Program arc:** P-LIN advanced from the session graph, through a valid Scala projection and live incremental wiring, into the snapshot pointer protocol, full live rerun, partial replay, and finally scopes/pins/catalog with producer origins.

@@ -4295,7 +4295,7 @@
         "RAI-119",
         "RAI-123"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
