@@ -200,9 +200,19 @@ object OpenAIChatStreamingBackend:
         s"""{"role":${m.role.toJson},"content":${m.content.toJson}}"""
       }
       .mkString("[", ",", "]")
+    val toolsJson = input.tools match
+      case Nil => ""
+      case defs =>
+        defs
+          .map { d =>
+            s"""{"type":"function","function":{"name":${d.name.toJson},""" +
+              s""""description":${d.description.toJson},""" +
+              s""""parameters":${d.parametersJsonSchema}}}"""
+          }
+          .mkString(",\"tools\":[", ",", "]")
     Right:
       s"""{"model":${input.model.toJson},"messages":$msgs,""" +
-        s""""max_tokens":${input.maxOutputTokens},"stream":true,""" +
+        s""""max_tokens":${input.maxOutputTokens}$toolsJson,"stream":true,""" +
         """"stream_options":{"include_usage":true}}"""
 
 end OpenAIChatStreamingBackend

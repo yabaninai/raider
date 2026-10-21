@@ -105,8 +105,10 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
       messages: List[ReqMessage],
       tools: Option[List[ReqTool]]
   )
+
   private final case class ReqMessage(role: String, content: String)
   private final case class ReqTool(`type`: String, function: ReqFunction)
+
   private final case class ReqFunction(
       name: String,
       description: String,
@@ -120,6 +122,7 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
     given JsonDecoder[ReqWire] = DeriveJsonDecoder.gen[ReqWire]
 
   private val WireToolDescription = "Find \"café\" files 雪"
+
   private val WireToolSchema =
     """{"type":"object","properties":{"limit":{"type":"integer","minimum":1},"options":{"type":"object","properties":{"enabled":{"type":"boolean"},"label":{"type":"string","description":"café \"雪\""}}}},"required":["limit"]}"""
 
@@ -447,7 +450,9 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
           yield assertTrue(answer == "stream final")
         }
       },
-      test("CHATWIRE-01/02: valid streaming tool definition reaches the stand and executes") {
+      test(
+        "CHATWIRE-01/02: valid streaming tool definition reaches the stand and executes"
+      ) {
         val invoked = new AtomicReference[String]("")
         withStreamStand() { (backend, _) =>
           for
@@ -494,8 +499,7 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
       },
       test("CHATWIRE-02: empty streaming tools stay absent and remain valid") {
         withStreamStand() { (backend, _) =>
-          for
-            events <- ZIO.scoped(
+          for events <- ZIO.scoped(
               backend
                 .stream(ModelRequest("stream-empty", Nil, 16))
                 .runCollect
