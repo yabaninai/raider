@@ -978,25 +978,23 @@ object HeadlessRunner:
       // IDs, pass/fail/error/skipped counts, escaped details). An empty
       // suite is written honestly; it never pretends to verify task
       // correctness (docs/ci-runtime.md artifacts table).
-      def xmlEscape(s: String): String =
-        s.replace("&", "&amp;")
-          .replace("<", "&lt;")
-          .replace(">", "&gt;")
-          .replace("\"", "&quot;")
-          .replace("'", "&apos;")
       def testCaseXml(c: CheckResult): String =
         val inner = c.outcome match
           case CheckOutcome.Passed => ""
           case CheckOutcome.Failed =>
-            s"""<failure message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
+            s"""<failure message="${CiReport.xmlEscape(
+                c.detail.take(120)
+              )}">${CiReport.xmlEscape(
                 c.detail
               )}</failure>"""
           case CheckOutcome.Errored =>
-            s"""<error message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
+            s"""<error message="${CiReport.xmlEscape(
+                c.detail.take(120)
+              )}">${CiReport.xmlEscape(
                 c.detail
               )}</error>"""
           case CheckOutcome.Skipped => "<skipped/>"
-        s"""    <testcase name="${xmlEscape(
+        s"""    <testcase name="${CiReport.xmlEscape(
             c.id
           )}" classname="raider.run.checks">$inner</testcase>"""
       val allChecks = finalResult.checks

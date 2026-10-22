@@ -225,6 +225,54 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
 
   def spec = suite("RAI-185 First CI real-process acceptance")(
     test(
+      "FCI-REPORT-01/03/04: check evidence, exit precedence, and hostile report values"
+    ) {
+      import CiReport.{Failure, TaskVerdict}
+      import raider.core.result.{CheckOutcome, CheckResult, ExitCodes}
+      val blocking = CheckResult("compile", CheckOutcome.Failed, "check failed")
+      val advisory = CheckResult("review", CheckOutcome.Errored, "finding")
+      val table = List(
+        (Set(Failure.Success), ExitCodes.Success),
+        (Set(Failure.BlockingCheck), ExitCodes.TaskRejected),
+        (Set(Failure.Deadline), ExitCodes.DeadlineExceeded),
+        (Set(Failure.PolicyDenial), ExitCodes.PolicyDenied),
+        (Set(Failure.Uncertainty), ExitCodes.Uncertain),
+        (Set(Failure.WriteFailure), ExitCodes.ArtifactWriteFailure),
+        (
+          Set(Failure.WriteFailure, Failure.Uncertainty),
+          ExitCodes.ArtifactWriteFailure
+        ),
+        (Set(Failure.Uncertainty, Failure.Deadline), ExitCodes.Uncertain),
+        (
+          Set(Failure.PolicyDenial, Failure.Deadline),
+          ExitCodes.DeadlineExceeded
+        ),
+        (
+          Set(Failure.WriteFailure, Failure.CancellationSignal(143)),
+          ExitCodes.SigTerm
+        ),
+        (Set(Failure.Preflight(21), Failure.BlockingCheck), 21)
+      )
+      assertTrue(
+        CiReport
+          .taskVerdict(List(blocking), Set("review")) == TaskVerdict.Blocking,
+        CiReport
+          .taskVerdict(List(advisory), Set("review")) == TaskVerdict.Advisory,
+        CiReport.taskVerdict(Nil, Set("review")) == TaskVerdict.Passed,
+        table.forall((causes, expected) =>
+          CiReport.exitCode(causes) == expected
+        ),
+        CiReport.xmlEscape("<&\"'\u0001") == "&lt;&amp;&quot;&apos;�",
+        CiReport.neutralizeWorkflowCommands(
+          "::error::x%\n"
+        ) == "%3A%3Aerror%3A%3Ax%25%0A",
+        CiReport.safeRelativePath("checks.junit.xml"),
+        !CiReport.safeRelativePath("../outside"),
+        !CiReport.safeRelativePath("/absolute/path"),
+        !CiReport.safeRelativePath("C:\\outside")
+      )
+    },
+    test(
       "FCI-CLI-01/02 and FCI-CTX-01: real CLI, artifact integrity, and environment parity"
     ) {
       val work = tempDir()
