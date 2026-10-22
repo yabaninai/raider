@@ -1,5 +1,12 @@
 # Raider Execution Board
 
+## 2026-10-22 — TUI-X program registered (owner decisions)
+
+- **Owner decisions:** Evolve Raider's own ANSI renderer under ADR-016 and the MIT-only policy, with no new runtime dependencies; phase distribution JVM first, Native only after evaluation; sequence TUI work B1 → B2/B3 → A1 → C1, with JVM distribution D1 parallel to B and native-image evaluation D2 after D1.
+- **Program:** RAI-188..194 register the chat-centric layout/streaming pane, inline-approval tool cards, sessions/tasks/status footer and palette, own-renderer markdown/highlighting/diff, diff review/model-provider switching, JVM distribution, and native-image feasibility spike.
+- **Estimate and scope:** Approximately 1,150–1,550 gross engineering hours, beyond the closed 13.1k-hour envelope as a new owner-authorized program. Honest target: a Codex/OpenCode-like agent TUI with convenient distribution; this is not a claim of complete Codex/OpenCode ecosystem parity.
+- **Status/dependencies:** RAI-188 and RAI-193 are ready with no card dependencies; RAI-189/190/191 follow RAI-188; RAI-192 follows RAI-189 and RAI-191; RAI-194 follows RAI-193. The registered phase order is B1 → B2/B3 → A1 → C1, with D1 in parallel and D2 afterward.
+
 ## 2026-10-22 — RAI-176 accepted (takeover complete); CI program registered
 
 - **Takeover arc:** External-session RAI-176 work was preserved as the lane baseline, completed with the streaming tool-definition regression fix and dynamic-port scripted local probe (real file creation ×3), independently reviewed and approved, then integrated; probe finding closed. RAI-176 is accepted in task Markdown and backlog.

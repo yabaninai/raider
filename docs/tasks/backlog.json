@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 198,
+  "raider_count": 205,
   "companion_count": 3,
   "cards": [
     {
@@ -5690,6 +5690,125 @@
       },
       "non_goals": "A second scheduler/runtime, hosted CI claims, paid provider calls, broad MVP/W12 completion beyond the First CI matrix, durable resume/exactly-once claims, or replacing OS signal acceptance with an in-process interrupt test.",
       "context": "ci-runtime.md §§6–8 and 11; RAI-185/186 provide the CLI, adapter, artifact, report, check, and exit prerequisites. RAI-131's runner-fiber interruption evidence does not meet this card's real parent-delivered SIGTERM requirement."
+    },
+    {
+      "id": "RAI-188",
+      "title": "TUI-X.B1: chat-centric layout + streaming panel",
+      "milestone": "P2",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "repl"],
+      "behavior": "Build a chat-centric layout in the existing custom ANSI renderer around the current ChatLoop/facade. Render streaming through the ADR-024 renderer seam, provide bounded scroll regions, and integrate existing tabs and :aux. Preserve existing real PTY acceptance patterns.",
+      "acceptance": {
+        "normal": "TUIX-B1-01: interactive chat uses the central pane, streams via the renderer seam, and scroll regions display bounded chat history.",
+        "error": "TUIX-B1-02: resize, Unicode, multiline/paste, and unsupported-terminal fallback remain correct; tabs and :aux remain reachable.",
+        "concurrency": "TUIX-B1-03: real PTY streaming/focus/input preserves typed drafts, terminal cleanup, cancellation, and existing P2W invariants."
+      },
+      "non_goals": "New runtime dependencies or renderer toolkit, a second chat/runtime loop, ADR-024 event-contract changes, replacing PTY acceptance with scripted-only tests, or changing tool authority.",
+      "context": "Owner decision 2026-10-22: TUI-X begins with B1. ADR-016 requires the custom diff-based ANSI renderer over JLine with no new runtime dependency; ADR-024 supplies the runtime-to-UI event seam."
+    },
+    {
+      "id": "RAI-189",
+      "title": "TUI-X.B2: tool-call cards with inline approval",
+      "milestone": "P2",
+      "dependencies": ["RAI-188"],
+      "status": "todo",
+      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
+      "behavior": "Render fs_read, fs_search, proc_run, and fs_patch calls as cards with inline approve/deny wired to existing plan-mode and approval machinery. Launcher policy and tool policy remain authoritative; the interface never expands authority.",
+      "acceptance": {
+        "normal": "TUIX-B2-01: supported calls render as bounded cards and explicit decisions reach the existing plan-mode API with correct call/session identity.",
+        "error": "TUIX-B2-02: stale, unknown, malformed, and policy-denied actions fail closed; rendering or focus cannot grant permissions or auto-approve.",
+        "concurrency": "TUIX-B2-03: duplicate input, cancellation, tab switching, and competing decisions resolve through the existing single-owner machinery without duplicate execution."
+      },
+      "non_goals": "Automatic approval, new tool permissions, direct tool invocation from the renderer, a new approval protocol, or changing launcher/plan-mode policy.",
+      "context": "TUI-X phase B follows B1. ADR-028 requires read-only plan execution and explicit owner approval before a separate execution job; display state and prompt text are not approval."
+    },
+    {
+      "id": "RAI-190",
+      "title": "TUI-X.B3: session switcher + tasks panel + status footer",
+      "milestone": "P2",
+      "dependencies": ["RAI-188"],
+      "status": "todo",
+      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "repl"],
+      "behavior": "Surface existing :sessions list/switch in the layout; add a tasks/todo panel backed by existing plan-mode data; show model, budget, and stream state from ADR-024 events; upgrade command-palette discoverability to the OpenCode-level target without changing Raider policy or ownership.",
+      "acceptance": {
+        "normal": "TUIX-B3-01: users can list/switch sessions, view plan tasks/todos, and see model/budget/stream state sourced from the existing event seam.",
+        "error": "TUIX-B3-02: unknown sessions/commands and unknown/unavailable budget/model values are represented honestly; palette actions do not claim unsupported capabilities.",
+        "concurrency": "TUIX-B3-03: switching during streaming retains per-session draft/history and does not pause, cancel, reassign, or alter job budgets/policies."
+      },
+      "non_goals": "A new session registry, scheduler, task store, credential display, or focus-driven runtime controls.",
+      "context": "TUI-X phase B follows B1. ADR-024 keeps focus in UI state; focus cannot alter ownership, budget, policy, admission, or cancellation."
+    },
+    {
+      "id": "RAI-191",
+      "title": "TUI-X.A1: markdown + syntax highlighting + diff in the own renderer",
+      "milestone": "P2",
+      "dependencies": ["RAI-188"],
+      "status": "todo",
+      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "repl", "security"],
+      "behavior": "Extend the own renderer for streaming-safe markdown headings/lists/code blocks, Scala and JSON tokenization with ANSI highlighting, unified diff reusing fs_patch/UnifiedDiff, dark/light themes, and box-drawing. Incomplete streamed blocks remain renderable and recover.",
+      "acceptance": {
+        "normal": "TUIX-A1-01: complete and incremental markdown, Scala, JSON, and diff fixtures render with stable wrapping, themes, ANSI styling, and box-drawing.",
+        "error": "TUIX-A1-02: malformed/incomplete syntax, terminal escapes, wide/combining Unicode, and narrow/resized viewports cannot corrupt later frames.",
+        "concurrency": "TUIX-A1-03: bounded stream updates, resize/theme changes, and scrollback remain deterministic without blocking event delivery or input."
+      },
+      "non_goals": "External markdown/highlighting/TUI dependencies, a general widget toolkit, compiler integration, or changing diff application policy.",
+      "context": "TUI-X phase A follows B1. Owner decision continues ADR-016 custom renderer evolution under MIT-only policy without runtime dependencies."
+    },
+    {
+      "id": "RAI-192",
+      "title": "TUI-X.C1: diff review accept/reject + model/provider switcher",
+      "milestone": "P2",
+      "dependencies": ["RAI-189", "RAI-191"],
+      "status": "todo",
+      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
+      "behavior": "Provide per-hunk diff accept/reject through fs_patch application policy; switch model/provider from TUI through existing environment policy without displaying credentials; fold the existing lineage tab into the layout.",
+      "acceptance": {
+        "normal": "TUIX-C1-01: each hunk is explicitly accepted/rejected through existing patch policy; configured model/provider choices switch at the environment-policy boundary; lineage is reachable.",
+        "error": "TUIX-C1-02: stale diffs, invalid hunks, unavailable providers, and policy refusals fail closed; credential values never appear in UI, logs, or artifacts.",
+        "concurrency": "TUIX-C1-03: workspace changes, session switching, or cancellation cannot apply stale/rejected hunks or duplicate mutations; lineage does not block streaming/cancellation."
+      },
+      "non_goals": "Bypassing fs_patch or environment policy, credential display/editing, lineage schema/projection changes, or automatic hunk acceptance.",
+      "context": "TUI-X phase C follows B2 and A1. Patch policy remains authoritative and lineage retains its existing projection/pointer protocol."
+    },
+    {
+      "id": "RAI-193",
+      "title": "TUI-X.D1: JVM distribution",
+      "milestone": "P2",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": ["packaging/**", "scripts/release/**", "contracts/package/**", "docs/releases/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "release", "security"],
+      "behavior": "Deliver a coursier launcher and existing fat-jar base, Homebrew and Scoop formulas, versioned releases through Raider's own SDLC release pipeline, and install smoke tests. Dogfood SemVer, changelog, and checksum requirements; hosted publication is not implied.",
+      "acceptance": {
+        "normal": "TUIX-D1-01: clean-directory coursier/fat-jar install starts the supported entry point; version, changelog, and checksums agree.",
+        "error": "TUIX-D1-02: corrupt checksum, incompatible/missing JDK, and malformed release metadata fail nonzero without secret exposure or false install claims.",
+        "concurrency": "TUIX-D1-03: interrupted install/release smoke exits truthfully, cleans temporary artifacts, and never promotes a partial version as current."
+      },
+      "non_goals": "Native-image, signing/publication without explicit policy, a second release scheduler, or platform claims without install smoke evidence.",
+      "context": "Owner decision 2026-10-22: JVM distribution precedes native-image evaluation and runs parallel with phase B. Verify and reuse existing launcher, fat-jar, and SDLC release foundations."
+    },
+    {
+      "id": "RAI-194",
+      "title": "TUI-X.D2: GraalVM native-image evaluation (spike)",
+      "milestone": "P2",
+      "dependencies": ["RAI-193"],
+      "status": "todo",
+      "allowed_paths": ["packaging/**", "scripts/release/**", "docs/research/**", "docs/adr/**", "docs/work/records/**"],
+      "profiles": ["static", "release", "docs"],
+      "behavior": "Evaluate native-image feasibility for pinned Scala/ZIO: reflection/configuration reachability, reproducible build feasibility, startup and binary-size measurements, and honest go/no-go recommendation. A go decision requires a separate ADR before implementation.",
+      "acceptance": {
+        "normal": "TUIX-D2-01: pinned-toolchain feasibility build and reachability/configuration inventory are reproducible from documented commands.",
+        "error": "TUIX-D2-02: unsupported reflection/resource/initialization cases, failed builds, and missing prerequisites are recorded as limitations, never successful native support.",
+        "concurrency": "TUIX-D2-03: repeated measurements record machine/toolchain, startup method, size, and incomplete/interrupted outcomes without changing default distribution behavior."
+      },
+      "non_goals": "Shipping native binaries, adding runtime dependencies, changing the pinned Scala/ZIO toolchain, or implementing native support before a separate reviewed ADR.",
+      "context": "TUI-X distribution is phased JVM to Native. This evaluation-only spike follows RAI-193 to compare against the usable JVM installation baseline."
     }
   ]
 }
