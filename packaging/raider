@@ -28,11 +28,11 @@ if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
   printf '%s\n' 'raider: Java 21 or newer is required' >&2
   exit 21
 fi
-JAVA_VERSION=$("$JAVA" -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }' || true)
-case "$JAVA_VERSION" in
-  ''|*[!0-9]*) JAVA_VERSION=0 ;;
+JAVA_MAJOR=$("$JAVA" -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }' || true)
+case "$JAVA_MAJOR" in
+  ''|*[!0-9]*) JAVA_MAJOR=0 ;;
 esac
-if [ "$JAVA_VERSION" -lt 21 ]; then
+if [ "$JAVA_MAJOR" -lt 21 ]; then
   printf '%s\n' 'raider: Java 21 or newer is required' >&2
   exit 21
 fi

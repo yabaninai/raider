@@ -125,7 +125,7 @@ object LocalReleaseDriver:
       _ => ReleaseStage.Request(
         repo,
         version,
-        "First local JVM distribution release; artifacts and formulas verified locally.",
+        "Fix Coursier launcher arguments for the bundled JAR; verify the Java fallback and local distribution artifacts.",
         ReleaseStage.AcceptanceEvidence(head, "local-check", "local-owner", "local-worktree"),
         _ => Task.succeed(()),
         distributionArtifacts = List(
