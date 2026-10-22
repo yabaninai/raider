@@ -1,5 +1,23 @@
 # Raider Execution Board
 
+## 2026-10-22 — RAI-185 accepted (First CI process level); live-wire blocked on gateway
+
+- **Integrated merge:** RAI-185 from `lane/rai-185` merged to main as `e2626871389dffd0f63766416dee431705ad3fc3`. Three review rounds closed; round 3 approved. FCI-CLI-01/02 and FCI-CTX-01/02 are accepted on the real CLI child-process fixture, including distinct `result.json`/`artifacts.json` surfaces, manifest set-equality, zero temporary files, SHA-256 integrity, non-TTY behavior, adapter environment parity/redaction, and malformed-input pre-dispatch refusal (exit 21, before ledger admission).
+- **Statuses:** RAI-185 accepted; RAI-186 ready (RAI-131 and RAI-185 are accepted prerequisites). RAI-184 remains open pending gateway availability or an alternative endpoint from the owner.
+- **MJE-03c:** recurrence investigation did not reproduce the failure: five isolated runs passed 8/8 each and the full module suite passed 491/0 in 228 seconds. Load sensitivity remains an unproven-causal hypothesis; the watch remains intact.
+- **Live-wire blocker:** zai models were identified through the Yabanin gateway at `yabanin.ai/gw/v1` (`glm-5.3` / `glm-5.3-flash`); the credential bridge worked (masked). One dispatch attempt ended in a transport error. Coordinator probes without a proxy returned HTTP 502 from both `/models` and `/chat/completions` in 0.3 seconds, indicating a server-side outage. The lane stopped honestly; the $0.10 reservation is retained and no retries were made.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification). `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10/10 fast gates passed, timeout false; manifest `artifacts/quality/20261022-180230-91662-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime ci security docs"` exited 0; all 8/8 registered gates passed, timeout false; manifest `artifacts/quality/20261022-181143-98346-0001/manifest.json`.
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and distinct from these passing gates; it was not observed red.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 214 cards. After status synchronization, `make quality-changed` selected `docs` and the `QUALITY_EXECUTE=1` rerun exited 0; `plan-validate` passed, timeout false; manifest `artifacts/quality/20261022-182307-11200-0001/manifest.json`.
+- **Record:** `docs/work/records/RAI-185.md`.
+
+## 2026-10-22 — Live-wire owner config (zai, models, $0.10 reservation); scope notes; packaging registry mapping
+
+- **Live-wire configuration:** zai leg selected for this execution, with `glm-5.3-flash` requested and `glm-5.3` observed; reserve $0.10 per response. Anthropic is deferred. This records configuration only, not a live execution or spend claim.
+- **Scope notes:** RAI-188 authorizes the model-delta bridge into the ADR-024 renderer seam while retaining existing terminal-output paths as fallback. RAI-193 authorizes additive LocalRelease staging of fat-jar/launcher/formulas atomically into the checksummed artifact set.
+- **Registry path mapping:** `packaging/` maps to existing `static` + `contracts` profiles; additive classification only, with no new gates or threshold changes. **Independent review required per RAI-135 precedent (pending).** No RAI-193 lane files or work record were present in the root snapshot when checked.
+- **Work record:** [coordinator execution evidence](records/COORD-RAI-188-193-REGISTRY-20261022.md).
+
 ## 2026-10-22 — TUI-X program registered (owner decisions)
 
 - **Owner decisions:** Evolve Raider's own ANSI renderer under ADR-016 and the MIT-only policy, with no new runtime dependencies; phase distribution JVM first, Native only after evaluation; sequence TUI work B1 → B2/B3 → A1 → C1, with JVM distribution D1 parallel to B and native-image evaluation D2 after D1.
