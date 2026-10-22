@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 2 ]; then
-  printf 'usage: %s <distribution-jar> <semver>\n' "$0" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+  printf 'usage: %s <distribution-jar> <semver> [distribution-launcher]\n' "$0" >&2
   exit 2
 fi
 JAR=$1
@@ -16,13 +16,15 @@ JAVA_MAJOR=$(java -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }')
 [ "${JAVA_MAJOR:-0}" -ge 21 ] || { printf '%s\n' 'Java 21 or newer is required' >&2; exit 21; }
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
+LAUNCHER=${3:-"$ROOT/packaging/raider"}
+[ -r "$LAUNCHER" ] || { printf 'launcher is not readable: %s\n' "$LAUNCHER" >&2; exit 21; }
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/raider-install.XXXXXX")
 cleanup() { rm -rf "$TMP"; }
 trap cleanup EXIT HUP INT TERM
 INSTALL="$TMP/prefix/raider"
 mkdir -p "$INSTALL"
 cp "$JAR" "$INSTALL/raider-cli.jar"
-cp "$ROOT/packaging/raider" "$INSTALL/raider"
+cp "$LAUNCHER" "$INSTALL/raider"
 printf '%s\n' "$VERSION" > "$INSTALL/version"
 chmod +x "$INSTALL/raider"
 

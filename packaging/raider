@@ -3,12 +3,12 @@ set -eu
 
 HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 JAR=${RAIDER_JAR:-"$HERE/raider-cli.jar"}
-VERSION_FILE="$HERE/version"
+VER_FILE="$HERE/version"
 
 if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-V" ]; then
-  if [ -r "$VERSION_FILE" ]; then
-    VERSION=$(cat "$VERSION_FILE")
-    printf 'raider %s\n' "$VERSION"
+  if [ -r "$VER_FILE" ]; then
+    REL_VER=$(cat "$VER_FILE")
+    printf 'raider %s\n' "$REL_VER"
     exit 0
   fi
   printf '%s\n' 'raider: version metadata is missing' >&2

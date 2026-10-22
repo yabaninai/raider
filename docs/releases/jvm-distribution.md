@@ -33,7 +33,8 @@ The driver builds with `make raider-jar`, then invokes the actual
 launcher and formula sources alongside the JAR, writes release provenance and
 changelog, and verifies every entry in `SHA256SUMS`. The Homebrew and Scoop
 formulae are checked for rendered version and the staged JAR's real SHA-256.
-Finally, the clean-prefix smoke runs against `artifacts/release/<version>/raider-cli.jar`.
+Finally, the clean-prefix smoke runs against the released JAR and the staged
+`artifacts/release/<version>/packaging/raider` launcher.
 The version directory and `v<version>` tag are local worktree state only.
 For Git worktrees whose `.git` entry is a pointer file, the script temporarily
 exposes the resolved per-worktree Git directory while the existing release

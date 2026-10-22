@@ -61,8 +61,10 @@ else
   printf '%s\n' 'SHA-256 verification utility is required' >&2
   exit 2
 fi
-if grep -F -e 'vVERSION' -e 'VERSION"' -e 'REPLACE_WITH_RELEASE_SHA256' \
-  "$RELEASE/packaging/homebrew/raider.rb" "$RELEASE/packaging/scoop/raider.json"; then
+if grep -F 'VERSION' \
+  "$RELEASE/packaging/raider" \
+  "$RELEASE/packaging/homebrew/raider.rb" \
+  "$RELEASE/packaging/scoop/raider.json"; then
   printf '%s\n' 'formula contains an unrendered release placeholder' >&2
   exit 2
 fi
@@ -75,7 +77,8 @@ else
   JAR_SHA=$(sha256sum "$RELEASE/raider-cli.jar" | awk '{print $1}')
 fi
 grep -F "$JAR_SHA" "$RELEASE/packaging/homebrew/raider.rb" "$RELEASE/packaging/scoop/raider.json" >/dev/null
-sh "$ROOT/scripts/release/install-smoke.sh" "$RELEASE/raider-cli.jar" "$VERSION"
+sh "$ROOT/scripts/release/install-smoke.sh" "$RELEASE/raider-cli.jar" "$VERSION" \
+  "$RELEASE/packaging/raider"
 printf 'release artifacts (%s):\n' "$VERSION"
 find "$RELEASE" -type f -print | LC_ALL=C sort
 printf 'jar_sha256=%s\n' "$JAR_SHA"
