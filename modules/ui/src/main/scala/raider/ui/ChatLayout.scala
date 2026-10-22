@@ -21,7 +21,8 @@ object ChatLayout:
       messages: Vector[Message],
       tabs: Vector[String],
       status: String,
-      auxiliary: Option[Vector[String]] = None
+      auxiliary: Option[Vector[String]] = None,
+      scrollOffset: Int = 0
   )
 
   val HistoryLimit: Int = 200
@@ -36,7 +37,9 @@ object ChatLayout:
     val source =
       frame.messages.takeRight(HistoryLimit).flatMap(wrap(_, columns))
     val auxiliary = frame.auxiliary.toVector.flatten.map("  " + _)
-    val body = (source ++ auxiliary).takeRight(chatRows)
+    val content = source ++ auxiliary
+    val end = (content.size - math.max(0, frame.scrollOffset)).max(0)
+    val body = content.take(end).takeRight(chatRows)
     val padded = Vector.fill(chatRows - body.size)("") ++ body
     val tabLine = frame.tabs.mkString("  ")
     val statusLine = frame.status

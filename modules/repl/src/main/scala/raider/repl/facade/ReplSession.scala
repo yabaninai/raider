@@ -31,6 +31,13 @@ trait ReplSession:
   def tools: ToolRegistry = ToolRegistry.empty
   def model: String = "scripted"
   def echoStream: Boolean = false
+  def renderSink: Option[TextRenderSink] = None
+
+/** Typed destination for model text deltas. The direct terminal echo remains
+  * the fallback when no interactive renderer is installed.
+  */
+trait TextRenderSink:
+  def textDelta(text: String): ZIO[Any, Nothing, Unit]
 
 object ReplSession:
 
@@ -43,7 +50,8 @@ object ReplSession:
       limits: Either[RaiderError, BudgetLimits] = BudgetLimits.make(),
       tools: ToolRegistry = ToolRegistry.empty,
       model: String = "scripted",
-      echoStream: Boolean = false
+      echoStream: Boolean = false,
+      renderSink: Option[TextRenderSink] = None
   ): ZIO[Any, RaiderError, ReplSession] =
     for
       valid <- ZIO.fromEither(limits)
@@ -56,7 +64,8 @@ object ReplSession:
       valid,
       tools,
       model,
-      echoStream
+      echoStream,
+      renderSink
     )
 
   private final case class ReplSessionImpl(
@@ -66,7 +75,8 @@ object ReplSession:
       limits: BudgetLimits,
       override val tools: ToolRegistry,
       override val model: String,
-      override val echoStream: Boolean
+      override val echoStream: Boolean,
+      override val renderSink: Option[TextRenderSink]
   ) extends ReplSession
 
 end ReplSession

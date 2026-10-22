@@ -52,6 +52,32 @@ object ChatLayoutSpec extends ZIOSpecDefault:
           body.mkString.contains("漢😀e\u0301")
         )
       },
+      test("bounded viewport moves back through chat history") {
+        val history = Vector(
+          ChatLayout.Message(ChatLayout.Role.User, "older entry"),
+          ChatLayout.Message(ChatLayout.Role.Assistant, "middle entry"),
+          ChatLayout.Message(ChatLayout.Role.User, "newer entry")
+        )
+        val latest = ChatLayout.render(
+          ChatLayout.Frame(40, 5, history, Vector("chat"), "ready")
+        )
+        val scrolled = ChatLayout.render(
+          ChatLayout.Frame(
+            40,
+            5,
+            history,
+            Vector("chat"),
+            "scrolled",
+            scrollOffset = 2
+          )
+        )
+        assertTrue(
+          latest.exists(_.contains("newer entry")),
+          !latest.exists(_.contains("older entry")),
+          scrolled.exists(_.contains("older entry")),
+          !scrolled.exists(_.contains("newer entry"))
+        )
+      },
       test("ANSI renderer emits initial frame then only changed rows") {
         val renderer = new ChatAnsiRenderer
         val first = ChatLayout.Frame(30, 5, Vector.empty, Vector.empty, "ready")
