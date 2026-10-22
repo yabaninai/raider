@@ -298,6 +298,12 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           artifacts(out).find(_.getFileName.toString == "result.json").get
         Files.readString(file, UTF_8)
       }
+      val successfulVerdict = resultDocs.forall { raw =>
+        raw.contains("\"taskVerdict\":\"passed\"") &&
+        raw.contains(
+          "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
+        )
+      }
       val outputsArePlain = childResults.forall { result =>
         !result.stdout.exists(c => c == '\u001b' || c == '\u009b') &&
         !result.stderr.exists(c => c == '\u001b' || c == '\u009b') &&
@@ -322,6 +328,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         childResults.forall(_.exit == 0),
         childResults.forall(_.stdout.contains("\"exitCode\":0")),
         outputsArePlain,
+        successfulVerdict,
         resultDocs.distinct.size == 1,
         validateArtifacts(genericOut),
         validateArtifacts(githubOut),
@@ -377,8 +384,22 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           file =>
             !Files.readString(file, UTF_8).contains("\"accounting\"")
         }
+      def blockingVerdict(out: Path): Boolean =
+        artifacts(out)
+          .find(_.getFileName.toString == "result.json")
+          .exists(file =>
+            Files
+              .readString(file, UTF_8)
+              .contains("\"taskVerdict\":\"blocking\"") &&
+              Files
+                .readString(file, UTF_8)
+                .contains(
+                  "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
+                )
+          )
       assertTrue(
-        contextResult.exit == 21 && noLedger(contextOut),
+        contextResult.exit == 21 && noLedger(contextOut) &&
+          blockingVerdict(contextOut),
         bundleResult.exit == 21 && noLedger(bundleOut),
         inputResult.exit == 21 && noLedger(inputOut),
         contextResult.stdout + contextResult.stderr != "",
