@@ -244,6 +244,10 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           Set(Failure.WriteFailure, Failure.Uncertainty),
           ExitCodes.ArtifactWriteFailure
         ),
+        (
+          Set(Failure.WriteFailure, Failure.BlockingCheck),
+          ExitCodes.ArtifactWriteFailure
+        ),
         (Set(Failure.Uncertainty, Failure.Deadline), ExitCodes.Uncertain),
         (
           Set(Failure.PolicyDenial, Failure.Deadline),
@@ -264,7 +268,23 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         table.forall((causes, expected) =>
           CiReport.exitCode(causes) == expected
         ),
-        CiReport.xmlEscape("<&\"'\u0001") == "&lt;&amp;&quot;&apos;�",
+        CiReport.xmlEscape("<&\"'\u0001") == "&lt;&amp;&quot;'�", {
+          val hostile = "<&>\"' ::error::test\nnext"
+          val junit = CiReport.junit(
+            List(
+              CheckResult(
+                "check<&>\"'",
+                CheckOutcome.Failed,
+                hostile
+              )
+            )
+          )
+          junit.contains("name=\"check&lt;&amp;&gt;&quot;'\"") &&
+          junit.contains(
+            "&lt;&amp;&gt;&quot;' ::error::test\nnext"
+          ) &&
+          !junit.contains("<failure message=\"<&>")
+        },
         CiReport.neutralizeWorkflowCommands(
           "::error::x%\n"
         ) == "%3A%3Aerror%3A%3Ax%25%0A",
@@ -409,7 +429,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       )
     },
     test(
-      "FCI-REPORT-04: hostile output is inert in a real child summary and token sentinels stay absent"
+      "FCI-REPORT-04: hostile workflow output and JUnit check evidence are escaped"
     ) {
       val work = tempDir()
       val bundle = makeBundle(work)
@@ -431,7 +451,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       assertTrue(
         result.exit == 0,
         summary.contains(
-          "&lt;&amp;&gt;&quot;&apos; %3A%3Aerror%3A%3Aworkflow %3A%3Awarning%3A%3Anext"
+          "&lt;&amp;&gt;&quot;' %3A%3Aerror%3A%3Aworkflow %3A%3Awarning%3A%3Anext"
         ),
         !summary.contains("::error::"),
         !summary.contains("::warning::"),
