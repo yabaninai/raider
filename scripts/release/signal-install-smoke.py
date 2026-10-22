@@ -11,7 +11,7 @@ import time
 
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parents[2]
-    release = root / "artifacts/release/0.1.0"
+    release = root / "artifacts/release/0.1.1"
     with tempfile.TemporaryDirectory(prefix="raider-sigterm-") as temporary:
         base = pathlib.Path(temporary)
         bin_dir = base / "bin"
@@ -35,7 +35,7 @@ def main() -> int:
                 "sh",
                 str(root / "scripts/release/install-smoke.sh"),
                 str(release / "raider-cli.jar"),
-                "0.1.0",
+                "0.1.1",
                 str(release / "packaging/raider"),
                 str(release),
             ],
