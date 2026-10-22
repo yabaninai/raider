@@ -1,21 +1,22 @@
 {
   "card": "RAI-184",
-  "baseline": "7e4587b0daf789a84aa81dec46aaffa1109c0640",
-  "execution": "blocked-before-dispatch",
-  "providerLeg": "zai-only",
+  "baseline": "a09773721a39ee056e702c1bf8705c5bc2bb7717",
+  "execution": "attempted-stopped-uncertain-transport",
+  "providerLeg": "owner-yabanin-gateway-serving-zai-coding-plan",
   "authorizedCapUsd": 5.0,
   "reservationUsdPerResponse": 0.1,
   "maxRequests": 100,
-  "totalSpendUsd": 0.0,
-  "requestCount": 0,
+  "totalSpendUsd": null,
+  "reservedExposureUsd": 0.1,
+  "requestCount": 1,
   "providerConfiguration": {
     "configRead": "allowed",
-    "providerIds": ["llama.cpp", "yabanin"],
-    "zaiProvider": "not found",
-    "bridgeFile": "absent or unreadable",
-    "credentialValuesRead": false,
-    "endpointHost": null,
-    "apiKeyTail": null
+    "providerIds": ["llama.cpp", "yabanin", "yabanin-stand"],
+    "selectedCredentialEntry": "provider.yabanin-stand.options.apiKey (inline; gateway key)",
+    "apiKeyTail": "122",
+    "credentialValuePrinted": false,
+    "endpointHost": "yabanin.ai",
+    "baseUrl": "https://yabanin.ai/gw/v1"
   },
   "models": {
     "massScenarios": "glm-5.3-flash",
@@ -25,48 +26,49 @@
     {
       "scenario": "direct-chat",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_configuration_missing",
-      "latencyMs": null,
+      "status": "transport_error_unknown_charge_stop",
+      "latencyMs": 268,
       "usage": null,
-      "actualCostUsd": 0.0,
-      "error": "No ZAI provider configuration was found; no request dispatched."
+      "actualCostUsd": null,
+      "reservedCostUsd": 0.1,
+      "error": "transport_error: exception_type=URLError; HTTP status unavailable; no retry; charge/usage unknown."
     },
     {
       "scenario": "streaming",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_configuration_missing",
+      "status": "not_attempted_stopped_after_uncertain_first_attempt",
       "latencyMs": null,
       "usage": null,
       "actualCostUsd": 0.0,
-      "error": "No ZAI provider configuration was found; no request dispatched."
+      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
     },
     {
       "scenario": "complete-tool-round",
       "model": "glm-5.3",
-      "status": "not_attempted_configuration_missing",
+      "status": "not_attempted_stopped_after_uncertain_first_attempt",
       "latencyMs": null,
       "usage": null,
       "actualCostUsd": 0.0,
-      "error": "No ZAI provider configuration was found; no request dispatched."
+      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
     },
     {
       "scenario": "cancel-mid-stream",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_configuration_missing",
+      "status": "not_attempted_stopped_after_uncertain_first_attempt",
       "latencyMs": null,
       "usage": null,
       "actualCostUsd": 0.0,
-      "error": "No ZAI provider configuration was found; no request dispatched."
+      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
     },
     {
       "scenario": "usage-and-cost-observation",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_configuration_missing",
+      "status": "not_attempted_stopped_after_uncertain_first_attempt",
       "latencyMs": null,
       "usage": null,
       "actualCostUsd": 0.0,
-      "error": "No ZAI provider configuration was found; no request dispatched."
+      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
     }
   ],
-  "notes": "These are blocked findings, not provider auth/endpoint responses. No live call, latency, usage, or provider-side cost was observed."
+  "notes": "The leg runs through the OWNER'S GATEWAY (yabanin.ai) serving the Z.AI Coding Plan. The one authorized bounded request produced a local urllib URLError before any HTTP status/usage was available. Per uncertainty policy, the $0.10 reservation is retained and all remaining scenarios were stopped. Actual charge is unknown, so $0.10 is conservative reserved exposure, not a claim of provider spend."
 }

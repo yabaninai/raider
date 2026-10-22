@@ -1,21 +1,35 @@
 {
   "card": "RAI-184",
-  "providerLeg": "zai-only",
+  "providerLeg": "owner-yabanin-gateway-serving-zai-coding-plan",
   "capUsd": 5.0,
   "reservationUsdPerResponse": 0.1,
   "maxRequests": 100,
-  "totalSpendUsd": 0.0,
-  "requestCount": 0,
-  "remainingCapUsd": 5.0,
-  "remainingRequests": 100,
-  "entries": [],
+  "totalSpendUsd": null,
+  "reservedExposureUsd": 0.1,
+  "requestCount": 1,
+  "remainingCapUsd": null,
+  "remainingRequests": 99,
+  "stopped": true,
+  "entries": [{
+    "requestNumber": 1,
+    "provider": "yabanin gateway",
+    "scenario": "direct-chat",
+    "model": "glm-5.3-flash",
+    "endpointHost": "yabanin.ai",
+    "reservedUsd": 0.1,
+    "settledUsd": null,
+    "usage": null,
+    "outcome": "transport_error: exception_type=URLError; HTTP status unavailable",
+    "latencyMs": 268,
+    "chargeStatus": "unknown; reservation retained; stop all further dispatch"
+  }],
   "preflight": {
-    "configRead": "allowed",
-    "configuredProviderIds": ["llama.cpp", "yabanin"],
-    "zaiProviderFound": false,
-    "bridgeFileAvailable": false,
-    "credentialValuesRead": false,
-    "networkCalls": 0,
-    "stopReason": "No ZAI provider configuration found and owner bridge file absent or unreadable; stopped before dispatch."
+    "configRead": "owner-authorized",
+    "configuredProviderIds": ["llama.cpp", "yabanin", "yabanin-stand"],
+    "credentialEntry": "provider.yabanin-stand.options.apiKey (inline; gateway key; tail 122)",
+    "credentialValuePrinted": false,
+    "endpointHost": "yabanin.ai",
+    "networkCalls": 1,
+    "stopReason": "First attempted call failed with urllib.error.URLError before an HTTP response; provider-side charge/usage cannot be established. Retained the full $0.10 reservation and stopped without retry."
   }
 }
