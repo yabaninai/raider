@@ -1,6 +1,8 @@
 {
   "card": "RAI-184",
+  "providerLeg": "zai-only",
   "capUsd": 5.0,
+  "reservationUsdPerResponse": 0.1,
   "maxRequests": 100,
   "totalSpendUsd": 0.0,
   "requestCount": 0,
@@ -8,9 +10,12 @@
   "remainingRequests": 100,
   "entries": [],
   "preflight": {
-    "providerConfigurationsResolved": 0,
-    "providerAuthRefusals": 2,
+    "configRead": "allowed",
+    "configuredProviderIds": ["llama.cpp", "yabanin"],
+    "zaiProviderFound": false,
+    "bridgeFileAvailable": false,
+    "credentialValuesRead": false,
     "networkCalls": 0,
-    "stopReason": "both provider credential configurations absent; endpoints/models and conservative model prices were not selected"
+    "stopReason": "No ZAI provider configuration found and owner bridge file absent or unreadable; stopped before dispatch."
   }
 }
