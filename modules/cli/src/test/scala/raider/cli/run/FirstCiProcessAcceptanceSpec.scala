@@ -162,13 +162,29 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
     } && manifestFile.exists { file =>
       val raw = Files.readString(file, UTF_8)
       raw.fromJson[List[ArtifactEntry]].exists { entries =>
+        val listedPaths = entries.map(_.path).toSet
+        val completedPaths = files(file.getParent)
+          .filterNot(_.getFileName.toString.endsWith(".tmp"))
+          .filterNot(
+            _.toAbsolutePath.normalize == file.toAbsolutePath.normalize
+          )
+          .map(path =>
+            file.getParent.relativize(path).toString.replace('\\', '/')
+          )
+          .toSet
         entries.nonEmpty && entries.forall { entry =>
           val artifact = file.getParent.resolve(entry.path)
           Files.isRegularFile(artifact) &&
           Files.size(artifact) == entry.sizeBytes &&
           sha256(Files.readAllBytes(artifact)) == entry.sha256
-        } && !entries.exists(_.path.endsWith("artifacts.json"))
+        } && listedPaths == completedPaths &&
+        !entries.exists(_.path.endsWith("artifacts.json"))
       }
+    }
+
+  private def sentinelAbsentFromArtifacts(out: Path): Boolean =
+    artifacts(out).forall { file =>
+      !Files.readString(file, UTF_8).contains("fixture-secret-must-not-leak")
     }
 
   private def sha256(bytes: Array[Byte]): String =
@@ -253,6 +269,8 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         validateArtifacts(genericOut),
         validateArtifacts(githubOut),
         validateArtifacts(gitlabOut),
+        sentinelAbsentFromArtifacts(githubOut),
+        sentinelAbsentFromArtifacts(gitlabOut),
         Vector(genericOut, githubOut, gitlabOut).forall { out =>
           val raw = Files.readString(
             artifacts(out).find(_.getFileName.toString == "run.json").get,
