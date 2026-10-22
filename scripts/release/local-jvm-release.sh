@@ -39,7 +39,7 @@ restore_git_pointer() {
 }
 trap restore_git_pointer EXIT
 if [ -f .git ] && [ ! -L .git ]; then
-  GIT_POINTER_BACKUP="$ROOT/.git-raider-release-pointer.$$"
+  GIT_POINTER_BACKUP="$GIT_DIR/rai-193-release-pointer.$$"
   [ ! -e "$GIT_POINTER_BACKUP" ] || {
     printf '%s\n' 'temporary Git pointer backup already exists' >&2
     exit 2
