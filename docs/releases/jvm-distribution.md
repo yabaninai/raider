@@ -22,11 +22,19 @@ cs launch --jar /path/to/raider-cli.jar -- run --help
 `--jar` mode when `cs` is available and otherwise invokes `java -jar` directly.
 The headless CLI itself does not currently implement `--version`.
 
-Run the fresh-prefix simulation with:
+Create a real local JVM release from a clean, committed worktree with:
 
 ```sh
-sh scripts/release/install-smoke.sh modules/cli/target/scala-3.9.0/raider-cli.jar 1.2.3
+sh scripts/release/local-jvm-release.sh 0.1.0
 ```
+
+The driver builds with `make raider-jar`, then invokes the actual
+`LocalReleaseHandler` and `ReleaseStage` against that assembly. It stages the
+launcher and formula sources alongside the JAR, writes release provenance and
+changelog, and verifies every entry in `SHA256SUMS`. The Homebrew and Scoop
+formulae are checked for rendered version and the staged JAR's real SHA-256.
+Finally, the clean-prefix smoke runs against `artifacts/release/<version>/raider-cli.jar`.
+The version directory and `v<version>` tag are local worktree state only.
 
 The LocalRelease `ReleaseStage.Request.distributionArtifacts` field accepts
 source paths and destination-relative names. The stage copies these into its
@@ -66,3 +74,16 @@ provenance, requested distribution artifacts, and complete checksums under
 `artifacts/release/<version>/`, and creates a local `v<version>` tag. The
 request's build callback runs before staging, allowing it to build the fat JAR;
 the source path is then included in `distributionArtifacts`.
+
+### Standalone driver trust basis
+
+`scripts/release/LocalReleaseDriver.scala` composes candidate identity and typed
+check/review/integration records from the clean local Git revision and the
+observed assembly, writes the normal checkpoint request, and constructs a
+matching decision through `CheckpointDispatch`. The invoking local owner is
+the authority for this self-release: the check record reflects the executed
+local build, and the review/acceptance decision is explicitly attributed to
+`local-owner`. There is no remote reviewer, forge, network approval, or claim
+that these locally composed records are independent evidence. The checkpoint
+is revalidated by the existing dispatch contract before release. Do not use
+this driver to represent externally reviewed or published releases.
