@@ -193,7 +193,9 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
 
   private def sentinelAbsentFromArtifacts(out: Path): Boolean =
     artifacts(out).forall { file =>
-      !Files.readString(file, UTF_8).contains("fixture-secret-must-not-leak")
+      val text = Files.readString(file, UTF_8)
+      !text.contains("fixture-secret-must-not-leak") &&
+      !text.contains("CI_TOKEN_SENTINEL_7d59")
     }
 
   private def sha256(bytes: Array[Byte]): String =
@@ -404,6 +406,54 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         inputResult.exit == 21 && noLedger(inputOut),
         contextResult.stdout + contextResult.stderr != "",
         bundleResult.stdout + bundleResult.stderr != ""
+      )
+    },
+    test(
+      "FCI-REPORT-04: hostile output is inert in a real child summary and token sentinels stay absent"
+    ) {
+      val work = tempDir()
+      val bundle = makeBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("hostile-output")
+      val hostile = "<&>\"' ::error::workflow\n::warning::next"
+      val args = baseArgs(bundle, context, out)
+      val inputIndex = args.indexOf("inspect the project")
+      val hostileArgs = args.updated(inputIndex, hostile)
+      val result = child(hostileArgs, out, ciEnv("github"))
+      val summary = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "summary.md").get,
+        UTF_8
+      )
+      val junit = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "checks.junit.xml").get,
+        UTF_8
+      )
+      assertTrue(
+        result.exit == 0,
+        summary.contains(
+          "&lt;&amp;&gt;&quot;&apos; %3A%3Aerror%3A%3Aworkflow %3A%3Awarning%3A%3Anext"
+        ),
+        !summary.contains("::error::"),
+        !summary.contains("::warning::"),
+        junit.contains("<testsuite"),
+        sentinelAbsentFromArtifacts(out),
+        validateArtifacts(out)
+      )
+    },
+    test(
+      "FCI-REPORT-03: a real artifact preflight write failure cannot be green"
+    ) {
+      val work = tempDir()
+      val bundle = makeBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("output-is-a-file")
+      Files.writeString(out, "not a directory", UTF_8)
+      val result = child(baseArgs(bundle, context, out), out)
+      assertTrue(
+        result.exit == 27,
+        result.stdout.isEmpty,
+        result.stderr.contains("no complete report is available"),
+        Files.isRegularFile(out)
       )
     }
   ) @@ TestAspect.sequential

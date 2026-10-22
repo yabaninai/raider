@@ -140,106 +140,119 @@ object HeadlessRunner:
       env: Map[String, String],
       ci: Option[String]
   ): ZIO[Any, Nothing, Outcome] =
-    ZIO.scoped:
-      for
-        startedAt <- ZIO.succeed(Instant.now())
-        root = RootId(s"cli_${UUID.randomUUID().toString.take(8)}")
-        workDir = Paths.get(
-          args.out.toString,
-          s"work-${UUID.randomUUID().toString.take(8)}"
-        )
-        // RAI-060: real event seam — hub + job layer (RAI-059) wired for THIS
-        // invocation; the whole execute (preflight included) runs as one job,
-        // so events.jsonl covers queued→running→terminal for every run.
-        hub <- EventHub.make()
-        // RAI-144: the run's events sink opens BEFORE the job layer so the
-        // multi-job exporter is built over it; the sink and the exporter's
-        // capture fibers release at scope end.
-        writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
-        _ <- ZIO.addFinalizer(writer.close)
-        join <- MultiJobExport.make(hub, writer, workDir)
-        _ <- ZIO.addFinalizer(join.close)
-        ledger = StatusLedger.onTransition(hub, root)
-        // RAI-144: the manager has ONE transition listener — composed here.
-        // The exporter MUST register its per-job subscription BEFORE the
-        // ledger publishes the job's first envelope: the hook fires after the
-        // committed Queued→Running transition but BEFORE the job fiber is
-        // forked, so the capture is loss-window-free (from per-job seq 1).
-        listener: OnTransition = (jobId, from, to) =>
-          join.capture(jobId, from, to) *> ledger(jobId, from, to)
-        manager <- JobManager.make(onTransition = Some(listener))
-        // RAI-086: captured out of the job body — the ci view parsed during
-        // preflight and the REAL final ledger snapshot. Each stays None when
-        // its stage was never reached (malformed context / preflight before
-        // the ledger) — the artifact then honestly lacks the field.
-        ciRef <- Ref.make(Option.empty[CiContext])
-        usageRef <- Ref.make(Option.empty[UsageReport])
-        jobOutcome <- executeAsJob(
-          args,
-          root,
-          env,
-          ci,
-          workDir,
-          hub,
-          manager,
-          writer,
-          join,
-          ciRef,
-          usageRef
-        )
-        (outcome, eventsWritten, lineage, liveProjectionStatus) = jobOutcome
-        ciOpt <- ciRef.get
-        usageOpt <- usageRef.get
-        finishedAt <- ZIO.succeed(Instant.now())
-        checks = checksFor(outcome)
-        verdict = CiReport.taskVerdict(checks, Set.empty)
-        checkFailure = verdict == CiReport.TaskVerdict.Blocking
-        exitCode = outcome match
-          case Left(error)              => exitCodeFor(error)
-          case Right(_) if checkFailure => ExitCodes.TaskRejected
-          case Right(_)                 => ExitCodes.Success
-        runResult = RunResult(
-          schemaVersion = 1,
-          rootId = root,
-          status = outcome
-            .fold(_ => ExecutionStatus.Failed, _ => ExecutionStatus.Succeeded),
-          exitCode = exitCode,
-          taskVerdict = Some(verdict.toString.toLowerCase),
-          checks = checks,
-          artifacts = List.empty,
-          output = outcome.toOption.map(text =>
-            result.OutputPayload("raider/text", 1, text.toJson)
-          ),
-          error = outcome.fold(Some(_), _ => None),
-          startedAt = startedAt.toString,
-          finishedAt = finishedAt.toString
-        )
-        artifactsWritten <- writeArtifacts(
-          workDir,
-          runResult,
-          args,
-          outcome,
-          eventsWritten,
-          ciOpt,
-          usageOpt,
-          lineage,
-          liveProjectionStatus
-        )
-        finalExit =
-          if artifactsWritten then exitCode
-          else CiReport.exitCode(Set(CiReport.Failure.WriteFailure))
-        _ <- ZIO.when(!artifactsWritten)(
-          ZIO.succeed(
-            System.err.println(
-              s"raider: required artifact write failed; partial artifacts may remain in $workDir"
+    ZIO
+      .scoped:
+        for
+          startedAt <- ZIO.succeed(Instant.now())
+          root = RootId(s"cli_${UUID.randomUUID().toString.take(8)}")
+          workDir = Paths.get(
+            args.out.toString,
+            s"work-${UUID.randomUUID().toString.take(8)}"
+          )
+          // RAI-060: real event seam — hub + job layer (RAI-059) wired for THIS
+          // invocation; the whole execute (preflight included) runs as one job,
+          // so events.jsonl covers queued→running→terminal for every run.
+          hub <- EventHub.make()
+          // RAI-144: the run's events sink opens BEFORE the job layer so the
+          // multi-job exporter is built over it; the sink and the exporter's
+          // capture fibers release at scope end.
+          writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
+          _ <- ZIO.addFinalizer(writer.close)
+          join <- MultiJobExport.make(hub, writer, workDir)
+          _ <- ZIO.addFinalizer(join.close)
+          ledger = StatusLedger.onTransition(hub, root)
+          // RAI-144: the manager has ONE transition listener — composed here.
+          // The exporter MUST register its per-job subscription BEFORE the
+          // ledger publishes the job's first envelope: the hook fires after the
+          // committed Queued→Running transition but BEFORE the job fiber is
+          // forked, so the capture is loss-window-free (from per-job seq 1).
+          listener: OnTransition = (jobId, from, to) =>
+            join.capture(jobId, from, to) *> ledger(jobId, from, to)
+          manager <- JobManager.make(onTransition = Some(listener))
+          // RAI-086: captured out of the job body — the ci view parsed during
+          // preflight and the REAL final ledger snapshot. Each stays None when
+          // its stage was never reached (malformed context / preflight before
+          // the ledger) — the artifact then honestly lacks the field.
+          ciRef <- Ref.make(Option.empty[CiContext])
+          usageRef <- Ref.make(Option.empty[UsageReport])
+          jobOutcome <- executeAsJob(
+            args,
+            root,
+            env,
+            ci,
+            workDir,
+            hub,
+            manager,
+            writer,
+            join,
+            ciRef,
+            usageRef
+          )
+          (outcome, eventsWritten, lineage, liveProjectionStatus) = jobOutcome
+          ciOpt <- ciRef.get
+          usageOpt <- usageRef.get
+          finishedAt <- ZIO.succeed(Instant.now())
+          checks = checksFor(outcome)
+          verdict = CiReport.taskVerdict(checks, Set.empty)
+          checkFailure = verdict == CiReport.TaskVerdict.Blocking
+          exitCode = outcome match
+            case Left(error)              => exitCodeFor(error)
+            case Right(_) if checkFailure => ExitCodes.TaskRejected
+            case Right(_)                 => ExitCodes.Success
+          runResult = RunResult(
+            schemaVersion = 1,
+            rootId = root,
+            status = outcome
+              .fold(
+                _ => ExecutionStatus.Failed,
+                _ => ExecutionStatus.Succeeded
+              ),
+            exitCode = exitCode,
+            taskVerdict = Some(verdict.toString.toLowerCase),
+            checks = checks,
+            artifacts = List.empty,
+            output = outcome.toOption
+              .map(text => result.OutputPayload("raider/text", 1, text.toJson)),
+            error = outcome.fold(Some(_), _ => None),
+            startedAt = startedAt.toString,
+            finishedAt = finishedAt.toString
+          )
+          artifactsWritten <- writeArtifacts(
+            workDir,
+            runResult,
+            args,
+            outcome,
+            eventsWritten,
+            ciOpt,
+            usageOpt,
+            lineage,
+            liveProjectionStatus
+          )
+          finalExit =
+            if artifactsWritten then exitCode
+            else CiReport.exitCode(Set(CiReport.Failure.WriteFailure))
+          _ <- ZIO.when(!artifactsWritten)(
+            ZIO.succeed(
+              System.err.println(
+                s"raider: required artifact write failed; partial artifacts may remain in $workDir"
+              )
             )
           )
+        yield Outcome(
+          finalExit,
+          workDir,
+          Some(runResult.copy(exitCode = finalExit))
         )
-      yield Outcome(
-        finalExit,
-        workDir,
-        Some(runResult.copy(exitCode = finalExit))
-      )
+      .catchAllDefect {
+        case _: java.io.IOException =>
+          ZIO.succeed {
+            System.err.println(
+              s"raider: required artifact initialization failed; no complete report is available under ${args.out}"
+            )
+            Outcome(ExitCodes.ArtifactWriteFailure, args.out, None)
+          }
+        case defect => ZIO.die(defect)
+      }
 
   /** RAI-060 + LIN-03A-prep: the whole run as ONE JobManager job, with the
     * per-job envelopes STREAMED into `<workDir>/events.jsonl` as they are
@@ -902,9 +915,12 @@ object HeadlessRunner:
           if args.mock then
             "backend: **fixture/mock** (fixtureMode; no live network)"
           else s"backend: live (${args.provider})"
+        // Output and typed error details are untrusted report text. Keep the
+        // summary single-line and inert if consumed by a CI workflow-command
+        // parser; JSON result artifacts retain their structured payload.
         val statusLine = outcome.fold(
-          e => s"FAILED — ${e.code}: ${e.detail.take(160)}",
-          t => s"SUCCEEDED — output: ${t.take(200)}"
+          e => s"FAILED — ${e.code}: ${reportText(e.detail, 160)}",
+          t => s"SUCCEEDED — output: ${reportText(t, 200)}"
         )
         // RAI-086: honest cost line — present ONLY when the run went through
         // the budget ledger; unknown cost is never shown as a number
@@ -1121,6 +1137,13 @@ object HeadlessRunner:
           "application/json"
         case _ => "application/octet-stream"
     )
+
+  private def reportText(value: String, limit: Int): String =
+    CiReport
+      .neutralizeWorkflowCommands(
+        CiReport.xmlEscape(value.replace('\n', ' ').replace('\r', ' '))
+      )
+      .take(limit)
 
   /** RAI-086: `--context` payload reader. `None` = flag absent. The file was
     * already exist-checked at parse time (typed Configuration); a read failure
