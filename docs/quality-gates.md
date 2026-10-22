@@ -86,6 +86,8 @@ failures return nonzero; report-write failures return 2. The separate
 `performance` milestone profile remains a broader obligation and is not
 implied by `perf`.
 
+Packaging files under `packaging/` map additively to the existing `static` and `contracts` profiles in the quality registry.
+
 ## 4. Tools and Versions
 
 RAI-003 pins sbt, Scala, JDK major/build policy, ZIO, and test library versions. Exact formatter/linter/scanner versions and tool downloads are separate from gate execution. `make bootstrap` installs the agreed toolchain; a gate does not hide package installation in the middle of a check.
