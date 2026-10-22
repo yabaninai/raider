@@ -1,6 +1,7 @@
 package raider.cli.run
 
 import raider.core.*
+import raider.core.codecs.given
 import raider.cli.CoderPrompts
 import raider.cli.lineage.{
   CatalogScope,
@@ -14,6 +15,7 @@ import raider.core.result.{
   CheckOutcome,
   CheckResult,
   ExecutionStatus,
+  ArtifactEntry,
   ExitCodes,
   RunResult
 }
@@ -32,6 +34,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.time.Instant
 import java.util.UUID
+import scala.jdk.CollectionConverters.*
 
 /** Headless runner (RAI-022 slice): preflight → ONE admitted dispatch →
   * artifacts (run.json / events.jsonl / summary.md) → stable exit code
@@ -98,13 +101,14 @@ object HeadlessRunner:
   /** Run to completion; returns the process exit code. Never throws. Uses the
     * process environment for credential resolution (RAI-064).
     */
-  def run(args: CliArgs): ZIO[Any, Nothing, Outcome] = run(args, sys.env)
+  def run(args: CliArgs): ZIO[Any, Nothing, Outcome] =
+    run(args, sys.env, args.ci)
 
   /** Run with an explicit environment — a test seam for RAI-064 so credential
     * resolution can be exercised hermetically (no reliance on the process env).
     */
   def run(args: CliArgs, env: Map[String, String]): ZIO[Any, Nothing, Outcome] =
-    run(args, env, ci = None)
+    run(args, env, args.ci)
 
   /** RAI-100: run with an explicit `--ci` selection — `github`, `gitlab` or
     * `generic`; `None` = flag absent (generic default). The value is validated
@@ -817,6 +821,20 @@ object HeadlessRunner:
         StandardCopyOption.REPLACE_EXISTING,
         StandardCopyOption.ATOMIC_MOVE
       )
+      // ci-runtime §7: the result surface is distinct from run.json. It
+      // contains the validated output payload on success and the typed error
+      // object on failure; run.json remains the execution/accounting record.
+      val resultJson = runResult.output match
+        case Some(output) => output.toJson
+        case None         => runResult.error.fold("null")(_.toJson)
+      val resultTmp = workDir.resolve("result.json.tmp")
+      Files.writeString(resultTmp, resultJson, UTF_8)
+      Files.move(
+        resultTmp,
+        workDir.resolve("result.json"),
+        StandardCopyOption.REPLACE_EXISTING,
+        StandardCopyOption.ATOMIC_MOVE
+      )
       // events.jsonl (RAI-060 + LIN-03A-prep): REAL per-job EventEnvelope
       // lines — schemaVersion 1, the zio-json codec from
       // raider.runtime.events, seq-ordered, no gaps (hub drops never consume
@@ -992,8 +1010,56 @@ object HeadlessRunner:
            |</testsuite>
            |""".stripMargin
       Files.writeString(workDir.resolve("checks.junit.xml"), junit, UTF_8)
+      // The manifest covers every completed regular output file except itself.
+      // Hashes and sizes are computed from the bytes actually written.
+      val sha256 = java.security.MessageDigest.getInstance("SHA-256")
+      val artifactFiles = Files.walk(workDir)
+      val entries =
+        try
+          artifactFiles
+            .iterator()
+            .asScala
+            .filter(Files.isRegularFile(_))
+            .filterNot(_.getFileName.toString == "artifacts.json")
+            .toList
+            .sortBy(_.toString)
+            .map { file =>
+              val bytes = Files.readAllBytes(file)
+              val digest = sha256.digest(bytes).map(b => f"$b%02x").mkString
+              val relative =
+                workDir.relativize(file).toString.replace('\\', '/')
+              ArtifactEntry(
+                raider.core.ArtifactId(relative.replace('/', '-')),
+                digest,
+                mediaType(file),
+                bytes.length.toLong,
+                relative
+              )
+            }
+            .toList
+        finally artifactFiles.close()
+      val manifest = entries.toJson
+      val manifestTmp = workDir.resolve("artifacts.json.tmp")
+      Files.writeString(manifestTmp, manifest, UTF_8)
+      Files.move(
+        manifestTmp,
+        workDir.resolve("artifacts.json"),
+        StandardCopyOption.REPLACE_EXISTING,
+        StandardCopyOption.ATOMIC_MOVE
+      )
       ()
     }.orDie
+
+  private def mediaType(path: Path): String =
+    Option(Files.probeContentType(path)).getOrElse(
+      path.getFileName.toString match
+        case "events.jsonl"     => "application/x-ndjson"
+        case "summary.md"       => "text/markdown"
+        case "checks.junit.xml" => "application/xml"
+        case _ if path.getFileName.toString.endsWith(".json") =>
+          "application/json"
+        case _ => "application/octet-stream"
+    )
 
   /** RAI-086: `--context` payload reader. `None` = flag absent. The file was
     * already exist-checked at parse time (typed Configuration); a read failure
