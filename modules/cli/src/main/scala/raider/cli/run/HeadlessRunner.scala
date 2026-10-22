@@ -140,86 +140,119 @@ object HeadlessRunner:
       env: Map[String, String],
       ci: Option[String]
   ): ZIO[Any, Nothing, Outcome] =
-    ZIO.scoped:
-      for
-        startedAt <- ZIO.succeed(Instant.now())
-        root = RootId(s"cli_${UUID.randomUUID().toString.take(8)}")
-        workDir = Paths.get(
-          args.out.toString,
-          s"work-${UUID.randomUUID().toString.take(8)}"
-        )
-        // RAI-060: real event seam — hub + job layer (RAI-059) wired for THIS
-        // invocation; the whole execute (preflight included) runs as one job,
-        // so events.jsonl covers queued→running→terminal for every run.
-        hub <- EventHub.make()
-        // RAI-144: the run's events sink opens BEFORE the job layer so the
-        // multi-job exporter is built over it; the sink and the exporter's
-        // capture fibers release at scope end.
-        writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
-        _ <- ZIO.addFinalizer(writer.close)
-        join <- MultiJobExport.make(hub, writer, workDir)
-        _ <- ZIO.addFinalizer(join.close)
-        ledger = StatusLedger.onTransition(hub, root)
-        // RAI-144: the manager has ONE transition listener — composed here.
-        // The exporter MUST register its per-job subscription BEFORE the
-        // ledger publishes the job's first envelope: the hook fires after the
-        // committed Queued→Running transition but BEFORE the job fiber is
-        // forked, so the capture is loss-window-free (from per-job seq 1).
-        listener: OnTransition = (jobId, from, to) =>
-          join.capture(jobId, from, to) *> ledger(jobId, from, to)
-        manager <- JobManager.make(onTransition = Some(listener))
-        // RAI-086: captured out of the job body — the ci view parsed during
-        // preflight and the REAL final ledger snapshot. Each stays None when
-        // its stage was never reached (malformed context / preflight before
-        // the ledger) — the artifact then honestly lacks the field.
-        ciRef <- Ref.make(Option.empty[CiContext])
-        usageRef <- Ref.make(Option.empty[UsageReport])
-        jobOutcome <- executeAsJob(
-          args,
-          root,
-          env,
-          ci,
+    ZIO
+      .scoped:
+        for
+          startedAt <- ZIO.succeed(Instant.now())
+          root = RootId(s"cli_${UUID.randomUUID().toString.take(8)}")
+          workDir = Paths.get(
+            args.out.toString,
+            s"work-${UUID.randomUUID().toString.take(8)}"
+          )
+          // RAI-060: real event seam — hub + job layer (RAI-059) wired for THIS
+          // invocation; the whole execute (preflight included) runs as one job,
+          // so events.jsonl covers queued→running→terminal for every run.
+          hub <- EventHub.make()
+          // RAI-144: the run's events sink opens BEFORE the job layer so the
+          // multi-job exporter is built over it; the sink and the exporter's
+          // capture fibers release at scope end.
+          writer <- EventsJsonlWriter.open(workDir.resolve("events.jsonl"))
+          _ <- ZIO.addFinalizer(writer.close)
+          join <- MultiJobExport.make(hub, writer, workDir)
+          _ <- ZIO.addFinalizer(join.close)
+          ledger = StatusLedger.onTransition(hub, root)
+          // RAI-144: the manager has ONE transition listener — composed here.
+          // The exporter MUST register its per-job subscription BEFORE the
+          // ledger publishes the job's first envelope: the hook fires after the
+          // committed Queued→Running transition but BEFORE the job fiber is
+          // forked, so the capture is loss-window-free (from per-job seq 1).
+          listener: OnTransition = (jobId, from, to) =>
+            join.capture(jobId, from, to) *> ledger(jobId, from, to)
+          manager <- JobManager.make(onTransition = Some(listener))
+          // RAI-086: captured out of the job body — the ci view parsed during
+          // preflight and the REAL final ledger snapshot. Each stays None when
+          // its stage was never reached (malformed context / preflight before
+          // the ledger) — the artifact then honestly lacks the field.
+          ciRef <- Ref.make(Option.empty[CiContext])
+          usageRef <- Ref.make(Option.empty[UsageReport])
+          jobOutcome <- executeAsJob(
+            args,
+            root,
+            env,
+            ci,
+            workDir,
+            hub,
+            manager,
+            writer,
+            join,
+            ciRef,
+            usageRef
+          )
+          (outcome, eventsWritten, lineage, liveProjectionStatus) = jobOutcome
+          ciOpt <- ciRef.get
+          usageOpt <- usageRef.get
+          finishedAt <- ZIO.succeed(Instant.now())
+          checks = checksFor(outcome)
+          verdict = CiReport.taskVerdict(checks, Set.empty)
+          checkFailure = verdict == CiReport.TaskVerdict.Blocking
+          exitCode = outcome match
+            case Left(error)              => exitCodeFor(error)
+            case Right(_) if checkFailure => ExitCodes.TaskRejected
+            case Right(_)                 => ExitCodes.Success
+          runResult = RunResult(
+            schemaVersion = 1,
+            rootId = root,
+            status = outcome
+              .fold(
+                _ => ExecutionStatus.Failed,
+                _ => ExecutionStatus.Succeeded
+              ),
+            exitCode = exitCode,
+            taskVerdict = Some(verdict.toString.toLowerCase),
+            checks = checks,
+            artifacts = List.empty,
+            output = outcome.toOption
+              .map(text => result.OutputPayload("raider/text", 1, text.toJson)),
+            error = outcome.fold(Some(_), _ => None),
+            startedAt = startedAt.toString,
+            finishedAt = finishedAt.toString
+          )
+          artifactsWritten <- writeArtifacts(
+            workDir,
+            runResult,
+            args,
+            outcome,
+            eventsWritten,
+            ciOpt,
+            usageOpt,
+            lineage,
+            liveProjectionStatus
+          )
+          finalExit =
+            if artifactsWritten then exitCode
+            else CiReport.exitCode(Set(CiReport.Failure.WriteFailure))
+          _ <- ZIO.when(!artifactsWritten)(
+            ZIO.succeed(
+              System.err.println(
+                s"raider: required artifact write failed; partial artifacts may remain in $workDir"
+              )
+            )
+          )
+        yield Outcome(
+          finalExit,
           workDir,
-          hub,
-          manager,
-          writer,
-          join,
-          ciRef,
-          usageRef
+          Some(runResult.copy(exitCode = finalExit))
         )
-        (outcome, eventsWritten, lineage, liveProjectionStatus) = jobOutcome
-        ciOpt <- ciRef.get
-        usageOpt <- usageRef.get
-        finishedAt <- ZIO.succeed(Instant.now())
-        exitCode = outcome.fold(exitCodeFor, _ => ExitCodes.Success)
-        runResult = RunResult(
-          schemaVersion = 1,
-          rootId = root,
-          status = outcome
-            .fold(_ => ExecutionStatus.Failed, _ => ExecutionStatus.Succeeded),
-          exitCode = exitCode,
-          taskVerdict = None, // no verifier in this slice: no fake verdict
-          checks = checksFor(outcome),
-          artifacts = List.empty,
-          output = outcome.toOption.map(text =>
-            result.OutputPayload("raider/text", 1, text.toJson)
-          ),
-          error = outcome.fold(Some(_), _ => None),
-          startedAt = startedAt.toString,
-          finishedAt = finishedAt.toString
-        )
-        _ <- writeArtifacts(
-          workDir,
-          runResult,
-          args,
-          outcome,
-          eventsWritten,
-          ciOpt,
-          usageOpt,
-          lineage,
-          liveProjectionStatus
-        )
-      yield Outcome(exitCode, workDir, Some(runResult))
+      .catchAllDefect {
+        case _: java.io.IOException =>
+          ZIO.succeed {
+            System.err.println(
+              s"raider: required artifact initialization failed; no complete report is available under ${args.out}"
+            )
+            Outcome(ExitCodes.ArtifactWriteFailure, args.out, None)
+          }
+        case defect => ZIO.die(defect)
+      }
 
   /** RAI-060 + LIN-03A-prep: the whole run as ONE JobManager job, with the
     * per-job envelopes STREAMED into `<workDir>/events.jsonl` as they are
@@ -560,9 +593,14 @@ object HeadlessRunner:
     List(
       CheckResult(
         "bundle-preflight",
-        if outcome.fold(isPreflightFailure, _ => true) then CheckOutcome.Failed
+        if outcome.fold(isPreflightFailure, _ => false) then CheckOutcome.Failed
         else CheckOutcome.Passed,
         outcome.fold(e => s"typed failure ${e.code}", _ => "preflight ok")
+      ),
+      CheckResult(
+        "run-outcome",
+        outcome.fold(_ => CheckOutcome.Failed, _ => CheckOutcome.Passed),
+        outcome.fold(e => s"typed failure ${e.code}", _ => "run completed")
       )
     )
 
@@ -785,80 +823,115 @@ object HeadlessRunner:
       lineage: Option[Either[ReduceError, LineageOutcome]],
       liveProjectionStatus: Option[String],
       sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
-  ): ZIO[Any, Nothing, Unit] =
-    ZIO.attempt {
-      Files.createDirectories(workDir)
-      // run.json — validate BEFORE the write; the check result is part of
-      // the document (a real check, not a decoration)
-      val schemaOk = RunResult.validate(runResult)
-      val finalResult = schemaOk.fold(
-        err =>
-          runResult.copy(checks =
-            runResult.checks :+
-              CheckResult("run-result-schema", CheckOutcome.Failed, err.detail)
-          ),
-        _ =>
-          runResult.copy(checks =
-            runResult.checks :+
-              CheckResult(
-                "run-result-schema",
-                CheckOutcome.Passed,
-                "validated pre-write"
-              )
+  ): ZIO[Any, Nothing, Boolean] =
+    ZIO
+      .attempt {
+        Files.createDirectories(workDir)
+        // run.json — validate BEFORE the write; the check result is part of
+        // the document (a real check, not a decoration)
+        val schemaOk = RunResult.validate(runResult)
+        val finalResult = schemaOk.fold(
+          err =>
+            runResult.copy(checks =
+              runResult.checks :+
+                CheckResult(
+                  "run-result-schema",
+                  CheckOutcome.Failed,
+                  err.detail
+                )
+            ),
+          _ =>
+            runResult.copy(checks =
+              runResult.checks :+
+                CheckResult(
+                  "run-result-schema",
+                  CheckOutcome.Passed,
+                  "validated pre-write"
+                )
+            )
+        )
+        val tmp = workDir.resolve("run.json.tmp")
+        Files.writeString(
+          tmp,
+          // RAI-086: additive `ci`/`accounting` splice (frozen core schema is
+          // not extended in this slice); absent input → absent field
+          spliceExtras(finalResult.toJson, ci, usage, sdlcEvidence),
+          UTF_8
+        )
+        Files.move(
+          tmp,
+          workDir.resolve("run.json"),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE
+        )
+        // ci-runtime §7: the result surface is distinct from run.json. It
+        // contains the validated output payload on success and the typed error
+        // object on failure; run.json remains the execution/accounting record.
+        val resultJson = runResult.output match
+          case Some(output) => output.toJson
+          case None         => runResult.error.fold("null")(_.toJson)
+        val resultWithVerdict =
+          val parsed = zio.json.ast.Json.decoder
+            .decodeJson(resultJson)
+            .fold(
+              detail =>
+                throw new IllegalStateException(
+                  s"invalid result JSON: $detail"
+                ),
+              identity
+            )
+          val evidence = zio.json.ast.Json.Arr(
+            zio.Chunk.fromIterable(
+              finalResult.checks.map(c => zio.json.ast.Json.Str(c.id))
+            )
           )
-      )
-      val tmp = workDir.resolve("run.json.tmp")
-      Files.writeString(
-        tmp,
-        // RAI-086: additive `ci`/`accounting` splice (frozen core schema is
-        // not extended in this slice); absent input → absent field
-        spliceExtras(finalResult.toJson, ci, usage, sdlcEvidence),
-        UTF_8
-      )
-      Files.move(
-        tmp,
-        workDir.resolve("run.json"),
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE
-      )
-      // ci-runtime §7: the result surface is distinct from run.json. It
-      // contains the validated output payload on success and the typed error
-      // object on failure; run.json remains the execution/accounting record.
-      val resultJson = runResult.output match
-        case Some(output) => output.toJson
-        case None         => runResult.error.fold("null")(_.toJson)
-      val resultTmp = workDir.resolve("result.json.tmp")
-      Files.writeString(resultTmp, resultJson, UTF_8)
-      Files.move(
-        resultTmp,
-        workDir.resolve("result.json"),
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE
-      )
-      // events.jsonl (RAI-060 + LIN-03A-prep): REAL per-job EventEnvelope
-      // lines — schemaVersion 1, the zio-json codec from
-      // raider.runtime.events, seq-ordered, no gaps (hub drops never consume
-      // a sequence) — are STREAMED during the run (see executeAsJob); the
-      // artifact set here stays run.json / summary.md / transcript.json.
-      // summary.md — the fixture marker is MANDATORY under --mock
-      val fixtureLine =
-        if args.mock then
-          "backend: **fixture/mock** (fixtureMode; no live network)"
-        else s"backend: live (${args.provider})"
-      val statusLine = outcome.fold(
-        e => s"FAILED — ${e.code}: ${e.detail.take(160)}",
-        t => s"SUCCEEDED — output: ${t.take(200)}"
-      )
-      // RAI-086: honest cost line — present ONLY when the run went through
-      // the budget ledger; unknown cost is never shown as a number
-      val costLine = usage.fold("")(u => s"- ${AccountingView.human(u)}\n")
-      // RAI-100: the "CI annotations" section rides the REDACTED view — an
-      // untrusted context (env-detected contexts are ALWAYS untrusted)
-      // contributes only placeholders; a trusted --context payload shows its
-      // real values. No context -> empty string -> byte-identical summary.
-      val ciSection = ci
-        .map(_.redacted)
-        .fold("")(c => s"""## CI annotations
+          parsed match
+            case obj: zio.json.ast.Json.Obj =>
+              obj
+                .add(
+                  "taskVerdict",
+                  zio.json.ast.Json
+                    .Str(finalResult.taskVerdict.getOrElse("unknown"))
+                )
+                .add("checkEvidence", evidence)
+                .toJson
+            case _ =>
+              s"{\"result\":$resultJson,\"taskVerdict\":\"${finalResult.taskVerdict.getOrElse("unknown")}\",\"checkEvidence\":${evidence.toJson}}"
+        val resultTmp = workDir.resolve("result.json.tmp")
+        Files.writeString(resultTmp, resultWithVerdict, UTF_8)
+        Files.move(
+          resultTmp,
+          workDir.resolve("result.json"),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE
+        )
+        // events.jsonl (RAI-060 + LIN-03A-prep): REAL per-job EventEnvelope
+        // lines — schemaVersion 1, the zio-json codec from
+        // raider.runtime.events, seq-ordered, no gaps (hub drops never consume
+        // a sequence) — are STREAMED during the run (see executeAsJob); the
+        // artifact set here stays run.json / summary.md / transcript.json.
+        // summary.md — the fixture marker is MANDATORY under --mock
+        val fixtureLine =
+          if args.mock then
+            "backend: **fixture/mock** (fixtureMode; no live network)"
+          else s"backend: live (${args.provider})"
+        // Output and typed error details are untrusted report text. Keep the
+        // summary single-line and inert if consumed by a CI workflow-command
+        // parser; JSON result artifacts retain their structured payload.
+        val statusLine = outcome.fold(
+          e => s"FAILED — ${e.code}: ${reportText(e.detail, 160)}",
+          t => s"SUCCEEDED — output: ${reportText(t, 200)}"
+        )
+        // RAI-086: honest cost line — present ONLY when the run went through
+        // the budget ledger; unknown cost is never shown as a number
+        val costLine = usage.fold("")(u => s"- ${AccountingView.human(u)}\n")
+        // RAI-100: the "CI annotations" section rides the REDACTED view — an
+        // untrusted context (env-detected contexts are ALWAYS untrusted)
+        // contributes only placeholders; a trusted --context payload shows its
+        // real values. No context -> empty string -> byte-identical summary.
+        val ciSection = ci
+          .map(_.redacted)
+          .fold("")(c => s"""## CI annotations
            |
            |- ci: ${c.ci}
            |- pipeline: ${c.pipeline}
@@ -866,91 +939,96 @@ object HeadlessRunner:
            |- trusted: ${c.trusted}
            |
            |""".stripMargin)
-      // LIN-03B + RAI-144: ONE lineage line on settled completion — the
-      // deterministic GraphHash of the graph reduced from the SAME ordered
-      // stream that was written to events.jsonl (the checkpoint), the honest
-      // PARTIAL line when only the LIN5-03 tolerant entry could reduce it
-      // (incomplete campaign — a detached/torn child segment), or the honest
-      // typed `unavailable` line when the checkpoint does not reduce. A
-      // reduction error is DATA the summary reports, never a crashed run.
-      val lineageLine = lineage.collect {
-        case Right(o) if o.partial =>
-          s"- lineage: partial graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (incomplete campaign; checkpoint: events.jsonl)"
-        case Right(o) =>
-          s"- lineage: graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (checkpoint: events.jsonl)"
-        case Left(e) => s"- lineage: unavailable ($e)"
-      }
-      // LIN-09 + RAI-144: settled campaign → lineage.scala + lineage-data.json
-      // next to the run's own events.jsonl (atomic, per-run dir), built from
-      // the exported versioned stream and the provenance record — a run that
-      // joined child segments writes the lineage-data SCHEMAVERSION 2 document
-      // (ADR-032 §4), a delegation-free run stays byte-identical to the frozen
-      // v1 shape. BEST-EFFORT by contract: [[RunLineageArtifacts.write]] is
-      // total (every failure is typed), so this can never crash the run or
-      // move the exit code (LIN9-02). Preflight failures and non-reducible
-      // campaigns write no artifacts and add no line (their lineage line above
-      // already reports why).
-      val artifactsLine = lineage.collect { case Right(o) =>
-        RunLineageArtifacts.write(workDir, o.graph, o.wire, o.provenance) match
-          case Right(written) =>
-            s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion ${
-              // RAI-154: ONE source of the v1/v2 decision (joined provenance
-              // OR wire-native phases) — the writer's own rule.
-              RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)})"
-          case Left(e) => s"- lineage artifacts: unavailable ($e)"
-      }
-      val liveProjectionLine = liveProjectionStatus.map { diagnostic =>
-        liveProjectionSummaryLine(diagnostic)
-      }
-      // LIN-08: the pin is written beside the committed lineage snapshot and
-      // events for this invocation only. Fixture runs have no factual model
-      // identity, so they deliberately omit the optional model field.
-      val toolchainLine = lineage.flatMap { _ =>
-        ToolchainPin.write(
-          workDir,
-          if args.mock then None else Some(args.model)
-        ) match
-          case Right(path) => Some(s"- toolchain pin: ${path.getFileName}")
-          case Left(error) =>
-            Some(s"- toolchain pin: unavailable (${error.take(200)})")
-      }
-      // Each producer appends only its own completed run and stamps its origin
-      // at the catalog write boundary. A bundled workflow is a campaign run;
-      // the built-in headless agent is a headless run.
-      val catalogLine = lineage.flatMap { _ =>
-        val scope = args.target match
-          case _: CliArgs.Target.Bundle => CatalogScope.Campaign
-          case _                        => CatalogScope.Headless
-        val file = CatalogStore.catalogFile(args.out)
-        val result = for
-          entries <- raider.cli.lineage.LineageCatalog
-            .scan(args.out)
-            .left
-            .map(error => s"catalog scan failed: $error")
-          own = entries.filter(
-            _.path.toAbsolutePath.normalize == workDir.toAbsolutePath.normalize
-          )
-          _ <- Either.cond(
-            own.nonEmpty,
-            (),
-            "run was not present in the catalog scan"
-          )
-          records = CatalogStore.recordsOf(
-            own,
-            Some(PinnedSummary.of(EnvPinning.currentEnv())),
-            scope
-          )
-          _ <- CatalogStore
-            .append(file, records)
-            .left
-            .map(error => s"catalog write failed: $error")
-        yield ()
-        result match
-          case Right(_) => Some(s"- catalog: ${scope.toString.toLowerCase}")
-          case Left(error) =>
-            Some(s"- catalog: unavailable (${error.take(200)})")
-      }
-      val summary = s"""# raider run
+        // LIN-03B + RAI-144: ONE lineage line on settled completion — the
+        // deterministic GraphHash of the graph reduced from the SAME ordered
+        // stream that was written to events.jsonl (the checkpoint), the honest
+        // PARTIAL line when only the LIN5-03 tolerant entry could reduce it
+        // (incomplete campaign — a detached/torn child segment), or the honest
+        // typed `unavailable` line when the checkpoint does not reduce. A
+        // reduction error is DATA the summary reports, never a crashed run.
+        val lineageLine = lineage.collect {
+          case Right(o) if o.partial =>
+            s"- lineage: partial graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (incomplete campaign; checkpoint: events.jsonl)"
+          case Right(o) =>
+            s"- lineage: graph ${GraphHash(o.graph)}, ${o.graph.nodes.size} node(s) (checkpoint: events.jsonl)"
+          case Left(e) => s"- lineage: unavailable ($e)"
+        }
+        // LIN-09 + RAI-144: settled campaign → lineage.scala + lineage-data.json
+        // next to the run's own events.jsonl (atomic, per-run dir), built from
+        // the exported versioned stream and the provenance record — a run that
+        // joined child segments writes the lineage-data SCHEMAVERSION 2 document
+        // (ADR-032 §4), a delegation-free run stays byte-identical to the frozen
+        // v1 shape. BEST-EFFORT by contract: [[RunLineageArtifacts.write]] is
+        // total (every failure is typed), so this can never crash the run or
+        // move the exit code (LIN9-02). Preflight failures and non-reducible
+        // campaigns write no artifacts and add no line (their lineage line above
+        // already reports why).
+        val artifactsLine = lineage.collect { case Right(o) =>
+          RunLineageArtifacts.write(
+            workDir,
+            o.graph,
+            o.wire,
+            o.provenance
+          ) match
+            case Right(written) =>
+              s"- lineage artifacts: ${written.source.getFileName}, ${written.data.getFileName} (schemaVersion ${
+                // RAI-154: ONE source of the v1/v2 decision (joined provenance
+                // OR wire-native phases) — the writer's own rule.
+                RunLineageArtifacts.schemaVersionOf(o.graph, o.provenance)})"
+            case Left(e) => s"- lineage artifacts: unavailable ($e)"
+        }
+        val liveProjectionLine = liveProjectionStatus.map { diagnostic =>
+          liveProjectionSummaryLine(diagnostic)
+        }
+        // LIN-08: the pin is written beside the committed lineage snapshot and
+        // events for this invocation only. Fixture runs have no factual model
+        // identity, so they deliberately omit the optional model field.
+        val toolchainLine = lineage.flatMap { _ =>
+          ToolchainPin.write(
+            workDir,
+            if args.mock then None else Some(args.model)
+          ) match
+            case Right(path) => Some(s"- toolchain pin: ${path.getFileName}")
+            case Left(error) =>
+              Some(s"- toolchain pin: unavailable (${error.take(200)})")
+        }
+        // Each producer appends only its own completed run and stamps its origin
+        // at the catalog write boundary. A bundled workflow is a campaign run;
+        // the built-in headless agent is a headless run.
+        val catalogLine = lineage.flatMap { _ =>
+          val scope = args.target match
+            case _: CliArgs.Target.Bundle => CatalogScope.Campaign
+            case _                        => CatalogScope.Headless
+          val file = CatalogStore.catalogFile(args.out)
+          val result = for
+            entries <- raider.cli.lineage.LineageCatalog
+              .scan(args.out)
+              .left
+              .map(error => s"catalog scan failed: $error")
+            own = entries.filter(
+              _.path.toAbsolutePath.normalize == workDir.toAbsolutePath.normalize
+            )
+            _ <- Either.cond(
+              own.nonEmpty,
+              (),
+              "run was not present in the catalog scan"
+            )
+            records = CatalogStore.recordsOf(
+              own,
+              Some(PinnedSummary.of(EnvPinning.currentEnv())),
+              scope
+            )
+            _ <- CatalogStore
+              .append(file, records)
+              .left
+              .map(error => s"catalog write failed: $error")
+          yield ()
+          result match
+            case Right(_) => Some(s"- catalog: ${scope.toString.toLowerCase}")
+            case Left(error) =>
+              Some(s"- catalog: unavailable (${error.take(200)})")
+        }
+        val summary = s"""# raider run
            |
            |$statusLine
            |
@@ -961,94 +1039,65 @@ object HeadlessRunner:
            |$costLine$ciSection- exit code: ${runResult.exitCode}
            |- events: $eventsWritten event envelope(s) streamed to events.jsonl (schemaVersion 1)
            |""".stripMargin
-      Files.writeString(
-        workDir.resolve("summary.md"),
-        // appended AFTER the fixed body so a lineage-less run stays
-        // byte-identical to the pre-LIN-03B summary shape; the LIN-09
-        // artifacts line rides behind the lineage line for the same reason
-        summary + lineageLine.fold("")(l => l + "\n") +
-          artifactsLine.fold("")(l => l + "\n") +
-          toolchainLine.fold("")(l => l + "\n") +
-          catalogLine.fold("")(l => l + "\n") +
-          liveProjectionLine.fold("")(l => l + "\n"),
-        UTF_8
-      )
-      // RAI-131 (CI adapter batch): checks.junit.xml — the ci-runtime
-      // artifact contract rendered from the ACTUAL executed checks (stable
-      // IDs, pass/fail/error/skipped counts, escaped details). An empty
-      // suite is written honestly; it never pretends to verify task
-      // correctness (docs/ci-runtime.md artifacts table).
-      def xmlEscape(s: String): String =
-        s.replace("&", "&amp;")
-          .replace("<", "&lt;")
-          .replace(">", "&gt;")
-          .replace("\"", "&quot;")
-          .replace("'", "&apos;")
-      def testCaseXml(c: CheckResult): String =
-        val inner = c.outcome match
-          case CheckOutcome.Passed => ""
-          case CheckOutcome.Failed =>
-            s"""<failure message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
-                c.detail
-              )}</failure>"""
-          case CheckOutcome.Errored =>
-            s"""<error message="${xmlEscape(c.detail.take(120))}">${xmlEscape(
-                c.detail
-              )}</error>"""
-          case CheckOutcome.Skipped => "<skipped/>"
-        s"""    <testcase name="${xmlEscape(
-            c.id
-          )}" classname="raider.run.checks">$inner</testcase>"""
-      val allChecks = finalResult.checks
-      val failures = allChecks.count(_.outcome == CheckOutcome.Failed)
-      val errored = allChecks.count(_.outcome == CheckOutcome.Errored)
-      val skipped = allChecks.count(_.outcome == CheckOutcome.Skipped)
-      val junit =
-        s"""<?xml version="1.0" encoding="UTF-8"?>
-           |<testsuite name="raider run" tests="${allChecks.size}" failures="$failures" errors="$errored" skipped="$skipped">
-           |${allChecks.map(testCaseXml).mkString("\n")}
-           |</testsuite>
-           |""".stripMargin
-      Files.writeString(workDir.resolve("checks.junit.xml"), junit, UTF_8)
-      // The manifest covers every completed regular output file except itself.
-      // Hashes and sizes are computed from the bytes actually written.
-      val sha256 = java.security.MessageDigest.getInstance("SHA-256")
-      val artifactFiles = Files.walk(workDir)
-      val entries =
-        try
-          artifactFiles
-            .iterator()
-            .asScala
-            .filter(Files.isRegularFile(_))
-            .filterNot(_.getFileName.toString == "artifacts.json")
-            .toList
-            .sortBy(_.toString)
-            .map { file =>
-              val bytes = Files.readAllBytes(file)
-              val digest = sha256.digest(bytes).map(b => f"$b%02x").mkString
-              val relative =
-                workDir.relativize(file).toString.replace('\\', '/')
-              ArtifactEntry(
-                raider.core.ArtifactId(relative.replace('/', '-')),
-                digest,
-                mediaType(file),
-                bytes.length.toLong,
-                relative
-              )
-            }
-            .toList
-        finally artifactFiles.close()
-      val manifest = entries.toJson
-      val manifestTmp = workDir.resolve("artifacts.json.tmp")
-      Files.writeString(manifestTmp, manifest, UTF_8)
-      Files.move(
-        manifestTmp,
-        workDir.resolve("artifacts.json"),
-        StandardCopyOption.REPLACE_EXISTING,
-        StandardCopyOption.ATOMIC_MOVE
-      )
-      ()
-    }.orDie
+        Files.writeString(
+          workDir.resolve("summary.md"),
+          // appended AFTER the fixed body so a lineage-less run stays
+          // byte-identical to the pre-LIN-03B summary shape; the LIN-09
+          // artifacts line rides behind the lineage line for the same reason
+          summary + lineageLine.fold("")(l => l + "\n") +
+            artifactsLine.fold("")(l => l + "\n") +
+            toolchainLine.fold("")(l => l + "\n") +
+            catalogLine.fold("")(l => l + "\n") +
+            liveProjectionLine.fold("")(l => l + "\n"),
+          UTF_8
+        )
+        // RAI-131 (CI adapter batch): checks.junit.xml — the ci-runtime
+        // artifact contract rendered from the ACTUAL executed checks (stable
+        // IDs, pass/fail/error/skipped counts, escaped details). An empty
+        // suite is written honestly; it never pretends to verify task
+        // correctness (docs/ci-runtime.md artifacts table).
+        val junit = CiReport.junit(finalResult.checks)
+        Files.writeString(workDir.resolve("checks.junit.xml"), junit, UTF_8)
+        // The manifest covers every completed regular output file except itself.
+        // Hashes and sizes are computed from the bytes actually written.
+        val sha256 = java.security.MessageDigest.getInstance("SHA-256")
+        val artifactFiles = Files.walk(workDir)
+        val entries =
+          try
+            artifactFiles
+              .iterator()
+              .asScala
+              .filter(Files.isRegularFile(_))
+              .filterNot(_.getFileName.toString == "artifacts.json")
+              .toList
+              .sortBy(_.toString)
+              .map { file =>
+                val bytes = Files.readAllBytes(file)
+                val digest = sha256.digest(bytes).map(b => f"$b%02x").mkString
+                val relative =
+                  workDir.relativize(file).toString.replace('\\', '/')
+                ArtifactEntry(
+                  raider.core.ArtifactId(relative.replace('/', '-')),
+                  digest,
+                  mediaType(file),
+                  bytes.length.toLong,
+                  relative
+                )
+              }
+              .toList
+          finally artifactFiles.close()
+        val manifest = entries.toJson
+        val manifestTmp = workDir.resolve("artifacts.json.tmp")
+        Files.writeString(manifestTmp, manifest, UTF_8)
+        Files.move(
+          manifestTmp,
+          workDir.resolve("artifacts.json"),
+          StandardCopyOption.REPLACE_EXISTING,
+          StandardCopyOption.ATOMIC_MOVE
+        )
+        ()
+      }
+      .fold(_ => false, _ => true)
 
   private def mediaType(path: Path): String =
     Option(Files.probeContentType(path)).getOrElse(
@@ -1060,6 +1109,13 @@ object HeadlessRunner:
           "application/json"
         case _ => "application/octet-stream"
     )
+
+  private def reportText(value: String, limit: Int): String =
+    CiReport
+      .neutralizeWorkflowCommands(
+        CiReport.xmlEscape(value.replace('\n', ' ').replace('\r', ' '))
+      )
+      .take(limit)
 
   /** RAI-086: `--context` payload reader. `None` = flag absent. The file was
     * already exist-checked at parse time (typed Configuration); a read failure
