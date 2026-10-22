@@ -137,9 +137,18 @@ object LocalReleaseDriver:
       ),
       dispatch
     )
-    val result = Unsafe.unsafe { implicit unsafe =>
-      Runtime.default.unsafe.run(Task.zio(handler(context))).getOrThrowFiberFailure()
+    val execution = Unsafe.unsafe { implicit unsafe =>
+      Runtime.default.unsafe
+        .run(Task.zio(handler(context)).either)
+        .getOrThrowFiberFailure()
     }
+    val result = execution.fold(
+      error =>
+        throw new IllegalStateException(
+          s"local release handler failed: ${error.code}: ${error.detail}"
+        ),
+      identity
+    )
     require(result.successful, result.detail)
     val directory = repo.resolve("artifacts/release").resolve(version)
     println(s"release=${directory}")
