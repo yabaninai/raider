@@ -1,0 +1,16 @@
+{
+  "card": "RAI-184",
+  "capUsd": 5.0,
+  "maxRequests": 100,
+  "totalSpendUsd": 0.0,
+  "requestCount": 0,
+  "remainingCapUsd": 5.0,
+  "remainingRequests": 100,
+  "entries": [],
+  "preflight": {
+    "providerConfigurationsResolved": 0,
+    "providerAuthRefusals": 2,
+    "networkCalls": 0,
+    "stopReason": "both provider credential configurations absent; endpoints/models and conservative model prices were not selected"
+  }
+}

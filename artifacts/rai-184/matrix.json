@@ -1,0 +1,176 @@
+{
+  "card": "RAI-184",
+  "baseline": "7063a50",
+  "execution": "preflight-blocked-no-provider-requests",
+  "authorizedCapUsd": 5.0,
+  "maxRequests": 100,
+  "totalSpendUsd": 0.0,
+  "requestCount": 0,
+  "pricing": "unknown; no selected model or verified price bound",
+  "providers": [
+    {
+      "kind": "openai-compatible",
+      "endpointIdentity": null,
+      "modelId": null,
+      "configuration": "not selected/configured in the process environment",
+      "credentialConfiguration": "candidate environment references absent; values were not read",
+      "scenarios": [
+        {
+          "scenario": "direct-chat",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "streaming",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "complete-tool-round",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "cancel-mid-stream",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "usage-and-cost-reporting",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "anthropic-compatible",
+      "endpointIdentity": null,
+      "modelId": null,
+      "configuration": "not selected/configured in the process environment",
+      "credentialConfiguration": "candidate environment references absent; values were not read",
+      "scenarios": [
+        {
+          "scenario": "direct-chat",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "streaming",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "complete-tool-round",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "cancel-mid-stream",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        },
+        {
+          "scenario": "usage-and-cost-reporting",
+          "status": "blocked_auth_preflight",
+          "latencyMs": null,
+          "usage": null,
+          "costStatus": "unknown; no request dispatched",
+          "actualCostUsd": 0.0,
+          "error": {
+            "type": "ProviderAuth",
+            "code": "RA-AUTH",
+            "detail": "provider credentials are not configured; preflight refusal, no HTTP request sent"
+          }
+        }
+      ]
+    }
+  ],
+  "environmentPresenceCheck": {
+    "method": "presence-only checks for candidate variable names; no values read; no .env files accessed",
+    "variables": {
+      "RAIDER_OPENAI_BASE_URL": false,
+      "RAIDER_OPENAI_MODEL": false,
+      "RAIDER_OPENAI_API_KEY": false,
+      "RAIDER_DIRECT_KEY": false,
+      "RAIDER_ANTHROPIC_BASE_URL": false,
+      "RAIDER_ANTHROPIC_MODEL": false,
+      "RAIDER_ANTHROPIC_API_KEY": false,
+      "ANTHROPIC_API_KEY": false,
+      "OPENAI_BASE_URL": false,
+      "OPENAI_MODEL": false,
+      "OPENAI_API_KEY": false
+    }
+  }
+}
