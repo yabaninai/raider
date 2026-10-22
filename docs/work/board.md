@@ -1,5 +1,12 @@
 # Raider Execution Board
 
+## 2026-10-22 — Live-wire owner config (zai, models, $0.10 reservation); scope notes; packaging registry mapping
+
+- **Live-wire configuration:** zai leg selected for this execution, with `glm-5.3-flash` requested and `glm-5.3` observed; reserve $0.10 per response. Anthropic is deferred. This records configuration only, not a live execution or spend claim.
+- **Scope notes:** RAI-188 authorizes the model-delta bridge into the ADR-024 renderer seam while retaining existing terminal-output paths as fallback. RAI-193 authorizes additive LocalRelease staging of fat-jar/launcher/formulas atomically into the checksummed artifact set.
+- **Registry path mapping:** `packaging/` maps to existing `static` + `contracts` profiles; additive classification only, with no new gates or threshold changes. **Independent review required per RAI-135 precedent (pending).** No RAI-193 lane files or work record were present in the root snapshot when checked.
+- **Work record:** [coordinator execution evidence](records/COORD-RAI-188-193-REGISTRY-20261022.md).
+
 ## 2026-10-22 — TUI-X program registered (owner decisions)
 
 - **Owner decisions:** Evolve Raider's own ANSI renderer under ADR-016 and the MIT-only policy, with no new runtime dependencies; phase distribution JVM first, Native only after evaluation; sequence TUI work B1 → B2/B3 → A1 → C1, with JVM distribution D1 parallel to B and native-image evaluation D2 after D1.
