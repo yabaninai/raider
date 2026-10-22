@@ -138,7 +138,15 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
     finally stream.close()
 
   private def artifacts(out: Path): Vector[Path] =
-    files(out).filterNot(_.getFileName.toString.endsWith(".tmp"))
+    files(out)
+
+  private def noTemporaryFiles(runDir: Path): Boolean =
+    val stream = Files.walk(runDir)
+    try
+      !stream.iterator().asScala.exists { path =>
+        Files.isRegularFile(path) && path.getFileName.toString.endsWith(".tmp")
+      }
+    finally stream.close()
 
   private def validateArtifacts(out: Path): Boolean =
     val all = artifacts(out)
@@ -163,20 +171,21 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       val raw = Files.readString(file, UTF_8)
       raw.fromJson[List[ArtifactEntry]].exists { entries =>
         val listedPaths = entries.map(_.path).toSet
-        val completedPaths = files(file.getParent)
-          .filterNot(_.getFileName.toString.endsWith(".tmp"))
+        val completedFiles = files(file.getParent)
           .filterNot(
             _.toAbsolutePath.normalize == file.toAbsolutePath.normalize
           )
+        val completedPaths = completedFiles
           .map(path =>
             file.getParent.relativize(path).toString.replace('\\', '/')
           )
           .toSet
-        entries.nonEmpty && entries.forall { entry =>
-          val artifact = file.getParent.resolve(entry.path)
-          Files.isRegularFile(artifact) &&
-          Files.size(artifact) == entry.sizeBytes &&
-          sha256(Files.readAllBytes(artifact)) == entry.sha256
+        noTemporaryFiles(file.getParent) && entries.nonEmpty && entries.forall {
+          entry =>
+            val artifact = file.getParent.resolve(entry.path)
+            Files.isRegularFile(artifact) &&
+            Files.size(artifact) == entry.sizeBytes &&
+            sha256(Files.readAllBytes(artifact)) == entry.sha256
         } && listedPaths == completedPaths &&
         !entries.exists(_.path.endsWith("artifacts.json"))
       }
