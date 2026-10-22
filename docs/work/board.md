@@ -1,5 +1,16 @@
 # Raider Execution Board
 
+## 2026-10-22 — RAI-176 accepted (takeover complete); CI program registered
+
+- **Takeover arc:** External-session RAI-176 work was preserved as the lane baseline, completed with the streaming tool-definition regression fix and dynamic-port scripted local probe (real file creation ×3), independently reviewed and approved, then integrated; probe finding closed. RAI-176 is accepted in task Markdown and backlog.
+- **CI program:** RAI-184..187 were registered at `c60aecf`; live-wire execution and the First CI acceptance program are now queued as the next program work.
+- **Integrated merge:** `lane/rai-176` merged to main as `f69f2b0` (`RAI-176 streaming tool definitions preserved`).
+- **Integrated gates:** `make quality-changed` exited 0 and selected minimum `fast` on the clean tree. `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10/10 fast gates passed, timeout false; manifest `artifacts/quality/20261022-032229-22687-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts transport ci docs"` exited 0; all 7/7 listed gates passed, timeout false; manifest `artifacts/quality/20261022-033002-36824-0001/manifest.json`. No retry was needed.
+- **Documented exception:** TAB-02 (RAI-172) remains conditional and distinct from these passing gates; it was not observed red.
+- **Post-status verification:** `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed, timeout false; manifest `artifacts/quality/20261022-033803-49744-0001/manifest.json`. The requested static/unit/contracts/transport/CI/docs profiles were rerun on the accepted-status candidate and passed all 7/7 listed gates, manifest `artifacts/quality/20261022-033810-50154-0001/manifest.json`.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 207 cards.
+- **Record:** `docs/work/records/RAI-176.md`.
+
 ## 2026-10-21 — Owner decisions: live-wire $5 cap (execution authorized); CI program next; RAI-176 takeover
 
 - **Live-wire (RAI-171):** In progress; execution authorized only for openai-compatible + anthropic-compatible, $5.00 total and at most 100 requests, with runner-enforced per-call hard-stop, no retries beyond cap, environment-only credentials, per-call budget checks, a spend log, and no credential/secret-value leakage.

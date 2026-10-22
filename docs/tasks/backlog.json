@@ -5427,7 +5427,7 @@
       "dependencies": [
         "RAI-012"
       ],
-      "status": "in_progress",
+      "status": "accepted",
       "allowed_paths": [
         "modules/provider-chat/src/main/scala/raider/provider/chat/stream/OpenAIChatStreamingBackend.scala",
         "modules/provider-chat/src/main/scala/raider/provider/chat/OpenAIChatBackend.scala",
