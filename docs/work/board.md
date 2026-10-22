@@ -1,5 +1,9 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-195 registered from the RAI-186 proposal
+
+- **Contract card:** RAI-195 is registered ready for the trusted-workflow/bundle `trustedChecks` advisory/blocking declaration, frozen serialization/provenance, and fail-safe blocking defaults. RAI-186 completes FCI-REPORT-01 under this contract; threshold semantics are out of v1.
+
 ## 2026-10-22 — RAI-185 accepted (First CI process level); live-wire blocked on gateway
 
 - **Integrated merge:** RAI-185 from `lane/rai-185` merged to main as `e2626871389dffd0f63766416dee431705ad3fc3`. Three review rounds closed; round 3 approved. FCI-CLI-01/02 and FCI-CTX-01/02 are accepted on the real CLI child-process fixture, including distinct `result.json`/`artifacts.json` surfaces, manifest set-equality, zero temporary files, SHA-256 integrity, non-TTY behavior, adapter environment parity/redaction, and malformed-input pre-dispatch refusal (exit 21, before ledger admission).

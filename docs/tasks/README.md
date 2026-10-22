@@ -271,3 +271,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-192** [TUI-X.C1: diff review accept/reject + model/provider switcher](m2-p2.md#rai-192-tui-xc1-diff-review-acceptreject--modelprovider-switcher); dependencies: RAI-189, RAI-191; profiles: static, unit, contracts, runtime, repl, security.
 - **RAI-193** [TUI-X.D1: JVM distribution](m2-p2.md#rai-193-tui-xd1-jvm-distribution); dependencies: none; profiles: static, unit, contracts, release, security.
 - **RAI-194** [TUI-X.D2: GraalVM native-image evaluation (spike)](m2-p2.md#rai-194-tui-xd2-graalvm-native-image-evaluation-spike); dependencies: RAI-193; profiles: static, release, docs.
+- **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.

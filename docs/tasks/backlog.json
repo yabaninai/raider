@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 205,
+  "raider_count": 206,
   "companion_count": 3,
   "cards": [
     {
@@ -5690,6 +5690,23 @@
       },
       "non_goals": "A second scheduler/runtime, hosted CI claims, paid provider calls, broad MVP/W12 completion beyond the First CI matrix, durable resume/exactly-once claims, or replacing OS signal acceptance with an in-process interrupt test.",
       "context": "ci-runtime.md §§6–8 and 11; RAI-185/186 provide the CLI, adapter, artifact, report, check, and exit prerequisites. RAI-131's runner-fiber interruption evidence does not meet this card's real parent-delivered SIGTERM requirement."
+    },
+    {
+      "id": "RAI-195",
+      "title": "CI check-policy contract: advisory/blocking declaration on trusted checks",
+      "milestone": "M0",
+      "dependencies": ["RAI-186", "RAI-131"],
+      "status": "ready",
+      "allowed_paths": ["docs/tasks/m0.md", "docs/tasks/backlog.json", "docs/tasks/README.md", "docs/work/board.md", "docs/ci-runtime.md", "docs/adr/**", "contracts/ci/**", "contracts/bundle/**", "modules/ci/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "ci"],
+      "behavior": "Define and freeze an advisory Boolean on trusted workflow/bundle check metadata, specifically the exported-workflow trustedChecks surface. Policy is workflow-bound, not CI-context configuration, CLI override, model output, or task input. Advisory check failure produces a success-with-advisory verdict, exit 0, and recorded verdict/evidence per ci-runtime §§7–8; blocking failure remains task-failed. Missing, unknown, or mismatched check IDs are blocking by fail-safe default. Freeze serialization and provenance with the bundle and record resolved policy identity in run outcomes. Threshold semantics are excluded from v1. RAI-186 completes FCI-REPORT-01 under this contract.",
+      "acceptance": {
+        "normal": "CI-POLICY-01: trusted workflow/bundle metadata round-trips advisory with immutable provenance; advisory failure records success-with-advisory and exits 0, while blocking failure exits 10.",
+        "error": "CI-POLICY-02: missing, unknown, or mismatched IDs fail as blocking; policy override attempts through context/CLI/model/task input cannot widen authority; no threshold field is introduced in v1.",
+        "concurrency": "CI-POLICY-03: policy identity and verdict remain bound to the frozen bundle across execution/reporting; result and run artifacts record consistent provenance without model-authored check evidence."
+      },
+      "non_goals": "Threshold semantics, CI-context-configured verdict policy, runtime overrides, model-authored check results, hosted-forge execution, or unrelated RAI-186/187 reporter/lifecycle work.",
+      "context": "ci-runtime.md §§2, 7–8; RAI-186 contract ruling/proposal recorded 2026-10-23; RAI-131 trusted-check/provenance surfaces."
     },
     {
       "id": "RAI-188",
