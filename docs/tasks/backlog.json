@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 194,
+  "raider_count": 198,
   "companion_count": 3,
   "cards": [
     {
@@ -5622,6 +5622,74 @@
       },
       "non_goals": "Changing frozen lineage schemas or the RAI-173 commit-pointer protocol; adding a second export/reader path; changing ReplayCli's pin contract or warning-and-attempt behavior; guessing model identity; unrelated catalog, replay, campaign scheduling, or provider behavior; paid calls.",
       "context": "LIN-08's catalog, pin reader/comparison, and environment-pin consumer are delivered, but origins are not produced consistently: CHAT has no lineage artifact producer, headless/export paths do not write toolchain.json, and chat/headless/campaign scopes are not auto-assigned. Use the existing LIN-03 publication protocol and ReplayCli environment-pin contract; do not add a parallel export or reader protocol."
+    },
+    {
+      "id": "RAI-184",
+      "title": "Live-wire execution — budget guard and provider matrix",
+      "milestone": "M1",
+      "dependencies": ["RAI-171"],
+      "status": "ready",
+      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/budget/**", "modules/runtime/src/test/scala/raider/runtime/budget/**", "modules/provider-chat/**", "modules/provider-anthropic/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "transport"],
+      "behavior": "Implement a per-response spend-ledger guard that checks the remaining USD cap and request-count cap before every provider call and returns a typed refusal at the admission boundary when another response could exceed either limit. Unit-test the guard without live calls. Then execute the live-wire-request.md scenario matrix independently against owner-configured OpenAI-compatible and Anthropic-compatible endpoints: direct response, streaming, complete tool round, cancellation mid-stream, and usage/cost reporting. Credentials are available only through environment-variable references or an approved helper. Record spend, latency, observed usage, estimates, unknown cost, endpoint/model identity, and each refusal/check; incomplete or failed scenarios are findings, never passes. Stop on cap exhaustion or uncertain charges, with no retry beyond the cap.",
+      "acceptance": {
+        "normal": "LIVE-EXEC-01: per-response pre-call guard enforces both total spend and request count, with typed refusal at the boundary; deterministic unit cases cover below-cap, exact-cap, next-request refusal, concurrent reservations, and settlement without any live call.",
+        "error": "LIVE-EXEC-02: live matrix records all five requested scenarios for each provider, selected endpoint/model identities, commands/config references, actual outcomes, observed usage, latency, spend totals, and honest failures; credentials and secret values are absent from every record/log/artifact.",
+        "concurrency": "LIVE-EXEC-03: cancellation mid-stream cleans up the request and records truthful partial/unknown usage; uncertain charges and cap exhaustion stop all further calls, with no retry or provider/account switch."
+      },
+      "non_goals": "Retries beyond the cap, credential values in any repository/output, quality-model claims, changing public provider/accounting contracts, or treating mock/local-stand results as live evidence.",
+      "context": "Board entry 2026-10-21 authorizes both provider kinds under a $5.00 total cap and at most 100 requests, with a runner-enforced hard stop and spend log. `live-wire-request.md` §§1–5 defines endpoint selection, scenarios, truthful reporting, and credential handling; provider-protocols.md §§2–5 defines wire and accounting expectations. RAI-171 is preparation-only and does not itself execute calls."
+    },
+    {
+      "id": "RAI-185",
+      "title": "First CI — CLI process acceptance and adapter fixtures",
+      "milestone": "M0",
+      "dependencies": ["RAI-131", "RAI-078"],
+      "status": "ready",
+      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/ci/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "ci"],
+      "behavior": "Close the First CI CLI/process and adapter-fixture gap. Launch the exact First CI command as a real NON-TTY child process using `--ci generic`, `--context`, `--out`, and the mock backend; discover and validate the emitted artifacts, including distinct `result.json` and `artifacts.json` required by ci-runtime.md §7. Assert that `result.json` exists as a separate result surface; `run.json` is not its substitute. GitHub and GitLab environment-variable fixtures (actual CI variables, not only context files) must have semantic parity with generic context. Malformed context, bundle, or input must be rejected before dispatch with zero model calls/spend.",
+      "acceptance": {
+        "normal": "FCI-CLI-01: exact non-TTY mock invocation runs as a child process; discover all required artifacts and validate schemas/integrity, including distinct `result.json` and `artifacts.json` per ci-runtime §7; record exact argv and artifact paths.",
+        "error": "FCI-CLI-02: closed stdin, no TTY, no ANSI, and no prompts; FCI-CTX-01: generic/GitHub/GitLab equivalent inputs (including CI environment fixtures) produce semantically equivalent results and required artifacts; FCI-CTX-02: malformed context/bundle/input exits nonzero before dispatch and proves zero model calls/spend.",
+        "concurrency": "FCI-CLI-01: child exits are collected truthfully, process resources are cleaned up, and separate concurrent fixture output directories do not cross-contaminate artifacts."
+      },
+      "non_goals": "Live providers or paid calls, a second scheduler/runtime, hosted-runner claims, implementing all reporter/exit/lifecycle closure owned by RAI-186/187, or silently changing frozen schemas.",
+      "context": "ci-runtime.md §§3–4, 7, 11; RAI-131 closes adapter trust/artifact/exit slices but its record lists only run.json, summary.md, and checks.junit.xml in the artifact set. RAI-078 and RAI-131 are accepted prerequisites. Board entry 2026-10-21 names First CI acceptance as the next program."
+    },
+    {
+      "id": "RAI-186",
+      "title": "First CI — report, checks, and exit contract closure",
+      "milestone": "M0",
+      "dependencies": ["RAI-131", "RAI-185"],
+      "status": "todo",
+      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/main/scala/raider/cli/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/ci/reports/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "ci", "tools", "security", "eval"],
+      "behavior": "Close First CI report/check/exit acceptance. Verdicts must derive advisory-versus-blocking outcomes from actual deterministic check evidence and the frozen policy, never model-authored success. Require and integrity-check the run/result/events/JUnit/summary/artifacts manifest set. Specify and test table-driven exit mapping and precedence for write failure, uncertain outcome, deadline, policy denial, and cancellation. Exercise reporter escaping against hostile XML, Markdown, filesystem paths, and command-like content; a required artifact write failure is always nonzero and never exit 0.",
+      "acceptance": {
+        "normal": "FCI-REPORT-01: actual check evidence and frozen policy produce the expected advisory/blocking verdict, report, and exit; model output cannot manufacture successful check evidence.",
+        "error": "FCI-REPORT-04: XML/Markdown/path/command-like hostile values are escaped or contained; write failure never returns 0.",
+        "concurrency": "FCI-REPORT-03: table-driven mapping and precedence covers write-failure, uncertainty, deadline, policy denial, and cancellation."
+      },
+      "non_goals": "Model-quality scoring, SARIF publishing, changing frozen exit/schema contracts without a separate reviewed migration, or replacing deterministic check evidence with agent assertions.",
+      "context": "ci-runtime.md §§2, 7–8, 11; quality-gates.md §§3, 12. RAI-131 provides the earlier adapter slice; RAI-185 supplies the real CLI-process and artifact-discovery acceptance dependency."
+    },
+    {
+      "id": "RAI-187",
+      "title": "First CI — lifecycle and joint acceptance record",
+      "milestone": "M0",
+      "dependencies": ["RAI-185", "RAI-186"],
+      "status": "todo",
+      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/acceptance/ci/**", "docs/acceptance/ci/**", "docs/work/records/**"],
+      "profiles": ["static", "unit", "contracts", "ci", "runtime"],
+      "behavior": "Verify First CI lifecycle behavior and publish the minimal combined acceptance matrix. A deadline run must yield the defined policy exit and honest artifacts. Send PARENT-DELIVERED OS SIGTERM to the real CLI child process; verify owned-child/process-group cleanup within a bounded stop, signal exit semantics, and truthful partial artifacts. Fiber-interrupt tests are lower-level evidence only and do not substitute for process-level signaling. Run one minimal combined fixture against every First CI clause and record exact commands and evidence.",
+      "acceptance": {
+        "normal": "FCI-LIFE-01: a deadline fixture exits according to policy and emits truthful deadline/accounting/result/report artifacts, with no fabricated success.",
+        "error": "FCI-LIFE-02: a parent process delivers OS SIGTERM to the real CLI process; bounded owned-child/process-group cleanup completes, signal exit is retained, partial artifacts are honest, and no orphan remains.",
+        "concurrency": "FCI-MATRIX-01: one minimal fixture exercises the First CI invocation, non-TTY rules, context parity, malformed pre-dispatch refusal, artifact set/integrity, verdict/exit precedence, deadline, and SIGTERM clauses; exact argv, environment-fixture references, observed outcomes, and evidence locations are recorded."
+      },
+      "non_goals": "A second scheduler/runtime, hosted CI claims, paid provider calls, broad MVP/W12 completion beyond the First CI matrix, durable resume/exactly-once claims, or replacing OS signal acceptance with an in-process interrupt test.",
+      "context": "ci-runtime.md §§6–8 and 11; RAI-185/186 provide the CLI, adapter, artifact, report, check, and exit prerequisites. RAI-131's runner-fiber interruption evidence does not meet this card's real parent-delivered SIGTERM requirement."
     }
   ]
 }
