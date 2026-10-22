@@ -35,6 +35,10 @@ changelog, and verifies every entry in `SHA256SUMS`. The Homebrew and Scoop
 formulae are checked for rendered version and the staged JAR's real SHA-256.
 Finally, the clean-prefix smoke runs against `artifacts/release/<version>/raider-cli.jar`.
 The version directory and `v<version>` tag are local worktree state only.
+For Git worktrees whose `.git` entry is a pointer file, the script temporarily
+exposes the resolved per-worktree Git directory while the existing release
+handler runs, then restores the pointer on process exit. Git commits, tags, and
+release inputs remain in the assigned worktree.
 
 The LocalRelease `ReleaseStage.Request.distributionArtifacts` field accepts
 source paths and destination-relative names. The stage copies these into its

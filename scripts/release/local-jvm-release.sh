@@ -11,7 +11,7 @@ case "$VERSION" in
 esac
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 cd "$ROOT"
-[ -d .git ] || { printf '%s\n' 'local release requires a Git worktree' >&2; exit 2; }
+[ -e .git ] || { printf '%s\n' 'local release requires a Git worktree' >&2; exit 2; }
 [ -z "$(git status --porcelain)" ] || {
   printf '%s\n' 'local release requires a clean accepted revision; commit release inputs first' >&2
   exit 2
@@ -27,6 +27,26 @@ cd "$ROOT"
 
 make raider-jar
 DRIVER="$ROOT/scripts/release/LocalReleaseDriver.scala"
+GIT_DIR=$(git rev-parse --absolute-git-dir)
+GIT_POINTER_BACKUP=
+restore_git_pointer() {
+  if [ -n "$GIT_POINTER_BACKUP" ] && [ -e "$GIT_POINTER_BACKUP" ]; then
+    rm -f "$ROOT/.git/rai-193-release-request.json" \
+      "$ROOT/.git/rai-193-release-decision.json"
+    rm -f "$ROOT/.git"
+    mv "$GIT_POINTER_BACKUP" "$ROOT/.git"
+  fi
+}
+trap restore_git_pointer EXIT
+if [ -f .git ] && [ ! -L .git ]; then
+  GIT_POINTER_BACKUP="$ROOT/.git-raider-release-pointer.$$"
+  [ ! -e "$GIT_POINTER_BACKUP" ] || {
+    printf '%s\n' 'temporary Git pointer backup already exists' >&2
+    exit 2
+  }
+  mv .git "$GIT_POINTER_BACKUP"
+  ln -s "$GIT_DIR" .git
+fi
 sbt --batch \
   "set raiderCli / Compile / unmanagedSources += file(\"$DRIVER\")" \
   "raiderCli / runMain raider.cli.release.LocalReleaseDriver $ROOT $VERSION"
