@@ -223,6 +223,9 @@ object Main:
     s.flatMap:
       case '\\'         => "\\\\"
       case '"'          => "\\\""
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
       case c if c < ' ' => f"\\u${c.toInt}%04x"
       case c            => c.toString
 
@@ -352,7 +355,15 @@ object Main:
     * and the Scala-console default path are unchanged.
     */
   private def chatLoop(engine: ReplEngine): Unit =
-    val reader = LineReaderBuilder.builder().terminal(makeTerminal()).build()
+    val terminal = makeTerminal()
+    val reader = LineReaderBuilder.builder().terminal(terminal).build()
+    val chatAvailable =
+      terminal.getType != "dumb" && terminal.getType.nonEmpty &&
+        terminal.getWidth > 0 && terminal.getHeight > 0
+    if !chatAvailable then
+      println("Chat layout unavailable for this terminal; using the line REPL.")
+      ttyLoop(engine)
+      return
     var running = true
     while running do
       val line =

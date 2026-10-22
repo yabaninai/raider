@@ -14,7 +14,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
   private val Ansi =
     raw"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\u0007\x1b]*(?:\u0007|\x1b\\)|\x1b[()][0-9A-B]|\x1b[=><]|\x1b7|\x1b8".r
 
-  private final class Session:
+  private final class Session(term: String = "xterm-256color"):
 
     private val base =
       Files.createTempDirectory(s"rai188-pty-${UUID.randomUUID()}")
@@ -38,7 +38,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
 
     builder.redirectErrorStream(true)
     builder.directory(base.toFile)
-    builder.environment().put("TERM", "xterm-256color")
+    builder.environment().put("TERM", term)
     builder.environment().put("HOME", home.toString)
     builder.environment().put("RAIDER_PROVIDER", "mock")
     builder.environment().remove("RAIDER_API_KEY")
@@ -75,6 +75,10 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
         ),
         ""
       )
+
+    def rawTranscript: String = lock.synchronized {
+      new String(bytes.toByteArray, StandardCharsets.UTF_8)
+    }
 
     def waitFor(fragment: String, timeoutSeconds: Int = 40): Boolean =
       val deadline =
@@ -129,10 +133,10 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
         val session = new Session
         try
           val ready = session.waitFor("you> ", 120)
+          session.send("\u001b[200~wide input 界 and café\u001b[201~\r")
+          val pastedUnicode = session.waitFor("[scripted-fixture] mock answer")
           session.send("first prompt\r")
           val streamed = session.waitFor("[scripted-fixture] mock answer")
-          val typedPromptVisible =
-            session.transcript.contains("you> first prompt")
           session.send("second prompt\r")
           val secondStream = session.waitForCount("ready | :aux", 2, 40)
           session.send(":scroll-up\r")
@@ -155,12 +159,14 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
           session.send(":quit\r")
           val exited = session.waitForExit(20)
           val transcript = session.transcript
+          val raw = session.rawTranscript
           val evidence = session.saveTranscript()
           assertTrue(
             ready,
+            pastedUnicode,
             streamed,
             secondStream,
-            typedPromptVisible,
+            transcript.contains("you: wide input 界 and café"),
             scrolled,
             scrollReturned,
             auxShown,
@@ -169,8 +175,29 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
             historyCommandAccepted,
             tabsReachable,
             exited,
+            raw.takeRight(160).contains("\u001b[?2004l"),
             Files.size(evidence) > 0,
             !transcript.contains("Exception")
+          )
+        finally
+          session.saveTranscript()
+          session.close()
+      },
+      test("dumb terminal selects the ordinary line REPL without crashing") {
+        val session = new Session("dumb")
+        try
+          val fallback =
+            session.waitFor("Chat layout unavailable for this terminal", 120)
+          val prompt = session.waitFor("raider> ", 20)
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          val evidence = session.saveTranscript()
+          assertTrue(
+            fallback,
+            prompt,
+            exited,
+            !session.transcript.contains("Exception"),
+            Files.size(evidence) > 0
           )
         finally session.close()
       }
