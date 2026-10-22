@@ -68,6 +68,7 @@ if grep -F -e 'vVERSION' -e 'VERSION"' -e 'REPLACE_WITH_RELEASE_SHA256' \
 fi
 grep -F "releases/download/v$VERSION/raider-cli.jar" \
   "$RELEASE/packaging/homebrew/raider.rb" "$RELEASE/packaging/scoop/raider.json" >/dev/null
+grep -F 'RAIDER_VER' "$RELEASE/packaging/scoop/raider.json" >/dev/null
 if command -v shasum >/dev/null 2>&1; then
   JAR_SHA=$(shasum -a 256 "$RELEASE/raider-cli.jar" | awk '{print $1}')
 else
