@@ -38,7 +38,8 @@ final case class CliArgs(
     model: String = "local",
     workspace: Option[Path] = None,
     context: Option[Path] = None,
-    requireProvenance: Option[Path] = None
+    requireProvenance: Option[Path] = None,
+    ci: Option[String] = None
 ):
   // RAI-064: NO credential field — the key is resolved from the environment
   // (RAIDER_API_KEY / RAIDER_API_KEY_CMD) at runtime, never carried in args.
@@ -106,7 +107,8 @@ object CliArgs:
       "--model",
       "--workspace",
       "--context",
-      "--require-provenance"
+      "--require-provenance",
+      "--ci"
     )
 
   /** Parse `run` argv (the subcommand token included). */
@@ -245,6 +247,17 @@ object CliArgs:
                 s"--require-provenance file does not exist: $v"
               )
             )
+      ci <- acc.get("--ci") match
+        case None => Right(None)
+        case Some(value)
+            if Set("generic", "github", "gitlab").contains(value) =>
+          Right(Some(value))
+        case Some(value) =>
+          Left(
+            RaiderError.Configuration(
+              s"unknown --ci '$value' (github|gitlab|generic)"
+            )
+          )
       target <- (agent, bundle, workflow) match
         case (Some(a), None, None) =>
           if BuiltInAgents.contains(a) then Right(Target.Agent(a))
@@ -283,7 +296,8 @@ object CliArgs:
       model,
       workspace,
       context,
-      requireProvenance
+      requireProvenance,
+      ci
     )
 
   private def requireString(
