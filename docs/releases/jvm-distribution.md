@@ -28,20 +28,41 @@ Run the fresh-prefix simulation with:
 sh scripts/release/install-smoke.sh modules/cli/target/scala-3.9.0/raider-cli.jar 1.2.3
 ```
 
-The Homebrew and Scoop files are local formula/manifest templates. Their
-`VERSION`, release URL, and SHA-256 placeholders must be replaced using actual
-release outputs before a maintainer submits them to a package index. This card
-does not publish packages or make a hosted availability claim.
+The LocalRelease `ReleaseStage.Request.distributionArtifacts` field accepts
+source paths and destination-relative names. The stage copies these into its
+private staging directory, substitutes `VERSION` and
+`REPLACE_WITH_RELEASE_SHA256` in `.rb`, `.json`, `.cmd`, `.sh`, and `.txt`
+files, and includes every resulting path in `SHA256SUMS`. Binary files such as
+the JAR are copied byte-for-byte. The release directory is promoted only after
+the complete set and checksums have been written; interruption leaves no
+installed partial version. The staged set can include:
+
+```scala
+distributionArtifacts = List(
+  DistributionArtifact(jar, "raider-cli.jar"),
+  DistributionArtifact(launcher, "packaging/raider"),
+  DistributionArtifact(homebrew, "packaging/homebrew/raider.rb"),
+  DistributionArtifact(scoop, "packaging/scoop/raider.json")
+)
+```
+
+Build the assembly before invoking the SDLC release stage and pass its output
+path as `jar`. Then install-smoke the staged JAR, not the build-tree JAR:
+
+```sh
+make raider-jar
+sh scripts/release/install-smoke.sh artifacts/release/<version>/raider-cli.jar <version>
+```
+
+The Homebrew and Scoop templates contain the release URL shape for a future
+maintainer publication; local release does not upload files or assert that the
+URL is hosted. No package publication or deployment is performed.
 
 ## Local release integration status
 
-The current `LocalReleaseHandler` delegates to `ReleaseStage`, which validates
-accepted check/review/integration evidence and a checkpoint, then produces
-`CHANGELOG.md`, `release.json`, and `SHA256SUMS` under
-`artifacts/release/<version>/` and creates a local `v<version>` tag. Its build
-callback does not currently stage arbitrary distribution files, and its
-checksum set is fixed to those two release metadata files. Expanding it to
-include the fat JAR must be done in the owning CLI/SDLC card, which is outside
-RAI-193's allowed paths. Consequently, the distribution has not yet been
-released through that machinery and no distribution-inclusive release output
-is claimed here.
+`LocalReleaseHandler` delegates to `ReleaseStage`, which validates accepted
+check/review/integration evidence and a checkpoint, then produces changelog,
+provenance, requested distribution artifacts, and complete checksums under
+`artifacts/release/<version>/`, and creates a local `v<version>` tag. The
+request's build callback runs before staging, allowing it to build the fat JAR;
+the source path is then included in `distributionArtifacts`.
