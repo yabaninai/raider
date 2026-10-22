@@ -19,14 +19,27 @@ if [ ! -r "$JAR" ]; then
   printf 'raider: distribution jar not found: %s\n' "$JAR" >&2
   exit 21
 fi
-if ! command -v java >/dev/null 2>&1; then
+if [ -n "${JAVA_HOME:-}" ]; then
+  JAVA="$JAVA_HOME/bin/java"
+else
+  JAVA=$(command -v java || true)
+fi
+if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
+  printf '%s\n' 'raider: Java 21 or newer is required' >&2
+  exit 21
+fi
+JAVA_VERSION=$("$JAVA" -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }' || true)
+case "$JAVA_VERSION" in
+  ''|*[!0-9]*) JAVA_VERSION=0 ;;
+esac
+if [ "$JAVA_VERSION" -lt 21 ]; then
   printf '%s\n' 'raider: Java 21 or newer is required' >&2
   exit 21
 fi
 
-# The same artifact can be launched by Coursier without publishing a coordinate:
-# cs launch --jar raider-cli.jar -- <raider arguments>.
+# The fat JAR is added to Coursier's launch classpath; the Scala library
+# coordinate satisfies Coursier's dependency input without publishing Raider.
 if command -v cs >/dev/null 2>&1 && [ "${RAIDER_USE_COURSIER:-1}" = 1 ]; then
-  exec cs launch --jar "$JAR" -- "$@"
+  exec cs launch --main raider.cli.Main --extra-jars "$JAR" -- "$@"
 fi
-exec java -jar "$JAR" "$@"
+exec "$JAVA" -jar "$JAR" "$@"

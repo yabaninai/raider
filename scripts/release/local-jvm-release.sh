@@ -78,7 +78,7 @@ else
 fi
 grep -F "$JAR_SHA" "$RELEASE/packaging/homebrew/raider.rb" "$RELEASE/packaging/scoop/raider.json" >/dev/null
 sh "$ROOT/scripts/release/install-smoke.sh" "$RELEASE/raider-cli.jar" "$VERSION" \
-  "$RELEASE/packaging/raider"
+  "$RELEASE/packaging/raider" "$RELEASE"
 printf 'release artifacts (%s):\n' "$VERSION"
 find "$RELEASE" -type f -print | LC_ALL=C sort
 printf 'jar_sha256=%s\n' "$JAR_SHA"

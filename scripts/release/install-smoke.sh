@@ -1,8 +1,8 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-  printf 'usage: %s <distribution-jar> <semver> [distribution-launcher]\n' "$0" >&2
+if [ "$#" -lt 2 ] || [ "$#" -gt 4 ]; then
+  printf 'usage: %s <distribution-jar> <semver> [distribution-launcher] [release-directory]\n' "$0" >&2
   exit 2
 fi
 JAR=$1
@@ -11,16 +11,22 @@ VERSION=$2
 case "$VERSION" in
   ''|*[!0-9A-Za-z.+-]*) printf '%s\n' 'invalid version metadata' >&2; exit 21 ;;
 esac
-command -v java >/dev/null 2>&1 || { printf '%s\n' 'Java 21 or newer is required' >&2; exit 21; }
-JAVA_MAJOR=$(java -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }')
-[ "${JAVA_MAJOR:-0}" -ge 21 ] || { printf '%s\n' 'Java 21 or newer is required' >&2; exit 21; }
-
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 LAUNCHER=${3:-"$ROOT/packaging/raider"}
 [ -r "$LAUNCHER" ] || { printf 'launcher is not readable: %s\n' "$LAUNCHER" >&2; exit 21; }
+if [ "$#" -eq 4 ]; then
+  sh "$ROOT/scripts/release/verify-local-release.sh" "$4" "$VERSION"
+  [ "$(CDPATH= cd -- "$4" && pwd)" = "$(CDPATH= cd -- "$(dirname -- "$JAR")" && pwd)" ] || {
+    printf '%s\n' 'distribution jar must come from the verified release directory' >&2
+    exit 21
+  }
+fi
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/raider-install.XXXXXX")
 cleanup() { rm -rf "$TMP"; }
-trap cleanup EXIT HUP INT TERM
+trap cleanup EXIT
+trap 'cleanup; exit 129' HUP
+trap 'cleanup; exit 130' INT
+trap 'cleanup; exit 143' TERM
 INSTALL="$TMP/prefix/raider"
 mkdir -p "$INSTALL"
 cp "$JAR" "$INSTALL/raider-cli.jar"
@@ -57,13 +63,14 @@ else
 fi
 mv "$TMP/good.jar" "$INSTALL/raider-cli.jar"
 
-VERSION_OUT=$(RAIDER_USE_COURSIER=0 "$INSTALL/raider" --version)
+VERSION_OUT=$("$INSTALL/raider" --version)
 [ "$VERSION_OUT" = "raider $VERSION" ] || { printf 'unexpected version output: %s\n' "$VERSION_OUT" >&2; exit 20; }
 # Verify the installed launcher resolves the copied jar. An intentionally
 # invalid command must reach the CLI and return its documented config exit (21).
 set +e
-RAIDER_USE_COURSIER=0 "$INSTALL/raider" --not-a-command >"$TMP/stdout" 2>"$TMP/stderr"
+"$INSTALL/raider" --not-a-command >"$TMP/stdout" 2>"$TMP/stderr"
 STATUS=$?
 set -e
 [ "$STATUS" -eq 21 ] || { printf 'CLI exit mismatch: expected 21, got %s\n' "$STATUS" >&2; exit 20; }
-printf '%s\n' '[install-smoke] PASS: fresh prefix version and jar resolution; malformed CLI exits 21'
+printf '[install-smoke] PASS: fresh prefix version and jar resolution via %s; malformed CLI exits 21\n' \
+  "$(if command -v cs >/dev/null 2>&1 && [ "${RAIDER_USE_COURSIER:-1}" = 1 ]; then printf coursier; else printf java; fi)"

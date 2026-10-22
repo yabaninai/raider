@@ -11,15 +11,17 @@ java -jar modules/cli/target/scala-3.9.0/raider-cli.jar --help
 
 The assembly main class is `raider.cli.Main`. It packages the current `raiderCli`
 dependency graph and intentionally excludes the Scala REPL compiler and JLine.
-For a coordinate-free Coursier invocation, install Coursier separately and run:
+For a coordinate-free Coursier invocation, install Coursier separately and add
+the fat JAR as an extra launch classpath entry:
 
 ```sh
-cs launch --jar /path/to/raider-cli.jar -- run --help
+cs launch --main raider.cli.Main --extra-jars /path/to/raider-cli.jar -- run --help
 ```
 
 `packaging/raider` is a local installed-layout launcher. It supports
 `raider --version` using the adjacent `version` file, then uses Coursier's
-`--jar` mode when `cs` is available and otherwise invokes `java -jar` directly.
+`--extra-jars` launch mode when `cs` is available and otherwise invokes
+`java -jar` directly. It checks `JAVA_HOME` and requires Java 21 or newer.
 The headless CLI itself does not currently implement `--version`.
 
 Create a real local JVM release from a clean, committed worktree with:
@@ -40,6 +42,25 @@ For Git worktrees whose `.git` entry is a pointer file, the script temporarily
 exposes the resolved per-worktree Git directory while the existing release
 handler runs, then restores the pointer on process exit. Git commits, tags, and
 release inputs remain in the assigned worktree.
+
+`install-smoke.sh` accepts the release directory as its fourth argument. Before
+creating install staging, `verify-local-release.sh` validates the versioned
+JSON metadata with `jq` and checks every file listed in `SHA256SUMS`. Missing or
+malformed metadata and checksum failures return 21 and do not create a prefix.
+The Coursier launcher uses the shipped fat JAR as an extra classpath entry with
+`raider.cli.Main`; Java fallback remains available when Coursier is absent or
+`RAIDER_USE_COURSIER=0` is explicitly set.
+
+The local negative and interruption harnesses are:
+
+```sh
+sh scripts/release/negative-install-smoke.sh artifacts/release/<version>
+python3 scripts/release/signal-install-smoke.py
+```
+
+The signal harness sends SIGTERM to the install-smoke process group while its
+Coursier command is blocked. It requires exit 143 and an empty temporary install
+directory. The harness is test/bootstrap glue; it is not shipped in the CLI.
 
 The LocalRelease `ReleaseStage.Request.distributionArtifacts` field accepts
 source paths and destination-relative names. The stage copies these into its
