@@ -12,6 +12,7 @@ import zio.{Duration as ZDuration, Exit as ZExit, ZIO}
 
 import java.net.{InetAddress, InetSocketAddress}
 import java.nio.charset.StandardCharsets.UTF_8
+import java.nio.file.Files
 import java.util.concurrent.atomic.{AtomicBoolean, AtomicReference}
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
@@ -481,6 +482,60 @@ object OpenAIChatStreamSpec extends ZIOSpecDefault:
             invoked.get().contains("café 雪"),
             invoked.get().contains("\"enabled\":true")
           )
+        }
+      },
+      test(
+        "LOCAL-MODEL probe: streamed tool round creates and verifies a real file"
+      ) {
+        ZIO.acquireReleaseWith(
+          ZIO.attemptBlocking(Files.createTempDirectory("rai-176-local-probe-"))
+        )(dir =>
+          ZIO.attemptBlocking {
+            Files.deleteIfExists(dir.resolve("tool-output.json"))
+            Files.deleteIfExists(dir)
+          }.ignore
+        ) { dir =>
+          val output = dir.resolve("tool-output.json")
+          val invoked = new AtomicReference[String]("")
+          withStreamStand() { (backend, _) =>
+            for
+              adm <- Admission.make(lims())
+              root = AgentLoop.newRoot()
+              createFile = new Tool:
+                def name = "lookup"
+                def version = 1
+                def description = WireToolDescription
+                def recovery = RecoveryClass.ReadOnly
+                def timeoutMs = 5000L
+                def capabilities = ToolCapabilities(concurrentSafe = false)
+                override def parametersJsonSchema = WireToolSchema
+                def invoke(args: String) =
+                  ZIO
+                    .attemptBlocking {
+                      invoked.set(args)
+                      Files.writeString(output, args, UTF_8)
+                      "{\"created\":true}"
+                    }
+                    .mapError(e => RaiderError.ToolFailed(e.getMessage))
+              registry = ToolRegistry
+                .of(createFile)
+                .fold(e => throw e, identity)
+              loop = AgentLoop(backend, registry, "stream-tool-wire", adm, root)
+              answer <- loop.runText(
+                List(RequestMessage("user", "Create the requested file")),
+                lims().fold(e => throw e, identity),
+                4
+              )
+              exists <- ZIO.attemptBlocking(Files.isRegularFile(output))
+              written <- ZIO.attemptBlocking(Files.readString(output, UTF_8))
+            yield assertTrue(
+              answer == "stream final",
+              exists,
+              written == invoked.get(),
+              written.contains("café 雪"),
+              written.contains("\"enabled\":true")
+            )
+          }
         }
       },
       test("CHATWIRE-01: stand rejects a streaming request with absent tools") {
