@@ -156,8 +156,15 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
           val pastedUnicode = session.waitFor("[scripted-fixture] mock answer")
           session.send("first prompt\r")
           val streamed = session.waitFor("[scripted-fixture] mock answer")
+          val idleFooter =
+            session.waitFor("model scripted | budget unknown | stream idle", 20)
+          val streamingFooter = session.waitFor(
+            "model scripted | budget unknown | stream streaming",
+            20
+          )
           session.send("second prompt\r")
-          val secondStream = session.waitForCount("ready | :aux", 2, 20)
+          val secondStream =
+            session.waitForCount("stream idle | ready | :aux", 2, 20)
           session.send(":scroll-up\r")
           val scrolled = session.waitFor("scrolled up 1")
           session.send(":scroll-down\r")
@@ -181,8 +188,10 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
           val evidence = session.saveTranscript()
           assertTrue(
             ready,
+            idleFooter,
             pastedUnicode,
             streamed,
+            streamingFooter,
             secondStream,
             transcript.contains("you: wide input 界 and café"),
             scrolled,
@@ -215,6 +224,69 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
             prompt,
             exited,
             !session.transcript.contains("Exception"),
+            Files.size(evidence) > 0
+          )
+        finally session.close()
+      },
+      test("session listing and focus switching preserve per-tab drafts") {
+        val session = new Session
+        try
+          val prompt = session.waitFor("you> ", 120)
+          session.send(":new alpha\r")
+          val alpha = session.waitFor("tab created: alpha")
+          session.send(":new beta\r")
+          val beta = session.waitFor("tab created: beta")
+          session.send(":sessions\r")
+          val listed =
+            session.waitFor("*2. beta [") && session.waitFor("1. alpha [")
+          session.send(":switch alpha\r")
+          val switched = session.waitFor("focused: alpha [")
+          session.send(":switch beta\r")
+          val switchedBack = session.waitFor("focused: beta [")
+          session.send(":switch alpha\r")
+          val restored = session.waitFor("focused: alpha [")
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          val evidence = session.saveTranscript()
+          assertTrue(
+            prompt,
+            alpha,
+            beta,
+            listed,
+            switched,
+            switchedBack,
+            restored,
+            exited,
+            Files.size(evidence) > 0
+          )
+        finally session.close()
+      },
+      test(
+        "tasks panel opens and accepts navigation while no plan is available"
+      ) {
+        val session = new Session
+        try
+          val prompt = session.waitFor("you> ", 120)
+          session.send(":tasks\r")
+          val open = session.waitFor("Tasks / todo — idle")
+          val honestEmpty = session.waitFor("No plan tasks available")
+          session.send(":task-down\r")
+          val movedDown = session.waitFor("No plan tasks available")
+          session.send(":task-up\r")
+          val movedUp = session.waitFor("Use :task-up / :task-down to navigate")
+          session.send(":chat\r")
+          val returned = session.waitFor("you> ")
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          val evidence = session.saveTranscript()
+          assertTrue(
+            prompt,
+            open,
+            honestEmpty,
+            movedDown,
+            movedUp,
+            returned,
+            exited,
             Files.size(evidence) > 0
           )
         finally session.close()

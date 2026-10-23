@@ -265,6 +265,9 @@ object TabShellSpec extends ZIOSpecDefault:
           CommandRouter.parse(":next", Nil, None) == Right(ShellCommand.Next),
           CommandRouter.parse(":prev", Nil, None) == Right(ShellCommand.Prev),
           CommandRouter.parse(":tabs", Nil, None) == Right(ShellCommand.Tabs),
+          CommandRouter.parse(":sessions", Nil, None) == Right(
+            ShellCommand.Tabs
+          ),
           CommandRouter.parse(":help", Nil, None) == Right(ShellCommand.Help),
           CommandRouter.parse(":quit", Nil, None) == Right(ShellCommand.Quit)
         )
@@ -326,6 +329,7 @@ object TabShellSpec extends ZIOSpecDefault:
         assertTrue(
           CommandRouter.commands.forall(c => body.contains(c)),
           body.contains(":new <label>"),
+          body.contains(":sessions"),
           body.contains("RAI-062")
         )
       }
