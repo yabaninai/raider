@@ -1,12 +1,13 @@
 # ADR-036: Versioned portable workflow format and semantics
 
-Status: **Proposed**. Date: 2026-10-23. Owner: RAI-197. This proposal depends
+Status: **Accepted**. Date: 2026-10-23. Owner: RAI-197. This proposal depends
 on [ADR-035](ADR-035-cross-ecosystem-workflow-boundary.md), which selects JSON
 interchange and one shared runtime but does not freeze a schema. The normative
 draft schema and fixtures are in
 [`contracts/workflow-portable/`](../../contracts/workflow-portable/README.md).
-This ADR requires independent contract review before acceptance and before RAI-198
-uses it as an implementation baseline.
+The coordinator accepted this ADR after the two review rounds and closure of the
+round-2 byte-limit fixture finding. RAI-198 may use it as its implementation
+baseline.
 
 This is a data contract, not a declaration that an importer, schema validator,
 lowerer, CLI command, editor, or parity suite has been implemented. JSON Schema

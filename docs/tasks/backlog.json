@@ -5858,7 +5858,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "docs/cross-ecosystem-plan.md",
@@ -5885,7 +5885,7 @@
       "dependencies": [
         "RAI-197"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",

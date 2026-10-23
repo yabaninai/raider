@@ -1,5 +1,13 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-197 accepted (portable contract frozen)
+
+- **Integration and verdict:** `lane/rai-197` source `7b37d80` merged to main as `29088e3`. Round 1's two contract gaps were closed; round 2's byte-limit fixture finding was closed with reproducible, schema-valid 262145-byte ASCII and wide-Unicode artifacts. Approve-on-closure: both rounds approved, ADR-036 Accepted, RAI-197 accepted. The byte cap is a RAI-198 preflight check (`UTF-8 byte length > 262144` → `document-too-large` at root pointer `""`); no runtime validator is claimed in RAI-197. See [work record](records/RAI-197.md).
+- **Dependency flips:** RAI-197 accepted; RAI-198 ready. Backlog dependency check: RAI-198 depends only on RAI-197, now accepted.
+- **Fixtures and lane evidence:** positive fixtures 10/10; refusal declarations 17/17; both over-limit artifacts 262145 bytes and schema-valid. Lane `make quality-changed`, `make quality-changed QUALITY_EXECUTE=1`, and `make quality-profile PROFILES="docs contracts"` exited 0; manifests are recorded in the work record.
+- **Integrated candidate gates:** `make quality-changed` exited 0 and selected docs. `make quality-changed QUALITY_EXECUTE=1` exited 0; `plan-validate` passed, timeout false (`artifacts/quality/20261023-152330-54292-0001/manifest.json`). `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 gates passed including `sbt-test`, `cli-smoke`, and `repl-smoke`, with no timeout (`artifacts/quality/20261023-152352-57988-0001/manifest.json`). MJE-03c was not red, so its authorized rerun was not triggered.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards.
+
 ## 2026-10-23 — RAI-200/202/204 accepted
 
 - **Integrated merges:** RAI-200 from `lane/rai-200` merged as `eeae3e9`; the process protocol ADR was then renumbered ADR-036 → ADR-037 in `7831c06`, preserving ADR-036 for RAI-197. RAI-202 merged as `c6dbcbc`; RAI-204 merged as `f347828`.
