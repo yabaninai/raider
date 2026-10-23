@@ -9,6 +9,16 @@ import raider.core.result.{CheckOutcome, CheckResult, ExitCodes}
   */
 private[run] object CiReport:
 
+  /** Workflow-bound policy attached to a trusted check declaration. Missing
+    * metadata is represented as `advisory = false` by legacy decoders.
+    */
+  final case class CheckPolicy(checkId: String, advisory: Boolean = false)
+
+  final case class PolicyDecision(
+      verdict: TaskVerdict,
+      policyDigest: String
+  )
+
   enum TaskVerdict:
     case Passed, Advisory, Blocking
 
@@ -36,6 +46,57 @@ private[run] object CiReport:
       TaskVerdict.Blocking
     else if failed.nonEmpty then TaskVerdict.Advisory
     else TaskVerdict.Passed
+
+  /** Resolve actual runner-owned evidence against the frozen workflow
+    * declarations. Undeclared, duplicate, or missing IDs fail safe as blocking;
+    * context and model output are not inputs to this function.
+    */
+  def classify(
+      checks: List[CheckResult],
+      policy: List[CheckPolicy]
+  ): PolicyDecision =
+    val ids = policy.map(_.checkId)
+    val evidenceIds = checks.map(_.id)
+    val malformed =
+      ids.exists(_.trim.isEmpty) || ids.distinct.size != ids.size ||
+        evidenceIds.distinct.size != evidenceIds.size
+    val unknownEvidence = evidenceIds.exists(id => !ids.contains(id))
+    val missingEvidence = ids.exists(id => !evidenceIds.contains(id))
+    val skippedEvidence = checks.exists(_.outcome == CheckOutcome.Skipped)
+    val declaredAdvisory = policy.collect { case CheckPolicy(id, true) =>
+      id
+    }.toSet
+    val raw = taskVerdict(checks, declaredAdvisory)
+    val verdict =
+      if malformed || unknownEvidence || missingEvidence || skippedEvidence then
+        TaskVerdict.Blocking
+      else raw
+    PolicyDecision(verdict, policyDigest(policy))
+
+  def exitCode(verdict: TaskVerdict): Int = verdict match
+    case TaskVerdict.Passed | TaskVerdict.Advisory => ExitCodes.Success
+    case TaskVerdict.Blocking                      => ExitCodes.TaskRejected
+
+  def verdictLabel(verdict: TaskVerdict): String = verdict match
+    case TaskVerdict.Passed   => "passed"
+    case TaskVerdict.Advisory => "success-with-advisory"
+    case TaskVerdict.Blocking => "task-failed"
+
+  /** Stable identity for the exact sorted trusted declaration. */
+  def policyDigest(policy: List[CheckPolicy]): String =
+    val utf8 = java.nio.charset.StandardCharsets.UTF_8
+    val canonical = policy
+      .sortBy(_.checkId)
+      .map { p =>
+        val byteLength = p.checkId.getBytes(utf8).length
+        s"$byteLength:${p.checkId}:${p.advisory}"
+      }
+      .mkString("trusted-check-policy-v1\n", "\n", "\n")
+    java.security.MessageDigest
+      .getInstance("SHA-256")
+      .digest(canonical.getBytes(utf8))
+      .map(b => f"${b & 0xff}%02x")
+      .mkString
 
   /** ci-runtime §8 precedence. A signal is retained; otherwise a required
     * artifact failure outranks uncertain execution, which outranks the root

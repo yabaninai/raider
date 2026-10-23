@@ -6,10 +6,10 @@
   "source": {
     "sessionId": "sess-20261014-fix-widget",
     "turnIds": ["t1", "t2", "t3"],
-    "specDigest": "sha256-97bf8c34ed9f01f7c38ccae750499e0270a1190fe41a4432ba2ada61a4362883"
+    "specDigest": "sha256-23e2b876fd781d719c5b1dba09c1f405fcfc0003f0c4d7ccba0f2b6875dc031f"
   },
   "buildIdentity": {
-    "sourceDigest": "sha256-405dcd2714a3ceaa713d26bf73427f17de7360409f70cb227d104d164f707486"
+    "sourceDigest": "sha256-e38bd86a3908476d3ed073c1904edad4965e48e8c318eecc48487db6501fc1e1"
   },
   "origin": {
     "providerKind": "openai-compatible",
@@ -23,11 +23,13 @@
   "checks": [
     {
       "name": "compile",
-      "argv": ["sbt", "--batch", "compile"]
+      "argv": ["sbt", "--batch", "compile"],
+      "advisory": false
     },
     {
       "name": "widget-tests",
-      "argv": ["sbt", "--batch", "widget/test"]
+      "argv": ["sbt", "--batch", "widget/test"],
+      "advisory": false
     }
   ],
   "note": "manifest describes provenance only; it is never executed (ADR-033 §6.4)"

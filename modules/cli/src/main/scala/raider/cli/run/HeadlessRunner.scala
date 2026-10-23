@@ -193,7 +193,12 @@ object HeadlessRunner:
           usageOpt <- usageRef.get
           finishedAt <- ZIO.succeed(Instant.now())
           checks = checksFor(outcome)
-          verdict = CiReport.taskVerdict(checks, Set.empty)
+          // The generic bundle runner has no advisory declaration surface;
+          // observed runner checks are blocking unless trusted metadata says
+          // otherwise. Keep the policy explicit and bound to this result.
+          policy = checks.map(c => CiReport.CheckPolicy(c.id))
+          policyDecision = CiReport.classify(checks, policy)
+          verdict = policyDecision.verdict
           checkFailure = verdict == CiReport.TaskVerdict.Blocking
           exitCode = outcome match
             case Left(error)              => exitCodeFor(error)
@@ -208,7 +213,7 @@ object HeadlessRunner:
                 _ => ExecutionStatus.Succeeded
               ),
             exitCode = exitCode,
-            taskVerdict = Some(verdict.toString.toLowerCase),
+            taskVerdict = Some(CiReport.verdictLabel(verdict)),
             checks = checks,
             artifacts = List.empty,
             output = outcome.toOption
@@ -850,12 +855,21 @@ object HeadlessRunner:
                 )
             )
         )
+        val policyDigest = CiReport.policyDigest(
+          finalResult.checks.map(c => CiReport.CheckPolicy(c.id))
+        )
         val tmp = workDir.resolve("run.json.tmp")
         Files.writeString(
           tmp,
           // RAI-086: additive `ci`/`accounting` splice (frozen core schema is
           // not extended in this slice); absent input → absent field
-          spliceExtras(finalResult.toJson, ci, usage, sdlcEvidence),
+          spliceExtras(
+            finalResult.toJson,
+            ci,
+            usage,
+            sdlcEvidence,
+            Some(policyDigest)
+          ),
           UTF_8
         )
         Files.move(
@@ -894,9 +908,13 @@ object HeadlessRunner:
                     .Str(finalResult.taskVerdict.getOrElse("unknown"))
                 )
                 .add("checkEvidence", evidence)
+                .add(
+                  "checkPolicyDigest",
+                  zio.json.ast.Json.Str("sha256-" + policyDigest)
+                )
                 .toJson
             case _ =>
-              s"{\"result\":$resultJson,\"taskVerdict\":\"${finalResult.taskVerdict.getOrElse("unknown")}\",\"checkEvidence\":${evidence.toJson}}"
+              s"{\"result\":$resultJson,\"taskVerdict\":\"${finalResult.taskVerdict.getOrElse("unknown")}\",\"checkEvidence\":${evidence.toJson},\"checkPolicyDigest\":\"sha256-$policyDigest\"}"
         val resultTmp = workDir.resolve("result.json.tmp")
         Files.writeString(resultTmp, resultWithVerdict, UTF_8)
         Files.move(
@@ -1204,7 +1222,8 @@ object HeadlessRunner:
       base: String,
       ci: Option[CiContext],
       usage: Option[UsageReport],
-      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil
+      sdlcEvidence: List[SdlcArtifactSchema.Record] = Nil,
+      checkPolicyDigest: Option[String] = None
   ): String =
     import zio.json.ast.Json
     def astOf(json: String): Option[Json] =
@@ -1215,7 +1234,10 @@ object HeadlessRunner:
           .flatMap(u =>
             astOf(AccountingView.json(u)).map(j => "accounting" -> j)
           )
-          .toList
+          .toList ++
+        checkPolicyDigest.map(digest =>
+          "checkPolicyDigest" -> Json.Str("sha256-" + digest)
+        )
     val withExisting =
       if extras.isEmpty then base
       else

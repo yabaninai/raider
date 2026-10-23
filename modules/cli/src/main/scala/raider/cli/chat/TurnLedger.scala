@@ -87,7 +87,11 @@ object TurnRecord:
   * text can never add or alter a check; checks enter only through explicit user
   * registration and persist in session schema v3.
   */
-final case class NamedCheck(name: String, argv: List[String])
+final case class NamedCheck(
+    name: String,
+    argv: List[String],
+    advisory: Boolean = false
+)
 
 object NamedCheck:
   given JsonCodec[NamedCheck] = DeriveJsonCodec.gen
@@ -99,7 +103,8 @@ object NamedCheck:
     */
   def validate(
       name: String,
-      argv: List[String]
+      argv: List[String],
+      advisory: Boolean = false
   ): Either[RaiderError, NamedCheck] =
     val nameOk = name.nonEmpty && name.length <= 64 && name.forall(c =>
       c.isLetterOrDigit || c == '.' || c == '_' || c == '-'
@@ -123,7 +128,7 @@ object NamedCheck:
             "each 1..512 chars, no control characters)"
         )
       )
-    else Right(NamedCheck(name, argv))
+    else Right(NamedCheck(name, argv, advisory))
 
 /** The bounded immutable selection snapshot (ADR-033 §4.1 STS, §11.2 skeleton,
   * §9.1): exactly one Intent turn + ordered Refinement turns + named trusted

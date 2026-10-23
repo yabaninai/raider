@@ -123,6 +123,12 @@ Use atomic temp+rename for complete JSON; document recovery of an interrupted JS
 
 `executionStatus`, `taskVerdict`, `safetyVerdict`, `protocolVerdict`, and `accountingStatus` are separate fields. Exit is determined by the declared pipeline policy: an advisory review may successfully produce a report with findings, while a blocking review ends as task-failed if a threshold is exceeded. The policy and threshold are frozen and their provenance is recorded. Never use “the agent said done → exit 0.”
 
+### Trusted-check policy (v1)
+
+Each trusted workflow/bundle check declaration has an additive `advisory` Boolean. It is workflow-bound metadata serialized and fingerprinted with the trusted workflow, including the generated `trustedChecks` declaration; it is not CI-context configuration, a CLI override, model output, or task input. When decoding legacy declarations with no field, resolve `advisory` to `false` (blocking). `true` permits only a failed/errored result for that exact declared check ID to be non-blocking; it does not turn missing evidence, an unknown or duplicate evidence ID, a missing/unknown declaration, a skipped required check, or a malformed declaration into success. Those cases classify as blocking.
+
+Classification consumes runner-owned check evidence only. A failed advisory check yields `taskVerdict: "success-with-advisory"`, exit 0, and retains the failed evidence in the run/result artifacts. A failed blocking check yields `taskVerdict: "task-failed"` and exit 10. The result records the canonical policy SHA-256 and trusted workflow provenance alongside the verdict. The canonical v1 digest input is UTF-8 `trusted-check-policy-v1\n` followed by declarations sorted by check ID, each encoded as `<UTF-8-byte-length>:<check-id>:<true|false>\n`; SHA-256 is lowercase hex. No threshold field is defined in v1.
+
 ## 8. Stable exit codes
 
 | Code | Reason |

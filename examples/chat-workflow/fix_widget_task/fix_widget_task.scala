@@ -58,9 +58,10 @@ object Fix_widget_task:
 
   val checkWidget_tests: List[String] = List("sbt", "--batch", "widget/test")
 
-  val trustedChecks: List[(String, List[String])] = List(
-    ("compile", checkCompile),
-    ("widget-tests", checkWidget_tests),
+  // advisory is frozen workflow metadata; legacy declarations default false.
+  val trustedChecks: List[(String, List[String], Boolean)] = List(
+    ("compile", checkCompile, false),
+    ("widget-tests", checkWidget_tests, false),
   )
 
   // Bound of the ONE sequential agent stage (ADR-033 §4.1); must stay >= 1.
@@ -295,7 +296,7 @@ object Fix_widget_task:
   */
   private def runAllChecks(input: Input): Task[Unit] =
     Task(
-      ZIO.foreach(trustedChecks) { case (name, argv) =>
+      ZIO.foreach(trustedChecks) { case (name, argv, _) =>
         Task.zio(runNamedCheck(input, name, argv))
       }.unit
     )
@@ -356,7 +357,7 @@ object Fix_widget_task:
 
   /** Deterministic textual report (the Program output). */
   private def report(answer: String, input: Input): String =
-    "checks passed: " + trustedChecks.map((name, _) => name)
+    "checks passed: " + trustedChecks.map((name, _, _) => name)
       .mkString(", ") + "; target=" + input.task.targetPath + "\n" + answer
 
   // ---- launcher (Option L, ADR-033 §3/§6.3) ----

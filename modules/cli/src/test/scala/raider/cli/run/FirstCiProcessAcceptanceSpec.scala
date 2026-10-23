@@ -233,6 +233,52 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       import raider.core.result.{CheckOutcome, CheckResult, ExitCodes}
       val blocking = CheckResult("compile", CheckOutcome.Failed, "check failed")
       val advisory = CheckResult("review", CheckOutcome.Errored, "finding")
+      val advisoryPolicy = List(
+        CiReport.CheckPolicy("compile"),
+        CiReport.CheckPolicy("review", advisory = true)
+      )
+      val policyCases = List(
+        (
+          List(CheckResult("compile", CheckOutcome.Passed, "exit 0"), advisory),
+          advisoryPolicy,
+          TaskVerdict.Advisory
+        ),
+        (
+          List(blocking),
+          List(CiReport.CheckPolicy("compile")),
+          TaskVerdict.Blocking
+        ),
+        (
+          List(advisory),
+          List(CiReport.CheckPolicy("review")),
+          TaskVerdict.Blocking
+        ),
+        (
+          List(CheckResult("review", CheckOutcome.Skipped, "not run")),
+          List(CiReport.CheckPolicy("review", advisory = true)),
+          TaskVerdict.Blocking
+        ),
+        (List(advisory), Nil, TaskVerdict.Blocking),
+        (
+          List(
+            advisory,
+            CheckResult("unregistered", CheckOutcome.Passed, "exit 0")
+          ),
+          advisoryPolicy,
+          TaskVerdict.Blocking
+        )
+      )
+      val legacyDeclarationDefaultsBlocking =
+        """{"name":"legacy","argv":["true"]}"""
+          .fromJson[raider.cli.chat.NamedCheck]
+          .exists(check => !check.advisory)
+      val policyDecisions =
+        policyCases.map { case (evidence, policy, expected) =>
+          val decision = CiReport.classify(evidence, policy)
+          decision.verdict == expected && decision.policyDigest.matches(
+            "[0-9a-f]{64}"
+          )
+        }
       val table = List(
         (Set(Failure.Success), ExitCodes.Success),
         (Set(Failure.BlockingCheck), ExitCodes.TaskRejected),
@@ -260,6 +306,18 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         (Set(Failure.Preflight(21), Failure.BlockingCheck), 21)
       )
       assertTrue(
+        policyDecisions.forall(identity),
+        legacyDeclarationDefaultsBlocking,
+        CiReport.exitCode(TaskVerdict.Advisory) == ExitCodes.Success,
+        CiReport.exitCode(TaskVerdict.Blocking) == ExitCodes.TaskRejected,
+        CiReport
+          .classify(
+            List(advisory),
+            List(CiReport.CheckPolicy("review", advisory = true))
+          )
+          .policyDigest != CiReport.policyDigest(
+          List(CiReport.CheckPolicy("review"))
+        ),
         CiReport
           .taskVerdict(List(blocking), Set("review")) == TaskVerdict.Blocking,
         CiReport
@@ -322,6 +380,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       }
       val successfulVerdict = resultDocs.forall { raw =>
         raw.contains("\"taskVerdict\":\"passed\"") &&
+        raw.contains("\"checkPolicyDigest\":\"sha256-") &&
         raw.contains(
           "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
         )
@@ -412,7 +471,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           .exists(file =>
             Files
               .readString(file, UTF_8)
-              .contains("\"taskVerdict\":\"blocking\"") &&
+              .contains("\"taskVerdict\":\"task-failed\"") &&
               Files
                 .readString(file, UTF_8)
                 .contains(

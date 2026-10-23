@@ -38,7 +38,11 @@ final case class StsTurn(
   * argv list executed WITHOUT a shell. Model text can never add or alter a
   * check — checks enter the workflow only through this explicit list.
   */
-final case class NamedCheck(name: String, argv: List[String])
+final case class NamedCheck(
+    name: String,
+    argv: List[String],
+    advisory: Boolean = false
+)
 
 /** A named task parameter that varies per run (ADR-033 §4.1): externalized to
   * the input file, never hard-coded into the generated source. The first slice

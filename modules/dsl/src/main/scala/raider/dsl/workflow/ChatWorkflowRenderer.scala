@@ -520,6 +520,8 @@ object ChatWorkflowRenderer:
         .append(c.name)
         .append('=')
         .append(c.argv.mkString(" "))
+        .append(':')
+        .append(c.advisory)
         .append('\n')
     }
     sb.append("origin.providerKind=").append(s.origin.providerKind).append('\n')
@@ -638,10 +640,11 @@ object ChatWorkflowRenderer:
         c.argv.map(a => "\"" + escapeLiteral(a) + "\"").mkString(", ") + ")"
     }
     out += ""
-    out += "  val trustedChecks: List[(String, List[String])] = List("
+    out += "  // advisory is frozen workflow metadata; legacy declarations default false."
+    out += "  val trustedChecks: List[(String, List[String], Boolean)] = List("
     s.checks.foreach { c =>
       out += "    (\"" + escapeLiteral(c.name) + "\", check" +
-        capitalize(slugify(c.name)) + "),"
+        capitalize(slugify(c.name)) + ", " + c.advisory.toString + "),"
     }
     out += "  )"
 
@@ -892,7 +895,7 @@ object ChatWorkflowRenderer:
     out += "  */"
     out += "  private def runAllChecks(input: Input): Task[Unit] ="
     out += "    Task("
-    out += "      ZIO.foreach(trustedChecks) { case (name, argv) =>"
+    out += "      ZIO.foreach(trustedChecks) { case (name, argv, _) =>"
     out += "        Task.zio(runNamedCheck(input, name, argv))"
     out += "      }.unit"
     out += "    )"
@@ -953,7 +956,7 @@ object ChatWorkflowRenderer:
     out += ""
     out += "  /** Deterministic textual report (the Program output). */"
     out += "  private def report(answer: String, input: Input): String ="
-    out += "    \"checks passed: \" + trustedChecks.map((name, _) => name)"
+    out += "    \"checks passed: \" + trustedChecks.map((name, _, _) => name)"
     out += "      .mkString(\", \") + \"; target=\" + input.task.targetPath + \"\\n\" + answer"
     out += ""
     out += "  // ---- launcher (Option L, ADR-033 §3/§6.3) ----"
@@ -1094,7 +1097,10 @@ object ChatWorkflowRenderer:
       sb.append("      \"name\": ").append(jsonStr(c.name)).append(",\n")
       sb.append("      \"argv\": [")
         .append(c.argv.map(jsonStr).mkString(", "))
-        .append("]\n")
+        .append("],\n")
+      sb.append("      \"advisory\": ")
+        .append(c.advisory.toString)
+        .append("\n")
       sb.append("    }")
       if idx < s.checks.length - 1 then sb.append(",")
       sb.append("\n")
