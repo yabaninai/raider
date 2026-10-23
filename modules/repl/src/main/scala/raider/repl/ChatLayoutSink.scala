@@ -1,6 +1,11 @@
 package raider.repl
 
-import raider.repl.facade.TextRenderSink
+import raider.repl.facade.{
+  TextRenderSink,
+  ToolApprovalContext,
+  ToolApprovalDecision,
+  ToolApprovalHook
+}
 import raider.ui.{ChatAnsiRenderer, ChatLayout}
 import zio.{UIO, ZIO}
 
@@ -11,7 +16,8 @@ import zio.{UIO, ZIO}
 final class ChatLayoutSink(
     renderBridge: java.util.function.Consumer[String],
     scriptedDeltaDelay: zio.Duration = zio.Duration.fromMillis(0)
-) extends TextRenderSink:
+) extends TextRenderSink
+    with ToolApprovalHook:
   private val renderer = new ChatAnsiRenderer
   private var messages = Vector.empty[ChatLayout.Message]
   private var tabs = Vector("chat")
@@ -20,6 +26,10 @@ final class ChatLayoutSink(
   private var cancelled = false
   private var deltaCount = 0
   private var turnCount = 0
+  private var approvalSeq = 0L
+
+  private var pendingApproval
+      : Option[(String, zio.Promise[Nothing, ToolApprovalDecision])] = None
 
   def beginUser(text: String): Unit = synchronized:
     auxiliary = false
@@ -91,6 +101,63 @@ final class ChatLayoutSink(
         .takeRight(ChatLayout.HistoryLimit)
       draw(if outcome.isDefined then "ready" else "tool running")
   }
+
+  /** Wait for a decision delivered by the shell's existing single-writer input
+    * loop. The generated token binds the decision to this one invocation; a
+    * duplicate or stale token cannot settle a later call.
+    */
+  override def decide(context: ToolApprovalContext): UIO[ToolApprovalDecision] =
+    zio.Promise
+      .make[Nothing, ToolApprovalDecision]
+      .flatMap: decision =>
+        val registered = synchronized:
+          if pendingApproval.nonEmpty then false
+          else
+            approvalSeq += 1
+            val token = s"${context.requestId}-$approvalSeq"
+            pendingApproval = Some(token -> decision)
+            val card =
+              s"approval required | $token | ${context.tool} | ${context.recovery} | " +
+                s"args: ${ChatLayoutSink.bounded(context.argumentsJson, 240)} | " +
+                s"type :approve $token or :deny $token"
+            messages =
+              (messages :+ ChatLayout.Message(ChatLayout.Role.Status, card))
+                .takeRight(ChatLayout.HistoryLimit)
+            draw("approval pending")
+            true
+        if !registered then ZIO.succeed(ToolApprovalDecision.Deny)
+        else
+          decision.await.ensuring(
+            ZIO.succeed {
+              synchronized:
+                pendingApproval match
+                  case Some((_, current)) if current eq decision =>
+                    pendingApproval = None
+                    draw("approval cancelled")
+                  case _ => ()
+            }
+          )
+
+  /** Resolve only the currently displayed request. Returns false for stale,
+    * duplicate, malformed, or unknown decisions.
+    */
+  def resolveToolApproval(token: String, approve: Boolean): UIO[Boolean] =
+    val resolution = synchronized:
+      pendingApproval match
+        case Some((expected, promise)) if token == expected =>
+          pendingApproval = None
+          val result =
+            if approve then ToolApprovalDecision.Approve
+            else ToolApprovalDecision.Deny
+          Some((promise, result))
+        case _ => None
+    resolution match
+      case Some((promise, result)) =>
+        promise.succeed(result).as(true) <* ZIO.succeed {
+          synchronized:
+            draw(if approve then "approval granted" else "approval denied")
+        }
+      case None => ZIO.succeed(false)
 
   private def draw(status: String): Unit =
     val auxiliaryLines =

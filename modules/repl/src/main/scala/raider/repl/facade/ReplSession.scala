@@ -1,6 +1,6 @@
 package raider.repl.facade
 
-import raider.core.{ModelBackend, RaiderError, ToolRegistry}
+import raider.core.{ModelBackend, RaiderError, RecoveryClass, ToolRegistry}
 import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.jobs.JobManager
@@ -32,6 +32,26 @@ trait ReplSession:
   def model: String = "scripted"
   def echoStream: Boolean = false
   def renderSink: Option[TextRenderSink] = None
+  def toolApproval: Option[ToolApprovalHook] = None
+
+/** Explicit per-call decision. The policy context is the frozen tool stamp and
+  * the exact bounded invocation payload; approval cannot change either.
+  */
+final case class ToolApprovalContext(
+    requestId: String,
+    tool: String,
+    recovery: RecoveryClass,
+    argumentsJson: String
+)
+
+enum ToolApprovalDecision:
+  case Approve, Deny
+
+trait ToolApprovalHook:
+
+  def decide(
+      context: ToolApprovalContext
+  ): ZIO[Any, Nothing, ToolApprovalDecision]
 
 /** Typed destination for model text deltas. The direct terminal echo remains
   * the fallback when no interactive renderer is installed.
@@ -58,7 +78,8 @@ object ReplSession:
       tools: ToolRegistry = ToolRegistry.empty,
       model: String = "scripted",
       echoStream: Boolean = false,
-      renderSink: Option[TextRenderSink] = None
+      renderSink: Option[TextRenderSink] = None,
+      toolApproval: Option[ToolApprovalHook] = None
   ): ZIO[Any, RaiderError, ReplSession] =
     for
       valid <- ZIO.fromEither(limits)
@@ -72,7 +93,8 @@ object ReplSession:
       tools,
       model,
       echoStream,
-      renderSink
+      renderSink,
+      toolApproval
     )
 
   private final case class ReplSessionImpl(
@@ -83,7 +105,8 @@ object ReplSession:
       override val tools: ToolRegistry,
       override val model: String,
       override val echoStream: Boolean,
-      override val renderSink: Option[TextRenderSink]
+      override val renderSink: Option[TextRenderSink],
+      override val toolApproval: Option[ToolApprovalHook]
   ) extends ReplSession
 
 end ReplSession
