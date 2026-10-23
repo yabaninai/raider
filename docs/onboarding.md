@@ -1,8 +1,86 @@
 # Start using Raider
 
-Use this page to set up a checkout, start Raider, and choose a first way to work: the tabs interface, Scala REPL, or command line. Commands assume you are in the repository root.
+This guide starts with the installed headless CLI and a deterministic mock run.
+It requires Java 21 or newer, but does not require sbt, Python, a source checkout,
+or provider credentials. The local release is not a hosted download: obtain its
+directory from the release maintainer. No public download URL is currently
+available. For source-built Scala REPL and tab-shell instructions, see
+[source checkout setup](#source-checkout-setup).
 
-## 1. Set up Java and build
+## 1. Install the local JVM distribution
+
+The release directory contains `raider-cli.jar`, `packaging/raider`,
+`release.json`, and `SHA256SUMS`. Verify the supplied release before copying
+files, then create a private install directory. This example uses `jq` to read
+the version from the verified metadata. Replace the example path with the path
+on your system:
+
+```sh
+RELEASE_DIR="/path/to/release/0.1.1"
+(cd "$RELEASE_DIR" && shasum -a 256 -c SHA256SUMS)
+VERSION=$(jq -r .version "$RELEASE_DIR/release.json")
+INSTALL_DIR="$HOME/.local/raider/$VERSION"
+mkdir -p "$INSTALL_DIR"
+cp "$RELEASE_DIR/raider-cli.jar" "$INSTALL_DIR/raider-cli.jar"
+cp "$RELEASE_DIR/packaging/raider" "$INSTALL_DIR/raider"
+printf '%s\n' "$VERSION" > "$INSTALL_DIR/version"
+chmod +x "$INSTALL_DIR/raider"
+export PATH="$INSTALL_DIR:$PATH"
+java -version
+raider --version
+```
+
+`java -version` must report Java 21 or newer. `raider --version` should print
+`raider $VERSION`. The current CLI has no general `--help` command; the observed
+`raider --help` response is an unknown-subcommand configuration error (exit 21).
+Start with the documented `raider run` form below. The launcher uses Coursier
+when `cs` is on `PATH`; otherwise it runs the adjacent JAR with Java. This
+headless JAR does not include the Scala compiler or JLine, so it does not provide
+`raider repl` or the tab shell. `packaging/homebrew/raider.rb` and
+`packaging/scoop/raider.json` are local formula templates, not evidence of
+Homebrew/Scoop installation or hosted artifacts.
+
+## 2. Run a useful deterministic first task
+
+From a project directory you trust, run the built-in scout in mock mode. The
+scripted provider returns a fixed response and writes run artifacts without
+contacting a model or editing files. It demonstrates the first CLI workflow and
+artifact inspection; it does not prove that the mock response analyzed your
+repository:
+
+```sh
+mkdir -p artifacts
+raider run --agent scout --provider mock \
+  --input "Read README.md and summarize the project purpose and how to run its checks" \
+  --workspace . --out artifacts/raider-first-use
+```
+
+The CLI prints the created `work-<id>` directory under
+`artifacts/raider-first-use/`. Inspect `summary.md`, `run.json`, and, when
+present, `transcript.json` and `events.jsonl` there. `--out` is a parent
+directory: each run receives its own work directory. Use a new `--out` parent
+for a separate first-use attempt so earlier artifacts are preserved. Mock
+responses are scripted fixtures; they demonstrate command wiring and artifact
+creation, not model quality or a live answer. The executable offline
+first-use example and its recorded command results are in
+[`examples/first-use/`](examples/first-use/).
+
+## 3. Choose a source-built interactive interface
+
+The REPL and tab shell are source-checkout interfaces, separate from the
+headless installed package. They require JDK 21, sbt, and Python 3 for the
+example build and use the checkout's classpath. In the tab shell, typed task
+text is a draft; it is not submitted to an agent. Continue with the
+[source-checkout setup](#source-checkout-setup) below.
+
+<a id="source-checkout-setup"></a>
+
+## Source-checkout setup
+
+The following sections describe building from a checkout, not installing the
+JVM distribution. Commands assume you are in the repository root.
+
+### Set up Java and build
 
 Raider's examples require JDK 21. Install a JDK 21 distribution, then replace `/path/to/jdk-21` below with its actual installation path. This sets Java for the current shell and puts its tools first on `PATH`:
 
@@ -26,7 +104,7 @@ RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)
 
 If you open a fresh terminal later, return to the repository root, set `JAVA_HOME` and `PATH` again, and run the `RAIDER_CP=...` command there. The build itself need not be repeated unless the checkout changes.
 
-## 2. Choose how to start
+### Choose how to start
 
 ### Tabs interface
 
@@ -108,7 +186,7 @@ from a file named `segments.jsonl`.
 
 <a id="connect-a-model"></a>
 
-## 3. Configure a live model
+### Configure a live model
 
 Live calls send your prompt and task context to the endpoint you configure, and may incur charges. The source supports OpenAI-compatible and Anthropic-compatible providers. Configure the provider, endpoint, model, and credential in your private shell environment. For example, set non-secret values for your chosen service:
 
@@ -149,7 +227,7 @@ verification a preflight requirement before dispatch. A successful run writes
 failure, not a direct-provider fallback; consult [CI usage](user-guide-ci.md)
 for trusted bundle and artifact details.
 
-## 4. Try a coding task
+### Try a coding task
 
 Continue with [fixing a Scala bug](user-guide.md#fix-a-scala-bug-with-a-model).
 The example supplies the buggy project and its tests, runs the agent in a

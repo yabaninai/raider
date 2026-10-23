@@ -1,12 +1,21 @@
 # JVM distribution
 
+For consumer installation and the first mock CLI run, use the
+[installed onboarding guide](../onboarding.md). This document is the
+maintainer-facing description of local release construction and smoke checks.
+The generated release directory and version tag are local worktree state; the
+formulas contain future URL shapes and do not indicate a hosted release.
+
 ## Local build and launcher
 
 The current headless distribution is the `raiderCli/assembly` output:
 
 ```sh
 make raider-jar
-java -jar modules/cli/target/scala-3.9.0/raider-cli.jar --help
+java -jar modules/cli/target/scala-3.9.0/raider-cli.jar run \
+  --agent scout --provider mock \
+  --input "Read README.md and summarize the project purpose and how to run its checks" \
+  --workspace . --out artifacts/raider-first-use
 ```
 
 The assembly main class is `raider.cli.Main`. It packages the current `raiderCli`
@@ -15,8 +24,15 @@ For a coordinate-free Coursier invocation, install Coursier separately and add
 the fat JAR as an extra launch classpath entry:
 
 ```sh
-cs launch --main raider.cli.Main --extra-jars /path/to/raider-cli.jar -- run --help
+cs launch --main raider.cli.Main --extra-jars /path/to/raider-cli.jar -- run \
+  --agent scout --provider mock \
+  --input "Read README.md and summarize the project purpose and how to run its checks" \
+  --workspace . --out artifacts/raider-first-use
 ```
+
+These are the documented `raider run` command forms; the CLI does not currently
+support general `--help` or `run --help` options. See the
+[installed onboarding guide](../onboarding.md) for the complete first-use path.
 
 `packaging/raider` is a local installed-layout launcher. It supports
 `raider --version` using the adjacent `version` file, then uses Coursier's

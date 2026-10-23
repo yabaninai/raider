@@ -1,12 +1,13 @@
 # Use the TUI
 
-The TUI manages tabs, drafts, status, and event scrollback. **Typing a task in a
+The source-built tab shell manages tabs, drafts, status, and event scrollback. It
+is not included in the installed headless CLI package. **Typing a task in a
 tab currently saves a draft; it does not start an agent.** To ask a model or
 execute Scala, use the [Scala REPL](user-guide-repl.md) or [CLI](user-guide.md).
 
 ## Start
 
-Complete [setup](onboarding.md) first. From the repository root:
+Complete the [source-checkout setup](onboarding.md#source-checkout-setup) first. From the repository root:
 
 ```sh
 RAIDER_CP=$(cat artifacts/user-examples/classpath.txt)

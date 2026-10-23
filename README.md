@@ -10,15 +10,17 @@ Scala workflows for coding agents and CI
 [![ZIO 2](https://img.shields.io/badge/ZIO-2.1.26-e94560)](https://zio.dev/)
 </div>
 
-Raider lets you run coding agents from Scala and from a command-line workflow.
-Use it to inspect a repository, change code, run checks, and coordinate several
-agent requests. The project is in development and currently runs from a source
-checkout.
+Raider provides a headless JVM CLI distribution and source-built Scala
+workflows. The installed CLI can inspect a repository in deterministic mock
+mode or run configured provider tasks. The Scala REPL and tab shell are
+source-checkout interfaces; the headless CLI package does not include their
+compiler and terminal dependencies. Local release artifacts are not hosted
+downloads. See [installed first use](docs/onboarding.md) for the packaged path.
 
-## Build and start
+## Build the source checkout
 
-Install **JDK 21**, **sbt 1.11.4**, and **Python 3**, then run these commands
-from the repository root:
+For the source-built REPL, install **JDK 21**, **sbt 1.11.4**, and **Python 3**,
+then run these commands from the repository root:
 
 ```sh
 sh scripts/build/user-examples.sh
@@ -38,7 +40,7 @@ println(answer)
 Type `:quit` to exit. To get answers from a model, follow
 [provider setup](docs/onboarding.md#connect-a-model).
 
-For the **tabbed TUI**, add `--tabs`:
+For the source-built **tab shell**, add `--tabs`:
 
 ```sh
 RAIDER_PROVIDER=mock java -cp "$RAIDER_CP" raider.repl.Main --tabs

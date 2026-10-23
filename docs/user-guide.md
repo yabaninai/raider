@@ -1,9 +1,11 @@
 # Raider user guide
 
-Use Raider from its Scala REPL, its tab shell, or its headless CLI. This guide
-starts with a model-backed coding task, then shows a scripted demo, an audit,
-and a typed check workflow. It describes this source checkout; Raider is still
-under development.
+Use the installed headless CLI for first use, or build the source checkout for
+the Scala REPL and tab shell. This guide focuses on workflows available from a
+source checkout: a model-backed coding task, scripted demo, audit, and typed
+workflow. For installation, first command, mock mode, and the artifact path,
+start with [installed onboarding](onboarding.md). The installed headless JAR
+does not contain the Scala compiler or JLine and cannot start the REPL/TUI.
 
 ## Choose how to work
 
@@ -14,7 +16,7 @@ under development.
 | Keep several tabs and drafts | [Tab shell](user-guide-tui.md) | Switches between tabs; text typed in a tab is saved as a draft, not evaluated as Scala |
 | Run one repeatable workflow in CI | [Local CI guide](user-guide-ci.md) | Runs checks, reviews, and a typed decision |
 
-## Prepare the checkout
+## Prepare the source checkout
 
 Install JDK 21, sbt 1.11.4, and Python 3. From the repository root, build the example
 classpath and bundle:
