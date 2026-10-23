@@ -1,5 +1,16 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-193 accepted: first distribution (v0.1.1 local)
+
+- **Release:** RAI-193 is accepted after the integrated JVM distribution merge and round-3 review approval. Local releases `v0.1.0` and `v0.1.1` were produced through Raider's SDLC release pipeline; `v0.1.1` includes the Coursier 2.1.26 and Java fallback launcher smokes, fat JAR, rendered Homebrew/Scoop formulas, checksums, typed negative-install refusals (21), and SIGTERM cleanup (143 without partial promotion). Tags/artifacts are local; no hosted publication is claimed. Self-authorization basis is recorded in `docs/work/records/RAI-193.md`.
+- **Statuses and dependencies:** RAI-193 accepted; RAI-194 ready with its RAI-193 prerequisite satisfied. RAI-195 is in flight: contract and classifier are done; end-to-end evidence is routed through the RAI-186 return. RAI-188's machinery decision remains pending the TabShell-extension mandate.
+- **Registry:** `packaging/` maps additively to `static` + `contracts`; independent registry mapping review is complete, with no new gates or threshold changes.
+- **Integrated gates:** `make quality-changed` exited 0 and classified the clean tree as minimum `fast`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with all 10 gates passed and timeout false (`artifacts/quality/20261023-034241-73526-0001/manifest.json`); `make quality-profile PROFILES="static unit contracts runtime ci docs security"` exited 0 with all 8 gates passed and timeout false (`artifacts/quality/20261023-035006-82495-0001/manifest.json`). No retry was needed.
+- **Exceptions/watch:** TAB-02 (RAI-172) remains the documented conditional exception and was not observed red. MJE-03c remains a RAI-157 historical intermittent watch; it was not observed red in these gate runs.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0 after status synchronization; 215 cards.
+- **Post-status docs gate:** `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed and timeout false (`artifacts/quality/20261023-035911-8491-0001/manifest.json`).
+- **Record:** `docs/work/records/RAI-193.md`.
+
 ## 2026-10-23 — RAI-195 registered from the RAI-186 proposal
 
 - **Contract card:** RAI-195 is registered ready for the trusted-workflow/bundle `trustedChecks` advisory/blocking declaration, frozen serialization/provenance, and fail-safe blocking defaults. RAI-186 completes FCI-REPORT-01 under this contract; threshold semantics are out of v1.
