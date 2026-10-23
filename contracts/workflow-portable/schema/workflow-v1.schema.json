@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json",
+  "title": "Raider portable workflow v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "limits", "schemas", "steps", "outputs"],
+  "properties": {
+    "$schema": { "const": "https://json-schema.org/draft/2020-12/schema" },
+    "$id": { "const": "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json" },
+    "format": { "const": "raider.portable-workflow" },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$" },
+    "limits": { "$ref": "#/$defs/limits" },
+    "schemas": { "$ref": "#/$defs/schemas" },
+    "steps": { "type": "array", "minItems": 1, "maxItems": 128, "items": { "$ref": "#/$defs/step" } },
+    "outputs": { "$ref": "#/$defs/outputs" },
+    "metadata": { "$ref": "#/$defs/metadata" }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
+    "pointer": { "type": "string", "pattern": "^#(/([^~/]|~[01])*)*$", "maxLength": 512 },
+    "limits": {
+      "type": "object", "additionalProperties": false,
+      "required": ["deadlineMs", "attempts", "parallelism", "children", "tokens"],
+      "properties": {
+        "deadlineMs": { "type": "integer", "minimum": 1, "maximum": 86400000 },
+        "attempts": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "parallelism": { "type": "integer", "minimum": 1, "maximum": 32 },
+        "children": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "tokens": { "type": "integer", "minimum": 1, "maximum": 10000000 }
+      }
+    },
+    "schemaSubset": {
+      "type": "object", "maxProperties": 64, "additionalProperties": false,
+      "properties": {
+        "type": { "enum": ["object", "array", "string", "boolean", "integer", "number", "null"] },
+        "properties": { "type": "object", "maxProperties": 64, "additionalProperties": { "$ref": "#/$defs/schemaSubset" } },
+        "required": { "type": "array", "uniqueItems": true, "maxItems": 64, "items": { "type": "string", "maxLength": 128 } },
+        "items": { "$ref": "#/$defs/schemaSubset" },
+        "additionalProperties": { "const": false },
+        "enum": { "type": "array", "minItems": 1, "maxItems": 64 },
+        "minLength": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "maxLength": { "type": "integer", "minimum": 0, "maximum": 65536 },
+        "minItems": { "type": "integer", "minimum": 0, "maximum": 4096 },
+        "maxItems": { "type": "integer", "minimum": 0, "maximum": 4096 },
+        "minimum": { "type": "number" },
+        "maximum": { "type": "number" }
+      },
+      "required": ["type"]
+    },
+    "schemas": {
+      "type": "object", "additionalProperties": false, "required": ["inputs", "outputs"],
+      "properties": {
+        "inputs": { "type": "object", "minProperties": 1, "maxProperties": 64, "propertyNames": { "$ref": "#/$defs/identifier" }, "additionalProperties": { "$ref": "#/$defs/schemaSubset" } },
+        "outputs": { "type": "object", "minProperties": 1, "maxProperties": 64, "propertyNames": { "$ref": "#/$defs/identifier" }, "additionalProperties": { "$ref": "#/$defs/schemaSubset" } }
+      }
+    },
+    "step": {
+      "oneOf": [
+        { "$ref": "#/$defs/agent" }, { "$ref": "#/$defs/trustedCheck" },
+        { "$ref": "#/$defs/sequence" }, { "$ref": "#/$defs/conditional" },
+        { "$ref": "#/$defs/map" }, { "$ref": "#/$defs/join" },
+        { "$ref": "#/$defs/repair" }, { "$ref": "#/$defs/checkpoint" }
+      ]
+    },
+    "baseStep": {
+      "type": "object", "required": ["id", "kind", "outputSchema"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": { "type": "string" },
+        "outputSchema": { "$ref": "#/$defs/identifier" },
+        "input": { "$ref": "#/$defs/pointer" }
+      }
+    },
+    "agent": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, {
+        "properties": {
+          "kind": { "const": "agent" }, "profile": { "$ref": "#/$defs/identifier" },
+          "toolset": { "$ref": "#/$defs/identifier" }, "structuredOutput": { "type": "boolean", "const": true }
+        }, "required": ["profile", "toolset", "input", "structuredOutput"]
+      }], "unevaluatedProperties": false
+    },
+    "trustedCheck": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, {
+        "properties": {
+          "kind": { "const": "trustedCheck" }, "checkId": { "$ref": "#/$defs/identifier" },
+          "registrySnapshot": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }, "input": { "$ref": "#/$defs/pointer" }
+        }, "required": ["checkId", "registrySnapshot", "input"]
+      }], "unevaluatedProperties": false
+    },
+    "sequence": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "sequence" }, "steps": { "type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } } }, "required": ["steps"] }], "unevaluatedProperties": false
+    },
+    "predicate": {
+      "oneOf": [
+        { "type": "object", "additionalProperties": false, "required": ["op", "left", "right"], "properties": { "op": { "enum": ["equals", "notEquals"] }, "left": { "oneOf": [{ "$ref": "#/$defs/pointer" }, { "type": ["string", "number", "integer", "boolean", "null"] }] }, "right": { "oneOf": [{ "$ref": "#/$defs/pointer" }, { "type": ["string", "number", "integer", "boolean", "null"] }] } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "value"], "properties": { "op": { "const": "isPresent" }, "value": { "$ref": "#/$defs/pointer" } } },
+        { "type": "object", "additionalProperties": false, "required": ["op", "predicates"], "properties": { "op": { "enum": ["all", "any"] }, "predicates": { "type": "array", "minItems": 1, "maxItems": 8, "items": { "$ref": "#/$defs/predicate" } } } }
+      ]
+    },
+    "conditional": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "conditional" }, "when": { "$ref": "#/$defs/predicate" }, "then": { "$ref": "#/$defs/identifier" }, "else": { "$ref": "#/$defs/identifier" } }, "required": ["when", "then", "else"] }], "unevaluatedProperties": false
+    },
+    "map": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "map" }, "items": { "$ref": "#/$defs/pointer" }, "templateStep": { "$ref": "#/$defs/identifier" }, "maxItems": { "type": "integer", "minimum": 1, "maximum": 256 }, "parallelism": { "type": "integer", "minimum": 1, "maximum": 32 } }, "required": ["items", "templateStep", "maxItems", "parallelism"] }], "unevaluatedProperties": false
+    },
+    "join": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "join" }, "steps": { "type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": { "$ref": "#/$defs/identifier" } }, "failure": { "const": "failFast" } }, "required": ["steps", "failure"] }], "unevaluatedProperties": false
+    },
+    "repair": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "repair" }, "operationStep": { "$ref": "#/$defs/identifier" }, "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 10 }, "safeOperationRef": { "$ref": "#/$defs/identifier" } }, "required": ["operationStep", "maxAttempts", "safeOperationRef"] }], "unevaluatedProperties": false
+    },
+    "checkpoint": {
+      "allOf": [{ "$ref": "#/$defs/baseStep" }, { "properties": { "kind": { "const": "checkpoint" }, "checkpointRef": { "$ref": "#/$defs/identifier" }, "placement": { "const": "launchPolicy" } }, "required": ["checkpointRef", "placement"] }], "unevaluatedProperties": false
+    },
+    "outputs": {
+      "type": "object", "additionalProperties": false, "required": ["bindings", "verdict"],
+      "properties": {
+        "bindings": { "type": "object", "minProperties": 1, "maxProperties": 64, "propertyNames": { "$ref": "#/$defs/identifier" }, "additionalProperties": { "$ref": "#/$defs/pointer" } },
+        "verdict": { "type": "object", "additionalProperties": false, "required": ["from", "authority"], "properties": { "from": { "$ref": "#/$defs/pointer" }, "authority": { "const": "trustedVerifier" } } },
+        "artifacts": { "type": "array", "maxItems": 32, "uniqueItems": true, "items": { "type": "object", "additionalProperties": false, "required": ["name", "from"], "properties": { "name": { "$ref": "#/$defs/identifier" }, "from": { "$ref": "#/$defs/pointer" } } } }
+      }
+    },
+    "metadata": { "type": "object", "maxProperties": 16, "additionalProperties": { "type": "string", "maxLength": 256 } }
+  }
+}
