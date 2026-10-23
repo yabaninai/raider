@@ -2,31 +2,32 @@
 
 # Raider: Detailed Development Plan
 
-Owner priority (2026-10-14): **chat → editable Scala workflow → local/generic CI**.
-[RAI-155 and its six delivery cards](tasks/lineage.md#rai-155-chat-to-editable-scala-workflow-to-local-and-generic-ci)
-are registered, not implemented. [Roadmap §6d](roadmap-12k.md#6d-chat-to-editable-scala-workflow-rai-155)
-fits this path into P4.C/P7/P10 without stopping the current lineage/TUI wave.
-Start with the RAI-116 boundary, then RAI-155.a; use the
-[implementation prompt](prompts/opencode-chat-to-workflow.txt).
+Current owner priority (2026-10-23): **useful, checked workflows beyond the
+Scala ecosystem**, while preserving chat → editable Scala workflow → local/generic
+CI. Read [roadmap §6e](roadmap-12k.md#6e-cross-ecosystem-workflows), the
+[cross-ecosystem delivery plan](cross-ecosystem-plan.md), and the
+[LLM4S/LangChain4j research](research/llm4s-langchain4j-2026-10-23.md).
+RAI-196..206 are registered, not implemented. RAI-196 and RAI-204 are the first
+new ready cards. Public format/protocol/capability changes require their own
+reviewed ADRs; the Scala 3 + ZIO implementation policy remains unchanged.
 
-Current improvement sequence (2026-10-05): [12,000-hour plan](roadmap-12k.md)
-and [parallel execution prompt](prompts/opencode-12k-parallel.txt).
-Revision 2026-10-12: the Scala/ZIO embedding SDK is incorporated into P0/P4.C/P7/P10
-of the existing roadmap (SDK-01–05); the RAI-115 audit is accepted, and the next step
-is the RAI-116 ADR. The current lineage/TUI wave remains in place; detailed
-user guides remain later work. This is a plan, not an SDK release.
-The owner confirmed the fully open-source direction under the existing MIT/license
-policy; the first application scenario is CI, and external use is the usefulness metric.
-After further research, the owner clarified the goal: a convenient Scala DSL for
-AI-native SDLC, with one workflow running locally and in generic local CI as the
-first path; the first target is TokenRouter code, with the gateway separate in P11.
-The goal includes automatic commit/PR/merge and local tag/release artifacts, with
-checkpoints defined in the workflow. No forge has been selected: contract + local
-stand first. Experimental preview before M4; RAI-115 audit → RAI-116 launch ADR →
-RAI-117 SDLC ADR, roadmap §6b/§6c.
-Runtime/CLI/REPL are already present in source; historical statuses below are not an
-actual inventory. Existing acceptance is retained; Yabanin/W17 is the final P11 phase,
-after an independent P10 candidate. Overall W18 is accepted after P11.
+At baseline `a351d3c`, RAI-155 and its child cards, RAI-160 and local distribution
+RAI-193 are accepted. The live-wire 184, First CI 186/195/187 and TUI-X 188..192
+work remains governed by the current board and dependencies. Do not restart
+historical lineage/SDK prerequisite waves because an older section says "next".
+A local release is not hosted publication, and offline engineering evidence is
+not live-model quality or external demand.
+
+Canonical execution uses the [roadmap](roadmap-12k.md),
+[OpenCode prompt](prompts/opencode-12k-parallel.txt) and
+[launch handoff](handoff-opencode.md). The project remains fully open source
+under the existing MIT policy. First deliver local/generic-CI value; publishing,
+paid calls and external outreach are separate actions. Gateway/Yabanin stays P11
+following the standalone P10 candidate; overall W18 follows P11. Neighboring
+TokenRouter/Yabanin changes still require that repository's own cards.
+
+Historical planning below remains reference for obligations, not an inventory
+of current source or a reason to repeat accepted work.
 
 Original plan: 2026-10-02; execution revision: 2026-10-03. A feasibility spike exists;
 the product runtime had not yet been implemented at that time. Check actual status in code and the board.

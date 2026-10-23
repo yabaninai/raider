@@ -1,5 +1,13 @@
 # Raider Execution Board
 
+## 2026-10-23 — Cross-ecosystem competitive plan registered
+
+- **Owner request:** study LLM4S and LangChain4j in depth and update OpenCode's plan for use beyond Scala, including evaluating an ecosystem-independent DSL.
+- **Scope:** [research](../research/llm4s-langchain4j-2026-10-23.md) and [delivery plan](../cross-ecosystem-plan.md). Proposed schema-backed portable workflows and an opt-in local process adapter share the existing Scala/ZIO runtime. New public contracts require separate ADR cards. No grammar, foreign-language SDK, runtime implementation, paid calls, outreach or publication was performed by this planning task.
+- **Registration:** RAI-196..206 added with mirrored cards/index/dependencies; 196 and 204 ready, remaining cards todo. RAI-206 also needs a real JVM consumer request. Preserve existing First CI 186/195/187, live-wire 184 and TUI-X 188..192; do not reopen accepted 155/160/193.
+- **Estimate:** 444–888 additional provisional engineering hours for 196..205; optional 206 adds 16–32. Existing-scope reuse and allocation are audited before implementation. Capability implementation gaps receive separate cards/estimates; old envelopes are not silently enlarged.
+- **Execution:** coordinator-only documentation writes; visible read-only competitor research and independent review. Baseline `a351d3c`; planning card `docs/tasks/roadmap-cross-ecosystem.md`. Independent review approved after estimate arithmetic correction. Plan validation passed (226 cards); quality-changed and its execution plus explicit docs profile exited 0. [Work record](records/ROADMAP-CROSS-ECOSYSTEM.md) contains exact manifests and scope limits.
+
 ## 2026-10-23 — RAI-193 accepted: first distribution (v0.1.1 local)
 
 - **Release:** RAI-193 is accepted after the integrated JVM distribution merge and round-3 review approval. Local releases `v0.1.0` and `v0.1.1` were produced through Raider's SDLC release pipeline; `v0.1.1` includes the Coursier 2.1.26 and Java fallback launcher smokes, fat JAR, rendered Homebrew/Scoop formulas, checksums, typed negative-install refusals (21), and SIGTERM cleanup (143 without partial promotion). Tags/artifacts are local; no hosted publication is claimed. Self-authorization basis is recorded in `docs/work/records/RAI-193.md`.

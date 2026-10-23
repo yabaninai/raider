@@ -272,3 +272,19 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-193** [TUI-X.D1: JVM distribution](m2-p2.md#rai-193-tui-xd1-jvm-distribution); dependencies: none; profiles: static, unit, contracts, release, security.
 - **RAI-194** [TUI-X.D2: GraalVM native-image evaluation (spike)](m2-p2.md#rai-194-tui-xd2-graalvm-native-image-evaluation-spike); dependencies: RAI-193; profiles: static, release, docs.
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
+
+## Cross-ecosystem program (2026-10-23)
+
+[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196 and RAI-204 are ready; the other cards require dependencies and their explicit activation conditions.
+
+- **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
+- **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
+- **RAI-198** [Portable workflow validation and native lowering](m1.md); dependencies: RAI-197; profiles: static, unit, contracts, runtime, security.
+- **RAI-199** [Portable CLI execution and Scala parity](m1.md); dependencies: RAI-198, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
+- **RAI-200** [Language-neutral local process protocol contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
+- **RAI-201** [Local process adapter with owned execution](m1.md); dependencies: RAI-200, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
+- **RAI-202** [Provider and structured-output capability audit and contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
+- **RAI-203** [Portable chat export and useful recipe pair](m1.md); dependencies: RAI-198, RAI-160; profiles: static, unit, contracts, runtime, ci, docs, security.
+- **RAI-204** [Installed first-use path and coherent onboarding](m1.md); dependencies: RAI-193; profiles: docs, release.
+- **RAI-205** [Independent cross-ecosystem comparison and consumer acceptance](m1.md); dependencies: RAI-199, RAI-201, RAI-203, RAI-204, RAI-202; profiles: docs, contracts, ci, runtime, eval, security.
+- **RAI-206** [Demand-gated Java embedding facade design spike](m1.md); dependencies: RAI-205; profiles: docs.
