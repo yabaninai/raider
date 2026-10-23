@@ -103,6 +103,51 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
           )
         )
       },
+      test("all ten positive fixtures lower with trusted native descriptors") {
+        val listing = Files.list(contract("valid"))
+        val files =
+          try listing.iterator().asScala.toList
+          finally listing.close()
+        val native = Program.fromFunction[Json, Json]("native-scripted")(_ =>
+          Task.succeed(Json.Null)
+        )
+        val checks = files.flatMap { path =>
+          Files.readString(path).fromJson[Json].toOption.toList.flatMap {
+            case obj: Json.Obj =>
+              obj.fields
+                .collectFirst { case ("steps", Json.Arr(steps)) =>
+                  steps.toList
+                }
+                .getOrElse(Nil)
+                .flatMap {
+                  case step: Json.Obj =>
+                    val id = step.fields.collectFirst {
+                      case ("checkId", Json.Str(v)) => v
+                    }
+                    val snapshot = step.fields.collectFirst {
+                      case ("registrySnapshot", Json.Str(v)) => v
+                    }
+                    for checkId <- id; revision <- snapshot
+                    yield (checkId -> revision) -> native
+                  case _ => Nil
+                }
+            case _ => Nil
+          }
+        }.toMap
+        val registry = PortableProgramRegistry(
+          agents = List("worker", "extractor", "scout").map(_ -> native).toMap,
+          checks = checks,
+          safeOperations = Map("safe-edit-v1" -> native),
+          checkpoints = Map("review-before-write" -> native)
+        )
+        val lowered = files.map { path =>
+          PortableWorkflowLowerer.lower(
+            Files.readString(path).fromJson[Json].toOption.get,
+            registry
+          )
+        }
+        assertTrue(files.size == 10, lowered.forall(_.isRight))
+      },
       test("unknown-major refusal matches the frozen diagnostic fields") {
         val result = PortableWorkflowValidator.validate(
           """{"format":"raider.portable-workflow","version":"2.0"}"""

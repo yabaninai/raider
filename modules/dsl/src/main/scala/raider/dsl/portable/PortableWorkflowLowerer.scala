@@ -1,14 +1,16 @@
 package raider.dsl.portable
 
 import raider.core.{Program, Task}
-import raider.dsl.composition.batch
+import raider.dsl.composition.{all, batch}
 import zio.json.*
 import zio.json.ast.Json
 
 /** Existing trusted native programs resolved by descriptor identity. */
 final case class PortableProgramRegistry(
     agents: Map[String, Program[Json, Json]],
-    checks: Map[(String, String), Program[Json, Json]]
+    checks: Map[(String, String), Program[Json, Json]],
+    safeOperations: Map[String, Program[Json, Json]] = Map.empty,
+    checkpoints: Map[String, Program[Json, Json]] = Map.empty
 )
 
 /** A structural description of work that is composed from existing native
@@ -107,6 +109,65 @@ object PortableWorkflowLowerer:
                         .map(nodes =>
                           PortableProgramNode(id, "sequence", nodes)
                         )
+                    case Some("map") | Some("join") =>
+                      val kind = string(step, "kind").get
+                      val references = field(step, "steps")
+                        .collect { case Json.Arr(values) =>
+                          values.toList.collect { case Json.Str(child) =>
+                            child
+                          }
+                        }
+                        .orElse(string(step, "templateStep").map(List(_)))
+                        .getOrElse(Nil)
+                      references
+                        .foldLeft[Either[PortableDiagnostic, List[
+                          PortableProgramNode
+                        ]]](Right(Nil)) { (result, child) =>
+                          result.flatMap(nodes =>
+                            inspect(child, active + id).map(nodes :+ _)
+                          )
+                        }
+                        .map(nodes => PortableProgramNode(id, kind, nodes))
+                    case Some("conditional") =>
+                      val branches =
+                        List(string(step, "then"), string(step, "else")).flatten
+                      branches
+                        .foldLeft[Either[PortableDiagnostic, List[
+                          PortableProgramNode
+                        ]]](Right(Nil)) { (result, child) =>
+                          result.flatMap(nodes =>
+                            inspect(child, active + id).map(nodes :+ _)
+                          )
+                        }
+                        .map(nodes =>
+                          PortableProgramNode(id, "conditional", nodes)
+                        )
+                    case Some("repair") =>
+                      val operation =
+                        string(step, "safeOperationRef").getOrElse("")
+                      registry.safeOperations
+                        .get(operation)
+                        .map(_ => PortableProgramNode(id, "repair", Nil))
+                        .toRight(
+                          unsupported(
+                            s"/steps/${indexOf(steps, id)}/safeOperationRef",
+                            Some(id),
+                            operation
+                          )
+                        )
+                    case Some("checkpoint") =>
+                      val checkpoint =
+                        string(step, "checkpointRef").getOrElse("")
+                      registry.checkpoints
+                        .get(checkpoint)
+                        .map(_ => PortableProgramNode(id, "checkpoint", Nil))
+                        .toRight(
+                          unsupported(
+                            s"/steps/${indexOf(steps, id)}/checkpointRef",
+                            Some(id),
+                            checkpoint
+                          )
+                        )
                     case Some("agent") =>
                       val profile = string(step, "profile").getOrElse("")
                       registry.agents
@@ -177,6 +238,51 @@ object PortableWorkflowLowerer:
                     (prior, child) =>
                       prior.flatMap(value => execute(child, value))
                   )
+                case "map" =>
+                  val step = byId(node.stepId)
+                  val items = string(step, "items")
+                    .flatMap(pointer(input, _))
+                    .collect { case Json.Arr(values) =>
+                      values.toList
+                    }
+                    .getOrElse(Nil)
+                  val parallelism = field(step, "parallelism")
+                    .collect { case Json.Num(value) => value.intValue }
+                    .getOrElse(1)
+                  batch(items, parallelism)(item =>
+                    execute(node.children.head, item)
+                  ).map(values => Json.Arr(values*))
+                case "join" =>
+                  val joined = node.children match
+                    case first :: second :: Nil =>
+                      all(execute(first, input), execute(second, input)).map {
+                        case (a, b) => Json.Arr(a, b)
+                      }
+                    case many =>
+                      batch(many, many.size.max(1))(child =>
+                        execute(child, input)
+                      ).map(values => Json.Arr(values*))
+                  joined
+                case "conditional" =>
+                  val step = byId(node.stepId)
+                  val present = field(step, "when")
+                    .flatMap(objectValue)
+                    .flatMap(field(_, "value"))
+                    .collect { case Json.Str(path) =>
+                      pointer(input, path).isDefined
+                    }
+                    .getOrElse(false)
+                  execute(node.children(if present then 0 else 1), input)
+                case "repair" =>
+                  val step = byId(node.stepId)
+                  registry
+                    .safeOperations(string(step, "safeOperationRef").get)
+                    .apply(input)
+                case "checkpoint" =>
+                  val step = byId(node.stepId)
+                  registry
+                    .checkpoints(string(step, "checkpointRef").get)
+                    .apply(input)
                 case _ => Task.succeed(Json.Null)
             PortableLoweredWorkflow(
               Program.fromFunction[Json, Json]("portable-workflow") { input =>
@@ -211,6 +317,17 @@ object PortableWorkflowLowerer:
     if pointer.startsWith(prefix) then
       Some(pointer.stripPrefix(prefix).takeWhile(_ != '/'))
     else None
+
+  private def pointer(value: Json, path: String): Option[Json] =
+    path.stripPrefix("#/").split("/").foldLeft(Option(value)) {
+      (current, part) =>
+        current.flatMap {
+          case obj: Json.Obj =>
+            field(obj, part.replace("~1", "/").replace("~0", "~"))
+          case Json.Arr(values) => part.toIntOption.flatMap(values.lift)
+          case _                => None
+        }
+    }
 
   private def field(value: Json.Obj, name: String): Option[Json] =
     value.fields.collectFirst { case (`name`, result) => result }
