@@ -25,13 +25,27 @@ object ReleaseStageSpec extends ZIOSpecDefault:
             "accepted-review",
             "merged"
           )
+          jar = repo.resolve(".git/raider-cli.jar")
+          launcher = repo.resolve(".git/raider")
+          jarBytes = Array[Byte](0, 1, -1, 42)
+          _ <- ZIO.attempt {
+            Files.write(jar, jarBytes)
+            Files.writeString(
+              launcher,
+              "version=VERSION sha=REPLACE_WITH_RELEASE_SHA256\n"
+            )
+          }
           result <- ReleaseStage.release(
             ReleaseStage.Request(
               repo,
               "1.2.3",
               "Release notes",
               evidence,
-              _ => Task.succeed(())
+              _ => Task.succeed(()),
+              distributionArtifacts = List(
+                ReleaseStage.DistributionArtifact(jar, "raider-cli.jar"),
+                ReleaseStage.DistributionArtifact(launcher, "packaging/raider")
+              )
             )
           )
           sum <- ZIO.attempt(
@@ -47,10 +61,27 @@ object ReleaseStageSpec extends ZIOSpecDefault:
             )
           )
           verify <- ReleaseStage.git(repo, List("tag", "--list", "v1.2.3"))
+          stagedJar <- ZIO.attempt(
+            Files.readAllBytes(result.directory.resolve("raider-cli.jar"))
+          )
+          stagedLauncher <- ZIO.attempt(
+            Files.readString(result.directory.resolve("packaging/raider"))
+          )
+          stagedFormula <- ZIO.attempt(
+            Files.readAllBytes(result.directory.resolve("packaging/raider"))
+          )
+          jarHash = hex(MessageDigest.getInstance("SHA-256").digest(stagedJar))
+          launcherHash = hex(
+            MessageDigest.getInstance("SHA-256").digest(stagedFormula)
+          )
         yield assertTrue(
           result.tag == "v1.2.3",
           sum.contains(s"$changelogHash  CHANGELOG.md"),
-          verify.trim == "v1.2.3"
+          verify.trim == "v1.2.3",
+          java.util.Arrays.equals(stagedJar, jarBytes),
+          stagedLauncher.contains(s"version=1.2.3 sha=$jarHash"),
+          sum.contains(s"$jarHash  raider-cli.jar"),
+          sum.contains(s"$launcherHash  packaging/raider")
         )
       }
     },

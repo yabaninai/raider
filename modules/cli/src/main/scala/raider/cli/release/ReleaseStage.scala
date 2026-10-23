@@ -37,8 +37,15 @@ object ReleaseStage:
       acceptance: AcceptanceEvidence,
       build: Path => RaiderTask[Unit],
       afterStagedArtifacts: () => RaiderTask[Unit] = () =>
-        RaiderTask.succeed(())
+        RaiderTask.succeed(()),
+      distributionArtifacts: List[DistributionArtifact] = Nil
   )
+
+  /** A file included in the same atomic release directory promotion as the
+    * release metadata. Template files may use VERSION and
+    * REPLACE_WITH_RELEASE_SHA256, which are rendered from this release.
+    */
+  final case class DistributionArtifact(source: Path, relativePath: String)
 
   final case class Result(
       version: String,
@@ -157,12 +164,52 @@ object ReleaseStage:
     val provenanceJson =
       Manifest(1, request.version, revision, tag, true, evidence).toJson
     val install = for
+      distribution <- ZIO
+        .attempt {
+          request.distributionArtifacts.map { artifact =>
+            val relative = Path.of(artifact.relativePath)
+            require(
+              !relative.isAbsolute && relative.normalize() == relative &&
+                relative.iterator().asScala.forall(_.toString != "..") &&
+                artifact.relativePath.nonEmpty,
+              s"invalid distribution artifact path: ${artifact.relativePath}"
+            )
+            require(
+              Files.isRegularFile(artifact.source),
+              s"distribution artifact is not a file: ${artifact.source}"
+            )
+            val bytes = Files.readAllBytes(artifact.source)
+            val target = staging.resolve(relative)
+            Files.createDirectories(target.getParent)
+            val sourceText = new String(bytes, UTF_8)
+            val textual = sourceText.contains("VERSION") ||
+              sourceText.contains("REPLACE_WITH_RELEASE_SHA256")
+            val releaseJarHash = request.distributionArtifacts
+              .find(_.relativePath.endsWith("raider-cli.jar"))
+              .map(artifact => sha256(Files.readAllBytes(artifact.source)))
+              .getOrElse(sha256(bytes))
+            val rendered =
+              if textual then
+                sourceText
+                  .replace("VERSION", request.version)
+                  .replace("REPLACE_WITH_RELEASE_SHA256", releaseJarHash)
+                  .getBytes(UTF_8)
+              else bytes
+            Files.write(target, rendered)
+            target
+          }
+        }
+        .mapError(e =>
+          new Refusal("cannot stage distribution artifacts: " + e.getMessage)
+        )
       _ <- ZIO
         .attempt {
           Files.writeString(changelogCopy, updated, UTF_8)
           Files.writeString(provenance, provenanceJson + "\n", UTF_8)
-          val listed = List(changelogCopy, provenance)
-            .map(p => s"${sha256(Files.readAllBytes(p))}  ${p.getFileName}")
+          val listed = (List(changelogCopy, provenance) ++ distribution)
+            .map(p =>
+              s"${sha256(Files.readAllBytes(p))}  ${staging.relativize(p)}"
+            )
             .mkString("\n") + "\n"
           Files.writeString(checksums, listed, UTF_8)
         }
@@ -205,14 +252,26 @@ object ReleaseStage:
       destination: Path,
       tag: String
   ): Task[Reconciliation] =
-    val names = List("CHANGELOG.md", "release.json", "SHA256SUMS")
     for
       artifacts <- ZIO.attempt {
-        names.filter(name =>
-          Files.isRegularFile(staging.resolve(name)) || Files.isRegularFile(
-            destination.resolve(name)
-          )
-        )
+        List(staging, destination)
+          .flatMap { root =>
+            if !Files.isDirectory(root) then Nil
+            else
+              val stream = Files.walk(root)
+              try
+                stream
+                  .iterator()
+                  .asScala
+                  .filter(Files.isRegularFile(_))
+                  .map(path =>
+                    root.relativize(path).toString.replace('\\', '/')
+                  )
+                  .toList
+              finally stream.close()
+          }
+          .distinct
+          .sorted
       }.orDie
       tagOutput <- git(repo, List("tag", "--list", tag)).orDie
     yield Reconciliation(artifacts, tagOutput.trim.nonEmpty)
