@@ -2,7 +2,7 @@ package raider.repl
 
 import raider.repl.facade.TextRenderSink
 import raider.ui.{ChatAnsiRenderer, ChatLayout}
-import zio.UIO
+import zio.{UIO, ZIO}
 
 /** Streaming chat view used by the opt-in `--chat` shell. The sink is created
   * in the Scala REPL interpreter world and owns only bounded render state; the
@@ -78,6 +78,20 @@ final class ChatLayoutSink(
           draw(s"streaming turn $turnCount chunk $deltaCount")
     }
 
+  override def toolCallCard(
+      name: String,
+      arguments: String,
+      outcome: Option[String]
+  ): UIO[Unit] = ZIO.succeed {
+    synchronized:
+      val summary = ChatLayoutSink.bounded(arguments, 240)
+      val result = outcome.fold("running")(_.take(240))
+      val card = s"tool card | $name | args: $summary | outcome: $result"
+      messages = (messages :+ ChatLayout.Message(ChatLayout.Role.Status, card))
+        .takeRight(ChatLayout.HistoryLimit)
+      draw(if outcome.isDefined then "ready" else "tool running")
+  }
+
   private def draw(status: String): Unit =
     val auxiliaryLines =
       if auxiliary then
@@ -100,3 +114,10 @@ final class ChatLayoutSink(
     if output.nonEmpty then renderBridge.accept(output)
 
 end ChatLayoutSink
+
+private object ChatLayoutSink:
+
+  def bounded(value: String, limit: Int): String =
+    val singleLine = value.replace('\r', ' ').replace('\n', ' ')
+    if singleLine.length <= limit then singleLine
+    else singleLine.take(limit - 1) + "…"

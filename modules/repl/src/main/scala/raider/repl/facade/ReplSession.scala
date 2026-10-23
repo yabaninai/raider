@@ -39,6 +39,13 @@ trait ReplSession:
 trait TextRenderSink:
   def textDelta(text: String): ZIO[Any, Nothing, Unit]
 
+  /** Render a tool-call card on the same chat output path as text. */
+  def toolCallCard(
+      name: String,
+      arguments: String,
+      outcome: Option[String]
+  ): ZIO[Any, Nothing, Unit] = ZIO.unit
+
 object ReplSession:
 
   /** Wire a session. `limits` must pass BudgetLimits.make (BUD-02: invalid
