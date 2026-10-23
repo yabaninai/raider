@@ -2,6 +2,7 @@ package raider.dsl.portable
 
 import java.nio.file.{Files, Path, Paths}
 
+import raider.core.{Program, Task}
 import zio.*
 import zio.json.*
 import zio.json.ast.Json
@@ -58,6 +59,49 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
           PortableWorkflowValidator.validate(Files.readAllBytes(path))
         )
         assertTrue(files.size == 10, results.forall(_.isRight))
+      },
+      test(
+        "agent and sequence lower to the existing lazy Program composition tree"
+      ) {
+        val agent = Files
+          .readString(contract("valid/agent.json"))
+          .fromJson[Json]
+          .toOption
+          .get
+        val sequence = Files
+          .readString(contract("valid/sequence.json"))
+          .fromJson[Json]
+          .toOption
+          .get
+        val native = Program.fromFunction[Json, Json]("native-scripted")(_ =>
+          Task.succeed(Json.Null)
+        )
+        val registry = PortableProgramRegistry(
+          agents = Map("worker" -> native, "extractor" -> native),
+          checks = Map(
+            (
+              "format-check",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ) -> native
+          )
+        )
+        val loweredAgent = PortableWorkflowLowerer.lower(agent, registry)
+        val loweredSequence = PortableWorkflowLowerer.lower(sequence, registry)
+        assertTrue(
+          loweredAgent.exists(
+            _.structure == PortableProgramNode("summarize", "agent", Nil)
+          ),
+          loweredSequence.exists(
+            _.structure == PortableProgramNode(
+              "ordered",
+              "sequence",
+              List(
+                PortableProgramNode("draft", "agent", Nil),
+                PortableProgramNode("verify", "trustedCheck", Nil)
+              )
+            )
+          )
+        )
       },
       test("unknown-major refusal matches the frozen diagnostic fields") {
         val result = PortableWorkflowValidator.validate(
