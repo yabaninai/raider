@@ -34,6 +34,41 @@ import zio.Unsafe
   */
 object Main:
 
+  private val chatFrames =
+    new java.util.concurrent.ArrayBlockingQueue[String](256)
+
+  private val chatRenderBridge = new java.util.function.Consumer[String]:
+    def accept(frame: String): Unit =
+      try chatFrames.put(frame)
+      catch
+        case _: InterruptedException =>
+          Thread.currentThread().interrupt()
+          throw new IllegalStateException("chat render bridge interrupted")
+
+  private[repl] def installChatRenderBridge(): Unit =
+    System.getProperties.put("raider.chat.renderBridge", chatRenderBridge)
+
+  private[repl] def renderChatFrames(
+      terminal: raider.ui.ShellTerminal
+  ): zio.ZIO[zio.Scope, Nothing, Unit] =
+    zio.ZIO
+      .attemptBlockingInterrupt(chatFrames.take())
+      .orDie
+      .flatMap { frame =>
+        val (columns, rows) = terminal.size
+        System.setProperty("raider.chat.columns", columns.toString)
+        System.setProperty("raider.chat.rows", rows.toString)
+        terminal.printAbove(Vector(frame))
+      }
+      .forever
+      .forkScoped
+      .unit
+
+  private[repl] def updateChatSize(terminal: raider.ui.ShellTerminal): Unit =
+    val (columns, rows) = terminal.size
+    System.setProperty("raider.chat.columns", columns.toString)
+    System.setProperty("raider.chat.rows", rows.toString)
+
   private val Prompt = "raider> "
   private val Continuation = "     | "
 
@@ -241,10 +276,11 @@ object Main:
       }
     // the banner's backend line needs the interpreter-world session, so the
     // prelude runs first
+    if chat then installChatRenderBridge()
     val plan = runPrelude(engine, chat)
     banner(engine, plan, tabs, chat)
     if tabs then runTabs(engine, plan)
-    else if chat then chatLoop(engine)
+    else if chat then runChat(engine, plan)
     else loop(engine)
 
   private def banner(
@@ -273,7 +309,7 @@ object Main:
       println("  note   : Scala eval loop runs WITHOUT --tabs (legacy mode)")
     else if chat then
       println(
-        "  mode   : chat — custom ANSI chat layout; :aux and :tabs available"
+        "  mode   : chat — TabShell input loop with streaming chat renderer; :aux and :tabs available"
       )
       println("  note   : Scala eval loop runs WITHOUT --chat (legacy mode)")
     else
@@ -317,13 +353,45 @@ object Main:
     }
     shutdown(engine)
 
+  private def runChat(engine: ReplEngine, plan: PreludePlan): Unit =
+    if sys.env.get("TERM").contains("dumb") then
+      println("Chat layout unavailable for this terminal; using the line REPL.")
+      ttyLoop(engine)
+      return
+    Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe
+        .run(
+          ZIO.scoped {
+            for
+              wiring <- TabShellHost.wiring
+              lineageDir = sys.env
+                .get("RAIDER_LINEAGE_DIR")
+                .map(java.nio.file.Paths.get(_).toAbsolutePath.normalize())
+              lineage <- ReplLineageProvider.make(lineageDir)
+              _ <- ScriptedTabStream.run(wiring).when(plan.isScripted).fork
+              _ <- TabShellHost.runChat(
+                wiring,
+                ScrollbackCommands(wiring.registry),
+                new TabShellHostChatMode(engine),
+                lineage
+              )
+            yield ()
+          }
+        )
+        .getOrThrow()
+    }
+    shutdown(engine)
+
   private def runPrelude(
       engine: ReplEngine,
       chat: Boolean = false
   ): PreludePlan =
     val initial = preludePlan()
     val plan =
-      if chat then initial.copy(sources = withChatRenderer(initial.sources))
+      if chat then
+        initial.copy(
+          sources = withChatRenderer(initial.sources, initial.isScripted)
+        )
       else initial
     // RAI-090: a live start without a resolvable key explains how to enable
     // live mode BEFORE the banner; the REPL then keeps running the scripted/
@@ -332,8 +400,11 @@ object Main:
     plan.sources.foreach(src => submit(src, engine, silent = true))
     plan
 
-  private def withChatRenderer(sources: List[String]): List[String] =
-    sources.flatMap { source =>
+  private def withChatRenderer(
+      sources: List[String],
+      scripted: Boolean
+  ): List[String] =
+    val wired = sources.flatMap { source =>
       if source.startsWith("val __session =") then
         val withSink =
           if source.contains("echoStream = true") then
@@ -346,67 +417,62 @@ object Main:
               "ReplSession.make(__backend, BudgetLimits.make())",
               "ReplSession.make(__backend, BudgetLimits.make(), echoStream = true, renderSink = Some(__chatSink))"
             )
-        List("val __chatSink = new raider.repl.ChatLayoutSink", withSink)
+        List(
+          s"val __chatSink = new raider.repl.ChatLayoutSink(System.getProperties.get(\"raider.chat.renderBridge\").asInstanceOf[java.util.function.Consumer[String]], zio.Duration.fromMillis(${
+              if scripted then 180 else 0
+            }L))",
+          withSink
+        )
       else List(source)
     }
-
-  /** Chat-first interactive shell. JLine owns editable input and history; model
-    * deltas are rendered through the typed facade sink. The old `--tabs` shell
-    * and the Scala-console default path are unchanged.
-    */
-  private def chatLoop(engine: ReplEngine): Unit =
-    val terminal = makeTerminal()
-    val reader = LineReaderBuilder.builder().terminal(terminal).build()
-    val chatAvailable =
-      terminal.getType != "dumb" && terminal.getType.nonEmpty &&
-        terminal.getWidth > 0 && terminal.getHeight > 0
-    if !chatAvailable then
-      println("Chat layout unavailable for this terminal; using the line REPL.")
-      ttyLoop(engine)
-      return
-    var running = true
-    while running do
-      val line =
-        try Option(reader.readLine("you> "))
-        catch
-          case _: EndOfFileException     => None
-          case _: UserInterruptException => Some("")
-      line match
-        case None => running = false
-        case Some(raw) =>
-          val text = raw.trim
-          text match
-            case ""                => ()
-            case ":quit" | ":exit" => running = false
-            case ":aux"  => evalChatControl(engine, "__chatSink.showAux()")
-            case ":chat" => evalChatControl(engine, "__chatSink.showChat()")
-            case ":scroll-up" =>
-              evalChatControl(engine, "__chatSink.scrollUp()")
-            case ":scroll-down" =>
-              evalChatControl(engine, "__chatSink.scrollDown()")
-            case ":tabs" =>
-              println("tabs: chat (focused), auxiliary (:aux)")
-            case ":help" =>
-              println(
-                "Enter a prompt; commands: :aux :chat :scroll-up :scroll-down :tabs :help :quit"
-              )
-            case prompt =>
-              val literal = scalaStr(prompt)
-              evalChatControl(
-                engine,
-                s"__chatSink.beginUser(\"$literal\"); __chatSink.beginAssistant(); scout.ask(\"$literal\"); __chatSink.finishAssistant()"
-              )
-    shutdown(engine)
+    wired
 
   private def evalChatControl(engine: ReplEngine, source: String): Unit =
+    def emit(text: String): Unit =
+      if System.getProperties.containsKey("raider.chat.renderBridge") then
+        chatRenderBridge.accept(text)
+      else println(text)
+
     Unsafe.unsafe { implicit u =>
       zio.Runtime.default.unsafe.run(engine.eval(source)).getOrThrow() match
-        case EvalResult.Value(repr) if repr.trim.nonEmpty => println(repr.trim)
-        case EvalResult.CompileError(msg)                 => println(msg.trim)
+        case EvalResult.Value(repr) if repr.trim.nonEmpty => emit(repr.trim)
+        case EvalResult.CompileError(msg)                 => emit(msg.trim)
         case EvalResult.RuntimeFailure(msg) =>
-          println(s"runtime failure: ${msg.trim}")
+          emit(s"runtime failure: ${msg.trim}")
         case _ => ()
     }
+
+  private final class TabShellHostChatMode(engine: ReplEngine)
+      extends raider.ui.TabShell.ChatMode:
+    import zio.UIO
+
+    def command(raw: String): Option[UIO[Unit]] =
+      raw.trim match
+        case ":cancel" =>
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                "val _ = raider.repl.facade.ReplCommands.cancelChat()"
+              )
+            )
+          )
+        case ":chat" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.showChat()")))
+        case ":scroll-up" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollUp()")))
+        case ":scroll-down" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollDown()")))
+        case _ => None
+
+    def submit(prompt: String): UIO[Unit] =
+      val literal = scalaStr(prompt)
+      ZIO.succeed(
+        evalChatControl(
+          engine,
+          s"raider.repl.facade.ReplCommands.startChat(\"$literal\")"
+        )
+      )
 
   private def loop(engine: ReplEngine): Unit =
     if Option(System.console()).isEmpty then pipeLoop(engine)

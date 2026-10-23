@@ -20,12 +20,14 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
       Files.createTempDirectory(s"rai188-pty-${UUID.randomUUID()}")
 
     private val home = Files.createDirectories(base.resolve("home"))
+    private val resizeRequest = base.resolve("resize.request")
+    private val resizeResult = base.resolve("resize.result")
 
     private val javaBin =
       Paths.get(System.getProperty("java.home"), "bin", "java")
 
     private val inner =
-      s"/bin/stty rows 32 cols 100; exec '${javaBin.toString}' -cp '${System.getProperty("java.class.path")}' raider.repl.Main --chat"
+      s"/bin/stty rows 32 cols 100; exec '${javaBin.toString}' -cp '${System.getProperty("java.class.path")}' raider.repl.ChatLayoutPtyApp"
 
     private val builder = new ProcessBuilder(
       "/usr/bin/script",
@@ -41,6 +43,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
     builder.environment().put("TERM", term)
     builder.environment().put("HOME", home.toString)
     builder.environment().put("RAIDER_PROVIDER", "mock")
+    builder.environment().put("RAI188_RESIZE_REQUEST", resizeRequest.toString)
     builder.environment().remove("RAIDER_API_KEY")
     builder.environment().remove("RAIDER_API_KEY_CMD")
     private val process = builder.start()
@@ -80,7 +83,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
       new String(bytes.toByteArray, StandardCharsets.UTF_8)
     }
 
-    def waitFor(fragment: String, timeoutSeconds: Int = 40): Boolean =
+    def waitFor(fragment: String, timeoutSeconds: Int = 20): Boolean =
       val deadline =
         System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
       while System.nanoTime() < deadline do
@@ -103,6 +106,22 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
 
     def waitForExit(timeoutSeconds: Int): Boolean =
       process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+
+    def resize(rows: Int, columns: Int): Boolean =
+      Files.deleteIfExists(resizeResult)
+      Files.writeString(
+        resizeRequest,
+        s"$rows $columns",
+        StandardCharsets.UTF_8
+      )
+      val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+      while Files.exists(resizeRequest) && System.nanoTime() < deadline do
+        Thread.sleep(20)
+      !Files.exists(resizeRequest) &&
+      Files.exists(resizeResult) &&
+      Files.readString(resizeResult, StandardCharsets.UTF_8) == "0"
+
+    def typeDraft(text: String): Unit = send(text)
 
     def saveTranscript(): Path =
       val dir = Files.createDirectories(Paths.get("target/rai188-pty"))
@@ -138,13 +157,13 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
           session.send("first prompt\r")
           val streamed = session.waitFor("[scripted-fixture] mock answer")
           session.send("second prompt\r")
-          val secondStream = session.waitForCount("ready | :aux", 2, 40)
+          val secondStream = session.waitForCount("ready | :aux", 2, 20)
           session.send(":scroll-up\r")
           val scrolled = session.waitFor("scrolled up 1")
           session.send(":scroll-down\r")
           val scrollReturned = session.waitFor("ready | :aux")
           session.send(":aux\r")
-          val auxShown = session.waitFor("Auxiliary surface")
+          val auxShown = session.waitFor("lineage unavailable")
           session.send(":chat\r")
           val returnedToChat = session.waitFor("you> ")
           session.send(
@@ -154,8 +173,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
           session.send("\r")
           val historyCommandAccepted = session.waitFor("you> ")
           session.send(":tabs\r")
-          val tabsReachable =
-            session.waitFor("tabs: chat (focused), auxiliary (:aux)")
+          val tabsReachable = session.waitFor("no open tabs")
           session.send(":quit\r")
           val exited = session.waitForExit(20)
           val transcript = session.transcript
@@ -200,6 +218,56 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
             Files.size(evidence) > 0
           )
         finally session.close()
+      },
+      test(
+        "chat cancellation, editable draft, resize, and multiline paste use the shell writer"
+      ) {
+        val session = new Session
+        try
+          val prompt = session.waitFor("you> ", 120)
+          session.send("stream before draft\r")
+          val streamStarted = session.waitFor("assistant:", 20)
+          session.typeDraft("draft-café-界")
+          val draftPreserved = session.waitFor("you> draft-café-界", 20)
+          val generationReady = session.waitFor("ready | :aux", 20)
+          session.send("\r")
+          val draftSubmitted = session.waitFor("you: draft-café-界", 20)
+          session.send("cancel me after the first deltas\r")
+          val partialResponse =
+            session.waitFor("streaming turn 3 chunk 1", 20)
+          session.send(":cancel\r")
+          val cancelled =
+            session.waitFor("cancelled | partial response retained", 30)
+          val resizeApplied = session.resize(rows = 22, columns = 70)
+          session.send(
+            "\u001b[200~pasted first line\npasted second line 界\u001b[201~\r"
+          )
+          val multiline = session.waitFor("pasted second line 界", 20)
+          session.send("resize reflow marker 界 café\r")
+          val resizedRender = session.waitFor("resize reflow marker 界 café", 20)
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          val transcript = session.transcript
+          val evidence = session.saveTranscript()
+          assertTrue(
+            prompt,
+            streamStarted,
+            partialResponse,
+            cancelled,
+            draftPreserved,
+            generationReady,
+            draftSubmitted,
+            resizeApplied,
+            multiline,
+            resizedRender,
+            exited,
+            transcript.contains("assistant:"),
+            !transcript.contains("Exception"),
+            Files.size(evidence) > 0
+          )
+        finally
+          session.saveTranscript()
+          session.close()
       }
     ) @@ TestAspect.sequential @@ TestAspect.timeout(
       zio.Duration.fromSeconds(240)

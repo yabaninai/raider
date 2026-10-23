@@ -32,6 +32,11 @@ trait ShellTerminal:
   /** Release the terminal. */
   def close: UIO[Unit]
 
+  /** Current terminal geometry for frame renderers; non-terminal test doubles
+    * may keep the conservative default.
+    */
+  def size: (Int, Int) = (100, 30)
+
 object ShellTerminal:
 
   /** Real JLine terminal (ADR-016 inline mode, spike RAI-056 setup). Scoped:
@@ -65,3 +70,5 @@ object ShellTerminal:
       }
 
     def close: UIO[Unit] = ZIO.attempt(terminal.close()).orDie
+
+    override def size: (Int, Int) = (terminal.getWidth, terminal.getHeight)
