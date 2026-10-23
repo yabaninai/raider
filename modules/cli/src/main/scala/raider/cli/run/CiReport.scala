@@ -7,7 +7,7 @@ import raider.core.result.{CheckOutcome, CheckResult, ExitCodes}
   * this API: only executed check evidence and frozen policy can determine a
   * task verdict.
   */
-private[run] object CiReport:
+private[cli] object CiReport:
 
   /** Workflow-bound policy attached to a trusted check declaration. Missing
     * metadata is represented as `advisory = false` by legacy decoders.
@@ -78,7 +78,7 @@ private[run] object CiReport:
     case TaskVerdict.Blocking                      => ExitCodes.TaskRejected
 
   def verdictLabel(verdict: TaskVerdict): String = verdict match
-    case TaskVerdict.Passed   => "passed"
+    case TaskVerdict.Passed   => "trusted-checks-passed"
     case TaskVerdict.Advisory => "success-with-advisory"
     case TaskVerdict.Blocking => "task-failed"
 
@@ -180,6 +180,13 @@ private[run] object CiReport:
       .replace("\r", "%0D")
       .replace("\n", "%0A")
       .replace("::", "%3A%3A")
+
+  def markdownEscape(value: String): String =
+    value
+      .replace("&", "&amp;")
+      .replace("<", "&lt;")
+      .replace(">", "&gt;")
+      .replace("`", "&#96;")
 
   /** Report paths are always relative POSIX paths; reject traversal and
     * platform-specific absolute paths before they enter a manifest.

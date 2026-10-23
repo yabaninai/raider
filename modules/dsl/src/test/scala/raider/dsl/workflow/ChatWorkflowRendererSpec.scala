@@ -207,7 +207,7 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
         ),
         src.contains("decodeOrRefuse(rawInput)"),
         src.contains("agentStage(launch, prompt)"),
-        src.contains("runAllChecks(input)"),
+        src.contains("runTrustedChecks(raw)"),
         src.contains("AgentLoop.newRoot()"),
         src.contains("loop.runText("),
         src.contains(

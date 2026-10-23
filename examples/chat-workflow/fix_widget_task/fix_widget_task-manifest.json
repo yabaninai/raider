@@ -9,7 +9,7 @@
     "specDigest": "sha256-23e2b876fd781d719c5b1dba09c1f405fcfc0003f0c4d7ccba0f2b6875dc031f"
   },
   "buildIdentity": {
-    "sourceDigest": "sha256-e38bd86a3908476d3ed073c1904edad4965e48e8c318eecc48487db6501fc1e1"
+    "sourceDigest": "sha256-582504261f68c056cb488360c188368037826a9fab2cc08870ccde6504d2f8f4"
   },
   "origin": {
     "providerKind": "openai-compatible",
