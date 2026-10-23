@@ -19,8 +19,8 @@ downloads. See [installed first use](docs/onboarding.md) for the packaged path.
 
 ## Build the source checkout
 
-For the source-built REPL, install **JDK 21**, **sbt 1.11.4**, and **Python 3**, then run these commands
-from the repository root:
+For the source-built REPL, install **JDK 21**, **sbt 1.11.4**, and **Python 3**,
+then run these commands from the repository root:
 
 ```sh
 sh scripts/build/user-examples.sh

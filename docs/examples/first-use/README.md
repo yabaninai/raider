@@ -8,9 +8,10 @@ with a build-tree JAR when recording acceptance.
 ## Prerequisites
 
 - A verified local release directory containing `raider-cli.jar`,
-  `packaging/raider`, `version`, and `SHA256SUMS`.
+  `packaging/raider`, `release.json`, and `SHA256SUMS`.
 - Java 21 or newer. Coursier is optional; the launcher falls back to `java -jar`.
-- `shasum` (or `sha256sum`) for release verification.
+- `shasum` (or `sha256sum`) for release verification, plus `jq` to read the
+  version from release metadata.
 
 The release directory is local maintainer output. There is no hosted download
 URL. Homebrew and Scoop templates do not establish package availability or
@@ -25,17 +26,17 @@ a separate prefix and add that directory to this shell's `PATH`:
 
 ```sh
 RELEASE_DIR="/absolute/path/to/artifacts/release/0.1.1"
-INSTALL_DIR="$HOME/.local/raider/0.1.1"
 (cd "$RELEASE_DIR" && shasum -a 256 -c SHA256SUMS)
+VERSION=$(jq -r .version "$RELEASE_DIR/release.json")
+INSTALL_DIR="$HOME/.local/raider/$VERSION"
 mkdir -p "$INSTALL_DIR"
 cp "$RELEASE_DIR/raider-cli.jar" "$INSTALL_DIR/raider-cli.jar"
 cp "$RELEASE_DIR/packaging/raider" "$INSTALL_DIR/raider"
-cp "$RELEASE_DIR/version" "$INSTALL_DIR/version"
+printf '%s\n' "$VERSION" > "$INSTALL_DIR/version"
 chmod +x "$INSTALL_DIR/raider"
 export PATH="$INSTALL_DIR:$PATH"
 java -version
 raider --version
-raider --help
 mkdir -p artifacts
 raider run --agent scout --provider mock \
   --input "Read README.md and summarize the project purpose and how to run its checks" \
@@ -47,8 +48,11 @@ The `raider run` command prints a result/work directory. Read `summary.md` and
 applicable. The `--out` directory is a parent and each invocation gets its own
 `work-<id>` child. Use a distinct output parent for retries or another first
 run; do not clear an earlier run to make room. Mock response text is a fixed
-fixture and is not evidence of model quality. This read-only scout task is a
-useful repository summary and does not make workspace changes.
+fixture and is not evidence of model quality or actual repository analysis.
+This scout request exercises the installed CLI and creates inspectable result
+artifacts without making workspace changes. The current CLI does not implement
+a general `--help` option: `raider --help` returns an unknown-subcommand error
+with exit 21; use the documented `raider run` invocation.
 
 ## Verified sequence
 

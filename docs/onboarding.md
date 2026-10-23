@@ -9,38 +9,44 @@ available. For source-built Scala REPL and tab-shell instructions, see
 
 ## 1. Install the local JVM distribution
 
-The release directory contains `raider-cli.jar`, `packaging/raider`, and
-`SHA256SUMS`. Verify the supplied release before copying files, then create a
-private install directory. Replace the example paths with paths on your system:
+The release directory contains `raider-cli.jar`, `packaging/raider`,
+`release.json`, and `SHA256SUMS`. Verify the supplied release before copying
+files, then create a private install directory. This example uses `jq` to read
+the version from the verified metadata. Replace the example path with the path
+on your system:
 
 ```sh
 RELEASE_DIR="/path/to/release/0.1.1"
-INSTALL_DIR="$HOME/.local/raider/0.1.1"
 (cd "$RELEASE_DIR" && shasum -a 256 -c SHA256SUMS)
+VERSION=$(jq -r .version "$RELEASE_DIR/release.json")
+INSTALL_DIR="$HOME/.local/raider/$VERSION"
 mkdir -p "$INSTALL_DIR"
 cp "$RELEASE_DIR/raider-cli.jar" "$INSTALL_DIR/raider-cli.jar"
 cp "$RELEASE_DIR/packaging/raider" "$INSTALL_DIR/raider"
-printf '%s\n' '0.1.1' > "$INSTALL_DIR/version"
+printf '%s\n' "$VERSION" > "$INSTALL_DIR/version"
 chmod +x "$INSTALL_DIR/raider"
 export PATH="$INSTALL_DIR:$PATH"
 java -version
 raider --version
-raider --help
 ```
 
 `java -version` must report Java 21 or newer. `raider --version` should print
-`raider 0.1.1`, and `raider --help` should show the headless CLI commands. The
-launcher uses Coursier when `cs` is on `PATH`; otherwise it runs the adjacent JAR
-with Java. This headless JAR does not include the Scala compiler or JLine, so it
-does not provide `raider repl` or the tab shell. `packaging/homebrew/raider.rb`
-and `packaging/scoop/raider.json` are local formula templates, not evidence of
+`raider $VERSION`. The current CLI has no general `--help` command; the observed
+`raider --help` response is an unknown-subcommand configuration error (exit 21).
+Start with the documented `raider run` form below. The launcher uses Coursier
+when `cs` is on `PATH`; otherwise it runs the adjacent JAR with Java. This
+headless JAR does not include the Scala compiler or JLine, so it does not provide
+`raider repl` or the tab shell. `packaging/homebrew/raider.rb` and
+`packaging/scoop/raider.json` are local formula templates, not evidence of
 Homebrew/Scoop installation or hosted artifacts.
 
 ## 2. Run a useful deterministic first task
 
-From a project directory you trust, run the built-in scout in mock mode. This
-reads the project and writes a report without contacting a model or editing
-files:
+From a project directory you trust, run the built-in scout in mock mode. The
+scripted provider returns a fixed response and writes run artifacts without
+contacting a model or editing files. It demonstrates the first CLI workflow and
+artifact inspection; it does not prove that the mock response analyzed your
+repository:
 
 ```sh
 mkdir -p artifacts
