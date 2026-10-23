@@ -5948,7 +5948,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "contracts/process-api/**",
@@ -6008,7 +6008,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "docs/research/provider-output-capabilities.md",
@@ -6072,7 +6072,7 @@
       "dependencies": [
         "RAI-193"
       ],
-      "status": "in-progress",
+      "status": "accepted",
       "allowed_paths": [
         "docs/onboarding.md",
         "docs/releases/jvm-distribution.md",

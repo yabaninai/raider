@@ -1,5 +1,13 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-200/202/204 accepted
+
+- **Integrated merges:** RAI-200 from `lane/rai-200` merged as `eeae3e9`; the process protocol ADR was then renumbered ADR-036 → ADR-037 in `7831c06`, preserving ADR-036 for RAI-197. RAI-202 merged as `c6dbcbc`; RAI-204 merged as `f347828`.
+- **Independent review recording:** lane records honestly retain pending review at their lane tips. Following the established integration pattern, the coordinator appended the independent-review verdicts to each record on main: RAI-200 round-1 approve (Unicode reconstruction, cancel acknowledgement, death without terminal spot-checks; contract complete against plan §4); RAI-202 round-1 changes-required for the absolute “encoder sends only” claim, closed by `80d3245`, substance approved; RAI-204 round-1 changes-required for unsupported JVM-distribution `--help` examples, closed by `aaccb1c`, substance approved.
+- **Statuses and dependency ripple:** RAI-200/202/204 accepted in task Markdown and backlog. RAI-198 remains blocked on RAI-197; RAI-201 remains blocked on RAI-187. No other ripple is ready. RAI-197 round-1 findings remain in the fix flight. RAI-202 boundaries stay explicit: native constrained output is unsupported by the typed contract; the escape hatch is untyped/no-evidence; fallback is explicit and budgeted; unknown cost remains unknown. RAI-204 human ten-minute usability remains pending.
+- **Integrated gates:** `make quality-changed` exited 0 and selected `docs`. `make quality-changed QUALITY_EXECUTE=1` exited 0; `plan-validate` passed, timeout false (`artifacts/quality/20261023-145058-4227-0001/manifest.json`). `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 listed gates passed, including `sbt-test`, timeout false (`artifacts/quality/20261023-145118-7110-0001/manifest.json`). No MJE-03c red was observed, so no rerun was needed.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards. Backlog/task Markdown status consistency was checked for RAI-197/198/200/201/202/204.
+
 ## 2026-10-23 — RAI-196 accepted: cross-ecosystem program open
 
 - **RAI-196:** ADR-035 remains Proposed on main; independent review round 1 approved the substance. The reuse audit distinguishes exists/adapt/new, keeps `SdlcStages` scoped to SDLC rather than a general graph runtime, and marks mockup usability pending. The integrated work record is [RAI-196](records/RAI-196.md).
