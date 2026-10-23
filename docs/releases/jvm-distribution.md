@@ -1,5 +1,11 @@
 # JVM distribution
 
+For consumer installation and the first mock CLI run, use the
+[installed onboarding guide](../onboarding.md). This document is the
+maintainer-facing description of local release construction and smoke checks.
+The generated release directory and version tag are local worktree state; the
+formulas contain future URL shapes and do not indicate a hosted release.
+
 ## Local build and launcher
 
 The current headless distribution is the `raiderCli/assembly` output:
