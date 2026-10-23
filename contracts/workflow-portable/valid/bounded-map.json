@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json",
+  "format": "raider.portable-workflow", "version": "1.0", "limits": { "deadlineMs": 60000, "attempts": 3, "parallelism": 2, "children": 8, "tokens": 8000 },
+  "schemas": { "inputs": { "items": { "type": "array", "items": { "type": "string" }, "maxItems": 8 } }, "outputs": { "results": { "type": "array", "items": { "type": "string" } }, "verdict": { "type": "string" } } },
+  "steps": [{ "id": "summarize-item", "kind": "agent", "profile": "extractor", "toolset": "read-only", "input": "#/item", "outputSchema": "results", "structuredOutput": true }, { "id": "per-item", "kind": "map", "items": "#/inputs/items", "templateStep": "summarize-item", "maxItems": 8, "parallelism": 2, "outputSchema": "results" }, { "id": "verify", "kind": "trustedCheck", "checkId": "result-count", "registrySnapshot": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "input": "#/steps/per-item/output", "outputSchema": "results" }],
+  "outputs": { "bindings": { "results": "#/steps/per-item/output" }, "verdict": { "from": "#/steps/verify/output", "authority": "trustedVerifier" } }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json",
+  "format": "raider.portable-workflow", "version": "1.0", "limits": { "deadlineMs": 60000, "attempts": 3, "parallelism": 2, "children": 2, "tokens": 8000 },
+  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "text": { "type": "string" }, "joined": { "type": "object" }, "verdict": { "type": "string" } } },
+  "steps": [{ "id": "left", "kind": "agent", "profile": "scout", "toolset": "read-only", "input": "#/inputs/request", "outputSchema": "text", "structuredOutput": true }, { "id": "right", "kind": "agent", "profile": "scout", "toolset": "read-only", "input": "#/inputs/request", "outputSchema": "text", "structuredOutput": true }, { "id": "together", "kind": "join", "steps": ["left", "right"], "failure": "failFast", "outputSchema": "joined" }, { "id": "verify", "kind": "trustedCheck", "checkId": "joined-result", "registrySnapshot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "input": "#/steps/together/output", "outputSchema": "verdict" }],
+  "outputs": { "bindings": { "result": "#/steps/together/output" }, "verdict": { "from": "#/steps/verify/output", "authority": "trustedVerifier" } }
+}
