@@ -276,7 +276,7 @@ These cards were already present in the local backlog when documentation work be
 
 ## Cross-ecosystem program (2026-10-23)
 
-[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196 is in review and RAI-204 is in progress; the other cards require dependencies and their explicit activation conditions.
+[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196 is accepted; RAI-197, RAI-200, and RAI-202 are ready with their RAI-196 dependency satisfied. RAI-204 remains in progress; other cards require their dependencies and explicit activation conditions.
 
 - **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
 - **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.

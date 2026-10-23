@@ -5832,7 +5832,7 @@
       "title": "Cross-ecosystem architecture ADR and reuse audit",
       "milestone": "M1",
       "dependencies": [],
-      "status": "review",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "docs/research/cross-ecosystem-audit.md",
@@ -5858,7 +5858,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "docs/adr/**",
         "docs/cross-ecosystem-plan.md",
@@ -5948,7 +5948,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "docs/adr/**",
         "contracts/process-api/**",
@@ -6008,7 +6008,7 @@
       "dependencies": [
         "RAI-196"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "docs/adr/**",
         "docs/research/provider-output-capabilities.md",

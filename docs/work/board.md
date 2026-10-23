@@ -1,5 +1,14 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-196 accepted: cross-ecosystem program open
+
+- **RAI-196:** ADR-035 remains Proposed on main; independent review round 1 approved the substance. The reuse audit distinguishes exists/adapt/new, keeps `SdlcStages` scoped to SDLC rather than a general graph runtime, and marks mockup usability pending. The integrated work record is [RAI-196](records/RAI-196.md).
+- **Dependency flips:** RAI-197, RAI-200, and RAI-202 are ready; each backlog dependency is RAI-196, now accepted. These three contract cards run in parallel next with exclusive concrete file ownership.
+- **Other active work:** RAI-188 accepted; RAI-189/190 ready (TUI-X B2/B3). RAI-204 remains partial/in progress: the TabShell blocker is cleared and completion is next; its missing `release` profile/applicability gap remains routed. RAI-186/195 fixtures are done and await RAI-207 (protected CWF-E02 migration) for the final green.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification); `make quality-changed QUALITY_EXECUTE=1` exited 0 with all 10 fast gates passed, timeout false (`artifacts/quality/20261023-072616-54063-0001/manifest.json`); `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0 with all 8 selected gates passed, timeout false (`artifacts/quality/20261023-073508-82305-0001/manifest.json`). Fast EXECUTE review evidence `20261023-071719` was also verified before integration.
+- **Exceptions/watch:** TAB-02 remains a conditional exception and was not observed red. MJE-03c remains a historical watch and was not observed red.
+- **Post-status-sync verification:** `make quality-changed QUALITY_EXECUTE=1` and `make quality-profile PROFILES="docs"` both exited 0; `plan-validate` passed with timeout false (`artifacts/quality/20261023-074510-16209-0001/manifest.json`, `artifacts/quality/20261023-074510-16210-0001/manifest.json`). `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards. The first validator run caught a Markdown dependency annotation mismatch; corrected before the passing reruns.
+
 ## 2026-10-23 — TabShell scalafix fix; RAI-188 accepted; RAI-196/204 lanes; CWF-E02 conflict routed
 
 - **Parser fix:** `TabShell.scala` moves `chatAction = ...` out of a Scala 3 `for`-comprehension into a normal local `val`; chat dispatch behavior is unchanged and the source now parses under scalafix.
