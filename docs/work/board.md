@@ -1,5 +1,25 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-196 accepted: cross-ecosystem program open
+
+- **RAI-196:** ADR-035 remains Proposed on main; independent review round 1 approved the substance. The reuse audit distinguishes exists/adapt/new, keeps `SdlcStages` scoped to SDLC rather than a general graph runtime, and marks mockup usability pending. The integrated work record is [RAI-196](records/RAI-196.md).
+- **Dependency flips:** RAI-197, RAI-200, and RAI-202 are ready; each backlog dependency is RAI-196, now accepted. These three contract cards run in parallel next with exclusive concrete file ownership.
+- **Other active work:** RAI-188 accepted; RAI-189/190 ready (TUI-X B2/B3). RAI-204 remains partial/in progress: the TabShell blocker is cleared and completion is next; its missing `release` profile/applicability gap remains routed. RAI-186/195 fixtures are done and await RAI-207 (protected CWF-E02 migration) for the final green.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification); `make quality-changed QUALITY_EXECUTE=1` exited 0 with all 10 fast gates passed, timeout false (`artifacts/quality/20261023-072616-54063-0001/manifest.json`); `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0 with all 8 selected gates passed, timeout false (`artifacts/quality/20261023-073508-82305-0001/manifest.json`). Fast EXECUTE review evidence `20261023-071719` was also verified before integration.
+- **Exceptions/watch:** TAB-02 remains a conditional exception and was not observed red. MJE-03c remains a historical watch and was not observed red.
+- **Post-status-sync verification:** `make quality-changed QUALITY_EXECUTE=1` and `make quality-profile PROFILES="docs"` both exited 0; `plan-validate` passed with timeout false (`artifacts/quality/20261023-074510-16209-0001/manifest.json`, `artifacts/quality/20261023-074510-16210-0001/manifest.json`). `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards. The first validator run caught a Markdown dependency annotation mismatch; corrected before the passing reruns.
+
+## 2026-10-23 — TabShell scalafix fix; RAI-188 accepted; RAI-196/204 lanes; CWF-E02 conflict routed
+
+- **Parser fix:** `TabShell.scala` moves `chatAction = ...` out of a Scala 3 `for`-comprehension into a normal local `val`; chat dispatch behavior is unchanged and the source now parses under scalafix.
+- **RAI-188 and dependency flips:** RAI-188 accepted after integrated gates and independent review approval; RAI-189 and RAI-190 ready (each depends only on accepted RAI-188). RAI-196 moved to review. RAI-204 is in progress with onboarding work partial; its requested `release` profile is absent from the current gate registry, so the profile applicability/registration gap is routed as an explicit follow-up policy question. RAI-204 is not accepted.
+- **Protected expectation conflict:** RAI-186's old CWF-E02 bogus-success expectation (verdict omitted and legacy error-detail wording) conflicts with RAI-195's task-failed verdict plus executed-check evidence contract. Registered RAI-207, dependent on RAI-195; the protected expectation/digest migration is expressly deferred until RAI-195 acceptance and requires independent review.
+- **Focused verification:** `sbt --batch raiderUi/scalafixAll raiderUi/Test/compile 'raiderRepl/testOnly raider.repl.MainTabsPtySpec raider.repl.ChatLayoutPtySpec'` exited 0; 8 PTY tests passed, 0 failed/ignored.
+- **Integrated gates:** `make quality-changed` exited 0; selected `contracts`, `static`, `unit`. `make quality-changed QUALITY_EXECUTE=1` exited 0; all 5 gates passed, timeout false; manifest `artifacts/quality/20261023-063518-83301-0001/manifest.json`. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 gates passed, timeout false; manifest `artifacts/quality/20261023-064307-8972-0001/manifest.json`.
+- **Post-status docs gates:** after the card/index/board synchronization, `make quality-changed` selected `contracts`, `docs`, `static`, `unit`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with all 6 gates passed, timeout false; manifest `artifacts/quality/20261023-070459-91326-0001/manifest.json`. `make quality-profile PROFILES="docs"` exited 0; `plan-validate` passed, timeout false; manifest `artifacts/quality/20261023-070459-91327-0001/manifest.json`.
+- **Exceptions/watch:** TAB-02 (RAI-172) remains a conditional exception and was not observed red. MJE-03c remains a historical intermittent watch; it was not observed red in these runs.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards.
+
 ## 2026-10-23 — Cross-ecosystem competitive plan registered
 
 - **Owner request:** study LLM4S and LangChain4j in depth and update OpenCode's plan for use beyond Scala, including evaluating an ecosystem-independent DSL.
