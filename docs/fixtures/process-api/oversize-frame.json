@@ -1,0 +1,7 @@
+{
+  "id": "XE-WIRE-02-oversize",
+  "description": "A request exceeds the maximum encoded frame payload.",
+  "transport": {"encoding": "UTF-8", "framing": "LF", "payloadBytes": 1048577, "construction": "Encode the prefix {\"protocolVersion\":{\"major\":1,\"minor\":0},\"type\":\"submit\",\"requestId\":\"req-large\",\"padding\":\" and suffix \"} as UTF-8, then insert enough ASCII x bytes between them for the total payload to equal exactly 1048577 bytes.", "lfBytesExcludedFromLimit": true},
+  "frames": [],
+  "requiredBehavior": ["Reject as soon as payload exceeds 1048576 bytes and before JSON decoding or dispatch.", "No root, model call, or tool call is created.", "If stdout remains writable emit only a bounded error; otherwise terminate nonzero without logging payload bytes."]
+}

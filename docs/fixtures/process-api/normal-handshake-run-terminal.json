@@ -1,0 +1,15 @@
+{
+  "id": "XE-WIRE-01-normal",
+  "description": "A single root completes over the negotiated protocol.",
+  "transport": {"encoding": "UTF-8", "framing": "LF", "clientReadsAll": true},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "hello", "requestId": "req-001", "supported": [{"major": 1, "minor": 0}], "requiredCapabilities": ["observe", "cancel"]}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "helloAck", "requestId": "req-001", "negotiated": {"major": 1, "minor": 0}, "capabilities": ["observe", "cancel"], "adapterVersion": "test"}},
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-002", "input": {"schemaVersion": 1, "task": "Inspect the supplied fixture"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-002", "rootId": "root-test-1"}},
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observe", "requestId": "req-002", "afterSequence": 0}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observation", "requestId": "req-002", "sequence": 1, "event": {"kind": "progress", "message": "Inspecting Δelta 漢字 🧪"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "terminal", "requestId": "req-002", "rootId": "root-test-1", "executionStatus": "completed", "taskVerdict": "success", "safetyVerdict": "passed", "protocolVerdict": "passed", "accountingStatus": "complete", "cleanupStatus": "complete", "exitCode": 0, "artifacts": [{"path": "result.json", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "mediaType": "application/json", "sizeBytes": 128, "provenance": "root-test-1"}]}}
+  ],
+  "requiredBehavior": ["One submit creates one root.", "Accepted is not terminal.", "Unicode payload survives unchanged.", "The terminal record is unique and agrees with process exit 0.", "Artifact metadata is bounded and references existing output-root artifacts."]
+}

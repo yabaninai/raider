@@ -1,0 +1,11 @@
+{
+  "id": "XE-WIRE-03-slow-reader",
+  "description": "A consumer pauses while the child produces progress observations.",
+  "transport": {"readerPausesAfterSequence": 2, "producerAttempts": 1000, "resumeAfterAttempts": 900},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-slow", "input": {"schemaVersion": 1, "task": "Emit bounded progress"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-slow", "rootId": "root-slow"}},
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observe", "requestId": "req-slow", "afterSequence": 0}}
+  ],
+  "requiredBehavior": ["Outbound memory never exceeds 64 ordinary frames or 4 MiB encoded payload, with at most one frame at 1 MiB.", "Producer backpressure is bounded; progress may be coalesced and the next observation reports skipped sequence range/count.", "Request receipts, cancellation state and terminal result are not silently dropped; terminal has its reserved capacity.", "If the peer never drains the stream, stop admission, cancel the root and bound cleanup; missing terminal at process death is uncertain."]
+}
