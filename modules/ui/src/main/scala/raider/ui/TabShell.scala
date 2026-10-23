@@ -81,11 +81,49 @@ object TabShell:
         if trimmed.isEmpty then
           loop(registry, terminal, resolver, config, pump, views, aux, chat)
         else
-          for
-            chatAction = chat.flatMap(_.command(line))
-            _ <- chatAction match
-              case Some(action) =>
-                action *> loop(
+          val chatAction = chat.flatMap(_.command(line))
+          chatAction match
+            case Some(action) =>
+              action *> loop(
+                registry,
+                terminal,
+                resolver,
+                config,
+                pump,
+                views,
+                aux,
+                chat
+              )
+            case None =>
+              for
+                tabs <- registry.tabs
+                focused <- registry.focused
+                feedback <-
+                  CommandRouter
+                    .parse(line, tabs, focused)
+                    .fold(
+                      err =>
+                        err match
+                          case ShellInputError.UnknownCommand(_)
+                              if chat.nonEmpty =>
+                            chat.get
+                              .submit(line)
+                              .as(ShellFeedback.Help(Vector.empty))
+                          case _ => ZIO.succeed(ShellFeedback.Hint(err)),
+                      cmd =>
+                        cmd match
+                          case ShellCommand.Draft(text) if chat.nonEmpty =>
+                            chat.get
+                              .submit(text)
+                              .as(ShellFeedback.Help(Vector.empty))
+                          case _ =>
+                            ShellExecutor
+                              .run(cmd, registry, resolver, views, aux)
+                    )
+                _ <- terminal.printAbove(ShellFeedback.render(feedback))
+                _ <- afterCommand(feedback, pump)
+                _ <- continue(
+                  feedback,
                   registry,
                   terminal,
                   resolver,
@@ -95,47 +133,7 @@ object TabShell:
                   aux,
                   chat
                 )
-              case None =>
-                for
-                  tabs <- registry.tabs
-                  focused <- registry.focused
-                  feedback <-
-                    CommandRouter
-                      .parse(line, tabs, focused)
-                      .fold(
-                        err =>
-                          err match
-                            case ShellInputError.UnknownCommand(_)
-                                if chat.nonEmpty =>
-                              chat.get
-                                .submit(line)
-                                .as(ShellFeedback.Help(Vector.empty))
-                            case _ => ZIO.succeed(ShellFeedback.Hint(err)),
-                        cmd =>
-                          cmd match
-                            case ShellCommand.Draft(text) if chat.nonEmpty =>
-                              chat.get
-                                .submit(text)
-                                .as(ShellFeedback.Help(Vector.empty))
-                            case _ =>
-                              ShellExecutor
-                                .run(cmd, registry, resolver, views, aux)
-                      )
-                  _ <- terminal.printAbove(ShellFeedback.render(feedback))
-                  _ <- afterCommand(feedback, pump)
-                  _ <- continue(
-                    feedback,
-                    registry,
-                    terminal,
-                    resolver,
-                    config,
-                    pump,
-                    views,
-                    aux,
-                    chat
-                  )
-                yield ()
-          yield ()
+              yield ()
     }
 
   private def afterCommand(

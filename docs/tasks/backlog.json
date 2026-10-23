@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 217,
+  "raider_count": 218,
   "companion_count": 3,
   "cards": [
     {
@@ -5696,7 +5696,7 @@
       "title": "CI check-policy contract: advisory/blocking declaration on trusted checks",
       "milestone": "M0",
       "dependencies": ["RAI-186", "RAI-131"],
-      "status": "ready",
+      "status": "in-progress",
       "allowed_paths": ["docs/tasks/m0.md", "docs/tasks/backlog.json", "docs/tasks/README.md", "docs/work/board.md", "docs/ci-runtime.md", "docs/adr/**", "contracts/ci/**", "contracts/bundle/**", "modules/ci/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "ci"],
       "behavior": "Define and freeze an advisory Boolean on trusted workflow/bundle check metadata, specifically the exported-workflow trustedChecks surface. Policy is workflow-bound, not CI-context configuration, CLI override, model output, or task input. Advisory check failure produces a success-with-advisory verdict, exit 0, and recorded verdict/evidence per ci-runtime §§7–8; blocking failure remains task-failed. Missing, unknown, or mismatched check IDs are blocking by fail-safe default. Freeze serialization and provenance with the bundle and record resolved policy identity in run outcomes. Threshold semantics are excluded from v1. RAI-186 completes FCI-REPORT-01 under this contract.",
@@ -5713,7 +5713,7 @@
       "title": "TUI-X.B1: chat-centric layout + streaming panel",
       "milestone": "P2",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "repl"],
       "behavior": "Build a chat-centric layout in the existing custom ANSI renderer around the current ChatLoop/facade. Render streaming through the ADR-024 renderer seam, provide bounded scroll regions, and integrate existing tabs and :aux. Preserve existing real PTY acceptance patterns.",
@@ -5730,7 +5730,7 @@
       "title": "TUI-X.B2: tool-call cards with inline approval",
       "milestone": "P2",
       "dependencies": ["RAI-188"],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
       "behavior": "Render fs_read, fs_search, proc_run, and fs_patch calls as cards with inline approve/deny wired to existing plan-mode and approval machinery. Launcher policy and tool policy remain authoritative; the interface never expands authority.",
@@ -5747,7 +5747,7 @@
       "title": "TUI-X.B3: session switcher + tasks panel + status footer",
       "milestone": "P2",
       "dependencies": ["RAI-188"],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "repl"],
       "behavior": "Surface existing :sessions list/switch in the layout; add a tasks/todo panel backed by existing plan-mode data; show model, budget, and stream state from ADR-024 events; upgrade command-palette discoverability to the OpenCode-level target without changing Raider policy or ownership.",
@@ -5832,7 +5832,7 @@
       "title": "Cross-ecosystem architecture ADR and reuse audit",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "review",
       "allowed_paths": [
         "docs/adr/**",
         "docs/research/cross-ecosystem-audit.md",
@@ -6072,7 +6072,7 @@
       "dependencies": [
         "RAI-193"
       ],
-      "status": "ready",
+      "status": "in-progress",
       "allowed_paths": [
         "docs/onboarding.md",
         "docs/releases/jvm-distribution.md",
@@ -6153,6 +6153,37 @@
       },
       "non_goals": "Shipping Java/Kotlin/TypeScript/Python SDKs, Spring/Quarkus dependencies, runtime implementation, language-policy relaxation or claiming demand from stars.",
       "context": "docs/cross-ecosystem-plan.md; docs/research/llm4s-langchain4j-2026-10-23.md; preserve working-product acceptance, the single Scala/ZIO runtime and current language/license policy."
+    },
+    {
+      "id": "RAI-207",
+      "title": "Protected CWF-E02 expectation migration under the RAI-195 check-policy contract",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-195"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "contracts/chat-workflow/expectations/CWF-E02.json",
+        "modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE02Spec.scala",
+        "modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierHarness.scala",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/ChatWorkflowVerifierCorpusSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "eval"
+      ],
+      "behavior": "After RAI-195 is accepted, migrate the protected CWF-E02 bogus-success expectation from the superseded contract (run.json omits a verdict and requires legacy error-detail wording) to the RAI-195 blocking-result contract: task-failed verdict present in run.json, with executed-check evidence bound to the observed result. The protected expectation, its independently pinned verifier digests, and only the directly required fixtures change together. This migration must not land before RAI-195 acceptance.",
+      "acceptance": {
+        "normal": "Normal: CWF-E02-MIG-01: the blocking bogus-success case asserts a `task-failed` verdict and executed-check evidence in run.json, and the expectation agrees with actual product output under RAI-195.",
+        "error": "CWF-E02-MIG-02: old verdict-omission and legacy error-detail expectations are explicitly superseded; a changed expectation still fails closed against independently pinned digest anchors.",
+        "concurrency": "Review/concurrency: CWF-E02-MIG-03: an independent reviewer approves the protected-fixture and verifier-anchor diff; integration is withheld until RAI-195 is accepted, with no concurrent edit to protected expectation/verifier files."
+      },
+      "non_goals": "Implementing RAI-195, changing its policy contract, changing unrelated CWF-E02 cases, weakening integrity anchors, or editing gate thresholds/verifiers outside this exact migration.",
+      "context": "Protected CWF-E02 bogus-success expectation and verifier digest anchors; ci-runtime §§7–8; RAI-195."
     }
   ]
 }
