@@ -1,0 +1,9 @@
+{
+  "id": "XE-WIRE-03-eof",
+  "description": "Exercise clean EOF before dispatch, EOF after dispatch, and EOF in a partial frame.",
+  "subcases": [
+    {"name": "before-submit-clean-boundary", "receivedBytes": 0, "frames": [], "requiredBehavior": ["Close without creating a root.", "No provider or tool effect."]},
+    {"name": "after-dispatch-clean-boundary", "frames": [{"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-eof", "input": {"schemaVersion": 1, "task": "Started then client closed"}}}], "requiredBehavior": ["Stop accepting requests and cancel the owned root/subtree.", "Wait only for bounded cleanup; do not claim complete success if terminal/artifact evidence is absent.", "Never automatically resubmit after a client restart."]},
+    {"name": "mid-frame", "partialBytesHex": "7b2274797065223a22737562", "requiredBehavior": ["Classify partial-frame EOF as protocol error.", "Never dispatch the incomplete JSON object.", "Return nonzero where process status remains available."]}
+  ]
+}

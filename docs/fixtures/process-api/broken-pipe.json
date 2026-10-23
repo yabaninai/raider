@@ -1,0 +1,11 @@
+{
+  "id": "XE-WIRE-02-broken-pipe",
+  "description": "The consumer closes stdout while the child is writing an observation or terminal frame.",
+  "transport": {"stdoutWriteFailure": "EPIPE", "failurePoint": "after-dispatch"},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-pipe", "input": {"schemaVersion": 1, "task": "Mutation may have started"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-pipe", "rootId": "root-pipe"}},
+    {"direction": "child-to-client", "writeResult": "EPIPE", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observation", "requestId": "req-pipe", "sequence": 1, "event": {"kind": "progress", "message": "A mutation may be in flight"}}}
+  ],
+  "requiredBehavior": ["Detect pipe failure without suppressing the process result or looping on writes.", "Stop admission and run bounded cancellation/cleanup for the owned subtree/process groups.", "Exit nonzero; expose incomplete/uncertain outcome through surviving local artifacts when possible.", "No automatic replay, resubmit, or success claim from acceptance alone."]
+}

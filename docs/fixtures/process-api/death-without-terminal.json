@@ -1,0 +1,11 @@
+{
+  "id": "XE-WIRE-03-death-uncertain",
+  "description": "The process dies after accepting work but before emitting terminal evidence.",
+  "transport": {"processDeath": "SIGKILL", "exitStatus": 137, "terminalFramePresent": false},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-death", "input": {"schemaVersion": 1, "task": "Potential side effect"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-death", "rootId": "root-death"}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observation", "requestId": "req-death", "sequence": 1, "event": {"kind": "progress", "message": "Work started"}}}
+  ],
+  "requiredBehavior": ["Absence of terminal means uncertain/incomplete, never success or proof of no side effect.", "Do not fabricate terminal evidence or auto-resubmit, including with the same requestId.", "Permit read-only inspection of existing artifacts/recovery data and explicit reconciliation.", "A process status alone does not reconstruct an application terminal record."]
+}
