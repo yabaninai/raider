@@ -141,6 +141,8 @@ final class PlanPanel private (
 
       def close: UIO[Unit] = underlying.close
 
+      override def size: (Int, Int) = underlying.size
+
   /** One plan command on its OWN fiber (reviewer risk 3 — see the class doc);
     * the typed outcome is printed as ONE atomic block through the ONE writer.
     */

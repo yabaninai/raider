@@ -18,11 +18,50 @@ import zio.ZIO
   */
 object ReplCommands:
 
+  private var chatJob: Option[raider.runtime.jobs.JobHandle[String]] = None
+
   private val sessionRef =
     java.util.concurrent.atomic.AtomicReference[Option[ReplSession]](None)
 
   /** Called by the prelude right after the session is constructed. */
   def install(s: ReplSession): Unit = sessionRef.set(Some(s))
+
+  /** Start chat through the session-owned job manager. The detached waiter is
+    * runtime-owned; the REPL compiler remains confined to the input thread.
+    */
+  def startChat(prompt: String): Unit =
+    val sink = session.renderSink
+    sink.foreach(_.asInstanceOf[raider.repl.ChatLayoutSink].beginUser(prompt))
+    sink.foreach(_.asInstanceOf[raider.repl.ChatLayoutSink].beginAssistant())
+    val job = FacadeOps.startSteerable(
+      session,
+      AgentRef("scout"),
+      prompt,
+      identity
+    )
+    chatJob = Some(job)
+    FacadeOps.unsafeRun(
+      session.jobs
+        .await(job)
+        .tap(_ =>
+          ZIO.succeed(
+            sink.foreach(
+              _.asInstanceOf[raider.repl.ChatLayoutSink].finishAssistant()
+            )
+          )
+        )
+        .forkDaemon
+    )
+
+  /** Request bounded cancellation and keep any text already rendered. */
+  def cancelChat(): Boolean =
+    val requested =
+      chatJob.exists(job => FacadeOps.unsafeRun(session.jobs.cancel(job)))
+    session.renderSink.foreach { sink =>
+      val chat = sink.asInstanceOf[raider.repl.ChatLayoutSink]
+      if requested then chat.cancelAssistant() else chat.completeAssistant()
+    }
+    requested
 
   private def session: ReplSession =
     sessionRef.get.getOrElse(

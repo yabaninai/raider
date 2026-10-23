@@ -119,10 +119,13 @@ Be concise. Use tools before answering.""".stripMargin
   /** Interactive echo (nightly Phase 3.3): deltas to stdout, ready tool calls
     * and tool results to stderr — as they happen, not after.
     */
-  private def echoBackend(b: ModelBackend): ModelBackend =
+  private def echoBackend(
+      b: ModelBackend,
+      sink: Option[TextRenderSink]
+  ): ModelBackend =
     raider.runtime.display.StreamingDisplay(
       b,
-      onTextDelta = t => zio.Console.print(t).orDie,
+      onTextDelta = t => sink.fold(zio.Console.print(t).orDie)(_.textDelta(t)),
       onToolCall =
         (n, a) => zio.Console.printLineError(s"  → $n ${a.take(160)}").orDie
     )
@@ -151,7 +154,8 @@ Be concise. Use tools before answering.""".stripMargin
       messages: List[RequestMessage]
   ): ZIO[Any, RaiderError, String] =
     val backend =
-      if session.echoStream then echoBackend(session.backend)
+      if session.echoStream then
+        echoBackend(session.backend, session.renderSink)
       else session.backend
     val modelName =
       if session.model == "scripted" then s"scripted:${agent.name}"
