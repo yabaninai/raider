@@ -1,5 +1,13 @@
 # Raider Execution Board
 
+## 2026-10-23 — RAI-194 accepted: native NO-GO (JVM distribution confirmed)
+
+- **Integration and verdict:** `lane/rai-194` source `b1acc5b` merged to main as `fb84dfd`. Coordinator review approved: the closed-world claim was verified in `BundleLoader`/`HeadlessRunner`, scoping is proper, and unavailable metrics remain honestly unmeasured. Native Image is a no-go under the current dynamic workflow-JAR contract; RAI-193's JVM distribution remains supported. See [work record](records/RAI-194.md).
+- **Dependency flip:** RAI-194 accepted; RAI-193 remains accepted. The RAI-194 dependency is satisfied.
+- **Current cycle state:** RAI-198 partial (validator 17/17 + 10/10, all-10 structural lowering; remaining: full type validation, root-limit composition, RAI-164 repair integration, XE-LOWER runtime acceptance); RAI-189 partial (approval gate live in the REPL facade with RA-TOOLDENY defaults + `:approve`/`:deny`; remaining: CLI-path wiring + 3 PTY transcripts); RAI-190 partial (sessions + footer done; tasks-panel/budget wiring needs the plan-loop + budget-hub connections in the chat session).
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast` classification). `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10 fast gates passed, timeout false (`artifacts/quality/20261023-201122-78135-0001/manifest.json`). `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 gates passed, including `sbt-test`, `cli-smoke`, and `repl-smoke`, timeout false (`artifacts/quality/20261023-201856-85473-0001/manifest.json`). MJE-03c was not red, so the authorized single rerun was not triggered.
+- **Post-status verification:** `make quality-changed` selected `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0 with `plan-validate` passed, timeout false (`artifacts/quality/20261023-202827-92397-0001/manifest.json`). `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards. RAI-194 is synchronized as accepted in the task Markdown and backlog.
+
 ## 2026-10-23 — RAI-197 accepted (portable contract frozen)
 
 - **Integration and verdict:** `lane/rai-197` source `7b37d80` merged to main as `29088e3`. Round 1's two contract gaps were closed; round 2's byte-limit fixture finding was closed with reproducible, schema-valid 262145-byte ASCII and wide-Unicode artifacts. Approve-on-closure: both rounds approved, ADR-036 Accepted, RAI-197 accepted. The byte cap is a RAI-198 preflight check (`UTF-8 byte length > 262144` → `document-too-large` at root pointer `""`); no runtime validator is claimed in RAI-197. See [work record](records/RAI-197.md).
