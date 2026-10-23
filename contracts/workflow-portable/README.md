@@ -11,11 +11,24 @@ contract shape for independent review, not runtime behavior. Schema:
   checkpoint, output binding/final verdict, and root limits (10 fixtures).
   Fixtures intentionally remain standalone minimal documents so every named
   concept has a direct golden example.
-* `refusals/manifest.json` has 16 preflight refusal cases. Each includes expected
+* `refusals/manifest.json` has 17 preflight refusal cases. Each includes expected
   stable refusal code, document path, step ID when applicable, offending
   reference, suggested correction, and the zero-dispatch invariant. Raw text is
   used for duplicate JSON keys because a parsed JSON object cannot represent
   them faithfully.
+* `refusals/fixtures/oversized.json` and
+  `refusals/fixtures/oversized-utf8.json` are real schema-valid workflow
+  documents of exactly 262145 UTF-8 bytes. Rebuild them deterministically from
+  the contract directory with `python3 tools/build_oversized_fixture.py`; the script starts
+  from `valid/agent.json`, puts the padding in the declared input string
+  schema's enum (ASCII in the first artifact and wide Unicode in the second),
+  and sizes the serialized JSON to the exact target byte count.
+  The generated artifact is committed so validation can measure and schema-
+  validate the exact bytes. JSON Schema does not express the whole-document byte
+  ceiling. RAI-198 local preflight owns that check: UTF-8 document byte length
+  `> 262144` refuses with `document-too-large` at document root JSON Pointer
+  `""` (the empty string), before runtime dispatch. This fixture declares and
+  verifies the expectation and is not a runtime refusal execution in RAI-197.
 * The bounded-map example binds its template agent to `#/item`; `#/index` is
   also available in the template scope. The item reference has the source array's
   item schema. Refusals cover pointers escaping that scope, schema depth over 16,
