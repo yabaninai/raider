@@ -272,10 +272,11 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-193** [TUI-X.D1: JVM distribution](m2-p2.md#rai-193-tui-xd1-jvm-distribution); dependencies: none; profiles: static, unit, contracts, release, security.
 - **RAI-194** [TUI-X.D2: GraalVM native-image evaluation (spike)](m2-p2.md#rai-194-tui-xd2-graalvm-native-image-evaluation-spike); dependencies: RAI-193; profiles: static, release, docs.
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
+- **RAI-207** [Protected CWF-E02 expectation migration under the RAI-195 check-policy contract](m0.md#rai-207-protected-cwf-e02-expectation-migration-under-the-rai-195-check-policy-contract); dependencies: RAI-195; profiles: static, unit, contracts, ci, eval.
 
 ## Cross-ecosystem program (2026-10-23)
 
-[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196 and RAI-204 are ready; the other cards require dependencies and their explicit activation conditions.
+[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196 is in review and RAI-204 is in progress; the other cards require dependencies and their explicit activation conditions.
 
 - **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
 - **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
