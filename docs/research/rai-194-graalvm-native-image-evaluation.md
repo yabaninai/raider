@@ -17,6 +17,7 @@ This is not a finding that Scala 3 or ZIO cannot run under GraalVM Native Image.
 | GraalVM manager/tool (`gu`, `sdk`) | Neither found. |
 | `brew list --versions graalvm-jdk graalvm-jdk@21 graalvm-community-jdk graalvm-community-jdk@21` | No installed matching formula was listed. |
 | Current shell Java | Oracle Java 21.0.12.1, HotSpot; not a GraalVM. |
+| sbt JVM | sbt startup reports `Homebrew Java 27`; this differs from `java -version` on PATH and is not a valid pinned-JDK build environment. |
 | Native build prerequisites | macOS arm64, Apple Command Line Tools at `/Library/Developer/CommandLineTools`; `clang` is available. |
 | Obtainability | Official GraalVM downloads exist, but no locally installed native-image toolchain was available. This run did not download or install one. A downloadable, different JDK line is not treated as the pinned project toolchain or as a measured feasibility result. |
 
@@ -28,6 +29,7 @@ No GraalVM build was attempted: there is no native-image executable, no RAI-193 
 - The RAI-193 release artifact directory is not present in this lane (`artifacts/release/0.1.1` does not exist); no release manifest or dependency inventory is checked into the current worktree. The RAI-193 work record lists the six released filenames/hashes, but not the assembled JAR's dependency contents. Therefore the v0.1.1 JAR's exact dependency set could not be verified from its release manifest here.
 - Source-level dependency graph verification: `raiderCli` depends on core, DSL, runtime, tools, provider-chat and provider-anthropic. `raiderCliAssemblySettings` names `raider.cli.Main`. The CLI build comment and RAI-022 inventory rule require excluding the Scala compiler and JLine from headless distribution. `raiderReplEngine` separately depends on `scala3-repl` and JLine 4.0.14; `raiderUi` has JLine 4.0.14 including `jline-terminal-jni`, but the CLI does not depend on those projects in `build.sbt`.
 - Attempted exact source classpath query: `sbt --batch "show raiderCli/Compile/dependencyClasspath"`. It exited 1 after compilation stopped at `modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala:772`: `tc.id` is not a member of `raider.core.ToolCall`. Thus no resolved classpath or compiled JAR was produced. This failure is recorded as a blocker; it is not proof of the release JAR's inventory.
+- The sbt process identified itself as running on Homebrew Java 27, even though direct `java -version` reported Oracle Java 21.0.12.1. This environment discrepancy independently prevents treating the source build attempt as a correctly pinned JDK-21 build; resolve `JAVA_HOME`/sbt launcher selection before a repeat.
 - JNI/JLine risk for the target headless CLI is lower than for the REPL: build graph isolation excludes the REPL/UI JLine graph. The exact release artifact still needs inventory validation; if the runtime CLI graph gains JLine/JNI transitively, native metadata and terminal behavior must be investigated. Native support for the REPL is explicitly out of scope here.
 
 ## Reachability and compatibility inventory
