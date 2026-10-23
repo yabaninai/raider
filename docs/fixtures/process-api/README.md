@@ -6,7 +6,7 @@ scenario: `frames` gives complete wire records (as JSON objects); `transport`
 describes byte delivery/closure; `requiredBehavior` is the assertion for the
 future Scala child-process stand. Implementations should serialize `frames` as
 UTF-8 JSON Lines and must not rely on write/read chunk boundaries. The corpus
-implements the contract proposed by [ADR-036](../../adr/ADR-036-local-process-protocol.md).
+implements the contract proposed by [ADR-037](../../adr/ADR-037-local-process-protocol.md).
 
 | Fixture | Scenario | Required behavior |
 | --- | --- | --- |

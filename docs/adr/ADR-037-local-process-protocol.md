@@ -1,4 +1,4 @@
-# ADR-036: Bounded local process protocol
+# ADR-037: Bounded local process protocol
 
 Status: **Proposed** (RAI-200; protocol contract for independent review, not an
 implemented adapter). Date: 2026-10-23. This ADR follows
