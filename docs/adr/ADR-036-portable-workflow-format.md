@@ -28,7 +28,13 @@ V1 freezes the following portable semantics from
 
 * JSON Schema subset for declared input/output and step values; stable
   definition-local step IDs; typed JSON Pointer references (`#/inputs/...` or
-  `#/steps/<id>/output/...` using canonical escaped tokens).
+  `#/steps/<id>/output/...` using canonical escaped tokens). The frozen v1
+  resource bounds are a maximum 262144 UTF-8 bytes per document, schema nesting
+  depth 16, and 64 enum values per schema node. Schema depth counts each declared
+  input/output schema root as depth 1; each `properties` child or `items` schema
+  increments depth by one. The v1 JSON Schema encodes the 16-level ceiling, and
+  enum arrays are capped at 64. Preflight must reject excess with
+  `schema-depth-exceeded` or `enum-size-exceeded` before dispatch.
 * `agent`, `trustedCheck`, `sequence`, `conditional`, bounded `map`, and `join`
   step kinds. Each has a closed object shape and explicit input/output type.
 * Conditionals use the closed predicate set `equals`, `notEquals`, `isPresent`,
@@ -71,13 +77,13 @@ Schema validity alone never implies safe or executable.
 | --- | --- |
 | Root `format`, `version`, `$schema`, `$id` | Format identity, semver-like major/minor, pinned JSON Schema 2020-12 identity. `additionalProperties: false` at every object boundary. |
 | `limits` | Required finite positive root deadline/attempt/parallelism/children/token bounds; deployment maximum is an independent stricter ceiling. |
-| `schemas.inputs`, `schemas.outputs` | Closed bounded JSON Schema subset: object, array, string, boolean, integer, finite number, null, enum, required/properties/items, min/max length/items, and additionalProperties false. No `$ref`, pattern regex, dynamic anchors, content decoding, or arbitrary keywords. |
+| `schemas.inputs`, `schemas.outputs` | Closed bounded JSON Schema subset: object, array, string, boolean, integer, finite number, null, enum, required/properties/items, min/max length/items, and additionalProperties false. Frozen bounds: 262144 UTF-8 document bytes, schema depth 16 (root=1), 64 enum values per node. No `$ref`, pattern regex, dynamic anchors, content decoding, or arbitrary keywords. |
 | `steps[]` and `stepId` | Globally unique stable IDs matching `[A-Za-z][A-Za-z0-9._-]{0,63}`; IDs are definition identity, not run/job identity. References to IDs must resolve and graph must be acyclic. |
 | `agent` | Named `profile` and `toolset`, typed input pointer, locally validated declared output schema ID. Names do not grant capabilities. |
 | `trustedCheck` | Registry-bound `checkId` plus explicit pinned `registrySnapshot`, typed input, trusted provenance output. No executable command field. |
 | `sequence` | Ordered non-empty child step IDs; outputs bind the final declared result. Children execute in order and stop at first non-success. |
 | `conditional` | Closed typed predicate tree and two branch step IDs with compatible declared output types. Exactly the selected branch executes. |
-| `map` | Input array pointer, one declared child template, finite `maxItems` and `parallelism`, stable index ordering. One child failure fails the join and cancels siblings; external cancellation remains cancellation. |
+| `map` | Input array pointer, one declared child template, finite `maxItems` and `parallelism`, stable index ordering. For each item, the template executes in an item scope exposing `#/item` with the array's declared `items` schema and `#/index` as a non-negative integer. Further pointers may descend from either root only within that scope and are typed from the current item/index; references to workflow inputs, other steps, or pointers escaping the current item scope are invalid in the template. The template agent receives the current element through its declared `input` binding, never the entire source array unless that array itself is an item. One child failure fails the join and cancels siblings; external cancellation remains cancellation. |
 | `join` | Explicit unique incoming step IDs, ordered deterministic result object, and fail-fast semantics; impossible/unreachable members are preflight refusals. No implicit waiting or future/dynamic dependency. |
 | `repair` | `maxAttempts` within root attempts; references an eligible step and checkpoint; only a registry-marked safe operation can repeat. Ambiguous mutation is `uncertain`, never retried. |
 | `checkpoint` | Stable ID and owner-configured checkpoint reference. It can pause/refuse pending an explicit decision and fresh launch recheck; it cannot provide credentials, capability, or a continuation. |
@@ -86,7 +92,11 @@ Schema validity alone never implies safe or executable.
 References use RFC 6901 JSON Pointer encoding and are typed before lowering.
 Percent-encoding, URI fragments outside the leading `#`, wildcards, dynamic
 keys, and noncanonical escapes are refused. A pointer into a map item is only
-valid in that map's template scope. Graph `stepId` references are a separate
+valid in that map's template scope, rooted at `#/item` or `#/index`; it cannot
+escape those roots. `#/item` has exactly the map source array's item schema,
+including object properties and nested array items; `#/index` is an integer.
+The scoped binding applies to every reference-consuming field of the template
+step and its declared template descendants. Graph `stepId` references are a separate
 closed identifier form and are never interpreted as pointers.
 
 ## 3. Execution and failure semantics
