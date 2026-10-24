@@ -454,7 +454,7 @@ object Main:
             ZIO.succeed(
               evalChatControl(
                 engine,
-                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", true)"
+                s"zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(__chatSink.resolveToolApproval(\"${scalaStr(token)}\", true)).getOrThrow() }"
               )
             )
           )
@@ -464,7 +464,7 @@ object Main:
             ZIO.succeed(
               evalChatControl(
                 engine,
-                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", false)"
+                s"zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(__chatSink.resolveToolApproval(\"${scalaStr(token)}\", false)).getOrThrow() }"
               )
             )
           )
