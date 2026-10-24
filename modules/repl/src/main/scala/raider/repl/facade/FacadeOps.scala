@@ -8,13 +8,12 @@ import raider.core.{
   RequestMessage,
   RootId,
   Task,
-  Tool,
-  ToolRegistry,
-  RecoveryClass
+  ToolRegistry
 }
 import raider.runtime.jobs.{JobHandle, JobStatus}
 import raider.runtime.loop.AgentLoop
 import raider.runtime.mailbox.{Mailbox, MailboxError, Message}
+import raider.runtime.tools.approval.ToolApproval
 import zio.{Chunk, Exit, Promise, Unsafe, ZIO}
 
 import java.util.concurrent.ConcurrentHashMap
@@ -184,7 +183,7 @@ Be concise. Use tools before answering.""".stripMargin
     val modelName =
       if session.model == "scripted" then s"scripted:${agent.name}"
       else session.model
-    val dispatchTools = approvalTools(session.tools, session.toolApproval)
+    val dispatchTools = ToolApproval.guard(session.tools, session.toolApproval)
     AgentLoop(
       backend,
       dispatchTools,
@@ -197,53 +196,6 @@ Be concise. Use tools before answering.""".stripMargin
       systemPrompt = Some(ReplSystemPrompt)
     )
       .runText(messages, session.limits, session.limits.maxAttempts)
-
-  /** Ordinary chat dispatch gate. RecoveryClass is the same frozen stamp used
-    * by plan-mode enforcement; only Mutating calls request an explicit
-    * per-invocation decision. With no approver, the tool follows the typed
-    * ToolDenied path rather than silently inheriting authority.
-    */
-  private[repl] def approvalTools(
-      tools: ToolRegistry,
-      approver: Option[ToolApprovalHook]
-  ): ToolRegistry =
-    val approvalSeq = AtomicLong(0L)
-    val wrapped = tools.names
-      .flatMap(tools.lookup)
-      .map: tool =>
-        if tool.recovery != RecoveryClass.Mutating then tool
-        else
-          new Tool:
-            def name: String = tool.name
-            def version: Int = tool.version
-            def description: String = tool.description
-            def recovery: RecoveryClass = tool.recovery
-            def timeoutMs: Long = tool.timeoutMs
-            def capabilities = tool.capabilities
-            override def parametersJsonSchema: String =
-              tool.parametersJsonSchema
-            def invoke(argumentsJson: String) =
-              val decision = approver match
-                case None =>
-                  ZIO.succeed(ToolApprovalDecision.Deny)
-                case Some(hook) =>
-                  hook.decide(
-                    ToolApprovalContext(
-                      s"tool-${approvalSeq.incrementAndGet()}",
-                      tool.name,
-                      tool.recovery,
-                      argumentsJson
-                    )
-                  )
-              decision.flatMap:
-                case ToolApprovalDecision.Approve => tool.invoke(argumentsJson)
-                case ToolApprovalDecision.Deny =>
-                  ZIO.fail(
-                    RaiderError.ToolDenied(
-                      s"approval denied or unavailable for mutating tool '${tool.name}'"
-                    )
-                  )
-    ToolRegistry.build(wrapped).getOrElse(ToolRegistry.empty)
 
   /** RAI-132: the ONE start path of the facade — registers the job (visible in
     * :jobs/:cancel), opens its steering channel over the runtime Mailbox, and

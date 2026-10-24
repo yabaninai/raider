@@ -1,7 +1,7 @@
 package raider.repl
 
-import raider.repl.facade.{
-  TextRenderSink,
+import raider.repl.facade.TextRenderSink
+import raider.runtime.tools.approval.{
   ToolApprovalContext,
   ToolApprovalDecision,
   ToolApprovalHook

@@ -1,9 +1,10 @@
 package raider.repl.facade
 
-import raider.core.{ModelBackend, RaiderError, RecoveryClass, ToolRegistry}
+import raider.core.{ModelBackend, RaiderError, ToolRegistry}
 import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.jobs.JobManager
+import raider.runtime.tools.approval.ToolApprovalHook
 import zio.ZIO
 
 /** Frozen contract (fast-REPL slice, phase 0). One live session binding the
@@ -33,25 +34,6 @@ trait ReplSession:
   def echoStream: Boolean = false
   def renderSink: Option[TextRenderSink] = None
   def toolApproval: Option[ToolApprovalHook] = None
-
-/** Explicit per-call decision. The policy context is the frozen tool stamp and
-  * the exact bounded invocation payload; approval cannot change either.
-  */
-final case class ToolApprovalContext(
-    requestId: String,
-    tool: String,
-    recovery: RecoveryClass,
-    argumentsJson: String
-)
-
-enum ToolApprovalDecision:
-  case Approve, Deny
-
-trait ToolApprovalHook:
-
-  def decide(
-      context: ToolApprovalContext
-  ): ZIO[Any, Nothing, ToolApprovalDecision]
 
 /** Typed destination for model text deltas. The direct terminal echo remains
   * the fallback when no interactive renderer is installed.

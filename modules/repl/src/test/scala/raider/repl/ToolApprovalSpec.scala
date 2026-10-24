@@ -2,6 +2,7 @@ package raider.repl
 
 import raider.core.*
 import raider.repl.facade.*
+import raider.runtime.tools.approval.*
 import zio.*
 import zio.test.*
 
@@ -35,7 +36,7 @@ object ToolApprovalSpec extends ZIOSpecDefault:
           hook = new ToolApprovalHook:
             def decide(context: ToolApprovalContext) =
               captured.set(Some(context)).as(ToolApprovalDecision.Approve)
-          guarded = FacadeOps.approvalTools(registry, Some(hook))
+          guarded = ToolApproval.guard(registry, Some(hook))
           result <- ZIO.scoped(
             guarded.lookup("fs_patch").get.invoke("{\"path\":\"a\"}")
           )
@@ -58,7 +59,7 @@ object ToolApprovalSpec extends ZIOSpecDefault:
               tool("proc_run", RecoveryClass.Mutating, invoked)
             )
           )
-          denied = FacadeOps.approvalTools(
+          denied = ToolApproval.guard(
             registry,
             Some(
               new ToolApprovalHook:
@@ -66,7 +67,7 @@ object ToolApprovalSpec extends ZIOSpecDefault:
                   ZIO.succeed(ToolApprovalDecision.Deny)
             )
           )
-          absent = FacadeOps.approvalTools(registry, None)
+          absent = ToolApproval.guard(registry, None)
           denial <- ZIO
             .scoped(denied.lookup("proc_run").get.invoke("{}"))
             .either
@@ -92,7 +93,7 @@ object ToolApprovalSpec extends ZIOSpecDefault:
           hook = new ToolApprovalHook:
             def decide(context: ToolApprovalContext) =
               hookCalls.update(_ + 1).as(ToolApprovalDecision.Deny)
-          guarded = FacadeOps.approvalTools(registry, Some(hook))
+          guarded = ToolApproval.guard(registry, Some(hook))
           result <- ZIO.scoped(guarded.lookup("fs_read").get.invoke("{}"))
           invocations <- invoked.get
           approvals <- hookCalls.get
