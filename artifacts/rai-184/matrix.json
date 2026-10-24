@@ -1,16 +1,16 @@
 {
   "card": "RAI-184",
-  "baseline": "239089177198ee24735c65e0ef7ff6e6414a4f25",
-  "execution": "stopped-on-auth-failure",
+  "baseline": "76ee20356a4ea2034e07f0b743800eef9fe31ab5",
+  "execution": "stopped-on-auth-failure-after-authorized-config-retry",
   "provider": "OpenAI-compatible Yabanin gateway",
   "endpointHost": "demo.yabanin.ai",
   "basePath": "/gw/v1",
   "authorizedCapUsd": 5.0,
   "reservationUsdPerResponse": 0.1,
   "maxInferenceRequests": 100,
-  "inferenceHttpResponses": 1,
-  "clientAttempts": 4,
-  "unauthenticatedProbeResponses": [405, 401],
+  "inferenceHttpResponses": 2,
+  "clientAttempts": 6,
+  "unauthenticatedProbeResponses": [405, 401, 401],
   "tlsFailureHttpDispatched": false,
   "actualProviderSpendUsd": 0.0,
   "reservedExposureUsd": 0.0,
@@ -19,7 +19,7 @@
     "massScenarios": "glm-5.3-flash",
     "toolRound": "glm-5.3"
   },
-  "credentialReference": "RAIDER_API_KEY from owner-designated .env.yabanin; value not recorded",
+  "credentialReference": "OpenCode config provider yabanin-stand inline apiKey captured as RAIDER_API_KEY; value not recorded",
   "scenarios": [
     {
       "scenario": "direct-chat",
@@ -38,34 +38,57 @@
       "scenario": "streaming",
       "model": "glm-5.3-flash",
       "status": "not-dispatched",
-      "reason": "Stopped after direct-chat returned HTTP 401; no credential/account switch or retry"
+      "reason": "Stopped after authenticated minimal direct-chat returned HTTP 401; streaming was not dispatched"
     },
     {
       "scenario": "complete-tool-round",
       "model": "glm-5.3",
       "status": "not-dispatched",
-      "reason": "Stopped after direct-chat returned HTTP 401; tool definition, call, and result were not exercised"
+      "reason": "Stopped after authenticated minimal direct-chat returned HTTP 401; tool definition, call, and result were not exercised"
     },
     {
       "scenario": "cancel-mid-stream",
       "model": "glm-5.3-flash",
       "status": "not-dispatched",
-      "reason": "Stopped after direct-chat returned HTTP 401; stream cancellation was not exercised"
+      "reason": "Stopped after authenticated minimal direct-chat returned HTTP 401; stream cancellation was not exercised"
     },
     {
       "scenario": "usage-and-cost-observation",
       "model": "glm-5.3-flash",
       "status": "not-dispatched",
-      "reason": "Stopped after direct-chat returned HTTP 401; provider usage and cost telemetry were unavailable"
+      "reason": "Stopped after authenticated minimal direct-chat returned HTTP 401; provider usage and cost telemetry were unavailable"
     }
   ],
   "preflight": {
     "probeCommand": "curl -sS -X POST -H 'Content-Type: application/json' --data '{}' -o /dev/null -w '%{http_code}' --max-time 8 <base>/chat/completions",
     "probeHttpStatus": 401,
+    "retryAuthenticatedProbeHttpStatus": 401,
+    "credentialCandidates": [
+      {
+        "entry": "provider.yabanin",
+        "baseURL": "https://demo.yabanin.ai/gw/v1",
+        "apiKey": "absent; not tried"
+      },
+      {
+        "entry": "provider.yabanin-stand",
+        "baseURL": "https://yabanin.ai/gw/v1",
+        "apiKey": "inline key tried against demo base; masked tail 122"
+      }
+    ],
     "initialDefaultGetHttpStatus": 405,
     "baseHostSource": "demo.yabanin.ai URL selected from owner-designated .env.yabanin; OpenCode config fallback agrees",
     "credentialValuePrinted": false,
     "tlsTrust": "Python default CA verification failed before HTTP dispatch; certifi trust bundle used for the one authenticated inference request; verification remained enabled"
   },
-  "accountingNotes": "The unauthenticated health probes and pre-HTTP TLS failure were not paid inference requests. The one authenticated inference response was HTTP 401, treated as a known zero-charge provider-auth refusal with its $0.10 reservation released. No gateway cost endpoint was queried. No additional inference requests were sent."
+  "retryProbe": {
+    "unauthenticatedPostStatus": 401,
+    "authenticatedMinimalModel": "glm-5.3-flash",
+    "maxTokens": 20,
+    "httpStatus": 401,
+    "latencyMs": 704,
+    "reservationUsdBeforeDispatch": 0.1,
+    "reservationDisposition": "released as known provider-auth refusal",
+    "responseBody": "not retained; no body was emitted to logs"
+  },
+  "accountingNotes": "The unauthenticated health probes and pre-HTTP TLS failure were not paid inference requests. Both authenticated inference responses returned HTTP 401 and are treated as known zero-charge provider-auth refusals with reservations released. No gateway cost endpoint was queried. No further inference requests were sent after the authorized config-key retry failed."
 }

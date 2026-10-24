@@ -4,14 +4,14 @@
   "capUsd": 5.0,
   "reservationUsdPerResponse": 0.1,
   "maxInferenceRequests": 100,
-  "inferenceHttpResponses": 1,
-  "clientAttempts": 4,
+  "inferenceHttpResponses": 2,
+  "clientAttempts": 6,
   "actualProviderSpendUsd": 0.0,
   "reservedExposureUsd": 0.0,
   "remainingCapUsd": 5.0,
-  "remainingInferenceRequests": 99,
+  "remainingInferenceRequests": 98,
   "stopped": true,
-  "stopReason": "Authenticated direct-chat request returned HTTP 401 Unauthorized; no alternate key/account or retry was attempted",
+  "stopReason": "The authorized OpenCode-config credential retry returned HTTP 401 Unauthorized; no further key/account or retry was attempted",
   "entries": [
     {
       "requestNumber": 1,
@@ -25,12 +25,30 @@
       "outcome": "HTTP 401 Unauthorized",
       "latencyMs": 713,
       "chargeStatus": "known provider-auth refusal; reservation released; no generation usage returned"
+    },
+    {
+      "requestNumber": 2,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "minimal-auth-retry",
+      "model": "glm-5.3-flash",
+      "endpointHost": "demo.yabanin.ai",
+      "credentialConfigEntry": "provider.yabanin-stand; masked key tail 122",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.0,
+      "usage": null,
+      "outcome": "HTTP 401 Unauthorized",
+      "latencyMs": 704,
+      "chargeStatus": "known provider-auth refusal; reservation released; no generation usage returned"
     }
   ],
   "preflight": {
     "unauthenticatedProbeHttpStatuses": [405, 401],
     "tlsFailure": "Default Python CA validation failed before HTTP dispatch; no inference request reached the endpoint",
-    "credentialReference": "RAIDER_API_KEY from owner-designated .env.yabanin",
+    "credentialReference": "RAIDER_API_KEY captured at runtime from OpenCode config provider.yabanin-stand inline apiKey; masked tail 122",
+    "credentialCandidates": [
+      "provider.yabanin (demo baseURL): apiKey absent; not tried",
+      "provider.yabanin-stand: inline apiKey tried against demo base; masked tail 122"
+    ],
     "credentialValuePrinted": false,
     "authenticatedResponseBody": "not retained; response body omitted from output",
     "costTelemetry": "No gateway cost endpoint queried; auth refusal recorded at zero under the live-wire guard's known-no-charge auth semantics"
