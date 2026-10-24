@@ -48,6 +48,7 @@ final class ChatLayoutSink(
     val count = taskSnapshot.proposal.fold(0)(_.steps.size)
     if count > 0 then taskCursor = (taskCursor + delta).max(0).min(count - 1)
     if tasksVisible then draw(streamState)
+
   private var approvalSeq = 0L
 
   private var pendingApproval
