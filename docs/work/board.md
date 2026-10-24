@@ -1,5 +1,9 @@
 # Raider Execution Board
 
+## 2026-10-24 — RAI-190 live plan/budget wiring split to RAI-208
+
+- **Split decision:** RAI-190's delivered session/footer/panel slice is its acceptance basis. Register RAI-208 for the remaining interpreter-world hub construction, serialized ADR-024 event and PlanSession snapshot bridge, real task/budget population, and PTY ×3 (populated tasks, real budget transition, session-switch regression). The split follows two honest implementation stops at classloader-boundary design depth; preserve the existing one-hub/no-synthetic-values mandate. RAI-208 depends on RAI-190 and accepted RAI-188 and is ready.
+
 ## 2026-10-24 — RAI-189 shared approval hook integrated (partial)
 
 - **Coordinator mandate:** committed as `e4d7a44`, authorizing the typed approval hook move to `modules/runtime` for both REPL and CLI consumers while freezing RA-TOOLDENY/no-auto-approve behavior. RAI-190's EventHub/plan-binding injection mandate is recorded in its card for its lane.
