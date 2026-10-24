@@ -595,7 +595,7 @@ object Main:
             ZIO.succeed(
               evalChatControl(
                 engine,
-                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", true)"
+                s"raider.repl.facade.ReplCommands.resolveToolApproval(\"${scalaStr(token)}\", true)"
               )
             )
           )
@@ -605,7 +605,7 @@ object Main:
             ZIO.succeed(
               evalChatControl(
                 engine,
-                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", false)"
+                s"raider.repl.facade.ReplCommands.resolveToolApproval(\"${scalaStr(token)}\", false)"
               )
             )
           )

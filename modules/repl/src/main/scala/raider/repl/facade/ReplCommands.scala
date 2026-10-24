@@ -76,6 +76,13 @@ object ReplCommands:
     }
     requested
 
+  /** Resolve the active chat tool approval in the interpreter world. */
+  def resolveToolApproval(token: String, approve: Boolean): Boolean =
+    session.renderSink match
+      case Some(sink: raider.repl.ChatLayoutSink) =>
+        FacadeOps.unsafeRun(sink.resolveToolApproval(token, approve))
+      case _ => false
+
   private def session: ReplSession =
     sessionRef.get.getOrElse(
       throw RaiderError.Configuration(

@@ -163,7 +163,10 @@ final class ChatLayoutSink(
       case Some((promise, result)) =>
         promise.succeed(result).as(true) <* ZIO.succeed {
           synchronized:
-            draw(if approve then "approval granted" else "approval denied")
+            draw(
+              if approve then "approval granted"
+              else "approval denied | RA-TOOLDENY"
+            )
         }
       case None => ZIO.succeed(false)
 
