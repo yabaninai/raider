@@ -9,6 +9,12 @@ import java.nio.file.{Files, Path, Paths}
 object ChatLayoutPtyApp:
 
   def main(args: Array[String]): Unit =
+    if sys.env.get("RAI191_COMBINED_FIXTURE").contains("1") then
+      System.setProperty(
+        "raider.chat.testAnswer",
+        "# Combined view\n```scala\nval answer = 42\n```\n" +
+          "```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```"
+      )
     val request = Paths.get(sys.env("RAI188_RESIZE_REQUEST"))
     val watcher = new Thread(() => resizeLoop(request))
     watcher.setDaemon(true)

@@ -353,19 +353,38 @@ object Main:
 
   /** The scripted fixture branch — the historical mock path, unchanged by
     * RAI-090; reused verbatim for the live-without-key fallback.
+    *
+    * Merged RAI-208 + RAI-191 semantics: the plan-fixture JSON must stay a
+    * single pure-JSON delta (`PlanProposal.parse` decodes the whole candidate),
+    * while the plain scripted default keeps the RAI-191 two-delta streaming
+    * shape (renderer re-parses per delta). `raider.chat.testAnswer` (RAI-191
+    * combined fixture) overrides the first delta's content when set.
     */
   private def scriptedSources(planFixture: Boolean = false): List[String] =
-    val response =
+    val firstDelta =
       if planFixture then
         "{\"title\":\"PTY wiring plan\",\"steps\":[" +
           "\"Inspect the session hub\",\"Verify budget events\"]}"
-      else
-        "[scripted-fixture] mock answer (ScriptedModelBackend; no live network in this slice)"
+      else "[scripted-fixture] mock answer"
+    // First delta references the __answer binding so the `raider.chat.testAnswer`
+    // override (RAI-191 combined fixture) reaches the backend; the optional
+    // second delta keeps the scripted provenance suffix as a separate chunk.
+    val deltas =
+      (s"raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), __answer)" ::
+        (if planFixture then Nil
+         else List(" (ScriptedModelBackend; no live network in this slice)")))
+        .zipWithIndex
+        .map:
+          case (delta, 0) => delta
+          case (suffix, _) =>
+            s"raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"${scalaStr(suffix)}\")"
+        .mkString(", ")
     List(
       "import raider.repl.facade.*",
       "import raider.runtime.budget.BudgetLimits",
       "import raider.testkit.ScriptedModelBackend",
-      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"${scalaStr(response)}\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      s"val __answer = Option(System.getProperty(\"raider.chat.testAnswer\")).getOrElse(\"${scalaStr(firstDelta)}\")",
+      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), $deltas, raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
       "val __model = \"scripted\"",
       // scripted branch: echo stays OFF (fixture tests/smoke assert on the
       // plain transcript; live echo is an interactive-live-provider feature)
