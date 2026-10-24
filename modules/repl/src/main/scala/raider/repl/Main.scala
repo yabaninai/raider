@@ -240,6 +240,7 @@ object Main:
       "import raider.runtime.budget.BudgetLimits",
       "import raider.testkit.ScriptedModelBackend",
       s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      "val __model = \"scripted\"",
       // scripted branch: echo stays OFF (fixture tests/smoke assert on the
       // plain transcript; live echo is an interactive-live-provider feature)
       "val __session = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ReplSession.make(__backend, BudgetLimits.make())).getOrThrow() }",
@@ -309,7 +310,7 @@ object Main:
       println("  note   : Scala eval loop runs WITHOUT --tabs (legacy mode)")
     else if chat then
       println(
-        "  mode   : chat — TabShell input loop with streaming chat renderer; :aux and :tabs available"
+        "  mode   : chat — TabShell input loop with streaming chat renderer; :sessions, :tasks and :aux available"
       )
       println("  note   : Scala eval loop runs WITHOUT --chat (legacy mode)")
     else
@@ -420,7 +421,7 @@ object Main:
         List(
           s"val __chatSink = new raider.repl.ChatLayoutSink(System.getProperties.get(\"raider.chat.renderBridge\").asInstanceOf[java.util.function.Consumer[String]], zio.Duration.fromMillis(${
               if scripted then 180 else 0
-            }L))",
+            }L), model = __model)",
           withSink
         )
       else List(source)
@@ -491,6 +492,12 @@ object Main:
           Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollUp()")))
         case ":scroll-down" =>
           Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollDown()")))
+        case ":tasks" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.showTasks()")))
+        case ":task-up" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.moveTask(-1)")))
+        case ":task-down" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.moveTask(1)")))
         case _ => None
 
     def submit(prompt: String): UIO[Unit] =
