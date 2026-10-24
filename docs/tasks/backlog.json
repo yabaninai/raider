@@ -5730,7 +5730,7 @@
       "title": "TUI-X.B2: tool-call cards with inline approval",
       "milestone": "P2",
       "dependencies": ["RAI-188"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
       "behavior": "Render fs_read, fs_search, proc_run, and fs_patch calls as cards with inline approve/deny wired to existing plan-mode and approval machinery. Launcher policy and tool policy remain authoritative; the interface never expands authority.",

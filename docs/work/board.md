@@ -1,5 +1,14 @@
 # Raider Execution Board
 
+## 2026-10-24 — RAI-189 accepted (B2); RAI-208 registered (190.b split)
+
+- **RAI-189 integration and status:** `lane/rai-189` tip `e965b86` merged into main. Coordinator review approved; approval/deny/read-only and pending-Unicode-draft PTY cases passed ×3 each, including actual approved-file creation and denied-file absence. RAI-189 is accepted in `docs/tasks/m2-p2.md` and `docs/tasks/backlog.json`.
+- **RAI-190 split / RAI-208:** RAI-208 was registered as the 190.b follow-up for the remaining live plan/budget bridge. The split is justified by two honest implementation stops at the interpreter/shell classloader boundary; preserve the one interpreter-world session hub and serialized ADR-024 event/PlanSession snapshot bridge, with no synthetic values. RAI-208 remains ready and depends on RAI-190 and accepted RAI-188.
+- **RAI-198 ruling remainder:** the existing card retains full type validation, root-limit composition at the launch layer, RAI-164 bounded repair composition via descriptor reuse, and XE-LOWER runtime acceptance as its remaining work; no RAI-198 acceptance is claimed here.
+- **Integrated gates:** `make quality-changed` exited 0 and selected minimum `fast`. The first `make quality-changed QUALITY_EXECUTE=1` run failed only at watched MJE-03c (`sbt-test`, exit 1; no timeout; manifest `artifacts/quality/20261024-184430-27852-0001/manifest.json`); the one authorized rerun passed all 10 fast gates, exit 0 (`artifacts/quality/20261024-185539-47236-0001/manifest.json`). `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` passed all 8 listed gates (`artifacts/quality/20261024-190548-56409-0001/manifest.json`); the additional card-required `security` profile passed `security-secrets-scan` (`artifacts/quality/20261024-191559-80860-0001/manifest.json`).
+- **Plan/status validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 228 cards. After status synchronization, `make quality-changed` selected `docs` and `make quality-changed QUALITY_EXECUTE=1` passed `plan-validate`, exit 0, no timeout (`artifacts/quality/20261024-191758-96216-0001/manifest.json`).
+- **Record:** [RAI-189 work record](records/RAI-189.md).
+
 ## 2026-10-24 — RAI-190 live plan/budget wiring split to RAI-208
 
 - **Split decision:** RAI-190's delivered session/footer/panel slice is its acceptance basis. Register RAI-208 for the remaining interpreter-world hub construction, serialized ADR-024 event and PlanSession snapshot bridge, real task/budget population, and PTY ×3 (populated tasks, real budget transition, session-switch regression). The split follows two honest implementation stops at classloader-boundary design depth; preserve the existing one-hub/no-synthetic-values mandate. RAI-208 depends on RAI-190 and accepted RAI-188 and is ready.

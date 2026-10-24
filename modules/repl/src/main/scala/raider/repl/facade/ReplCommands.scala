@@ -43,6 +43,24 @@ object ReplCommands:
     FacadeOps.unsafeRun(
       session.jobs
         .await(job)
+        .tapError {
+          case denied: RaiderError.ToolDenied =>
+            sink match
+              case Some(render) =>
+                val chat = render.asInstanceOf[raider.repl.ChatLayoutSink]
+                chat.toolCallCard(
+                  "approval",
+                  "{}",
+                  Some(s"${denied.code}: ${denied.detail.take(160)}")
+                ) *> ZIO.succeed(chat.finishAssistant())
+              case None => ZIO.unit
+          case _ =>
+            ZIO.succeed(
+              sink.foreach(
+                _.asInstanceOf[raider.repl.ChatLayoutSink].finishAssistant()
+              )
+            )
+        }
         .tap(_ =>
           ZIO.succeed(
             sink.foreach(
