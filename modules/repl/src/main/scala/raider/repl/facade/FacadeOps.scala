@@ -12,9 +12,11 @@ import raider.core.{
 }
 import raider.runtime.jobs.{JobHandle, JobStatus}
 import raider.runtime.loop.AgentLoop
+import raider.runtime.events.EventCodecs.given
 import raider.runtime.mailbox.{Mailbox, MailboxError, Message}
 import raider.runtime.tools.approval.ToolApproval
 import zio.{Chunk, Exit, Promise, Unsafe, ZIO}
+import zio.json.EncoderOps
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
@@ -184,18 +186,30 @@ Be concise. Use tools before answering.""".stripMargin
       if session.model == "scripted" then s"scripted:${agent.name}"
       else session.model
     val dispatchTools = ToolApproval.guard(session.tools, session.toolApproval)
-    AgentLoop(
+    val root = AgentLoop.newRoot()
+    val loop = AgentLoop(
       backend,
       dispatchTools,
       modelName,
       session.admission,
-      AgentLoop.newRoot(),
+      root,
       trace =
         if session.echoStream then echoTracer(session.renderSink)
         else _ => zio.ZIO.unit,
       systemPrompt = Some(ReplSystemPrompt)
     )
-      .runText(messages, session.limits, session.limits.maxAttempts)
+    for
+      (_, events) <- session.eventHub.subscribe(JobId(root.value))
+      forwarder <- events
+        .mapZIO(event =>
+          session.renderSink.fold(zio.ZIO.unit)(_.eventJson(event.toJson))
+        )
+        .runDrain
+        .forkDaemon
+      result <- loop
+        .runText(messages, session.limits, session.limits.maxAttempts)
+        .ensuring(forwarder.interrupt.unit)
+    yield result
 
   /** RAI-132: the ONE start path of the facade — registers the job (visible in
     * :jobs/:cancel), opens its steering channel over the runtime Mailbox, and

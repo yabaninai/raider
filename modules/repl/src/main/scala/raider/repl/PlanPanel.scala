@@ -51,7 +51,8 @@ final class PlanPanel private (
     outcomeRef: AtomicReference[
       Option[(String, Either[PlanPhaseError, PlanProposal])]
     ],
-    watchedRef: AtomicReference[Option[String]]
+    watchedRef: AtomicReference[Option[String]],
+    onSnapshotJson: String => UIO[Unit]
 ):
 
   /** The CURRENT read-model snapshot (pure, total — the provider's reader). */
@@ -67,12 +68,16 @@ final class PlanPanel private (
     * for wiring/testing; the watcher keeps it current automatically).
     */
   def refresh: UIO[Unit] =
-    session.state.flatMap(st =>
-      ZIO.succeed {
-        val outcome = outcomeRef.get
-        snapshotRef.set(PlanPanel.derive(st, outcome))
-      }
-    )
+    session.state
+      .flatMap(st =>
+        ZIO.succeed {
+          val outcome = outcomeRef.get
+          val next = PlanPanel.derive(st, outcome)
+          snapshotRef.set(next)
+          next
+        }
+      )
+      .flatMap(snapshot => onSnapshotJson(PlanTab.toJson(snapshot)))
 
   /** The proposal watcher body: dedupes per plan job, awaits the settled plan
     * (typed, gate-free) and refreshes the snapshot with the outcome. Fork me:
@@ -240,12 +245,13 @@ object PlanPanel:
   def make(
       session: PlanSession,
       ceilings: BudgetLimits,
-      maxRounds: Int
+      maxRounds: Int,
+      onSnapshotJson: String => UIO[Unit] = _ => ZIO.unit
   ): UIO[PlanPanel] =
-    for state <- session.state
-    yield
-      val initial = derive(state, None)
-      new PlanPanel(
+    for
+      state <- session.state
+      initial = derive(state, None)
+      panel = new PlanPanel(
         session,
         ceilings,
         maxRounds,
@@ -253,7 +259,10 @@ object PlanPanel:
         new AtomicReference[Option[
           (String, Either[PlanPhaseError, PlanProposal])
         ]](None),
-        new AtomicReference[Option[String]](None)
+        new AtomicReference[Option[String]](None),
+        onSnapshotJson
       )
+      _ <- onSnapshotJson(PlanTab.toJson(initial))
+    yield panel
 
 end PlanPanel

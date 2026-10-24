@@ -14,7 +14,10 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
   private val Ansi =
     raw"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\u0007\x1b]*(?:\u0007|\x1b\\)|\x1b[()][0-9A-B]|\x1b[=><]|\x1b7|\x1b8".r
 
-  private final class Session(term: String = "xterm-256color"):
+  private final class Session(
+      term: String = "xterm-256color",
+      planFixture: Boolean = false
+  ):
 
     private val base =
       Files.createTempDirectory(s"rai188-pty-${UUID.randomUUID()}")
@@ -43,6 +46,7 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
     builder.environment().put("TERM", term)
     builder.environment().put("HOME", home.toString)
     builder.environment().put("RAIDER_PROVIDER", "mock")
+    if planFixture then builder.environment().put("RAI208_PLAN_FIXTURE", "1")
     builder.environment().put("RAI188_RESIZE_REQUEST", resizeRequest.toString)
     builder.environment().remove("RAIDER_API_KEY")
     builder.environment().remove("RAIDER_API_KEY_CMD")
@@ -335,6 +339,103 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
             exited,
             transcript.contains("assistant:"),
             !transcript.contains("Exception"),
+            Files.size(evidence) > 0
+          )
+        finally
+          session.saveTranscript()
+          session.close()
+      },
+      test(
+        "RAI-208 TUIX-B3B-01: serialized PlanSession snapshot populates tasks"
+      ) {
+        val session = new Session(planFixture = true)
+        try
+          val ready = session.waitFor("you> ", 120)
+          val honestEmpty = session.waitFor("tasks | no plan started", 10)
+          session.send(":plan prepare the TUI wiring\r")
+          val taskOne = session.waitFor("Inspect the session hub", 30)
+          val taskTwo = session.waitFor("Verify budget events", 30)
+          val transcript = session.transcript
+          val evidence = session.saveTranscript()
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          assertTrue(
+            ready,
+            honestEmpty,
+            taskOne,
+            taskTwo,
+            transcript.contains("tasks | plan ready: PTY wiring plan"),
+            exited,
+            !transcript.contains("snapshot unavailable"),
+            Files.size(evidence) > 0
+          )
+        finally
+          session.saveTranscript()
+          session.close()
+      },
+      test(
+        "RAI-208 TUIX-B3B-02: real ledger budget event updates chat footer"
+      ) {
+        val session = new Session(planFixture = true)
+        try
+          val ready = session.waitFor("you> ", 120)
+          session.send(":plan reserve a model attempt\r")
+          val transition = session.waitFor("budget | reserved=", 30)
+          val actualUnknown = session.waitFor("unpriced attempts=1", 10)
+          val transcript = session.transcript
+          val evidence = session.saveTranscript()
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          assertTrue(
+            ready,
+            transition,
+            actualUnknown,
+            transcript.contains("observed=0 micro-USD"),
+            exited,
+            Files.size(evidence) > 0
+          )
+        finally
+          session.saveTranscript()
+          session.close()
+      },
+      test("RAI-208 TUIX-B3B-03: switching shell tabs preserves plan updates") {
+        val session = new Session(planFixture = true)
+        try
+          val ready = session.waitFor("you> ", 120)
+          session.send(":new chat\r")
+          val chatCreated = session.waitFor("tab created: chat", 10)
+          session.send(":new secondary\r")
+          val created = session.waitFor("secondary", 10)
+          session.send(":switch chat\r")
+          val switchedBack = session.waitFor("focused: chat", 10)
+          session.send(":plan keep the session state\r")
+          session.send(":switch secondary\r")
+          val switchedAway = session.waitFor("focused: secondary", 10)
+          val budgetWhileAway = session.waitFor("unpriced attempts=1", 30)
+          session.send(":switch chat\r")
+          val switchedToChat = session.waitFor("focused: chat", 10)
+          session.send(":aux\r")
+          val planVisible = session.waitFor("Inspect the session hub", 10)
+          val secondTaskVisible = session.waitFor("Verify budget events", 10)
+          session.send(":chat\r")
+          val returnedToChat = session.waitFor("you> ", 10)
+          val transcript = session.transcript
+          val evidence = session.saveTranscript()
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          assertTrue(
+            ready,
+            chatCreated,
+            created,
+            switchedBack,
+            switchedAway,
+            budgetWhileAway,
+            switchedToChat,
+            planVisible,
+            secondTaskVisible,
+            returnedToChat,
+            transcript.contains("tasks | plan ready"),
+            exited,
             Files.size(evidence) > 0
           )
         finally
