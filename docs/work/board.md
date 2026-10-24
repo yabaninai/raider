@@ -1,5 +1,15 @@
 # Raider Execution Board
 
+## 2026-10-24 — RAI-190 slice accepted; RAI-208 lane review-ready
+
+- **Integration and review:** verified root baseline `e83973f` clean on `main`; merged `lane/rai-190` (tip `b423cab`) as `1ef4595`. Coordinator slice review approved. RAI-190 is accepted on the session-switcher/footer/tasks-panel skeleton basis; live plan/budget wiring remains explicitly with RAI-208. The one-hub interpreter-world design landed on the RAI-208 lane; its acceptance requires a real `BudgetChanged` footer and populated plans PTY. RAI-198's remaining work is exhaustive conformance and repair composition.
+- **Statuses/dependencies:** RAI-190 accepted; RAI-208 remains ready (depends on RAI-190 + RAI-188). RAI-191 is ready with dependencies RAI-188 + RAI-190, both accepted. Task Markdown, index, and backlog are synchronized.
+- **Integrated gates:** `make quality-changed` exited 0 (clean-tree minimum `fast`). `make quality-changed QUALITY_EXECUTE=1` exited 0; all 10 fast gates passed, including `sbt-test`, no timeout; manifest `artifacts/quality/20261024-192634-52152-0001/manifest.json`. MJE-03c was green on the first run, so its authorized rerun was not triggered. `make quality-profile PROFILES="static unit contracts runtime repl ci docs"` exited 0; all 8 selected gates passed, including `sbt-test`, `cli-smoke`, and `repl-smoke`, no timeout; manifest `artifacts/quality/20261024-193808-2677-0001/manifest.json`.
+- **Plan validation:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 228 cards. RAI-190/191 status and RAI-191 dependency consistency validated.
+- **RAI-198 scope decisions:** compatibility is limited to ADR-036 v1's declared types and resolvable pointers, with consumer-input typing routed to a future reviewed ADR-036 amendment (potentially motivated by RAI-199); repair repeats only a declared safe operation within the existing bounded-attempt discipline, while RAI-164 stage-evidence composition is routed to RAI-199's launch path.
+- **Post-status docs gate:** `make quality-changed` classified task/board docs as `docs`; `make quality-changed QUALITY_EXECUTE=1` exited 0, `plan-validate` passed, no timeout; manifest `artifacts/quality/20261024-195008-36601-0001/manifest.json`.
+- **Record:** [RAI-190 work record](records/RAI-190.md).
+
 ## 2026-10-24 — RAI-189 accepted (B2); RAI-208 registered (190.b split)
 
 - **RAI-189 integration and status:** `lane/rai-189` tip `e965b86` merged into main. Coordinator review approved; approval/deny/read-only and pending-Unicode-draft PTY cases passed ×3 each, including actual approved-file creation and denied-file absence. RAI-189 is accepted in `docs/tasks/m2-p2.md` and `docs/tasks/backlog.json`.

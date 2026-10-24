@@ -15,7 +15,8 @@ import zio.{UIO, ZIO}
   */
 final class ChatLayoutSink(
     renderBridge: java.util.function.Consumer[String],
-    scriptedDeltaDelay: zio.Duration = zio.Duration.fromMillis(0)
+    scriptedDeltaDelay: zio.Duration = zio.Duration.fromMillis(0),
+    model: String = "unknown"
 ) extends TextRenderSink
     with ToolApprovalHook:
   private val renderer = new ChatAnsiRenderer
@@ -26,6 +27,28 @@ final class ChatLayoutSink(
   private var cancelled = false
   private var deltaCount = 0
   private var turnCount = 0
+  private var streamState = "idle"
+  private var taskSnapshot = PlanTab.Snapshot.idle
+  private var taskCursor = 0
+  private var tasksVisible = false
+
+  /** Replace the display snapshot from the existing ADR-028 plan panel. */
+  def updateTasks(snapshot: PlanTab.Snapshot): Unit = synchronized:
+    taskSnapshot = snapshot
+    taskCursor =
+      taskCursor.max(0).min(snapshot.proposal.fold(0)(_.steps.size - 1).max(0))
+    if tasksVisible then draw(streamState)
+
+  def showTasks(): Unit = synchronized:
+    tasksVisible = true
+    auxiliary = false
+    draw(streamState)
+
+  def moveTask(delta: Int): Unit = synchronized:
+    val count = taskSnapshot.proposal.fold(0)(_.steps.size)
+    if count > 0 then taskCursor = (taskCursor + delta).max(0).min(count - 1)
+    if tasksVisible then draw(streamState)
+
   private var approvalSeq = 0L
 
   private var pendingApproval
@@ -35,22 +58,27 @@ final class ChatLayoutSink(
     auxiliary = false
     cancelled = false
     turnCount += 1
+    streamState = "streaming"
     messages = (messages :+ ChatLayout.Message(ChatLayout.Role.User, text))
       .takeRight(ChatLayout.HistoryLimit)
     draw("streaming")
 
   def beginAssistant(): Unit = synchronized:
+    streamState = "streaming"
     deltaCount = 0
     messages = messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, "")
     draw("streaming")
 
   def completeAssistant(): Unit = synchronized:
-    if !cancelled then draw("ready")
+    if !cancelled then
+      streamState = "idle"
+      draw("ready")
 
   def finishAssistant(): Unit = completeAssistant()
 
   def cancelAssistant(): Unit = synchronized:
     cancelled = true
+    streamState = "cancelled"
     draw("cancelled | partial response retained")
 
   def showAux(): Unit = synchronized:
@@ -59,8 +87,9 @@ final class ChatLayoutSink(
 
   def showChat(): Unit = synchronized:
     auxiliary = false
+    tasksVisible = false
     scrollOffset = 0
-    draw("ready")
+    draw(streamState)
 
   def scrollUp(): Unit = synchronized:
     scrollOffset = (scrollOffset + 1).min(ChatLayout.HistoryLimit)
@@ -85,6 +114,7 @@ final class ChatLayoutSink(
           else
             messages =
               messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, text)
+          streamState = "streaming"
           draw(s"streaming turn $turnCount chunk $deltaCount")
     }
 
@@ -161,7 +191,8 @@ final class ChatLayoutSink(
 
   private def draw(status: String): Unit =
     val auxiliaryLines =
-      if auxiliary then
+      if tasksVisible then Some(taskLines)
+      else if auxiliary then
         Some(Vector("Auxiliary surface", "Session status: ready"))
       else None
     val frame = ChatLayout.Frame(
@@ -173,12 +204,25 @@ final class ChatLayoutSink(
         .getOrElse(30),
       messages = messages,
       tabs = tabs,
-      status = s"$status | :aux :chat :help :quit",
+      status =
+        s"model $model | budget unknown | stream $streamState | $status | :aux :chat :help :quit",
       auxiliary = auxiliaryLines,
       scrollOffset = scrollOffset
     )
     val output = renderer.draw(frame).mkString
     if output.nonEmpty then renderBridge.accept(output)
+
+  private def taskLines: Vector[String] =
+    val proposal = taskSnapshot.proposal
+    val lines = Vector(s"Tasks / todo — ${taskSnapshot.phase.name}") ++
+      proposal.fold(Vector("No plan tasks available")) { plan =>
+        Vector(s"${plan.title}") ++ plan.steps.zipWithIndex.map {
+          (step, index) =>
+            val marker = if index == taskCursor then ">" else " "
+            f"$marker ${index + 1}%2d. $step"
+        }
+      }
+    lines :+ "Use :task-up / :task-down to navigate; :chat returns"
 
 end ChatLayoutSink
 

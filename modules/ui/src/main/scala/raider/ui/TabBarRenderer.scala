@@ -26,8 +26,9 @@ object TabBarRenderer:
   val helpLines: Vector[String] = Vector(
     "commands:",
     "  :tabs               show the tab bar",
-    "  :new <label>        new tab (synthetic job/root binding until RAI-062)",
+    "  :sessions           list open chat sessions (use :switch to focus)",
     "  :switch <n|label>   focus a tab by 1-based number or label",
+    "  :new <label>        new tab (synthetic job/root binding until RAI-062)",
     "  :next               focus the next tab (creation order, wrapping)",
     "  :prev               focus the previous tab",
     "  :rename <label>     rename the focused tab",
@@ -41,4 +42,4 @@ object TabBarRenderer:
 
   /** The one-line hint bar under every tab-bar render (palette/hint bar). */
   val hintBar: String =
-    "tabs: :tabs :new <label> :switch <n|label> :next :prev :rename <label> :close :plugins :state <scope> :aux :help :quit"
+    "tabs: :tabs :sessions :switch <n|label> :new <label> :next :prev :rename <label> :close :plugins :state <scope> :aux :help :quit"

@@ -10,8 +10,9 @@ object CommandRouter:
     */
   val commands: Vector[String] = Vector(
     ":tabs",
-    ":new",
+    ":sessions",
     ":switch",
+    ":new",
     ":next",
     ":prev",
     ":rename",
@@ -58,11 +59,11 @@ object CommandRouter:
       val name = split(0)
       val rest = if split.length > 1 then split(1).trim else ""
       name match
-        case ":tabs" => Right(ShellCommand.Tabs)
-        case ":next" => Right(ShellCommand.Next)
-        case ":prev" => Right(ShellCommand.Prev)
-        case ":help" => Right(ShellCommand.Help)
-        case ":quit" => Right(ShellCommand.Quit)
+        case ":tabs" | ":sessions" => Right(ShellCommand.Tabs)
+        case ":next"               => Right(ShellCommand.Next)
+        case ":prev"               => Right(ShellCommand.Prev)
+        case ":help"               => Right(ShellCommand.Help)
+        case ":quit"               => Right(ShellCommand.Quit)
         case ":new" =>
           requireArg(name, rest).map(ShellCommand.New(_))
         case ":rename" =>
