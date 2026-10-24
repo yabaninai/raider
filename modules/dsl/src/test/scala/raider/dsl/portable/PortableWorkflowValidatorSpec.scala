@@ -149,6 +149,71 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
         }
         assertTrue(files.size == 10, lowered.forall(_.isRight))
       },
+      test(
+        "all ten positive fixtures execute through scripted native programs"
+      ) {
+        val listing = Files.list(contract("valid"))
+        val files =
+          try listing.iterator().asScala.toList.sortBy(_.getFileName.toString)
+          finally listing.close()
+        val calls = new AtomicInteger(0)
+        val scripted =
+          Program.fromFunction[Json, Json]("portable-scripted") { input =>
+            Task(ZIO.succeed { calls.incrementAndGet(); input })
+          }
+        val checkIds = files.flatMap { path =>
+          Files.readString(path).fromJson[Json].toOption.toList.flatMap {
+            case obj: Json.Obj =>
+              obj.fields
+                .collectFirst { case ("steps", Json.Arr(steps)) =>
+                  steps.toList
+                }
+                .getOrElse(Nil)
+                .flatMap {
+                  case step: Json.Obj =>
+                    for
+                      id <- step.fields.collectFirst {
+                        case ("checkId", Json.Str(v)) => v
+                      }
+                      revision <- step.fields.collectFirst {
+                        case ("registrySnapshot", Json.Str(v)) => v
+                      }
+                    yield (id -> revision) -> scripted
+                  case _ => Nil
+                }
+            case _ => Nil
+          }
+        }.toMap
+        val registry = PortableProgramRegistry(
+          agents =
+            List("worker", "extractor", "scout").map(_ -> scripted).toMap,
+          checks = checkIds,
+          safeOperations = Map("safe-edit-v1" -> scripted),
+          checkpoints = Map("review-before-write" -> scripted)
+        )
+        val input = Json.Obj(
+          "inputs" -> Json.Obj(
+            "request" -> Json.Str("Run the deterministic portable fixture"),
+            "candidate" -> Json.Str("candidate"),
+            "items" -> Json.Arr(Json.Str("one"), Json.Str("two"))
+          )
+        )
+        val lowered = files.map { path =>
+          val document = Files.readString(path).fromJson[Json].toOption.get
+          PortableWorkflowLowerer.lower(document, registry)
+        }
+        val executions = lowered.flatMap(_.toOption).map { workflow =>
+          Task.zio(workflow.program(input)).either
+        }
+        ZIO.foreach(executions)(identity).map { results =>
+          assertTrue(
+            files.size == 10,
+            lowered.forall(_.isRight),
+            results.forall(_.isRight),
+            calls.get() >= files.size
+          )
+        }
+      },
       test("lowering emits validated root ceilings as launch metadata") {
         val document = Files
           .readString(contract("valid/root-limits.json"))
@@ -322,6 +387,30 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
             .exists(d => d.documentPath.endsWith("/enum")),
           diagnostic(PortableWorkflowValidator.validate(itemBoundOnString))
             .exists(d => d.documentPath == "/schemas/outputs/verdict")
+        )
+      },
+      test(
+        "all declared pointer sites resolve through frozen input/output schemas"
+      ) {
+        val valid = Files.readString(contract("valid/conditional.json"))
+        val dangling = valid.replace(
+          "#/inputs/request/enabled",
+          "#/inputs/request/missing"
+        )
+        val unknownOutput = valid.replace(
+          "\"outputSchema\": \"text\"",
+          "\"outputSchema\": \"unknown-output\""
+        )
+        assertTrue(
+          diagnostic(PortableWorkflowValidator.validate(dangling)).exists(d =>
+            d.code == "missing-reference" && d.documentPath.endsWith("/value")
+          ),
+          diagnostic(PortableWorkflowValidator.validate(unknownOutput)).exists(
+            d =>
+              d.code == "missing-reference" && d.documentPath.endsWith(
+                "/outputSchema"
+              )
+          )
         )
       },
       test("validator and lowerer construction invoke no configured program") {

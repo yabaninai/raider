@@ -126,6 +126,7 @@ object PortableWorkflowValidator:
             .flatMap(_ => validateSchemaBounds(root))
             .flatMap(_ => validateSteps(root))
             .flatMap(_ => validateShape(root))
+            .flatMap(_ => validateReferences(root))
             .map(_ => json)
       case _ =>
         Left(
@@ -638,6 +639,158 @@ object PortableWorkflowValidator:
         .flatMap(_ => steps)
         .flatMap(_ => outputs)
         .flatMap(_ => metadata)
+    }
+
+  private def validateReferences(
+      root: Json.Obj
+  ): Either[PortableDiagnostic, Unit] =
+    val steps = arr(root, "steps").getOrElse(Nil).flatMap(objValue)
+    val ids = steps.flatMap(step => str(step, "id").map(_ -> step)).toMap
+    val outputSchemas = obj(root, "schemas").flatMap(obj(_, "outputs"))
+    def schemaNamed(name: String): Option[Json] =
+      outputSchemas.flatMap(field(_, name))
+    def sourceSchema(pointer: String): Option[Json] =
+      val tokens = pointerTokens(pointer)
+      tokens match
+        case "inputs" :: name :: rest =>
+          val schema = obj(root, "schemas")
+            .flatMap(obj(_, "inputs"))
+            .flatMap(field(_, name))
+          descendSchema(schema, rest)
+        case "steps" :: id :: "output" :: rest =>
+          ids
+            .get(id)
+            .flatMap(str(_, "outputSchema"))
+            .flatMap(schemaNamed)
+            .flatMap(schema => descendSchema(Some(schema), rest))
+        case "item" :: rest =>
+          val map = steps.find(s => str(s, "kind").contains("map"))
+          val itemSchema = map
+            .flatMap(str(_, "items"))
+            .flatMap(sourceSchema)
+            .flatMap { arraySchema =>
+              objValue(arraySchema).flatMap(field(_, "items"))
+            }
+          descendSchema(itemSchema, rest)
+        case "index" :: Nil => Some(Json.Obj("type" -> Json.Str("integer")))
+        case _              => None
+    def checkReference(
+        pointer: String,
+        path: String,
+        step: Option[String]
+    ): Either[PortableDiagnostic, Unit] =
+      val inMapTemplate = step.exists(id =>
+        steps.exists(s =>
+          str(s, "kind").contains("map") && str(s, "templateStep").contains(id)
+        )
+      )
+      val valid =
+        if pointer == "#/index" then inMapTemplate
+        else
+          sourceSchema(pointer).nonEmpty &&
+          (!pointer.startsWith("#/item") || inMapTemplate)
+      if valid then Right(())
+      else
+        Left(
+          diag(
+            "missing-reference",
+            path,
+            step,
+            Some(pointer),
+            "Resolve the pointer to a declared input or step output in the frozen workflow document and keep map-local pointers inside their template."
+          )
+        )
+    val invalidSchemaReference = steps.zipWithIndex.collectFirst {
+      case (step, index)
+          if str(step, "outputSchema")
+            .exists(name => schemaNamed(name).isEmpty) =>
+        diag(
+          "missing-reference",
+          s"/steps/$index/outputSchema",
+          str(step, "id"),
+          str(step, "outputSchema"),
+          "Declare the referenced output schema in schemas.outputs."
+        )
+    }
+    invalidSchemaReference match
+      case Some(error) => Left(error)
+      case None =>
+        val stepRefs = steps.zipWithIndex.flatMap { case (step, index) =>
+          val id = str(step, "id")
+          val direct = List("input", "items").flatMap { key =>
+            str(step, key).map(ref => (ref, s"/steps/$index/$key", id))
+          }
+          val predicates = field(step, "when").toList.flatMap { predicate =>
+            def collect(
+                value: Json,
+                path: String
+            ): List[(String, String, Option[String])] = value match
+              case obj: Json.Obj =>
+                obj.fields.toList.flatMap { case (key, child) =>
+                  child match
+                    case Json.Str(ref) if ref.startsWith("#/") =>
+                      List((ref, s"$path/${escape(key)}", id))
+                    case _ => collect(child, s"$path/${escape(key)}")
+                }
+              case Json.Arr(values) =>
+                values.toList.zipWithIndex.flatMap { case (child, childIndex) =>
+                  collect(child, s"$path/$childIndex")
+                }
+              case _ => Nil
+            collect(predicate, s"/steps/$index/when")
+          }
+          direct ++ predicates
+        }
+        val outputRefs =
+          val outputs = obj(root, "outputs")
+          outputs.toList.flatMap { out =>
+            val bindings = obj(out, "bindings").toList.flatMap(_.fields.map {
+              case (name, Json.Str(ref)) =>
+                (ref, s"/outputs/bindings/${escape(name)}", None)
+              case _ => ("", "/outputs/bindings", None)
+            })
+            val verdict = obj(out, "verdict")
+              .flatMap(str(_, "from"))
+              .toList
+              .map(ref => (ref, "/outputs/verdict/from", None))
+            val artifacts =
+              arr(out, "artifacts").getOrElse(Nil).zipWithIndex.flatMap {
+                case (item, index) =>
+                  objValue(item)
+                    .flatMap(str(_, "from"))
+                    .map(ref => (ref, s"/outputs/artifacts/$index/from", None))
+              }
+            bindings ++ verdict ++ artifacts
+          }
+        (stepRefs ++ outputRefs).foldLeft[Either[PortableDiagnostic, Unit]](
+          Right(())
+        ) { case (result, (ref, path, id)) =>
+          result.flatMap(_ => checkReference(ref, path, id))
+        }
+
+  private def pointerTokens(pointer: String): List[String] =
+    pointer
+      .stripPrefix("#/")
+      .split("/", -1)
+      .toList
+      .map(_.replace("~1", "/").replace("~0", "~"))
+
+  private def descendSchema(
+      schema: Option[Json],
+      tokens: List[String]
+  ): Option[Json] =
+    tokens.foldLeft(schema) { (current, token) =>
+      current.flatMap { value =>
+        objValue(value).flatMap { node =>
+          str(node, "type") match
+            case Some("object") =>
+              obj(node, "properties").flatMap(field(_, token))
+            case Some("array") =>
+              if token.toIntOption.exists(_ >= 0) then field(node, "items")
+              else None
+            case _ => None
+        }
+      }
     }
 
   private def validateSchemas(
