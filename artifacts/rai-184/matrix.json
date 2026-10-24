@@ -1,74 +1,71 @@
 {
   "card": "RAI-184",
-  "baseline": "a09773721a39ee056e702c1bf8705c5bc2bb7717",
-  "execution": "attempted-stopped-uncertain-transport",
-  "providerLeg": "owner-yabanin-gateway-serving-zai-coding-plan",
+  "baseline": "239089177198ee24735c65e0ef7ff6e6414a4f25",
+  "execution": "stopped-on-auth-failure",
+  "provider": "OpenAI-compatible Yabanin gateway",
+  "endpointHost": "demo.yabanin.ai",
+  "basePath": "/gw/v1",
   "authorizedCapUsd": 5.0,
   "reservationUsdPerResponse": 0.1,
-  "maxRequests": 100,
-  "totalSpendUsd": null,
-  "reservedExposureUsd": 0.1,
-  "requestCount": 1,
-  "providerConfiguration": {
-    "configRead": "allowed",
-    "providerIds": ["llama.cpp", "yabanin", "yabanin-stand"],
-    "selectedCredentialEntry": "provider.yabanin-stand.options.apiKey (inline; gateway key)",
-    "apiKeyTail": "122",
-    "credentialValuePrinted": false,
-    "endpointHost": "yabanin.ai",
-    "baseUrl": "https://yabanin.ai/gw/v1"
-  },
+  "maxInferenceRequests": 100,
+  "inferenceHttpResponses": 1,
+  "clientAttempts": 4,
+  "unauthenticatedProbeResponses": [405, 401],
+  "tlsFailureHttpDispatched": false,
+  "actualProviderSpendUsd": 0.0,
+  "reservedExposureUsd": 0.0,
+  "remainingCapUsd": 5.0,
   "models": {
     "massScenarios": "glm-5.3-flash",
     "toolRound": "glm-5.3"
   },
+  "credentialReference": "RAIDER_API_KEY from owner-designated .env.yabanin; value not recorded",
   "scenarios": [
     {
       "scenario": "direct-chat",
       "model": "glm-5.3-flash",
-      "status": "transport_error_unknown_charge_stop",
-      "latencyMs": 268,
+      "status": "failed-auth",
+      "httpStatus": 401,
+      "latencyMs": 713,
       "usage": null,
-      "actualCostUsd": null,
-      "reservedCostUsd": 0.1,
-      "error": "transport_error: exception_type=URLError; HTTP status unavailable; no retry; charge/usage unknown."
+      "costUsd": 0.0,
+      "reservationUsd": 0.1,
+      "reservationDisposition": "released as known provider-auth refusal",
+      "error": "HTTP 401 Unauthorized",
+      "responseBody": "Not retained; no body was emitted to logs"
     },
     {
       "scenario": "streaming",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_stopped_after_uncertain_first_attempt",
-      "latencyMs": null,
-      "usage": null,
-      "actualCostUsd": 0.0,
-      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
+      "status": "not-dispatched",
+      "reason": "Stopped after direct-chat returned HTTP 401; no credential/account switch or retry"
     },
     {
       "scenario": "complete-tool-round",
       "model": "glm-5.3",
-      "status": "not_attempted_stopped_after_uncertain_first_attempt",
-      "latencyMs": null,
-      "usage": null,
-      "actualCostUsd": 0.0,
-      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
+      "status": "not-dispatched",
+      "reason": "Stopped after direct-chat returned HTTP 401; tool definition, call, and result were not exercised"
     },
     {
       "scenario": "cancel-mid-stream",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_stopped_after_uncertain_first_attempt",
-      "latencyMs": null,
-      "usage": null,
-      "actualCostUsd": 0.0,
-      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
+      "status": "not-dispatched",
+      "reason": "Stopped after direct-chat returned HTTP 401; stream cancellation was not exercised"
     },
     {
       "scenario": "usage-and-cost-observation",
       "model": "glm-5.3-flash",
-      "status": "not_attempted_stopped_after_uncertain_first_attempt",
-      "latencyMs": null,
-      "usage": null,
-      "actualCostUsd": 0.0,
-      "error": "Not dispatched: prior request outcome/charge uncertain; hard stop."
+      "status": "not-dispatched",
+      "reason": "Stopped after direct-chat returned HTTP 401; provider usage and cost telemetry were unavailable"
     }
   ],
-  "notes": "The leg runs through the OWNER'S GATEWAY (yabanin.ai) serving the Z.AI Coding Plan. The one authorized bounded request produced a local urllib URLError before any HTTP status/usage was available. Per uncertainty policy, the $0.10 reservation is retained and all remaining scenarios were stopped. Actual charge is unknown, so $0.10 is conservative reserved exposure, not a claim of provider spend."
+  "preflight": {
+    "probeCommand": "curl -sS -X POST -H 'Content-Type: application/json' --data '{}' -o /dev/null -w '%{http_code}' --max-time 8 <base>/chat/completions",
+    "probeHttpStatus": 401,
+    "initialDefaultGetHttpStatus": 405,
+    "baseHostSource": "demo.yabanin.ai URL selected from owner-designated .env.yabanin; OpenCode config fallback agrees",
+    "credentialValuePrinted": false,
+    "tlsTrust": "Python default CA verification failed before HTTP dispatch; certifi trust bundle used for the one authenticated inference request; verification remained enabled"
+  },
+  "accountingNotes": "The unauthenticated health probes and pre-HTTP TLS failure were not paid inference requests. The one authenticated inference response was HTTP 401, treated as a known zero-charge provider-auth refusal with its $0.10 reservation released. No gateway cost endpoint was queried. No additional inference requests were sent."
 }
