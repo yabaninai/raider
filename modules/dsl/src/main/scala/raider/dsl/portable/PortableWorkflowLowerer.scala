@@ -1,7 +1,8 @@
 package raider.dsl.portable
 
-import raider.core.{Program, Task}
+import raider.core.{Program, RaiderError, Task}
 import raider.dsl.composition.{all, batch}
+import zio.Duration
 import zio.json.*
 import zio.json.ast.Json
 
@@ -39,6 +40,14 @@ object PortableWorkflowLowerer:
   ): Either[PortableDiagnostic, PortableLoweredWorkflow] =
     PortableWorkflowValidator.validate(document.toJson).flatMap { validated =>
       val root = validated.asInstanceOf[Json.Obj]
+      val rootLimits = field(root, "limits").flatMap(objectValue)
+      def rootLimit(name: String, default: Int): Int =
+        rootLimits
+          .flatMap(field(_, name))
+          .collect { case Json.Num(value) =>
+            value.intValue
+          }
+          .getOrElse(default)
       val steps = field(root, "steps")
         .collect { case Json.Arr(values) => values.toList }
         .getOrElse(Nil)
@@ -249,9 +258,23 @@ object PortableWorkflowLowerer:
                   val parallelism = field(step, "parallelism")
                     .collect { case Json.Num(value) => value.intValue }
                     .getOrElse(1)
-                  batch(items, parallelism)(item =>
-                    execute(node.children.head, item)
-                  ).map(values => Json.Arr(values*))
+                  val maxItems = field(step, "maxItems")
+                    .collect { case Json.Num(value) => value.intValue }
+                    .getOrElse(1)
+                  if items.size > maxItems || items.size > rootLimit(
+                      "children",
+                      0
+                    )
+                  then
+                    Task.fail(
+                      RaiderError.LocalBudgetExceeded(
+                        "portable map exceeds its declared maxItems or root children limit"
+                      )
+                    )
+                  else
+                    batch(items, parallelism.min(rootLimit("parallelism", 1)))(
+                      item => execute(node.children.head, item)
+                    ).map(values => Json.Arr(values*))
                 case "join" =>
                   val joined = node.children match
                     case first :: second :: Nil =>
@@ -286,7 +309,18 @@ object PortableWorkflowLowerer:
                 case _ => Task.succeed(Json.Null)
             PortableLoweredWorkflow(
               Program.fromFunction[Json, Json]("portable-workflow") { input =>
-                execute(structure, input)
+                Task(
+                  Task
+                    .zio(execute(structure, input))
+                    .timeoutFail(
+                      RaiderError.DeadlineExceeded(
+                        "portable workflow exceeded its declared deadline"
+                      )
+                    )(
+                      Duration
+                        .fromMillis(rootLimit("deadlineMs", 86400000).toLong)
+                    )
+                )
               },
               structure
             )

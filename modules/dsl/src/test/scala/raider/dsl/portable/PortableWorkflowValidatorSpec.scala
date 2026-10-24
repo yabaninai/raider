@@ -1,8 +1,9 @@
 package raider.dsl.portable
 
 import java.nio.file.{Files, Path, Paths}
+import java.util.concurrent.atomic.AtomicInteger
 
-import raider.core.{Program, Task}
+import raider.core.{Program, RaiderError, Task}
 import zio.*
 import zio.json.*
 import zio.json.ast.Json
@@ -228,6 +229,132 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
             .nonEmpty,
           diagnostic(badJson).exists(_.code == "invalid-json")
         )
+      },
+      test(
+        "every declared field has its frozen JSON type and closed object shape"
+      ) {
+        val valid = Files.readString(contract("valid/agent.json"))
+        val wrongBoolean = valid.replace(
+          "\"structuredOutput\": true",
+          "\"structuredOutput\": \"true\""
+        )
+        val wrongLimit = valid.replace(
+          "\"attempts\": 3",
+          "\"attempts\": \"3\""
+        )
+        val extraStepField = valid.replace(
+          "\"structuredOutput\": true",
+          "\"structuredOutput\": true, \"surprise\": false"
+        )
+        assertTrue(
+          diagnostic(PortableWorkflowValidator.validate(wrongBoolean))
+            .exists(d =>
+              d.code == "invalid-type" && d.documentPath.endsWith(
+                "/structuredOutput"
+              )
+            ),
+          diagnostic(PortableWorkflowValidator.validate(wrongLimit))
+            .exists(d =>
+              d.code == "invalid-type" && d.documentPath == "/limits/attempts"
+            ),
+          diagnostic(PortableWorkflowValidator.validate(extraStepField))
+            .exists(d =>
+              d.code == "unsupported-construct" && d.documentPath.endsWith(
+                "/surprise"
+              )
+            )
+        )
+      },
+      test("validator and lowerer construction invoke no configured program") {
+        val calls = new AtomicInteger(0)
+        val counted =
+          Program.fromFunction[Json, Json]("dispatch-spy") { input =>
+            Task(ZIO.succeed { calls.incrementAndGet(); input })
+          }
+        val document = Files
+          .readString(contract("valid/agent.json"))
+          .fromJson[Json]
+          .toOption
+          .get
+        val registry = PortableProgramRegistry(
+          agents = Map("extractor" -> counted),
+          checks = Map.empty
+        )
+        val validation = PortableWorkflowValidator.validate(document.toJson)
+        val lowering = PortableWorkflowLowerer.lower(document, registry)
+        assertTrue(validation.isRight, lowering.isRight, calls.get() == 0)
+      },
+      test(
+        "a lowered run preserves typed step failure and does not run later sequence steps"
+      ) {
+        val sequenceText = Files
+          .readString(contract("valid/sequence.json"))
+          .replace(
+            "\"steps\": [\"draft\", \"verify\"]",
+            "\"steps\": [\"draft\", \"verify\", \"after\"]"
+          )
+          .replace(
+            "\"outputSchema\": \"text\" }],",
+            "\"outputSchema\": \"text\" }, {\"id\":\"after\",\"kind\":\"agent\",\"profile\":\"worker\",\"toolset\":\"read-only\",\"input\":\"#/inputs/request\",\"outputSchema\":\"text\",\"structuredOutput\":true}],"
+          )
+        val sequence = sequenceText.fromJson[Json].toOption.get
+        val agents = new AtomicInteger(0)
+        val checks = new AtomicInteger(0)
+        val agent =
+          Program.fromFunction[Json, Json]("scripted-agent") { input =>
+            Task(ZIO.succeed { agents.incrementAndGet(); input })
+          }
+        val check =
+          Program.fromFunction[Json, Json]("scripted-failing-check") { _ =>
+            Task(
+              ZIO
+                .succeed(checks.incrementAndGet())
+                .flatMap(_ =>
+                  ZIO.fail(RaiderError.ToolFailed("scripted check failure"))
+                )
+            )
+          }
+        val registry = PortableProgramRegistry(
+          agents = Map("worker" -> agent),
+          checks = Map(
+            (
+              "format-check",
+              "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            ) -> check
+          )
+        )
+        val lowered =
+          PortableWorkflowLowerer.lower(sequence, registry).toOption.get
+        for result <- Task.zio(lowered.program(Json.Null)).either
+        yield assertTrue(
+          result.swap.toOption.exists(_.isInstanceOf[RaiderError.ToolFailed]),
+          agents.get() == 1,
+          checks.get() == 1
+        )
+      },
+      test("external cancellation of a lowered run remains interruption") {
+        val document = Files
+          .readString(contract("valid/agent.json"))
+          .fromJson[Json]
+          .toOption
+          .get
+        for
+          started <- Promise.make[Nothing, Unit]
+          blocked = Program.fromFunction[Json, Json]("scripted-blocked") { _ =>
+            Task(started.succeed(()).unit *> ZIO.never)
+          }
+          registry = PortableProgramRegistry(
+            agents = Map("extractor" -> blocked),
+            checks = Map.empty
+          )
+          lowered = PortableWorkflowLowerer
+            .lower(document, registry)
+            .toOption
+            .get
+          fiber <- Task.zio(lowered.program(Json.Null)).fork
+          _ <- started.await
+          exit <- fiber.interrupt
+        yield assertTrue(exit.isInterrupted)
       }
     )
 

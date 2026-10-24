@@ -522,7 +522,7 @@ object PortableWorkflowValidator:
             bad.toLeft(())
 
   private def validateShape(root: Json.Obj): Either[PortableDiagnostic, Unit] =
-    val allowed = Set(
+    val rootFields = Set(
       "$schema",
       "$id",
       "format",
@@ -533,33 +533,717 @@ object PortableWorkflowValidator:
       "outputs",
       "metadata"
     )
-    val unknown = root.fields.find((key, _) => !allowed(key))
-    unknown match
+    val required =
+      List("format", "version", "limits", "schemas", "steps", "outputs")
+    checkObject(root, "", rootFields, required).flatMap { _ =>
+      def checkStringField(
+          obj: Json.Obj,
+          key: String,
+          path: String
+      ): Either[PortableDiagnostic, Unit] =
+        field(obj, key) match
+          case Some(Json.Str(_)) => Right(())
+          case Some(_)           => invalidType(s"$path/$key", "string")
+          case None              => Right(())
+      def checkIntegerField(
+          obj: Json.Obj,
+          key: String,
+          path: String,
+          min: Long,
+          max: Long
+      ): Either[PortableDiagnostic, Unit] =
+        field(obj, key) match
+          case Some(Json.Num(n))
+              if n.stripTrailingZeros.scale() <= 0 && n.compareTo(
+                java.math.BigDecimal.valueOf(min)
+              ) >= 0 && n.compareTo(java.math.BigDecimal.valueOf(max)) <= 0 =>
+            Right(())
+          case Some(_) => invalidType(s"$path/$key", s"integer in [$min,$max]")
+          case None    => Right(())
+      val identity =
+        if field(root, "$schema").exists(
+            _ != Json.Str("https://json-schema.org/draft/2020-12/schema")
+          )
+        then invalidValue("/$schema", "pinned JSON Schema 2020-12 identifier")
+        else if field(root, "$id").exists(
+            _ != Json.Str(
+              "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json"
+            )
+          )
+        then invalidValue("/$id", "pinned workflow schema identifier")
+        else if !str(root, "format").contains(Format) then
+          invalidValue("/format", Format)
+        else if !str(root, "version").exists(
+            _.matches("(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)")
+          )
+        then invalidType("/version", "major.minor version string")
+        else Right(())
+      val limits = field(root, "limits") match
+        case Some(obj: Json.Obj) =>
+          checkObject(
+            obj,
+            "/limits",
+            Set("deadlineMs", "attempts", "parallelism", "children", "tokens"),
+            List("deadlineMs", "attempts", "parallelism", "children", "tokens")
+          ).flatMap { _ =>
+            checkIntegerField(obj, "deadlineMs", "/limits", 1, 86400000)
+              .flatMap(_ =>
+                checkIntegerField(obj, "attempts", "/limits", 1, 100)
+              )
+              .flatMap(_ =>
+                checkIntegerField(obj, "parallelism", "/limits", 1, 32)
+              )
+              .flatMap(_ =>
+                checkIntegerField(obj, "children", "/limits", 0, 256)
+              )
+              .flatMap(_ =>
+                checkIntegerField(obj, "tokens", "/limits", 1, 10000000)
+              )
+          }
+        case Some(_) => invalidType("/limits", "object")
+        case None    => Right(())
+      val schemas = field(root, "schemas") match
+        case Some(obj: Json.Obj) => validateSchemas(obj)
+        case Some(_)             => invalidType("/schemas", "object")
+        case None                => Right(())
+      val steps = field(root, "steps") match
+        case Some(Json.Arr(values)) if values.nonEmpty && values.size <= 128 =>
+          values.zipWithIndex.foldLeft[Either[PortableDiagnostic, Unit]](
+            Right(())
+          ) { case (acc, (step, i)) => acc.flatMap(_ => validateStep(step, i)) }
+        case Some(Json.Arr(_)) =>
+          invalidValue("/steps", "between 1 and 128 step objects")
+        case Some(_) => invalidType("/steps", "array")
+        case None    => Right(())
+      val outputs = field(root, "outputs") match
+        case Some(obj: Json.Obj) => validateOutputs(obj)
+        case Some(_)             => invalidType("/outputs", "object")
+        case None                => Right(())
+      val metadata = field(root, "metadata") match
+        case None => Right(())
+        case Some(obj: Json.Obj)
+            if obj.fields.size <= 16 && obj.fields.forall((_, v) =>
+              v match { case Json.Str(s) => s.length <= 256; case _ => false }
+            ) =>
+          Right(())
+        case Some(_: Json.Obj) =>
+          invalidValue(
+            "/metadata",
+            "at most 16 string values of at most 256 characters"
+          )
+        case Some(_) => invalidType("/metadata", "object")
+      identity
+        .flatMap(_ => limits)
+        .flatMap(_ => schemas)
+        .flatMap(_ => steps)
+        .flatMap(_ => outputs)
+        .flatMap(_ => metadata)
+    }
+
+  private def validateSchemas(
+      schemas: Json.Obj
+  ): Either[PortableDiagnostic, Unit] =
+    checkObject(
+      schemas,
+      "/schemas",
+      Set("inputs", "outputs"),
+      List("inputs", "outputs")
+    ).flatMap { _ =>
+      List("inputs", "outputs").foldLeft[Either[PortableDiagnostic, Unit]](
+        Right(())
+      ) { (acc, group) =>
+        acc.flatMap { _ =>
+          field(schemas, group) match
+            case Some(obj: Json.Obj)
+                if obj.fields.nonEmpty && obj.fields.size <= 64 =>
+              obj.fields.foldLeft[Either[PortableDiagnostic, Unit]](Right(())) {
+                case (inner, (name, schema)) =>
+                  inner.flatMap(_ =>
+                    if identifier.matches(name) then
+                      validateSchemaNode(
+                        schema,
+                        s"/schemas/$group/${escape(name)}",
+                        1
+                      )
+                    else
+                      invalidValue(
+                        s"/schemas/$group/${escape(name)}",
+                        "schema identifier"
+                      )
+                  )
+              }
+            case Some(_: Json.Obj) =>
+              invalidValue(s"/schemas/$group", "between 1 and 64 named schemas")
+            case Some(_) => invalidType(s"/schemas/$group", "object")
+            case None    => Right(())
+        }
+      }
+    }
+
+  private val schemaTypes =
+    Set("object", "array", "string", "boolean", "integer", "number", "null")
+
+  private val schemaFields = Set(
+    "type",
+    "properties",
+    "required",
+    "items",
+    "additionalProperties",
+    "enum",
+    "minLength",
+    "maxLength",
+    "minItems",
+    "maxItems",
+    "minimum",
+    "maximum"
+  )
+
+  private def validateSchemaNode(
+      value: Json,
+      path: String,
+      depth: Int
+  ): Either[PortableDiagnostic, Unit] = value match
+    case obj: Json.Obj =>
+      checkObject(obj, path, schemaFields, List("type")).flatMap { _ =>
+        val typ = str(obj, "type")
+        if !typ.exists(schemaTypes) then
+          invalidValue(s"$path/type", "one of the frozen JSON value types")
+        else if arr(obj, "enum").exists(xs =>
+            xs.isEmpty || xs.size > MaximumEnumValues
+          )
+        then invalidValue(s"$path/enum", "between 1 and 64 values")
+        else if field(obj, "additionalProperties").exists(_ != Json.Bool(false))
+        then invalidValue(s"$path/additionalProperties", "false")
+        else if field(obj, "required").exists {
+            case Json.Arr(xs) =>
+              xs.size > 64 || xs.exists {
+                case Json.Str(s) => s.length > 128; case _ => true
+              } || xs.distinct.size != xs.size
+            case _ => true
+          }
+        then
+          invalidValue(
+            s"$path/required",
+            "unique array of at most 64 strings (128 characters each)"
+          )
+        else if field(obj, "properties").exists {
+            case p: Json.Obj => p.fields.size > 64; case _ => true
+          }
+        then
+          invalidValue(s"$path/properties", "object with at most 64 properties")
+        else if List("minimum", "maximum").exists(key =>
+            field(obj, key).exists {
+              case Json.Num(_) => false
+              case _           => true
+            }
+          )
+        then invalidType(path, "numeric minimum and maximum values")
+        else
+          val numericFields = List(
+            "minLength" -> (0L, 65536L),
+            "maxLength" -> (0L, 65536L),
+            "minItems" -> (0L, 4096L),
+            "maxItems" -> (0L, 4096L)
+          )
+          val numericCheck =
+            numericFields.foldLeft[Either[PortableDiagnostic, Unit]](
+              Right(())
+            ) { case (acc, (key, (min, max))) =>
+              acc.flatMap(_ =>
+                field(obj, key) match
+                  case None => Right(())
+                  case Some(Json.Num(n))
+                      if n.stripTrailingZeros.scale() <= 0 && n
+                        .compareTo(java.math.BigDecimal.valueOf(min)) >= 0 && n
+                        .compareTo(java.math.BigDecimal.valueOf(max)) <= 0 =>
+                    Right(())
+                  case Some(_) =>
+                    invalidType(s"$path/$key", s"integer in [$min,$max]")
+              )
+            }
+          val bounds = for
+            min <- num(obj, "minimum"); max <- num(obj, "maximum")
+          yield min <= max
+          val lengths = for
+            min <- field(obj, "minLength").collect { case Json.Num(n) =>
+              n.intValue
+            }
+            max <- field(obj, "maxLength").collect { case Json.Num(n) =>
+              n.intValue
+            }
+          yield min <= max
+          val itemBounds = for
+            min <- field(obj, "minItems").collect { case Json.Num(n) =>
+              n.intValue
+            }
+            max <- field(obj, "maxItems").collect { case Json.Num(n) =>
+              n.intValue
+            }
+          yield min <= max
+          if bounds.contains(false) || lengths.contains(false) || itemBounds
+              .contains(false)
+          then invalidValue(path, "minimum no greater than maximum")
+          else if typ.contains("object") && field(obj, "properties").isEmpty
+          then numericCheck
+          else
+            numericCheck.flatMap { _ =>
+              val children = field(obj, "properties").toList.flatMap {
+                case p: Json.Obj =>
+                  p.fields.map((name, child) =>
+                    (child, s"$path/properties/${escape(name)}")
+                  )
+                case _ => Nil
+              } ++ field(obj, "items").toList.map(_ -> s"$path/items")
+              children.foldLeft[Either[PortableDiagnostic, Unit]](Right(())) {
+                case (acc, (child, childPath)) =>
+                  acc.flatMap(_ =>
+                    validateSchemaNode(child, childPath, depth + 1)
+                  )
+              }
+            }
+      }
+    case _ => invalidType(path, "schema object")
+
+  private def validateStep(
+      value: Json,
+      index: Int
+  ): Either[PortableDiagnostic, Unit] = value match
+    case step: Json.Obj =>
+      val path = s"/steps/$index"
+      val kind = str(step, "kind")
+      val base = Set("id", "kind", "outputSchema", "input")
+      val (extra, required) = kind match
+        case Some("agent") =>
+          (
+            Set("profile", "toolset", "structuredOutput"),
+            List(
+              "id",
+              "kind",
+              "outputSchema",
+              "profile",
+              "toolset",
+              "input",
+              "structuredOutput"
+            )
+          )
+        case Some("trustedCheck") =>
+          (
+            Set("checkId", "registrySnapshot"),
+            List(
+              "id",
+              "kind",
+              "outputSchema",
+              "checkId",
+              "registrySnapshot",
+              "input"
+            )
+          )
+        case Some("sequence") =>
+          (Set("steps"), List("id", "kind", "outputSchema", "steps"))
+        case Some("conditional") =>
+          (
+            Set("when", "then", "else"),
+            List("id", "kind", "outputSchema", "when", "then", "else")
+          )
+        case Some("map") =>
+          (
+            Set("items", "templateStep", "maxItems", "parallelism"),
+            List(
+              "id",
+              "kind",
+              "outputSchema",
+              "items",
+              "templateStep",
+              "maxItems",
+              "parallelism"
+            )
+          )
+        case Some("join") =>
+          (
+            Set("steps", "failure"),
+            List("id", "kind", "outputSchema", "steps", "failure")
+          )
+        case Some("repair") =>
+          (
+            Set("operationStep", "maxAttempts", "safeOperationRef"),
+            List(
+              "id",
+              "kind",
+              "outputSchema",
+              "operationStep",
+              "maxAttempts",
+              "safeOperationRef"
+            )
+          )
+        case Some("checkpoint") =>
+          (
+            Set("checkpointRef", "placement"),
+            List("id", "kind", "outputSchema", "checkpointRef", "placement")
+          )
+        case _ => (Set.empty[String], List("id", "kind", "outputSchema"))
+      checkObject(step, path, base ++ extra, required).flatMap { _ =>
+        val typed = List(
+          "id",
+          "kind",
+          "outputSchema",
+          "profile",
+          "toolset",
+          "input",
+          "checkId",
+          "registrySnapshot",
+          "templateStep",
+          "operationStep",
+          "safeOperationRef",
+          "checkpointRef",
+          "placement",
+          "failure"
+        ).foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
+          acc.flatMap(_ =>
+            field(step, key) match
+              case None              => Right(())
+              case Some(Json.Str(_)) => Right(())
+              case Some(_)           => invalidType(s"$path/$key", "string")
+          )
+        }
+        val ids = List(
+          "id",
+          "outputSchema",
+          "profile",
+          "toolset",
+          "checkId",
+          "templateStep",
+          "operationStep",
+          "safeOperationRef",
+          "checkpointRef"
+        ).foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
+          acc.flatMap(_ =>
+            str(step, key) match
+              case Some(s) if !identifier.matches(s) =>
+                invalidValue(s"$path/$key", "portable identifier")
+              case _ => Right(())
+          )
+        }
+        val pointerFields = List("input", "items")
+          .foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
+            acc.flatMap(_ =>
+              field(step, key) match
+                case None                            => Right(())
+                case Some(value) if isPointer(value) => Right(())
+                case Some(_) =>
+                  invalidValue(s"$path/$key", "canonical JSON Pointer")
+            )
+          }
+        val branchIds = List("then", "else")
+          .foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
+            acc.flatMap(_ =>
+              str(step, key) match
+                case Some(value) if identifier.matches(value) => Right(())
+                case Some(_) =>
+                  invalidValue(s"$path/$key", "portable step identifier")
+                case None => Right(())
+            )
+          }
+        val arrays = List("steps").foldLeft[Either[PortableDiagnostic, Unit]](
+          Right(())
+        ) { (acc, key) =>
+          acc.flatMap(_ =>
+            field(step, key) match
+              case None => Right(())
+              case Some(Json.Arr(xs))
+                  if xs.nonEmpty && xs.size <= 128 && xs.forall {
+                    case Json.Str(s) => identifier.matches(s); case _ => false
+                  } && xs.distinct.size == xs.size =>
+                Right(())
+              case Some(_) =>
+                invalidValue(
+                  s"$path/$key",
+                  "unique non-empty array of at most 128 step identifiers"
+                )
+          )
+        }
+        typed
+          .flatMap(_ => ids)
+          .flatMap(_ => pointerFields)
+          .flatMap(_ => branchIds)
+          .flatMap(_ => arrays)
+          .flatMap { _ =>
+            kind match
+              case Some("agent")
+                  if !field(step, "structuredOutput").exists(
+                    _.isInstanceOf[Json.Bool]
+                  ) =>
+                invalidType(s"$path/structuredOutput", "boolean")
+              case Some("agent")
+                  if field(step, "structuredOutput") != Some(Json.Bool(true)) =>
+                invalidValue(s"$path/structuredOutput", "true")
+              case Some("trustedCheck")
+                  if !str(step, "registrySnapshot").exists(
+                    _.matches("sha256:[a-f0-9]{64}")
+                  ) =>
+                invalidValue(s"$path/registrySnapshot", "sha256 digest")
+              case Some("map") =>
+                checkInteger(step, "maxItems", path, 1, 256)
+                  .flatMap(_ => checkInteger(step, "parallelism", path, 1, 32))
+              case Some("repair") =>
+                checkInteger(step, "maxAttempts", path, 1, 10)
+              case Some("join")
+                  if field(step, "failure") != Some(Json.Str("failFast")) =>
+                invalidValue(s"$path/failure", "failFast")
+              case Some("checkpoint")
+                  if field(step, "placement") != Some(
+                    Json.Str("launchPolicy")
+                  ) =>
+                invalidValue(s"$path/placement", "launchPolicy")
+              case Some("conditional") =>
+                validatePredicate(field(step, "when").get, s"$path/when", 1)
+              case Some(k)
+                  if !Set(
+                    "agent",
+                    "trustedCheck",
+                    "sequence",
+                    "conditional",
+                    "map",
+                    "join",
+                    "repair",
+                    "checkpoint"
+                  )(k) =>
+                invalidValue(s"$path/kind", "supported portable step kind")
+              case _ => Right(())
+          }
+      }
+    case _ => invalidType(s"/steps/$index", "step object")
+
+  private def validatePredicate(
+      value: Json,
+      path: String,
+      depth: Int
+  ): Either[PortableDiagnostic, Unit] =
+    if depth > 32 then invalidValue(path, "predicate nesting depth at most 32")
+    else
+      value match
+        case obj: Json.Obj =>
+          str(obj, "op") match
+            case Some("isPresent") =>
+              checkObject(obj, path, Set("op", "value"), List("op", "value"))
+                .flatMap(_ =>
+                  checkString(obj, "value", path).flatMap(_ => Right(()))
+                )
+            case Some("equals") | Some("notEquals") =>
+              checkObject(
+                obj,
+                path,
+                Set("op", "left", "right"),
+                List("op", "left", "right")
+              ).flatMap(_ =>
+                if field(obj, "left").exists(isPredicateOperand) && field(
+                    obj,
+                    "right"
+                  ).exists(isPredicateOperand)
+                then Right(())
+                else
+                  invalidValue(
+                    path,
+                    "typed scalar operands or canonical pointers"
+                  )
+              )
+            case Some("all") | Some("any") =>
+              checkObject(
+                obj,
+                path,
+                Set("op", "predicates"),
+                List("op", "predicates")
+              ).flatMap(_ =>
+                field(obj, "predicates") match
+                  case Some(Json.Arr(xs)) if xs.nonEmpty && xs.size <= 8 =>
+                    xs.zipWithIndex.foldLeft[Either[PortableDiagnostic, Unit]](
+                      Right(())
+                    ) { case (acc, (child, i)) =>
+                      acc.flatMap(_ =>
+                        validatePredicate(
+                          child,
+                          s"$path/predicates/$i",
+                          depth + 1
+                        )
+                      )
+                    }
+                  case _ =>
+                    invalidValue(
+                      s"$path/predicates",
+                      "between 1 and 8 predicates"
+                    )
+              )
+            case _ =>
+              invalidValue(
+                s"$path/op",
+                "equals, notEquals, isPresent, all, or any"
+              )
+        case _ => invalidType(path, "predicate object")
+
+  private def isPredicateOperand(value: Json): Boolean = value match
+    case Json.Str(s) => !s.startsWith("#") || s.matches("^#(/([^~/]|~[01])*)*$")
+    case Json.Num(_) | Json.Bool(_) | Json.Null => true
+    case _                                      => false
+
+  private def validateOutputs(
+      outputs: Json.Obj
+  ): Either[PortableDiagnostic, Unit] =
+    checkObject(
+      outputs,
+      "/outputs",
+      Set("bindings", "verdict", "artifacts"),
+      List("bindings", "verdict")
+    ).flatMap { _ =>
+      val bindings = field(outputs, "bindings") match
+        case Some(obj: Json.Obj)
+            if obj.fields.nonEmpty && obj.fields.size <= 64 =>
+          obj.fields.foldLeft[Either[PortableDiagnostic, Unit]](Right(())) {
+            case (acc, (name, value)) =>
+              acc.flatMap(_ =>
+                if identifier.matches(name) && isPointer(value) then Right(())
+                else
+                  invalidValue(
+                    s"/outputs/bindings/${escape(name)}",
+                    "identifier and canonical JSON Pointer"
+                  )
+              )
+          }
+        case Some(_: Json.Obj) =>
+          invalidValue("/outputs/bindings", "between 1 and 64 named bindings")
+        case Some(_) => invalidType("/outputs/bindings", "object")
+        case None    => Right(())
+      val verdict = field(outputs, "verdict") match
+        case Some(obj: Json.Obj) =>
+          checkObject(
+            obj,
+            "/outputs/verdict",
+            Set("from", "authority"),
+            List("from", "authority")
+          ).flatMap(_ =>
+            if isPointer(field(obj, "from").getOrElse(Json.Null)) && field(
+                obj,
+                "authority"
+              ) == Some(Json.Str("trustedVerifier"))
+            then Right(())
+            else
+              invalidValue(
+                "/outputs/verdict",
+                "canonical pointer and trustedVerifier authority"
+              )
+          )
+        case Some(_) => invalidType("/outputs/verdict", "object")
+        case None    => Right(())
+      val artifacts = field(outputs, "artifacts") match
+        case None => Right(())
+        case Some(Json.Arr(values)) if values.size <= 32 =>
+          values.zipWithIndex.foldLeft[Either[PortableDiagnostic, Unit]](
+            Right(())
+          ) { case (acc, (item, index)) =>
+            acc.flatMap { _ =>
+              item match
+                case obj: Json.Obj =>
+                  checkObject(
+                    obj,
+                    s"/outputs/artifacts/$index",
+                    Set("name", "from"),
+                    List("name", "from")
+                  ).flatMap { _ =>
+                    if str(obj, "name").exists(identifier.matches) && isPointer(
+                        field(obj, "from").getOrElse(Json.Null)
+                      )
+                    then Right(())
+                    else
+                      invalidValue(
+                        s"/outputs/artifacts/$index",
+                        "artifact identifier and canonical JSON Pointer"
+                      )
+                  }
+                case _ => invalidType(s"/outputs/artifacts/$index", "object")
+            }
+          }
+        case Some(Json.Arr(_)) =>
+          invalidValue("/outputs/artifacts", "at most 32 artifact declarations")
+        case Some(_) => invalidType("/outputs/artifacts", "array")
+      bindings.flatMap(_ => verdict).flatMap(_ => artifacts)
+    }
+
+  private def checkObject(
+      obj: Json.Obj,
+      path: String,
+      allowed: Set[String],
+      required: List[String]
+  ): Either[PortableDiagnostic, Unit] =
+    obj.fields.find((key, _) => !allowed(key)) match
       case Some((key, _)) =>
         Left(
           diag(
             "unsupported-construct",
-            s"/${escape(key)}",
+            s"$path/${escape(key)}",
             None,
             Some(key),
             "Remove unsupported fields and use only the closed portable workflow v1 vocabulary."
           )
         )
       case None =>
-        val required =
-          List("format", "version", "limits", "schemas", "steps", "outputs")
-        required.find(key => !root.fields.exists(_._1 == key)) match
+        required.find(key => !obj.fields.exists(_._1 == key)) match
           case Some(key) =>
             Left(
               diag(
                 "invalid-document",
-                s"/$key",
+                s"$path/$key",
                 None,
                 None,
                 "Provide all required portable workflow v1 fields."
               )
             )
           case None => Right(())
+
+  private def checkInteger(
+      obj: Json.Obj,
+      key: String,
+      path: String,
+      min: Long,
+      max: Long
+  ): Either[PortableDiagnostic, Unit] = field(obj, key) match
+    case Some(Json.Num(n))
+        if n.stripTrailingZeros.scale() <= 0 && n.compareTo(
+          java.math.BigDecimal.valueOf(min)
+        ) >= 0 && n.compareTo(java.math.BigDecimal.valueOf(max)) <= 0 =>
+      Right(())
+    case Some(_) => invalidType(s"$path/$key", s"integer in [$min,$max]")
+    case None    => Right(())
+
+  private def checkString(
+      obj: Json.Obj,
+      key: String,
+      path: String
+  ): Either[PortableDiagnostic, Unit] = field(obj, key) match
+    case Some(Json.Str(_)) => Right(())
+    case Some(_)           => invalidType(s"$path/$key", "string")
+    case None              => Right(())
+
+  private def isPointer(value: Json): Boolean = value match
+    case Json.Str(s) => s.matches("^#(/([^~/]|~[01])*)*$") && s.length <= 512
+    case _           => false
+
+  private def invalidType(
+      path: String,
+      expected: String
+  ): Either[PortableDiagnostic, Unit] = Left(
+    diag(
+      "invalid-type",
+      path,
+      None,
+      None,
+      s"Provide a value of type $expected."
+    )
+  )
+
+  private def invalidValue(
+      path: String,
+      expected: String
+  ): Either[PortableDiagnostic, Unit] = Left(
+    diag("invalid-value", path, None, None, s"Use $expected.")
+  )
 
   private def duplicateKey(text: String): Option[(String, String)] =
     final case class Frame(
@@ -634,6 +1318,9 @@ object PortableWorkflowValidator:
 
   private def str(value: Json.Obj, key: String): Option[String] =
     value.fields.collectFirst { case (`key`, Json.Str(s)) => s }
+
+  private def field(value: Json.Obj, key: String): Option[Json] =
+    value.fields.collectFirst { case (`key`, result) => result }
 
   private def obj(value: Json.Obj, key: String): Option[Json.Obj] =
     value.fields.collectFirst { case (`key`, o: Json.Obj) => o }
