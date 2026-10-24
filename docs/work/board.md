@@ -1,5 +1,15 @@
 # Raider Execution Board
 
+## 2026-10-24 — RAI-189 shared approval hook integrated (partial)
+
+- **Coordinator mandate:** committed as `e4d7a44`, authorizing the typed approval hook move to `modules/runtime` for both REPL and CLI consumers while freezing RA-TOOLDENY/no-auto-approve behavior. RAI-190's EventHub/plan-binding injection mandate is recorded in its card for its lane.
+- **RAI-189 implementation:** lane `lane/rai-189` commit `6b38c11` merged as `da6088f`; runtime owns `raider.runtime.tools.approval.ToolApproval`, consumed by `raider-repl` and `raider-cli`. CLI uses ChatLoop's shared `BufferedReader` for explicit approval input. No module cycle.
+- **Lane evidence:** `sbt --batch raiderCli/compile raiderRepl/compile` and `sbt --batch 'raiderRepl/testOnly raider.repl.ToolApprovalSpec'` exited 0 (3/3 tests). `make quality-changed` classified contracts/static/unit; execution manifest `artifacts/quality/20261024-084759-15927-0001/manifest.json` passed. `make quality-profile PROFILES="static unit contracts runtime repl"` manifest `artifacts/quality/20261024-085548-28941-0001/manifest.json` passed, and all five profile verifications passed.
+- **Integrated root evidence:** `python3 scripts/plan/validate.py --out artifacts/plan-review/report.json` exited 0; 227 cards. First root fast execution found a Scalafix parse error for a for-comprehension value binding; coordinator moved it to a local `val`. Corrected `make quality-changed QUALITY_EXECUTE=1` passed (`artifacts/quality/20261024-091457-52003-0001/manifest.json`); `make quality-profile PROFILES="static unit contracts runtime repl"` passed (`artifacts/quality/20261024-092258-55938-0001/manifest.json`), with all five manifest verifies passing.
+- **Post-record verification:** after board/work-record updates, `make quality-changed QUALITY_EXECUTE=1` passed with contracts/docs/static/unit (`artifacts/quality/20261024-093223-68499-0001/manifest.json`); docs/contracts/static/unit manifest verification passed.
+- **Full card profiles:** `make quality-profile PROFILES="static unit contracts runtime repl security"` passed all seven gates including `security-secrets-scan` (`artifacts/quality/20261024-094138-74006-0001/manifest.json`); all six profile verifications passed.
+- **Status/remaining acceptance:** RAI-189 remains partial: approval/denial/read-only PTY transcripts ×3 and P2W invariants while approval is pending were not run; independent review remains pending. See [work record](records/RAI-189.md). Spawned agent executors were unavailable; execution followed the runbook's sequential fallback.
+
 ## 2026-10-23 — RAI-194 accepted: native NO-GO (JVM distribution confirmed)
 
 - **Integration and verdict:** `lane/rai-194` source `b1acc5b` merged to main as `fb84dfd`. Coordinator review approved: the closed-world claim was verified in `BundleLoader`/`HeadlessRunner`, scoping is proper, and unavailable metrics remain honestly unmeasured. Native Image is a no-go under the current dynamic workflow-JAR contract; RAI-193's JVM distribution remains supported. See [work record](records/RAI-194.md).

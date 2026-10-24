@@ -411,12 +411,12 @@ object Main:
           if source.contains("echoStream = true") then
             source.replace(
               "echoStream = true",
-              "echoStream = true, renderSink = Some(__chatSink)"
+              "echoStream = true, renderSink = Some(__chatSink), toolApproval = Some(__chatSink)"
             )
           else
             source.replace(
               "ReplSession.make(__backend, BudgetLimits.make())",
-              "ReplSession.make(__backend, BudgetLimits.make(), echoStream = true, renderSink = Some(__chatSink))"
+              "ReplSession.make(__backend, BudgetLimits.make(), echoStream = true, renderSink = Some(__chatSink), toolApproval = Some(__chatSink))"
             )
         List(
           s"val __chatSink = new raider.repl.ChatLayoutSink(System.getProperties.get(\"raider.chat.renderBridge\").asInstanceOf[java.util.function.Consumer[String]], zio.Duration.fromMillis(${
@@ -449,6 +449,34 @@ object Main:
 
     def command(raw: String): Option[UIO[Unit]] =
       raw.trim match
+        case decision if decision.startsWith(":approve ") =>
+          val token = decision.stripPrefix(":approve ").trim
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", true)"
+              )
+            )
+          )
+        case decision if decision.startsWith(":deny ") =>
+          val token = decision.stripPrefix(":deny ").trim
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                s"__chatSink.resolveToolApproval(\"${scalaStr(token)}\", false)"
+              )
+            )
+          )
+        case ":approve" | ":deny" =>
+          Some(
+            ZIO.succeed(
+              chatRenderBridge.accept(
+                "decision requires the exact request token"
+              )
+            )
+          )
         case ":cancel" =>
           Some(
             ZIO.succeed(
