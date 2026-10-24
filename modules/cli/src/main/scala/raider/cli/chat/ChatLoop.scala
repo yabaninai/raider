@@ -575,11 +575,11 @@ object ChatLoop:
       input: String,
       approvalInput: Option[BufferedReader]
   ): ZIO[Any, RaiderError, String] =
+    val guardedLoop = loop.copy(
+      tools =
+        ToolApproval.guard(loop.tools, Some(cliApprovalHook(approvalInput)))
+    )
     for
-      guardedLoop = loop.copy(
-        tools =
-          ToolApproval.guard(loop.tools, Some(cliApprovalHook(approvalInput)))
-      )
       history <- historyRef.get
       // automatic compaction BEFORE the model call when context exceeds the
       // threshold (Phase 2.3): the model sees the compacted context
