@@ -4,6 +4,8 @@ import zio.test.*
 
 object ChatLayoutSpec extends ZIOSpecDefault:
 
+  private val Ansi = "\\u001b\\[[0-9;]*m".r
+
   def spec =
     suite("ChatLayoutSpec (RAI-188: chat-first frame and ANSI row diff)")(
       test(
@@ -25,12 +27,12 @@ object ChatLayoutSpec extends ZIOSpecDefault:
         )
         assertTrue(
           lines.size == 8,
-          lines.head == " CHAT ",
+          Ansi.replaceAllIn(lines.head, "").startsWith("┌─ CHAT"),
           lines.exists(_.contains("message-202")),
           !lines.exists(_.contains("message-1 ")),
           lines.exists(_.contains("lineage: current run")),
           lines(lines.size - 2).contains("coding"),
-          lines.last == "running | 3 events"
+          lines.last.contains("running | 3 events")
         )
       },
       test("wraps wide and combining Unicode by display cells") {
@@ -95,6 +97,81 @@ object ChatLayoutSpec extends ZIOSpecDefault:
           grown.size == 9,
           shrunk.exists(_.contains("\u001b[6;1H\u001b[K")),
           shrunk.exists(_.contains("\u001b[7;1H\u001b[K"))
+        )
+      },
+      test(
+        "markdown and partial code blocks render incrementally with syntax color"
+      ) {
+        val complete = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              60,
+              9,
+              Vector(
+                ChatLayout.Message(
+                  ChatLayout.Role.Assistant,
+                  "# Heading\n- item\n```scala\nval answer = 42\n```"
+                )
+              ),
+              Vector.empty,
+              "ready"
+            )
+          )
+          .mkString("\n")
+        val partial = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              60,
+              8,
+              Vector(
+                ChatLayout.Message(
+                  ChatLayout.Role.Assistant,
+                  "```json\n{\"ok\": true"
+                )
+              ),
+              Vector.empty,
+              "streaming"
+            )
+          )
+          .mkString("\n")
+        assertTrue(
+          complete.contains("Heading"),
+          complete.contains("• item"),
+          complete.contains("\u001b[34mval\u001b[0m"),
+          complete.contains("┌────────────"),
+          Ansi.replaceAllIn(partial, "").contains("{\"ok\": true"),
+          partial.contains("\u001b[32m")
+        )
+      },
+      test(
+        "unified diff lines, themes, and hostile control characters are safe"
+      ) {
+        def rendered(theme: ChatLayout.Theme) = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              50,
+              8,
+              Vector(
+                ChatLayout.Message(
+                  ChatLayout.Role.Assistant,
+                  "```diff\n@@ -1 +1 @@\n-old\n+new\n```\nraw \u001b[2J 界e\u0301"
+                )
+              ),
+              Vector.empty,
+              "ready",
+              theme = theme
+            )
+          )
+          .mkString("\n")
+        val dark = rendered(ChatLayout.Theme.Dark)
+        val light = rendered(ChatLayout.Theme.Light)
+        assertTrue(
+          dark.contains("\u001b[31m-old\u001b[0m"),
+          dark.contains("\u001b[32m+new\u001b[0m"),
+          dark.contains("␛[2J"),
+          dark.contains("界e\u0301"),
+          dark != light,
+          light.contains("\u001b[38;5;25m")
         )
       }
     )

@@ -13,6 +13,9 @@ object ChatLayout:
   enum Role:
     case User, Assistant, Status
 
+  enum Theme:
+    case Dark, Light
+
   final case class Message(role: Role, text: String)
 
   final case class Frame(
@@ -22,7 +25,8 @@ object ChatLayout:
       tabs: Vector[String],
       status: String,
       auxiliary: Option[Vector[String]] = None,
-      scrollOffset: Int = 0
+      scrollOffset: Int = 0,
+      theme: Theme = Theme.Dark
   )
 
   val HistoryLimit: Int = 200
@@ -43,20 +47,29 @@ object ChatLayout:
     val padded = Vector.fill(chatRows - body.size)("") ++ body
     val tabLine = frame.tabs.mkString("  ")
     val statusLine = frame.status
-    (Vector(" CHAT ") ++ padded ++ Vector(tabLine, statusLine))
+    (Vector("┌─ CHAT " + "─" * (columns - 8).max(0)) ++ padded ++
+      Vector(tabLine, statusLine))
       .map(clip(_, columns))
+      .zipWithIndex
+      .map { (line, index) =>
+        if index == 0 then colorFrameLine(line, frame.theme) else line
+      }
 
   private def wrap(message: Message, columns: Int): Vector[String] =
     val prefix = message.role match
       case Role.User      => "you: "
       case Role.Assistant => "assistant: "
       case Role.Status    => "status: "
-    val text = message.text.replace("\r\n", "\n").replace('\r', '\n')
-    text.split("\n", -1).toVector.flatMap { line =>
+    val text = message.text
+      .replace("\u001b", "␛")
+      .replace("\r\n", "\n")
+      .replace('\r', '\n')
+    val blocks = Markdown.render(text)
+    blocks.flatMap { block =>
       val initial = Vector.newBuilder[String]
-      var current = new StringBuilder(prefix)
-      var used = cellWidth(prefix)
-      line.codePoints().toArray.foreach { cp =>
+      var current = new StringBuilder(prefix + block.prefix)
+      var used = cellWidth(prefix + block.prefix)
+      block.text.codePoints().toArray.foreach { cp =>
         val glyph = new String(Character.toChars(cp))
         val width = math.max(0, WCWidth.wcwidth(cp))
         if used + width > columns && current.nonEmpty then
@@ -67,8 +80,20 @@ object ChatLayout:
         used += width
       }
       initial += current.toString
-      initial.result()
+      val rendered = initial.result()
+      val highlighted =
+        if block.diff then rendered.map(Diff.color)
+        else if block.codeLanguage.nonEmpty then
+          rendered.map(line => Syntax.highlight(line, block.codeLanguage.get))
+        else rendered.map(line => Markdown.color(line, block.kind))
+      highlighted
     }
+
+  private def colorFrameLine(line: String, theme: Theme): String =
+    val color = theme match
+      case Theme.Dark  => "\u001b[38;5;75m"
+      case Theme.Light => "\u001b[38;5;25m"
+    s"$color$line\u001b[0m"
 
   private def clip(text: String, columns: Int): String =
     val out = new StringBuilder
@@ -90,6 +115,102 @@ object ChatLayout:
     text.codePoints().toArray.map(cp => math.max(0, WCWidth.wcwidth(cp))).sum
 
 end ChatLayout
+
+/** Small, bounded streaming formatter. Every snapshot is parsed from scratch,
+  * so incomplete fences and headings are safe to render and recover on update.
+  */
+private object Markdown:
+
+  final case class Block(
+      prefix: String,
+      text: String,
+      kind: String = "body",
+      codeLanguage: Option[String] = None,
+      diff: Boolean = false
+  )
+
+  private val Limit = 65536
+
+  def render(input: String): Vector[Block] =
+    val text = input.take(Limit).replace("\r\n", "\n").replace('\r', '\n')
+    var fence: Option[String] = None
+    text.split("\n", -1).toVector.map { raw =>
+      if raw.trim.startsWith("```") then
+        val tag = raw.trim.drop(3).take(16).toLowerCase
+        fence = if fence.isEmpty then Some(tag) else None
+        Block(
+          "",
+          if fence.nonEmpty then "┌────────────" else "└────────────",
+          "fence"
+        )
+      else
+        fence match
+          case Some(language) =>
+            Block("│ ", raw, "code", Some(language), language == "diff")
+          case None if raw.startsWith("### ") => Block("", raw.drop(4), "h3")
+          case None if raw.startsWith("## ")  => Block("", raw.drop(3), "h2")
+          case None if raw.startsWith("# ")   => Block("", raw.drop(2), "h1")
+          case None if raw.startsWith("- ") || raw.startsWith("* ") =>
+            Block("", "• " + raw.drop(2), "list")
+          case None if raw.matches("[0-9]+\\. .*") =>
+            val dot = raw.indexOf('.')
+            Block("", "• " + raw.drop(dot + 1).trim, "list")
+          case None
+              if raw.startsWith("@@ ") || raw.startsWith("--- ") || raw
+                .startsWith("+++ ") =>
+            Block("", raw, "diff", diff = true)
+          case None => Block("", raw)
+    }
+
+  def color(line: String, kind: String): String =
+    val code = kind match
+      case "h1" | "h2" | "h3" => "\u001b[1;36m"
+      case "list"             => "\u001b[36m"
+      case "fence" | "code"   => "\u001b[90m"
+      case _                  => ""
+    if code.isEmpty then line else s"$code$line\u001b[0m"
+
+private object Syntax:
+  private val Max = 65536
+
+  private val Token =
+    raw"""(//.*|/\*.*?\*/|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:val|var|def|class|object|trait|enum|if|else|match|case|new|true|false|null|extends|import|package)\b|\b[0-9]+(?:\.[0-9]+)?\b)""".r
+
+  def highlight(line: String, language: String): String =
+    if language != "scala" && language != "json" && language != "" then line
+    else
+      val bounded = line.take(Max)
+      Token.replaceAllIn(
+        bounded,
+        m =>
+          val token = m.matched
+          val color =
+            if token.startsWith("//") || token.startsWith("/*") then "90"
+            else if token.startsWith("\"") || token.startsWith("'") then "32"
+            else if token.headOption.exists(_.isDigit) then "33"
+            else if language == "json" && Set("true", "false", "null").contains(
+                token
+              )
+            then "35"
+            else "34"
+          java.util.regex.Matcher
+            .quoteReplacement(s"\u001b[${color}m$token\u001b[0m")
+      )
+
+private object Diff:
+
+  def color(line: String): String =
+    val marker = line.indexOf("│ ")
+    val content = if marker >= 0 then line.drop(marker + 2) else line
+    val color =
+      if content.startsWith("+") && !content.startsWith("+++") then "32"
+      else if content.startsWith("-") && !content.startsWith("---") then "31"
+      else if content.startsWith("@@") then "36"
+      else ""
+    if color.isEmpty then line
+    else
+      val prefix = if marker >= 0 then line.take(marker + 2) else ""
+      s"$prefix\u001b[${color}m$content\u001b[0m"
 
 /** Diff renderer seam: emits only rows whose logical text changed. The caller
   * owns the terminal write and lifecycle, keeping rendering independent of
