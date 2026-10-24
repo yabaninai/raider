@@ -265,6 +265,31 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
             )
         )
       },
+      test("schema keyword types and enum values match their declared types") {
+        val valid = Files.readString(contract("valid/agent.json"))
+        val wrongRequired = valid.replace(
+          "\"required\": [\"text\"]",
+          "\"required\": \"text\""
+        )
+        val wrongEnumValue = valid.replace(
+          "\"enum\": [\"pass\", \"fail\", \"incomplete\", \"uncertain\", \"refused\"]",
+          "\"enum\": [1, 2]"
+        )
+        val itemBoundOnString = valid.replace(
+          "\"type\": \"string\", \"enum\":",
+          "\"type\": \"string\", \"maxItems\": 2, \"enum\":"
+        )
+        assertTrue(
+          diagnostic(PortableWorkflowValidator.validate(wrongRequired))
+            .exists(d =>
+              d.code == "invalid-type" && d.documentPath.endsWith("/required")
+            ),
+          diagnostic(PortableWorkflowValidator.validate(wrongEnumValue))
+            .exists(d => d.documentPath.endsWith("/enum")),
+          diagnostic(PortableWorkflowValidator.validate(itemBoundOnString))
+            .exists(d => d.documentPath == "/schemas/outputs/verdict")
+        )
+      },
       test("validator and lowerer construction invoke no configured program") {
         val calls = new AtomicInteger(0)
         val counted =

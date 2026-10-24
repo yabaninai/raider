@@ -712,7 +712,10 @@ object PortableWorkflowValidator:
             xs.isEmpty || xs.size > MaximumEnumValues
           )
         then invalidValue(s"$path/enum", "between 1 and 64 values")
-        else if field(obj, "additionalProperties").exists(_ != Json.Bool(false))
+        else if field(obj, "additionalProperties").exists {
+            case Json.Bool(false) => false
+            case _                => true
+          }
         then invalidValue(s"$path/additionalProperties", "false")
         else if field(obj, "required").exists {
             case Json.Arr(xs) =>
@@ -722,15 +725,26 @@ object PortableWorkflowValidator:
             case _ => true
           }
         then
-          invalidValue(
-            s"$path/required",
-            "unique array of at most 64 strings (128 characters each)"
-          )
+          field(obj, "required") match
+            case Some(Json.Arr(_)) =>
+              invalidValue(
+                s"$path/required",
+                "unique array of at most 64 strings (128 characters each)"
+              )
+            case Some(_) => invalidType(s"$path/required", "array of strings")
+            case None    => Right(())
         else if field(obj, "properties").exists {
             case p: Json.Obj => p.fields.size > 64; case _ => true
           }
         then
-          invalidValue(s"$path/properties", "object with at most 64 properties")
+          field(obj, "properties") match
+            case Some(_: Json.Obj) =>
+              invalidValue(
+                s"$path/properties",
+                "object with at most 64 properties"
+              )
+            case Some(_) => invalidType(s"$path/properties", "object")
+            case None    => Right(())
         else if List("minimum", "maximum").exists(key =>
             field(obj, key).exists {
               case Json.Num(_) => false
@@ -780,9 +794,33 @@ object PortableWorkflowValidator:
               n.intValue
             }
           yield min <= max
+          val enumMatchesType = field(obj, "enum").forall {
+            case Json.Arr(values) =>
+              values.forall(value => typ.exists(schemaValueMatches(_, value)))
+            case _ => false
+          }
           if bounds.contains(false) || lengths.contains(false) || itemBounds
               .contains(false)
           then invalidValue(path, "minimum no greater than maximum")
+          else if !enumMatchesType then
+            invalidValue(
+              s"$path/enum",
+              "values matching the declared schema type"
+            )
+          else if typ.contains("object") && field(obj, "items").nonEmpty then
+            invalidValue(s"$path/items", "items only on array schemas")
+          else if typ.exists(_ != "object") && field(obj, "properties").nonEmpty
+          then
+            invalidValue(
+              s"$path/properties",
+              "properties only on object schemas"
+            )
+          else if typ.exists(_ != "array") && List("minItems", "maxItems")
+              .exists(k => field(obj, k).nonEmpty)
+          then invalidValue(path, "item bounds only on array schemas")
+          else if typ.exists(_ != "string") && List("minLength", "maxLength")
+              .exists(k => field(obj, k).nonEmpty)
+          then invalidValue(path, "length bounds only on string schemas")
           else if typ.contains("object") && field(obj, "properties").isEmpty
           then numericCheck
           else
@@ -803,6 +841,20 @@ object PortableWorkflowValidator:
             }
       }
     case _ => invalidType(path, "schema object")
+
+  private def schemaValueMatches(schemaType: String, value: Json): Boolean =
+    schemaType match
+      case "object"  => value.isInstanceOf[Json.Obj]
+      case "array"   => value.isInstanceOf[Json.Arr]
+      case "string"  => value.isInstanceOf[Json.Str]
+      case "boolean" => value.isInstanceOf[Json.Bool]
+      case "integer" =>
+        value match
+          case Json.Num(number) => number.stripTrailingZeros.scale() <= 0
+          case _                => false
+      case "number" => value.isInstanceOf[Json.Num]
+      case "null"   => value == Json.Null
+      case _        => false
 
   private def validateStep(
       value: Json,
@@ -933,16 +985,20 @@ object PortableWorkflowValidator:
                   invalidValue(s"$path/$key", "canonical JSON Pointer")
             )
           }
-        val branchIds = List("then", "else")
-          .foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
-            acc.flatMap(_ =>
-              str(step, key) match
-                case Some(value) if identifier.matches(value) => Right(())
-                case Some(_) =>
-                  invalidValue(s"$path/$key", "portable step identifier")
-                case None => Right(())
-            )
-          }
+        val branchIds =
+          if kind.contains("conditional") then
+            List("then", "else")
+              .foldLeft[Either[PortableDiagnostic, Unit]](Right(())) {
+                (acc, key) =>
+                  acc.flatMap(_ =>
+                    str(step, key) match
+                      case Some(value) if identifier.matches(value) => Right(())
+                      case Some(_) =>
+                        invalidValue(s"$path/$key", "portable step identifier")
+                      case None => Right(())
+                  )
+              }
+          else Right(())
         val arrays = List("steps").foldLeft[Either[PortableDiagnostic, Unit]](
           Right(())
         ) { (acc, key) =>
