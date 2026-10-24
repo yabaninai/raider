@@ -7,6 +7,7 @@ import raider.runtime.tools.approval.{
   ToolApprovalHook
 }
 import raider.ui.{ChatAnsiRenderer, ChatLayout}
+import raider.tools.files.edit.UnifiedDiff
 import zio.{UIO, ZIO}
 
 /** Streaming chat view used by the opt-in `--chat` shell. The sink is created
@@ -21,6 +22,7 @@ final class ChatLayoutSink(
     with ToolApprovalHook:
   private val renderer = new ChatAnsiRenderer
   private var messages = Vector.empty[ChatLayout.Message]
+  private var parsedDiffHunks = Vector.empty[ChatLayout.DiffHunk]
   private var tabs = Vector("chat")
   private var auxiliary = false
   private var scrollOffset = 0
@@ -66,6 +68,7 @@ final class ChatLayoutSink(
   def beginAssistant(): Unit = synchronized:
     streamState = "streaming"
     deltaCount = 0
+    parsedDiffHunks = Vector.empty
     messages = messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, "")
     draw("streaming")
 
@@ -107,10 +110,12 @@ final class ChatLayoutSink(
           if messages.lastOption.exists(_.role == ChatLayout.Role.Assistant)
           then
             val last = messages.last
+            val updated = last.copy(text = last.text + text)
             messages = messages.updated(
               messages.size - 1,
-              last.copy(text = last.text + text)
+              updated
             )
+            parsedDiffHunks = ChatLayoutSink.parseDiffHunks(updated.text)
           else
             messages =
               messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, text)
@@ -207,7 +212,8 @@ final class ChatLayoutSink(
       status =
         s"model $model | budget unknown | stream $streamState | $status | :aux :chat :help :quit",
       auxiliary = auxiliaryLines,
-      scrollOffset = scrollOffset
+      scrollOffset = scrollOffset,
+      diffHunks = parsedDiffHunks
     )
     val output = renderer.draw(frame).mkString
     if output.nonEmpty then renderBridge.accept(output)
@@ -227,6 +233,32 @@ final class ChatLayoutSink(
 end ChatLayoutSink
 
 private object ChatLayoutSink:
+
+  private val FencedDiff = raw"(?s)```diff\s*\n(.*?)```".r
+
+  /** Parse complete streamed diff fences with the existing tools parser.
+    * Streaming-safe: an unterminated fence matches nothing yet, and a typed
+    * parse error drops only that fence (the raw text still renders). CR and
+    * CRLF are normalized first so carriage returns never reach rendered hunk
+    * rows.
+    */
+  private[repl] def parseDiffHunks(text: String): Vector[ChatLayout.DiffHunk] =
+    val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+    FencedDiff
+      .findAllMatchIn(normalized)
+      .flatMap(m => UnifiedDiff.parse(m.group(1)).toOption.toVector.flatten)
+      .map { hunk =>
+        ChatLayout.DiffHunk(
+          hunk.header,
+          hunk.lines.toVector.map:
+            case UnifiedDiff.HunkLine.Context(line) =>
+              ChatLayout.DiffLine.Context(line)
+            case UnifiedDiff.HunkLine.Add(line) => ChatLayout.DiffLine.Add(line)
+            case UnifiedDiff.HunkLine.Del(line) =>
+              ChatLayout.DiffLine.Remove(line)
+        )
+      }
+      .toVector
 
   def bounded(value: String, limit: Int): String =
     val singleLine = value.replace('\r', ' ').replace('\n', ' ')

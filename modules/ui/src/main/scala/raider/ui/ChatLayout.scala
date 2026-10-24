@@ -18,6 +18,15 @@ object ChatLayout:
 
   final case class Message(role: Role, text: String)
 
+  enum DiffLine:
+    case Context(text: String)
+    case Add(text: String)
+    case Remove(text: String)
+
+  /** Parsed diff data supplied by a caller that owns the unified-diff parser.
+    */
+  final case class DiffHunk(header: String, lines: Vector[DiffLine])
+
   final case class Frame(
       columns: Int,
       rows: Int,
@@ -26,7 +35,8 @@ object ChatLayout:
       status: String,
       auxiliary: Option[Vector[String]] = None,
       scrollOffset: Int = 0,
-      theme: Theme = Theme.Dark
+      theme: Theme = Theme.Dark,
+      diffHunks: Vector[DiffHunk] = Vector.empty
   )
 
   val HistoryLimit: Int = 200
@@ -41,7 +51,8 @@ object ChatLayout:
     val source =
       frame.messages.takeRight(HistoryLimit).flatMap(wrap(_, columns))
     val auxiliary = frame.auxiliary.toVector.flatten.map("  " + _)
-    val content = source ++ auxiliary
+    val parsedDiffs = frame.diffHunks.flatMap(renderHunk(_, columns))
+    val content = source ++ parsedDiffs ++ auxiliary
     val end = (content.size - math.max(0, frame.scrollOffset)).max(0)
     val body = content.take(end).takeRight(chatRows)
     val padded = Vector.fill(chatRows - body.size)("") ++ body
@@ -94,6 +105,22 @@ object ChatLayout:
       case Theme.Dark  => "\u001b[38;5;75m"
       case Theme.Light => "\u001b[38;5;25m"
     s"$color$line\u001b[0m"
+
+  private def renderHunk(hunk: DiffHunk, columns: Int): Vector[String] =
+    val rows = Vector(hunk.header) ++ hunk.lines.map:
+      case DiffLine.Context(text) => s" $text"
+      case DiffLine.Add(text)     => s"+$text"
+      case DiffLine.Remove(text)  => s"-$text"
+    rows.flatMap { row =>
+      val clipped = clip(row, columns)
+      val color =
+        if row.startsWith("+") then "32"
+        else if row.startsWith("-") then "31"
+        else if row.startsWith("@@") then "36"
+        else ""
+      if color.isEmpty then Vector(clipped)
+      else Vector(s"\u001b[${color}m$clipped\u001b[0m")
+    }
 
   private def clip(text: String, columns: Int): String =
     val out = new StringBuilder

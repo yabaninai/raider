@@ -173,6 +173,33 @@ object ChatLayoutSpec extends ZIOSpecDefault:
           dark != light,
           light.contains("\u001b[38;5;25m")
         )
+      },
+      test("renders parsed diff hunks supplied by the caller") {
+        val rendered = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              50,
+              8,
+              Vector.empty,
+              Vector.empty,
+              "ready",
+              diffHunks = Vector(
+                ChatLayout.DiffHunk(
+                  "@@ -1,1 +1,1 @@",
+                  Vector(
+                    ChatLayout.DiffLine.Remove("old value"),
+                    ChatLayout.DiffLine.Add("new value")
+                  )
+                )
+              )
+            )
+          )
+          .mkString("\n")
+        assertTrue(
+          rendered.contains("@@ -1,1 +1,1 @@"),
+          rendered.contains("\u001b[31m-old value\u001b[0m"),
+          rendered.contains("\u001b[32m+new value\u001b[0m")
+        )
       }
     )
 

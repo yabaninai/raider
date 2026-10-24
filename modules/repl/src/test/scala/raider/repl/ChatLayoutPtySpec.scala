@@ -14,7 +14,10 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
   private val Ansi =
     raw"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\u0007\x1b]*(?:\u0007|\x1b\\)|\x1b[()][0-9A-B]|\x1b[=><]|\x1b7|\x1b8".r
 
-  private final class Session(term: String = "xterm-256color"):
+  private final class Session(
+      term: String = "xterm-256color",
+      combinedFeature: Boolean = false
+  ):
 
     private val base =
       Files.createTempDirectory(s"rai188-pty-${UUID.randomUUID()}")
@@ -44,6 +47,8 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
     builder.environment().put("HOME", home.toString)
     builder.environment().put("RAIDER_PROVIDER", "mock")
     builder.environment().put("RAI188_RESIZE_REQUEST", resizeRequest.toString)
+    if combinedFeature then
+      builder.environment().put("RAI191_COMBINED_FIXTURE", "1")
     builder.environment().remove("RAIDER_API_KEY")
     builder.environment().remove("RAIDER_API_KEY_CMD")
     private val process = builder.start()
@@ -127,6 +132,12 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
       val dir = Files.createDirectories(Paths.get("target/rai188-pty"))
       val path = dir.resolve(s"chat-${UUID.randomUUID()}.txt")
       Files.writeString(path, transcript, StandardCharsets.UTF_8)
+      path
+
+    def saveRawTranscript(): Path =
+      val dir = Files.createDirectories(Paths.get("target/rai188-pty"))
+      val path = dir.resolve(s"chat-raw-${UUID.randomUUID()}.txt")
+      Files.writeString(path, rawTranscript, StandardCharsets.UTF_8)
       path
 
     def close(): Unit =
@@ -340,6 +351,36 @@ object ChatLayoutPtySpec extends ZIOSpecDefault:
         finally
           session.saveTranscript()
           session.close()
+      },
+      test(
+        "one chat turn renders markdown, highlighted code, and parsed diff"
+      ) {
+        val session = new Session(combinedFeature = true)
+        try
+          val prompt = session.waitFor("you> ", 120)
+          session.send("render all formats\r")
+          val heading = session.waitFor("Combined view", 30)
+          val code = session.waitFor("val answer = 42", 30)
+          val diff = session.waitFor("+new", 30)
+          val ready = session.waitFor("stream idle | ready", 30)
+          val raw = session.rawTranscript
+          session.send(":quit\r")
+          val exited = session.waitForExit(20)
+          val evidence = session.saveRawTranscript()
+          assertTrue(
+            prompt,
+            heading,
+            code,
+            diff,
+            ready,
+            raw.contains("\u001b[34mval\u001b[0m"),
+            raw.contains("\u001b[31m-old\u001b[0m"),
+            raw.contains("\u001b[32m+new\u001b[0m"),
+            exited,
+            Files.size(evidence) > 0,
+            !session.transcript.contains("Exception")
+          )
+        finally session.close()
       }
     ) @@ TestAspect.sequential @@ TestAspect.timeout(
       zio.Duration.fromSeconds(240)

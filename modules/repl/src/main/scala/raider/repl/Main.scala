@@ -239,7 +239,8 @@ object Main:
       "import raider.repl.facade.*",
       "import raider.runtime.budget.BudgetLimits",
       "import raider.testkit.ScriptedModelBackend",
-      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      "val __answer = Option(System.getProperty(\"raider.chat.testAnswer\")).getOrElse(\"[scripted-fixture] mock answer\")",
+      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), __answer), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
       "val __model = \"scripted\"",
       // scripted branch: echo stays OFF (fixture tests/smoke assert on the
       // plain transcript; live echo is an interactive-live-provider feature)
