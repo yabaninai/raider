@@ -2,6 +2,8 @@ package raider.repl
 
 import raider.runtime.loop.PlanProposal
 import raider.ui.AuxTabProvider
+import zio.json.{DeriveJsonCodec, JsonCodec}
+import zio.json.EncoderOps
 
 /** RAI-110 (ADR-028 §3): the ONE plan tab — a pure [[AuxTabProvider]] showing
   * the `PlanProposal` of the LAST plan job of the plan session.
@@ -55,6 +57,30 @@ object PlanTab:
 
   object Snapshot:
     val idle: Snapshot = Snapshot(Phase.Idle, None, None, None)
+
+  private final case class WireSnapshot(
+      phase: String,
+      title: Option[String],
+      tasks: Vector[String],
+      rejection: Option[String],
+      execution: Option[String]
+  )
+
+  private object WireSnapshot:
+    given JsonCodec[WireSnapshot] = DeriveJsonCodec.gen[WireSnapshot]
+
+  /** ADR-024 bridge payload: only a serialized snapshot crosses the REPL
+    * classloader boundary.
+    */
+  def toJson(snapshot: Snapshot): String =
+    val wire = WireSnapshot(
+      snapshot.phase.name,
+      snapshot.proposal.map(_.title),
+      snapshot.proposal.fold(Vector.empty[String])(_.steps),
+      snapshot.rejection,
+      snapshot.execution
+    )
+    wire.toJson
 
   /** Honest availability: anything but a virgin session shows the tab. */
   def available(snapshot: Snapshot): Boolean =

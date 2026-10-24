@@ -88,6 +88,14 @@ final class ChatLayoutSink(
           draw(s"streaming turn $turnCount chunk $deltaCount")
     }
 
+  override def eventJson(json: String): UIO[Unit] = ZIO.succeed {
+    renderBridge.accept("\u0000ADR024:" + json)
+  }
+
+  override def planSnapshotJson(json: String): UIO[Unit] = ZIO.succeed {
+    renderBridge.accept("\u0000PLAN:" + json)
+  }
+
   override def toolCallCard(
       name: String,
       arguments: String,

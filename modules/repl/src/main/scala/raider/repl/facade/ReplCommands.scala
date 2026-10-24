@@ -1,6 +1,6 @@
 package raider.repl.facade
 
-import raider.core.{JobId, RaiderError}
+import raider.core.{JobId, RaiderError, RequestMessage}
 import raider.provider.anthropic.AnthropicMessagesBackend
 import raider.runtime.jobs.JobStatus
 import raider.testkit.ScriptedModelBackend
@@ -52,6 +52,19 @@ object ReplCommands:
         )
         .forkDaemon
     )
+
+  /** Start a real PlanSession proposal and keep its serialized snapshot live
+    * for the chat shell's tasks panel.
+    */
+  def startPlan(prompt: String): Unit =
+    val planJob = FacadeOps.unsafeRun(
+      session.planSession.startPlan(
+        List(RequestMessage("user", prompt)),
+        session.limits,
+        session.limits.maxAttempts
+      )
+    )
+    FacadeOps.unsafeRun(session.planPanel.track(planJob).forkDaemon.unit)
 
   /** Request bounded cancellation and keep any text already rendered. */
   def cancelChat(): Boolean =
