@@ -25,7 +25,22 @@ final case class PortableProgramNode(
 
 final case class PortableLoweredWorkflow(
     program: Program[Json, Json],
-    structure: PortableProgramNode
+    structure: PortableProgramNode,
+    launchMetadata: PortableLaunchMetadata
+)
+
+/** Additive, validated root ceilings for the trusted launch owner.
+  *
+  * The DSL deliberately does not interpret these values as scheduler or budget
+  * state. A launcher must intersect them with invocation policy before it
+  * dispatches the returned program.
+  */
+final case class PortableLaunchMetadata(
+    maxAttempts: Int,
+    maxParallelism: Int,
+    deadlineMs: Long,
+    maxTokens: Long,
+    maxChildren: Int
 )
 
 /** Lowers supported portable nodes to lazy existing Program/Task compositions.
@@ -41,6 +56,19 @@ object PortableWorkflowLowerer:
     PortableWorkflowValidator.validate(document.toJson).flatMap { validated =>
       val root = validated.asInstanceOf[Json.Obj]
       val rootLimits = field(root, "limits").flatMap(objectValue)
+      val launchMetadata = rootLimits.map { limits =>
+        def integer(name: String): Long =
+          field(limits, name).collect { case Json.Num(value) =>
+            value.longValueExact()
+          }.get
+        PortableLaunchMetadata(
+          maxAttempts = integer("attempts").toInt,
+          maxParallelism = integer("parallelism").toInt,
+          deadlineMs = integer("deadlineMs"),
+          maxTokens = integer("tokens"),
+          maxChildren = integer("children").toInt
+        )
+      }.get
       def rootLimit(name: String, default: Int): Int =
         rootLimits
           .flatMap(field(_, name))
@@ -322,7 +350,8 @@ object PortableWorkflowLowerer:
                     )
                 )
               },
-              structure
+              structure,
+              launchMetadata
             )
           }
         }

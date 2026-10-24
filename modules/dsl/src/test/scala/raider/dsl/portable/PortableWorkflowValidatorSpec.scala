@@ -149,6 +149,40 @@ object PortableWorkflowValidatorSpec extends ZIOSpecDefault:
         }
         assertTrue(files.size == 10, lowered.forall(_.isRight))
       },
+      test("lowering emits validated root ceilings as launch metadata") {
+        val document = Files
+          .readString(contract("valid/root-limits.json"))
+          .fromJson[Json]
+          .toOption
+          .get
+        val native = Program.fromFunction[Json, Json]("native-scripted")(_ =>
+          Task.succeed(Json.Null)
+        )
+        val lowered = PortableWorkflowLowerer
+          .lower(
+            document,
+            PortableProgramRegistry(
+              Map("worker" -> native),
+              Map(
+                (
+                  "bounded-check",
+                  "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+                ) -> native
+              )
+            )
+          )
+        assertTrue(
+          lowered.exists(
+            _.launchMetadata == PortableLaunchMetadata(
+              maxAttempts = 1,
+              maxParallelism = 1,
+              deadlineMs = 5000L,
+              maxTokens = 100L,
+              maxChildren = 0
+            )
+          )
+        )
+      },
       test("unknown-major refusal matches the frozen diagnostic fields") {
         val result = PortableWorkflowValidator.validate(
           """{"format":"raider.portable-workflow","version":"2.0"}"""
