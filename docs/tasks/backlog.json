@@ -5815,7 +5815,7 @@
       "title": "TUI-X.D2: GraalVM native-image evaluation (spike)",
       "milestone": "P2",
       "dependencies": ["RAI-193"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["packaging/**", "scripts/release/**", "docs/research/**", "docs/adr/**", "docs/work/records/**"],
       "profiles": ["static", "release", "docs"],
       "behavior": "Evaluate native-image feasibility for pinned Scala/ZIO: reflection/configuration reachability, reproducible build feasibility, startup and binary-size measurements, and honest go/no-go recommendation. A go decision requires a separate ADR before implementation.",
