@@ -273,7 +273,7 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-194** [TUI-X.D2: GraalVM native-image evaluation (spike)](m2-p2.md#rai-194-tui-xd2-graalvm-native-image-evaluation-spike); dependencies: RAI-193; profiles: static, release, docs.
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
 - **RAI-207** [Protected CWF-E02 expectation migration under the RAI-195 check-policy contract](m0.md#rai-207-protected-cwf-e02-expectation-migration-under-the-rai-195-check-policy-contract); dependencies: RAI-195; profiles: static, unit, contracts, ci, eval.
-- **RAI-208** [TUI-X.B3.b: live plan/budget wiring in the chat shell](m2-p2.md#rai-208-tui-xb3b-live-planbudget-wiring-in-the-chat-shell); dependencies: RAI-190, RAI-188; profiles: static, unit, contracts, repl.
+- **RAI-208** [TUI-X.B3.b: live plan/budget wiring in the chat shell](m2-p2.md#rai-208-tui-xb3b-live-planbudget-wiring-in-the-chat-shell); accepted (round-2 approve; TUI-X.B3 fully closed); dependencies: RAI-190, RAI-188; profiles: static, unit, contracts, repl.
 
 ## Cross-ecosystem program (2026-10-23)
 

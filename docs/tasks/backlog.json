@@ -6190,7 +6190,7 @@
       "title": "TUI-X.B3.b: live plan/budget wiring in the chat shell",
       "milestone": "P2",
       "dependencies": ["RAI-190", "RAI-188"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "repl"],
       "behavior": "Wire the chat shell to the real plan and budget state using the 2026-10-24 classloader-boundary decision: construct one session EventHub in the interpreter world with ReplSession; serialize ADR-024 events and PlanSession snapshots over the existing bridge; do not cross the boundary with typed runtime classes or manufacture values. Populate the tasks panel from real plan snapshots and the footer from real budget transitions, retaining honest unknown/unavailable states until sourced values exist.",
