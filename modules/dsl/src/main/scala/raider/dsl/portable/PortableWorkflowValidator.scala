@@ -1101,7 +1101,9 @@ object PortableWorkflowValidator:
           "safeOperationRef",
           "checkpointRef",
           "placement",
-          "failure"
+          "failure",
+          "then",
+          "else"
         ).foldLeft[Either[PortableDiagnostic, Unit]](Right(())) { (acc, key) =>
           acc.flatMap(_ =>
             field(step, key) match

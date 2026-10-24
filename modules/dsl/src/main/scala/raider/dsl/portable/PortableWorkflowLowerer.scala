@@ -2,7 +2,7 @@ package raider.dsl.portable
 
 import raider.core.{Program, RaiderError, Task}
 import raider.dsl.composition.{all, batch}
-import zio.Duration
+import zio.{Duration, ZIO}
 import zio.json.*
 import zio.json.ast.Json
 
@@ -326,9 +326,35 @@ object PortableWorkflowLowerer:
                   execute(node.children(if present then 0 else 1), input)
                 case "repair" =>
                   val step = byId(node.stepId)
-                  registry
-                    .safeOperations(string(step, "safeOperationRef").get)
-                    .apply(input)
+                  val operation =
+                    registry
+                      .safeOperations(string(step, "safeOperationRef").get)
+                  val declaredAttempts =
+                    field(step, "maxAttempts")
+                      .collect { case Json.Num(value) => value.intValue }
+                      .getOrElse(1)
+                  // Frozen repair row (ADR-036): repeat only the declared
+                  // safe operation, every repeat carrying the same candidate
+                  // under the existing bounded-attempt discipline. An
+                  // uncertain outcome is never repeated automatically, and
+                  // exhausting the declared bound is a typed refusal.
+                  def repeat(attempt: Int): ZIO[Any, RaiderError, Json] =
+                    Task
+                      .zio(operation(input))
+                      .catchSome {
+                        case uncertain: RaiderError.ToolOutcomeUncertain =>
+                          ZIO.fail(uncertain)
+                        case failure =>
+                          if attempt >= declaredAttempts then
+                            ZIO.fail(
+                              RaiderError.LocalBudgetExceeded(
+                                s"portable repair ${node.stepId} exhausted " +
+                                  s"its declared attempt bound of $declaredAttempts"
+                              )
+                            )
+                          else repeat(attempt + 1)
+                      }
+                  Task(repeat(1))
                 case "checkpoint" =>
                   val step = byId(node.stepId)
                   registry
