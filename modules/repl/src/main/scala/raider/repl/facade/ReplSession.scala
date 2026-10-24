@@ -4,6 +4,7 @@ import raider.core.{ModelBackend, RaiderError, ToolRegistry}
 import raider.runtime.admission.Admission
 import raider.runtime.budget.BudgetLimits
 import raider.runtime.jobs.JobManager
+import raider.runtime.tools.approval.ToolApprovalHook
 import zio.ZIO
 
 /** Frozen contract (fast-REPL slice, phase 0). One live session binding the
@@ -32,12 +33,20 @@ trait ReplSession:
   def model: String = "scripted"
   def echoStream: Boolean = false
   def renderSink: Option[TextRenderSink] = None
+  def toolApproval: Option[ToolApprovalHook] = None
 
 /** Typed destination for model text deltas. The direct terminal echo remains
   * the fallback when no interactive renderer is installed.
   */
 trait TextRenderSink:
   def textDelta(text: String): ZIO[Any, Nothing, Unit]
+
+  /** Render a tool-call card on the same chat output path as text. */
+  def toolCallCard(
+      name: String,
+      arguments: String,
+      outcome: Option[String]
+  ): ZIO[Any, Nothing, Unit] = ZIO.unit
 
 object ReplSession:
 
@@ -51,7 +60,8 @@ object ReplSession:
       tools: ToolRegistry = ToolRegistry.empty,
       model: String = "scripted",
       echoStream: Boolean = false,
-      renderSink: Option[TextRenderSink] = None
+      renderSink: Option[TextRenderSink] = None,
+      toolApproval: Option[ToolApprovalHook] = None
   ): ZIO[Any, RaiderError, ReplSession] =
     for
       valid <- ZIO.fromEither(limits)
@@ -65,7 +75,8 @@ object ReplSession:
       tools,
       model,
       echoStream,
-      renderSink
+      renderSink,
+      toolApproval
     )
 
   private final case class ReplSessionImpl(
@@ -76,7 +87,8 @@ object ReplSession:
       override val tools: ToolRegistry,
       override val model: String,
       override val echoStream: Boolean,
-      override val renderSink: Option[TextRenderSink]
+      override val renderSink: Option[TextRenderSink],
+      override val toolApproval: Option[ToolApprovalHook]
   ) extends ReplSession
 
 end ReplSession

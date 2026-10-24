@@ -7,11 +7,13 @@ import raider.core.{
   RaiderError,
   RequestMessage,
   RootId,
-  Task
+  Task,
+  ToolRegistry
 }
 import raider.runtime.jobs.{JobHandle, JobStatus}
 import raider.runtime.loop.AgentLoop
 import raider.runtime.mailbox.{Mailbox, MailboxError, Message}
+import raider.runtime.tools.approval.ToolApproval
 import zio.{Chunk, Exit, Promise, Unsafe, ZIO}
 
 import java.util.concurrent.ConcurrentHashMap
@@ -126,11 +128,16 @@ Be concise. Use tools before answering.""".stripMargin
     raider.runtime.display.StreamingDisplay(
       b,
       onTextDelta = t => sink.fold(zio.Console.print(t).orDie)(_.textDelta(t)),
-      onToolCall =
-        (n, a) => zio.Console.printLineError(s"  → $n ${a.take(160)}").orDie
+      onToolCall = (n, a) =>
+        sink match
+          case Some(render) => render.toolCallCard(n, a, None)
+          case None =>
+            zio.Console.printLineError(s"  → $n ${a.take(160)}").orDie
     )
 
-  private def echoTracer: raider.core.trace.TraceEvent => zio.UIO[Unit] =
+  private def echoTracer(
+      sink: Option[TextRenderSink]
+  ): raider.core.trace.TraceEvent => zio.UIO[Unit] =
     case raider.core.trace.TraceEvent.ToolCallFinished(
           _,
           _,
@@ -140,9 +147,25 @@ Be concise. Use tools before answering.""".stripMargin
           ok
         ) =>
       val mark = if ok then "✓" else "✗"
-      zio.Console
-        .printLineError(s"  $mark ← $tool: ${result.take(150)}")
-        .orDie
+      sink match
+        case Some(render) =>
+          render.toolCallCard(tool, "{}", Some(s"$mark ${result.take(120)}"))
+        case None =>
+          zio.Console
+            .printLineError(s"  $mark ← $tool: ${result.take(150)}")
+            .orDie
+    case raider.core.trace.TraceEvent.ToolCallRefused(_, _, tool, _, reason) =>
+      sink match
+        case Some(render) =>
+          render.toolCallCard(
+            tool,
+            "{}",
+            Some(s"policy refused: ${reason.take(160)}")
+          )
+        case None =>
+          zio.Console
+            .printLineError(s"⊘ $tool refused: ${reason.take(160)}")
+            .orDie
     case _ => zio.ZIO.unit
 
   /** The ONE agent execution point (RAI-010.a) over an explicit message list —
@@ -160,13 +183,16 @@ Be concise. Use tools before answering.""".stripMargin
     val modelName =
       if session.model == "scripted" then s"scripted:${agent.name}"
       else session.model
+    val dispatchTools = ToolApproval.guard(session.tools, session.toolApproval)
     AgentLoop(
       backend,
-      session.tools,
+      dispatchTools,
       modelName,
       session.admission,
       AgentLoop.newRoot(),
-      trace = if session.echoStream then echoTracer else _ => zio.ZIO.unit,
+      trace =
+        if session.echoStream then echoTracer(session.renderSink)
+        else _ => zio.ZIO.unit,
       systemPrompt = Some(ReplSystemPrompt)
     )
       .runText(messages, session.limits, session.limits.maxAttempts)

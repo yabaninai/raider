@@ -10,6 +10,12 @@ import raider.runtime.events.EventHub
 import raider.runtime.events.EventEnvelope
 import raider.runtime.jobs.{JobHandle, JobManager, StatusLedger}
 import raider.runtime.loop.{AgentLoop, LoopEvents}
+import raider.runtime.tools.approval.{
+  ToolApproval,
+  ToolApprovalContext,
+  ToolApprovalDecision,
+  ToolApprovalHook
+}
 import zio.{Exit, Promise, Ref, Scope, ZIO}
 import zio.json.EncoderOps
 
@@ -102,7 +108,8 @@ object ChatLoop:
       // (ADR-033 §5.1 configRefs discipline — a reference, never a credential);
       // carried into the export origin. Defaulted so existing test
       // constructions compile unchanged.
-      baseUrl: String = ""
+      baseUrl: String = "",
+      private[chat] var approvalInput: Option[BufferedReader] = None
   )
 
   def run(
@@ -327,6 +334,7 @@ object ChatLoop:
       val in = new BufferedReader(
         new InputStreamReader(System.in, StandardCharsets.UTF_8)
       )
+      ctx.approvalInput = Some(in)
       var running = true
       var exit = 0
       while running do
@@ -529,7 +537,8 @@ object ChatLoop:
           ctx.limits,
           ctx.historyRef,
           ctx.traceRef,
-          input
+          input,
+          ctx.approvalInput
         ).exit
         traceAfter <- ctx.traceRef.get
         tools = TurnLedger.toolOutcomes(traceAfter.drop(traceBefore))
@@ -563,8 +572,13 @@ object ChatLoop:
       limits: BudgetLimits,
       historyRef: Ref[List[RequestMessage]],
       traceRef: Ref[Vector[raider.core.trace.TraceEvent]],
-      input: String
+      input: String,
+      approvalInput: Option[BufferedReader]
   ): ZIO[Any, RaiderError, String] =
+    val guardedLoop = loop.copy(
+      tools =
+        ToolApproval.guard(loop.tools, Some(cliApprovalHook(approvalInput)))
+    )
     for
       history <- historyRef.get
       // automatic compaction BEFORE the model call when context exceeds the
@@ -575,7 +589,11 @@ object ChatLoop:
       newUser = RequestMessage("user", input)
       messages = (compacted :+ newUser).takeRight(MaxHistoryMessages)
       // Run the loop with FULL conversation
-      answer <- loop.runText(messages, limits, math.min(limits.maxAttempts, 12))
+      answer <- guardedLoop.runText(
+        messages,
+        limits,
+        math.min(limits.maxAttempts, 12)
+      )
       // Record trace events
       _ <- traceRef.update(
         _ :+ raider.core.trace.TraceEvent.RunStarted(
@@ -597,6 +615,24 @@ object ChatLoop:
           .takeRight(MaxHistoryMessages)
       }
     yield answer
+
+  private def cliApprovalHook(
+      approvalInput: Option[BufferedReader]
+  ): ToolApprovalHook = new ToolApprovalHook:
+    def decide(context: ToolApprovalContext) =
+      val prompt =
+        s"Approve mutating tool '${context.tool}' with arguments " +
+          s"${context.argumentsJson}? Type 'yes' to approve; anything else denies: "
+      ZIO.succeed(System.err.print(prompt)) *>
+        ZIO
+          .attemptBlocking(
+            approvalInput.fold(scala.io.StdIn.readLine())(_.readLine())
+          )
+          .map: answer =>
+            if Option(answer).exists(_.trim.equalsIgnoreCase("yes")) then
+              ToolApprovalDecision.Approve
+            else ToolApprovalDecision.Deny
+          .orElseSucceed(ToolApprovalDecision.Deny)
 
   /** Summarize the oldest slice into one system message (Phase 2.3). The
     * summary itself is a side model call (1 round) and never enters the
