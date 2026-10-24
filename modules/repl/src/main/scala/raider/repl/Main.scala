@@ -372,8 +372,10 @@ object Main:
     val deltas =
       (s"raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), __answer)" ::
         (if planFixture then Nil
-         else List(" (ScriptedModelBackend; no live network in this slice)")))
-        .zipWithIndex
+         else
+           List(
+             " (ScriptedModelBackend; no live network in this slice)"
+           ))).zipWithIndex
         .map:
           case (delta, 0) => delta
           case (suffix, _) =>
