@@ -267,8 +267,8 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-188** [TUI-X.B1: chat-centric layout + streaming panel](m2-p2.md#rai-188-tui-xb1-chat-centric-layout--streaming-panel); dependencies: none; profiles: static, unit, contracts, repl.
 - **RAI-189** [TUI-X.B2: tool-call cards with inline approval](m2-p2.md#rai-189-tui-xb2-tool-call-cards-with-inline-approval); dependencies: RAI-188; profiles: static, unit, contracts, runtime, repl, security.
 - **RAI-190** [TUI-X.B3: session switcher + tasks panel + status footer](m2-p2.md#rai-190-tui-xb3-session-switcher--tasks-panel--status-footer); accepted on the delivered slice basis; live plan/budget wiring is RAI-208; dependencies: RAI-188; profiles: static, unit, contracts, repl.
-- **RAI-191** [TUI-X.A1: markdown + syntax highlighting + diff in the own renderer](m2-p2.md#rai-191-tui-xa1-markdown--syntax-highlighting--diff-in-the-own-renderer); dependencies: RAI-188, RAI-190; profiles: static, unit, contracts, repl, security.
-- **RAI-192** [TUI-X.C1: diff review accept/reject + model/provider switcher](m2-p2.md#rai-192-tui-xc1-diff-review-acceptreject--modelprovider-switcher); dependencies: RAI-189, RAI-191; profiles: static, unit, contracts, runtime, repl, security.
+- **RAI-191** [TUI-X.A1: markdown + syntax highlighting + diff in the own renderer](m2-p2.md#rai-191-tui-xa1-markdown--syntax-highlighting--diff-in-the-own-renderer); accepted (renderer diff seam + combined PTY); two hardening notes routed to RAI-192; dependencies: RAI-188, RAI-190; profiles: static, unit, contracts, repl, security.
+- **RAI-192** [TUI-X.C1: diff review accept/reject + model/provider switcher](m2-p2.md#rai-192-tui-xc1-diff-review-acceptreject--modelprovider-switcher); ready; carries two routed RAI-191 hardening acceptance conditions (ESC neutralization in hunk rows, SGR-width clipping); dependencies: RAI-189, RAI-191; profiles: static, unit, contracts, runtime, repl, security.
 - **RAI-193** [TUI-X.D1: JVM distribution](m2-p2.md#rai-193-tui-xd1-jvm-distribution); dependencies: none; profiles: static, unit, contracts, release, security.
 - **RAI-194** [TUI-X.D2: GraalVM native-image evaluation (spike)](m2-p2.md#rai-194-tui-xd2-graalvm-native-image-evaluation-spike); dependencies: RAI-193; profiles: static, release, docs.
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
@@ -281,8 +281,8 @@ These cards were already present in the local backlog when documentation work be
 
 - **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
 - **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
-- **RAI-198** [Portable workflow validation and native lowering](m1.md); dependencies: RAI-197; profiles: static, unit, contracts, runtime, security.
-- **RAI-199** [Portable CLI execution and Scala parity](m1.md); dependencies: RAI-198, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
+- **RAI-198** [Portable workflow validation and native lowering](m1.md); accepted (ruling executed; 63-field frozen conformance table, typed repair exhaustion); dependencies: RAI-197; profiles: static, unit, contracts, runtime, security.
+- **RAI-199** [Portable CLI execution and Scala parity](m1.md); ready; dependencies: RAI-198, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
 - **RAI-200** [Language-neutral local process protocol contract](m1.md); accepted; dependencies: RAI-196; profiles: docs, contracts.
 - **RAI-201** [Local process adapter with owned execution](m1.md); dependencies: RAI-200, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
 - **RAI-202** [Provider and structured-output capability audit and contract](m1.md); accepted; dependencies: RAI-196; profiles: docs, contracts.

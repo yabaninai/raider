@@ -5764,7 +5764,7 @@
       "title": "TUI-X.A1: markdown + syntax highlighting + diff in the own renderer",
       "milestone": "P2",
       "dependencies": ["RAI-188", "RAI-190"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "repl", "security"],
       "behavior": "Extend the own renderer for streaming-safe markdown headings/lists/code blocks, Scala and JSON tokenization with ANSI highlighting, unified diff reusing fs_patch/UnifiedDiff, dark/light themes, and box-drawing. Incomplete streamed blocks remain renderable and recover.",
@@ -5781,7 +5781,7 @@
       "title": "TUI-X.C1: diff review accept/reject + model/provider switcher",
       "milestone": "P2",
       "dependencies": ["RAI-189", "RAI-191"],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
       "behavior": "Provide per-hunk diff accept/reject through fs_patch application policy; switch model/provider from TUI through existing environment policy without displaying credentials; fold the existing lineage tab into the layout.",
@@ -5885,7 +5885,7 @@
       "dependencies": [
         "RAI-197"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
@@ -5916,7 +5916,7 @@
         "RAI-198",
         "RAI-187"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/portable/**",
         "modules/cli/src/main/scala/raider/cli/Main.scala",
