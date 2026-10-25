@@ -1,0 +1,7 @@
+{
+  "format": "raider.portable-workflow", "version": "1.0",
+  "limits": { "deadlineMs": 60000, "attempts": 4, "parallelism": 1, "children": 0, "tokens": 12000 },
+  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "verdict": { "type": "string" } } },
+  "steps": [{ "id": "prepare", "kind": "agent", "profile": "coder", "toolset": "workspace", "input": "#/inputs/request", "outputSchema": "verdict", "structuredOutput": true }, { "id": "gate", "kind": "trustedCheck", "checkId": "workspace-marker-present", "registrySnapshot": "sha256:0c877972cf59788094e1d7653a1f01f6cd1b6c9108d117d5e069bc6b6bdaba0b", "input": "#/steps/prepare/output", "outputSchema": "verdict" }, { "id": "run", "kind": "sequence", "steps": ["prepare", "gate"], "outputSchema": "verdict" }],
+  "outputs": { "bindings": { "result": "#/steps/run/output" }, "verdict": { "from": "#/steps/run/output", "authority": "trustedVerifier" } }
+}

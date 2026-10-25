@@ -102,11 +102,22 @@ object Main:
     * parsing (the plugin-command discipline: workflow arguments must never be
     * interpreted as run/chat flags). Returns None when argv targets neither, so
     * chat/run fall through unchanged.
+    *
+    * RAI-199: the ADR-036 opt-in portable routes. `workflow check --doc` and
+    * `workflow explain --doc` are zero-dispatch local commands; `workflow run
+    * --doc ...` is the portable launch route. `--doc` presence is what selects
+    * the portable run — a bare `workflow run` keeps the compiled route.
     */
   def workflowCommand(argv: Array[String]): Option[Int] =
     argv.toList match
       case "compile" :: rest =>
         Some(raider.cli.workflow.WorkflowCompile.command(rest))
+      case "workflow" :: "check" :: rest =>
+        Some(raider.cli.portable.PortableCheck.command(rest))
+      case "workflow" :: "explain" :: rest =>
+        Some(raider.cli.portable.PortableExplain.command(rest))
+      case "workflow" :: rest if rest.contains("--doc") =>
+        Some(raider.cli.portable.PortableRun.command(rest))
       case "workflow" :: rest =>
         Some(raider.cli.workflow.WorkflowRun.command(rest))
       case _ => None
