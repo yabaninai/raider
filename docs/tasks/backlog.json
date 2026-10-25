@@ -5662,7 +5662,7 @@
       "title": "First CI — report, checks, and exit contract closure",
       "milestone": "M0",
       "dependencies": ["RAI-131", "RAI-185"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/main/scala/raider/cli/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/ci/reports/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "ci", "tools", "security", "eval"],
       "behavior": "Close First CI report/check/exit acceptance. Verdicts must derive advisory-versus-blocking outcomes from actual deterministic check evidence and the frozen policy, never model-authored success. Require and integrity-check the run/result/events/JUnit/summary/artifacts manifest set. Specify and test table-driven exit mapping and precedence for write failure, uncertain outcome, deadline, policy denial, and cancellation. Exercise reporter escaping against hostile XML, Markdown, filesystem paths, and command-like content; a required artifact write failure is always nonzero and never exit 0.",
@@ -5679,7 +5679,7 @@
       "title": "First CI — lifecycle and joint acceptance record",
       "milestone": "M0",
       "dependencies": ["RAI-185", "RAI-186"],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/acceptance/ci/**", "docs/acceptance/ci/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "ci", "runtime"],
       "behavior": "Verify First CI lifecycle behavior and publish the minimal combined acceptance matrix. A deadline run must yield the defined policy exit and honest artifacts. Send PARENT-DELIVERED OS SIGTERM to the real CLI child process; verify owned-child/process-group cleanup within a bounded stop, signal exit semantics, and truthful partial artifacts. Fiber-interrupt tests are lower-level evidence only and do not substitute for process-level signaling. Run one minimal combined fixture against every First CI clause and record exact commands and evidence.",
@@ -5696,7 +5696,7 @@
       "title": "CI check-policy contract: advisory/blocking declaration on trusted checks",
       "milestone": "M0",
       "dependencies": ["RAI-186", "RAI-131"],
-      "status": "in-progress",
+      "status": "accepted",
       "allowed_paths": ["docs/tasks/m0.md", "docs/tasks/backlog.json", "docs/tasks/README.md", "docs/work/board.md", "docs/ci-runtime.md", "docs/adr/**", "contracts/ci/**", "contracts/bundle/**", "modules/ci/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "ci"],
       "behavior": "Define and freeze an advisory Boolean on trusted workflow/bundle check metadata, specifically the exported-workflow trustedChecks surface. Policy is workflow-bound, not CI-context configuration, CLI override, model output, or task input. Advisory check failure produces a success-with-advisory verdict, exit 0, and recorded verdict/evidence per ci-runtime §§7–8; blocking failure remains task-failed. Missing, unknown, or mismatched check IDs are blocking by fail-safe default. Freeze serialization and provenance with the bundle and record resolved policy identity in run outcomes. Threshold semantics are excluded from v1. RAI-186 completes FCI-REPORT-01 under this contract.",
@@ -6037,7 +6037,7 @@
         "RAI-198",
         "RAI-160"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
@@ -6161,7 +6161,7 @@
       "dependencies": [
         "RAI-195"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/chat-workflow/expectations/CWF-E02.json",
         "modules/cli/src/test/scala/raider/cli/chat/ChatWorkflowVerifierE02Spec.scala",
