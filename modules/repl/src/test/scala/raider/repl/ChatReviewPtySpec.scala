@@ -229,7 +229,7 @@ object ChatReviewPtySpec extends ZIOSpecDefault:
       test(
         "configured live key switches to openai without ever reaching the transcript"
       ) {
-        val secret = "sk-pty-redaction-check-1234567890abcdef"
+        val secret = "sk-pty-key"
         val session = new Session(withApiKey = Some(secret))
         try
           val prompt = session.waitFor("you> ", 120)

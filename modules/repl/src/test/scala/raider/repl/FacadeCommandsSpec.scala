@@ -302,7 +302,7 @@ object FacadeCommandsSpec extends ZIOSpecDefault:
         test("openai switch with a fake key constructs without dialing") {
           val root = tempRoot()
           withTurn(root, "unused") { _ =>
-            val secret = "sk-test-secret-123456"
+            val secret = "sk-secret1"
             val sink = ReplCommands.currentSession.get.renderSink
             val response =
               ModelCommands.switch(
