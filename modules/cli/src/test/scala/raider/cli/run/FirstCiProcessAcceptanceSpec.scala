@@ -379,7 +379,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         Files.readString(file, UTF_8)
       }
       val successfulVerdict = resultDocs.forall { raw =>
-        raw.contains("\"taskVerdict\":\"passed\"") &&
+        raw.contains("\"taskVerdict\":\"trusted-checks-passed\"") &&
         raw.contains("\"checkPolicyDigest\":\"sha256-") &&
         raw.contains(
           "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
