@@ -1,0 +1,188 @@
+{
+  "card": "RAI-184",
+  "resumeDate": "2026-10-25",
+  "execution": "resumed-with-infra-issued-demo-key-after-owner-scout",
+  "provider": "OpenAI-compatible Yabanin gateway",
+  "endpointHost": "demo.yabanin.ai",
+  "basePath": "/gw/v1",
+  "credential": {
+    "sourcePath": "yabanin-infra repo, .local/demo-20261024/opencode-api-key (runtime-only file read; value never printed/persisted)",
+    "maskedTail": "***715",
+    "format": "yb_[0-9a-f]{64}",
+    "keyMetadataName": "OpenCode development via demo",
+    "keyMetadataOrgId": "1ca88e72-eeaf-4e74-a466-1195152a2d11 (demo stand seed org 'yabanin-demo')",
+    "distinctFromPreviouslyFailed": "tail 8ba (.env.yabanin) and tail 122 (opencode inline yabanin-stand) both differ by length and sha256 fingerprint"
+  },
+  "priorRunReference": "baseline 76ee20356a4ea2034e07f0b743800eef9fe31ab5 attempts: 405/401/401 probes + 2 authenticated 401s; spend $0.00; preserved below",
+  "models": {
+    "massScenarios": "glm-5.3-flash",
+    "toolRound": "glm-5.3"
+  },
+  "requestAccounting": {
+    "capUsd": 5.0,
+    "reservationUsdPerResponse": 0.1,
+    "maxInferenceRequests": 100,
+    "requestsUsedTotal": 17,
+    "requestsUsedThisResume": 15,
+    "priorLedgerRequests": 2,
+    "committedReservedUsd": 0.206902,
+    "remainingCapUsd": 4.7931,
+    "remainingRequests": 83,
+    "runnerStoppedAt": "end of matrix; guard stopped=True after cancellation-charge uncertainty (per guard semantics uncertain charges stop further dispatch)"
+  },
+  "scenarios": {
+    "probeAuth": {
+      "scenario": "probe-auth",
+      "status": "ok",
+      "httpStatus": 200,
+      "latencyMs": 1892,
+      "usage": {
+        "completion_tokens": 16,
+        "completion_tokens_details": {
+          "reasoning_tokens": 16
+        },
+        "prompt_tokens": 19,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 35
+      },
+      "estimatedCostUsd": 0.000297,
+      "costBasis": "estimated from observed usage at unverified placeholder rates ($3/M in, $15/M out); actual gateway price unknown",
+      "finishReason": "length",
+      "contentEmpty": true
+    },
+    "directChat": {
+      "scenario": "direct-chat-v2 (primary; v1 pre-rerun identical shape)",
+      "status": "ok",
+      "httpStatus": 200,
+      "latencyMs": 2514,
+      "usage": {
+        "completion_tokens": 50,
+        "completion_tokens_details": {
+          "reasoning_tokens": 50
+        },
+        "prompt_tokens": 20,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "total_tokens": 70
+      },
+      "estimatedCostUsd": 0.00081,
+      "costBasis": "estimated from observed usage at unverified placeholder rates ($3/M in, $15/M out); actual gateway price unknown",
+      "finishReason": "length",
+      "contentEmpty": true
+    },
+    "streaming": {
+      "scenario": "streaming-v2 (primary; v1 1-chunk pre-rerun)",
+      "status": "ok",
+      "httpStatus": 200,
+      "latencyMs": 2436,
+      "usage": {
+        "prompt_tokens": 23,
+        "completion_tokens": 14,
+        "total_tokens": 37,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 2
+        }
+      },
+      "estimatedCostUsd": 0.000279,
+      "costBasis": "estimated from observed usage at unverified placeholder rates ($3/M in, $15/M out); actual gateway price unknown",
+      "stream": {
+        "contentChunks": 9,
+        "joinedContent": "One Two Three Four Five Six Seven Eight Nine Ten",
+        "aborted": false,
+        "finishReason": "stop"
+      }
+    },
+    "toolRound": {
+      "leg1": {
+        "scenario": "tool-round-leg1",
+        "status": "ok",
+        "httpStatus": 200,
+        "latencyMs": 5591,
+        "usage": {
+          "completion_tokens": 39,
+          "completion_tokens_details": {
+            "reasoning_tokens": 21
+          },
+          "prompt_tokens": 181,
+          "prompt_tokens_details": {
+            "cached_tokens": 0
+          },
+          "total_tokens": 220
+        },
+        "estimatedCostUsd": 0.001128,
+        "costBasis": "estimated from observed usage at unverified placeholder rates ($3/M in, $15/M out); actual gateway price unknown",
+        "finishReason": "tool_calls",
+        "contentEmpty": true,
+        "toolCalls": [
+          {
+            "name": "add_numbers",
+            "argumentsJson": "{\"a\":2,\"b\":3}"
+          }
+        ]
+      },
+      "leg2": {
+        "scenario": "tool-round-leg2",
+        "status": "ok",
+        "httpStatus": 200,
+        "latencyMs": 5083,
+        "usage": {
+          "completion_tokens": 29,
+          "completion_tokens_details": {
+            "reasoning_tokens": 14
+          },
+          "prompt_tokens": 204,
+          "prompt_tokens_details": {
+            "cached_tokens": 128
+          },
+          "total_tokens": 233
+        },
+        "estimatedCostUsd": 0.001047,
+        "costBasis": "estimated from observed usage at unverified placeholder rates ($3/M in, $15/M out); actual gateway price unknown",
+        "finishReason": "stop",
+        "contentEmpty": false
+      },
+      "localFixture": "add_numbers(2,3) executed locally -> 5",
+      "correlatedFinal": "finish=stop; content: 'The result of 2 + 3 is **5**.'"
+    },
+    "cancelMidStream": {
+      "scenario": "cancel-mid-stream-v2",
+      "status": "ok",
+      "httpStatus": 200,
+      "latencyMs": 2245,
+      "usage": null,
+      "estimatedCostUsd": null,
+      "costBasis": null,
+      "stream": {
+        "contentChunks": 1,
+        "joinedContent": "one",
+        "aborted": true,
+        "finishReason": null
+      }
+    },
+    "usageAndCostObservation": {
+      "status": "ok",
+      "observedUsage": "per-scenario usage objects recorded above (prompt/completion/total tokens; cached and reasoning token details present)",
+      "estimatedCostUsdTotal": 0.006902,
+      "estimatedCostBasis": "placeholder rates from live-wire-request.md ($3/M in, $15/M out); NOT verified gateway pricing",
+      "unknownPrices": "gateway exposes no per-token price in API responses; actual USD cost per response is UNKNOWN; $0.10/response reservation is the exposure bound",
+      "uncertainCharges": [
+        "request #3 (harness probe): HTTP 400 pre-generation client error, conservatively reservation-charged $0.10 in ledger",
+        "request #17 (cancel-mid-stream-v2): usage unknown after mid-stream abort; $0.10 reservation retained as committed upper bound per guard semantics"
+      ]
+    }
+  },
+  "findings": [
+    "Auth: the infra-issued demo key authenticates (HTTP 200); the previously failed credentials (tails 8ba, 122) were simply not the stand's issued key.",
+    "Diagnostic: python http.client probes returned bare text/plain '400 Bad Request' when the request carried zero or duplicate Host headers (harness bug, fixed mid-run; two 400 diagnostics + one 400 probe counted in ledger).",
+    "Model behavior: glm-5.3-flash under max_tokens<=50 spends the whole completion budget on reasoning_tokens (finish_reason=length, empty content), including with body parameter thinking:{\"type\":\"disabled\"}; streaming and tool rounds still behave per wire contract. Recorded as a model-behavior finding, not a gate pass/fail.",
+    "Cancellation: aborting the SSE connection after the first content chunk succeeded; final usage never received -> charge uncertainty truthful; reservation retained.",
+    "Prompt caching observed on tool-round leg2 (cached_tokens=128 of 204 prompt tokens)."
+  ],
+  "secretHygiene": "key value absent from all artifacts/logs/argv; only masked tail and file path recorded; harness executed from OS temp dir, not committed"
+}
