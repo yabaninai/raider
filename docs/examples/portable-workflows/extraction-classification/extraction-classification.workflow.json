@@ -1,0 +1,124 @@
+{
+  "format": "raider.portable-workflow",
+  "version": "1.0",
+  "metadata": {
+    "title": "extraction-classification",
+    "description": "Read-only extraction over a bounded document fan-out, then verify the extracted classification labels with a trusted check."
+  },
+  "limits": {
+    "deadlineMs": 600000,
+    "attempts": 6,
+    "parallelism": 2,
+    "children": 8,
+    "tokens": 50000
+  },
+  "schemas": {
+    "inputs": {
+      "documents": {
+        "type": "array",
+        "maxItems": 4,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "body"],
+          "properties": {
+            "id": { "type": "string" },
+            "body": { "type": "string" }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "classification": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "label", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "label": { "type": "string" },
+          "summary": { "type": "string" }
+        }
+      },
+      "classifications": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "label", "summary"],
+          "properties": {
+            "id": { "type": "string" },
+            "label": { "type": "string" },
+            "summary": { "type": "string" }
+          }
+        }
+      },
+      "checkVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "detail"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed"]
+          },
+          "detail": { "type": "string" }
+        }
+      },
+      "flowVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "detail"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed"]
+          },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "classify-item",
+      "kind": "agent",
+      "profile": "extractor",
+      "toolset": "read-only",
+      "input": "#/item",
+      "structuredOutput": true,
+      "outputSchema": "classification"
+    },
+    {
+      "id": "fanout",
+      "kind": "map",
+      "items": "#/inputs/documents",
+      "templateStep": "classify-item",
+      "maxItems": 4,
+      "parallelism": 2,
+      "outputSchema": "classifications"
+    },
+    {
+      "id": "verify",
+      "kind": "trustedCheck",
+      "checkId": "classification-labels-valid",
+      "registrySnapshot": "sha256:69baafd85b2d35be2ffcfc66150ff9a0f8f5f0f3ff73686729e3c64999ad2dff",
+      "input": "#/steps/fanout/output",
+      "outputSchema": "checkVerdict"
+    },
+    {
+      "id": "run",
+      "kind": "sequence",
+      "steps": ["fanout", "verify"],
+      "outputSchema": "flowVerdict"
+    }
+  ],
+  "outputs": {
+    "bindings": {
+      "result": "#/steps/run/output"
+    },
+    "verdict": {
+      "from": "#/steps/run/output",
+      "authority": "trustedVerifier"
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "task": {
+    "taskId": "",
+    "instruction": "Extract the task candidate and prepare a one-paragraph patch."
+  }
+}

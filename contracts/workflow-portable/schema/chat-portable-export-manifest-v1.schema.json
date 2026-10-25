@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.invalid/contracts/workflow-portable/chat-portable-export-manifest-v1.schema.json",
+  "title": "Raider chat portable export manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "kind",
+    "exportedAtMs",
+    "sessionId",
+    "origin",
+    "selection",
+    "document",
+    "inputExample",
+    "trusted"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "kind": { "const": "raider.chat-portable-export" },
+    "exportedAtMs": { "type": "integer", "minimum": 0 },
+    "sessionId": { "type": "string", "minLength": 1, "maxLength": 256 },
+    "origin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerKind", "model", "baseUrl"],
+      "properties": {
+        "providerKind": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "model": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "baseUrl": { "type": ["string", "null"], "maxLength": 2048 }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intentTurnId", "refinementTurnIds", "maxRoundsBound"],
+      "properties": {
+        "intentTurnId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "refinementTurnIds": {
+          "type": "array",
+          "maxItems": 4096,
+          "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+        },
+        "maxRoundsBound": { "type": "integer", "minimum": 1, "maximum": 100 }
+      }
+    },
+    "document": { "$ref": "#/$defs/artifact" },
+    "inputExample": { "$ref": "#/$defs/artifact" },
+    "trusted": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["profile", "toolset", "checkId", "registrySnapshot"],
+      "properties": {
+        "profile": { "$ref": "#/$defs/identifier" },
+        "toolset": { "$ref": "#/$defs/identifier" },
+        "checkId": { "$ref": "#/$defs/identifier" },
+        "registrySnapshot": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    }
+  },
+  "$defs": {
+    "identifier": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9._-]{0,63}$" },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileName", "sha256"],
+      "properties": {
+        "fileName": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+        "sha256": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

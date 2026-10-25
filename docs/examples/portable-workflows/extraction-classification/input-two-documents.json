@@ -1,0 +1,14 @@
+{
+  "inputs": {
+    "documents": [
+      {
+        "id": "d1",
+        "body": "Customer asks for a refund of the November invoice."
+      },
+      {
+        "id": "d2",
+        "body": "The app crashes on startup after the latest update."
+      }
+    ]
+  }
+}
