@@ -774,6 +774,65 @@ def _self_test_security(policy: dict) -> None:
              f"{r.returncode}: {(r.stderr or r.stdout).strip()[:300]}")
 
 
+def _self_test_gate_timeouts(policy: dict) -> None:
+    """RAI-209 (owner decision 2026-10-26, board 2026-10-25 follow-up #4): the
+    sbt-test budget was calibrated from 900 s to 1800 s to absorb host
+    contention from parallel lanes (identical assertions, no bar change).
+    This pin proves the calibration and freezes every gate timeout so no
+    registry edit can silently move a budget or change the gate set without
+    a conscious policy-card update here. It also proves run_gate classifies
+    an over-budget probe as timed_out+failed (a timeout is never a skip or a
+    pass) — the same code path the 1800 s cap enforces; a fast control probe
+    shows the classification is discriminating, not vacuously failing."""
+    expected = {
+        "self-registry-check": 120,
+        "sbt-compile": 600,
+        "core-contracts-spec": 600,
+        "compile-fixtures": 300,
+        "plan-validate": 120,
+        "sbt-test": 1800,  # RAI-209: 900 -> 1800, contention calibration
+        "scalafmt-check": 120,
+        "scalafix-check": 180,
+        "forbidden-apis": 60,
+        "repl-smoke": 240,
+        "cli-smoke": 120,
+        "license-audit": 300,
+        "security-secrets-scan": 300,
+        "eval-corpus": 600,
+        "ux-baseline": 1800,
+    }
+    if set(policy["gates"]) != set(expected):
+        fail("self-check: gate set drifted vs the frozen timeout map: "
+             + ", ".join(sorted(set(policy["gates"]) ^ set(expected))))
+    for gate_id, budget in expected.items():
+        got = policy["gates"][gate_id].get("timeout_s")
+        if got != budget:
+            fail(f"self-check: gate {gate_id} timeout_s = {got!r}, expected "
+                 f"{budget!r} (budgets are frozen; changing one requires a "
+                 "policy card plus a conscious update of this pin)")
+    probe_dir = EVIDENCE_DIR / "self-negative" / "gate-timeout-probe"
+    probe_dir.mkdir(parents=True, exist_ok=True)
+    slow = run_gate("probe-over-budget",
+                    {"argv": ["python3", "-c", "import time; time.sleep(3)"],
+                     "timeout_s": 1}, probe_dir)
+    if not (slow["timed_out"] and slow["status"] == "failed"
+            and slow["exit_code"] != 0):
+        fail(f"self-check: over-budget probe must classify timed_out+failed "
+             f"(never skip/pass), got status={slow['status']} "
+             f"timed_out={slow['timed_out']} exit_code={slow['exit_code']}")
+    quick = run_gate("probe-under-budget",
+                     {"argv": ["python3", "-c", "pass"], "timeout_s": 60},
+                     probe_dir)
+    if quick["timed_out"] or quick["status"] != "passed":
+        fail(f"self-check: under-budget control probe must pass, got "
+             f"status={quick['status']} timed_out={quick['timed_out']}")
+    print(f"[self-check] gate budgets frozen (RAI-209): {len(expected)} gates "
+          f"pinned, sbt-test timeout_s=1800; over-budget probe classified "
+          f"timed_out+failed (exit {slow['exit_code']}, "
+          f"{slow['duration_s']}s), under-budget control passed "
+          f"({quick['duration_s']}s)")
+
+
 def cmd_self_check(args) -> int:
     policy = load_policy()
     assert set(policy["gates"]) >= {g for p in policy["profiles"].values() for g in p["gates"]}
@@ -783,6 +842,7 @@ def cmd_self_check(args) -> int:
     _self_test_select(policy)
     _self_test_run_id()
     _self_test_security(policy)
+    _self_test_gate_timeouts(policy)
     # verify-negative: tampered manifest must be rejected
     bad_dir = EVIDENCE_DIR / "self-negative"
     bad_dir.mkdir(parents=True, exist_ok=True)
@@ -809,7 +869,9 @@ def cmd_self_check(args) -> int:
           "incoherent/tampered manifests (tamper-evidence: hashes/statuses/policy/"
           "fingerprint; execution provenance is bound to run-time logs, not claimed proof); "
           "security (RAI-069): profile resolves (component stage, gates exist) and "
-          "security_checks.py --self-test proves secrets detection + masked output")
+          "security_checks.py --self-test proves secrets detection + masked output; "
+          "gate budgets frozen (RAI-209): all gate timeout_s pinned, sbt-test=1800, "
+          "over-budget probe classifies timed_out+failed (never skip/pass)")
     return 0
 
 

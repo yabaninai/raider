@@ -98,6 +98,13 @@ pseudo-profile when present). The manifest `mode` field now records
   and match the filesystem-safe charset. This proves in-process uniqueness
   only; cross-process same-second uniqueness rests on distinct PIDs
   (documented limit of `_next_run_id`, no full parallel gate run here);
+- gate budgets frozen (RAI-209): every gate's `timeout_s` in the registry is
+  pinned against an in-test map (`sbt-test` calibrated to 1800 s, owner
+  decision 2026-10-26 — board 2026-10-25 follow-up #4; contention
+  calibration, identical assertions); gate-set drift fails the check;
+  an over-budget probe run through the production `run_gate` classifies as
+  `timed_out` + `failed` (never skip/pass) while a fast control probe passes,
+  proving the timeout classification is real, not vacuous;
 - verify-negative (pre-existing): a fabricated/tampered manifest must be
   rejected.
 

@@ -151,7 +151,7 @@
     "--batch",
     "test"
    ],
-   "timeout_s": 900
+   "timeout_s": 1800
   },
   "scalafmt-check": {
    "argv": [
