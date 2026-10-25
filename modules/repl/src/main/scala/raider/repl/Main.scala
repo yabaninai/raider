@@ -575,6 +575,56 @@ object Main:
     }
     wired
 
+  /** Exact command match: `name` alone or `name` + space (a near-miss like
+    * `:modelx` falls through to the interpreter, RAI-192).
+    */
+  private def exactCommand(raw: String, name: String): Option[String] =
+    if raw == name then Some("")
+    else if raw.startsWith(name + " ") then Some(raw.drop(name.length + 1).trim)
+    else None
+
+  private val HunkUsage =
+    "usage: :hunk | :hunk <n> accept|reject | :hunk apply"
+
+  /** RAI-192: `:hunk` args -> a facade call the interpreter evaluates. Parse
+    * errors are usage lines emitted directly (console world), valid forms go
+    * through `evalChatControl` as `val _ = …` so the Unit result stays silent
+    * and all feedback arrives as sink Status lines.
+    */
+  private def hunkSource(rest: String): Either[String, String] =
+    val parts = rest.split("\\s+").filter(_.nonEmpty).toList
+    parts match
+      case Nil => Right("raider.repl.facade.DiffReviewCommands.status()")
+      case "apply" :: Nil =>
+        Right("raider.repl.facade.DiffReviewCommands.applyAccepted()")
+      case List(number, verb) =>
+        number.toIntOption.filter(_ > 0) match
+          case Some(n) =>
+            verb match
+              case "accept" =>
+                Right(s"raider.repl.facade.DiffReviewCommands.decide($n, true)")
+              case "reject" =>
+                Right(
+                  s"raider.repl.facade.DiffReviewCommands.decide($n, false)"
+                )
+              case _ => Left(HunkUsage)
+          case None => Left(HunkUsage)
+      case _ => Left(HunkUsage)
+
+  /** RAI-192: `:model` args -> facade call. Total: bare `:model` describes the
+    * current binding; unknown providers are refused inside [[ModelCommands]].
+    */
+  private def modelSource(rest: String): String =
+    val parts = rest.split("\\s+").filter(_.nonEmpty).toList
+    parts match
+      case Nil => "raider.repl.facade.ModelCommands.describe()"
+      case List(provider) =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\")"
+      case List(provider, model) =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\", \"${scalaStr(model)}\")"
+      case provider :: model :: restUrl =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\", \"${scalaStr(model)}\", \"${scalaStr(restUrl.mkString(" "))}\")"
+
   private def evalChatControl(engine: ReplEngine, source: String): Unit =
     def emit(text: String): Unit =
       if System.getProperties.containsKey("raider.chat.renderBridge") then
@@ -646,6 +696,20 @@ object Main:
                 engine,
                 "val _ = raider.repl.facade.ReplCommands.cancelChat()"
               )
+            )
+          )
+        case review if exactCommand(review, ":hunk").isDefined =>
+          val rest = exactCommand(review, ":hunk").getOrElse("")
+          hunkSource(rest) match
+            case Right(source) =>
+              Some(ZIO.succeed(evalChatControl(engine, s"val _ = $source")))
+            case Left(usage) =>
+              Some(ZIO.succeed(chatRenderBridge.accept(usage)))
+        case switching if exactCommand(switching, ":model").isDefined =>
+          val rest = exactCommand(switching, ":model").getOrElse("")
+          Some(
+            ZIO.succeed(
+              evalChatControl(engine, s"val _ = ${modelSource(rest)}")
             )
           )
         case ":chat" =>

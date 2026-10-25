@@ -15,6 +15,15 @@ object ChatLayoutPtyApp:
         "# Combined view\n```scala\nval answer = 42\n```\n" +
           "```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```"
       )
+    // RAI-192: per-hunk review fixture — a diff fence with ---/+++ target
+    // headers so the rendered hunks carry a reviewable target path.
+    if sys.env.get("RAI192_REVIEW_FIXTURE").contains("1") then
+      System.setProperty(
+        "raider.chat.testAnswer",
+        "Review this proposal.\n```diff\n" +
+          "--- a/raider-review-demo.txt\n+++ b/raider-review-demo.txt\n" +
+          "@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma\n```"
+      )
     val request = Paths.get(sys.env("RAI188_RESIZE_REQUEST"))
     val watcher = new Thread(() => resizeLoop(request))
     watcher.setDaemon(true)

@@ -23,9 +23,19 @@ object ChatLayout:
     case Add(text: String)
     case Remove(text: String)
 
+  /** Per-hunk review state rendered next to the hunk header. The marker also
+    * carries the 1-based hunk number so TUI commands can address hunks.
+    */
+  enum HunkReview:
+    case Pending, Accepted, Rejected
+
   /** Parsed diff data supplied by a caller that owns the unified-diff parser.
     */
-  final case class DiffHunk(header: String, lines: Vector[DiffLine])
+  final case class DiffHunk(
+      header: String,
+      lines: Vector[DiffLine],
+      review: Option[HunkReview] = None
+  )
 
   final case class Frame(
       columns: Int,
@@ -51,7 +61,10 @@ object ChatLayout:
     val source =
       frame.messages.takeRight(HistoryLimit).flatMap(wrap(_, columns))
     val auxiliary = frame.auxiliary.toVector.flatten.map("  " + _)
-    val parsedDiffs = frame.diffHunks.flatMap(renderHunk(_, columns))
+    val parsedDiffs =
+      frame.diffHunks.zipWithIndex.flatMap((hunk, index) =>
+        renderHunk(hunk, index, columns)
+      )
     val content = source ++ parsedDiffs ++ auxiliary
     val end = (content.size - math.max(0, frame.scrollOffset)).max(0)
     val body = content.take(end).takeRight(chatRows)
@@ -106,37 +119,103 @@ object ChatLayout:
       case Theme.Light => "\u001b[38;5;25m"
     s"$color$line\u001b[0m"
 
-  private def renderHunk(hunk: DiffHunk, columns: Int): Vector[String] =
-    val rows = Vector(hunk.header) ++ hunk.lines.map:
-      case DiffLine.Context(text) => s" $text"
-      case DiffLine.Add(text)     => s"+$text"
-      case DiffLine.Remove(text)  => s"-$text"
-    rows.flatMap { row =>
-      val clipped = clip(row, columns)
+  /** Hunk rows are hostile-input surfaces: model text may carry raw ESC bytes
+    * or carriage returns (RAI-192 routed condition), so they are neutralized
+    * here exactly like inline message text. Rows are returned un-clipped; the
+    * frame-level clip is SGR-aware and balances colors on truncation.
+    */
+  private def renderHunk(
+      hunk: DiffHunk,
+      index: Int,
+      columns: Int
+  ): Vector[String] =
+    val marker = hunk.review match
+      case None                      => ""
+      case Some(HunkReview.Pending)  => s" [${index + 1}:pending]"
+      case Some(HunkReview.Accepted) => s" [${index + 1}:accepted]"
+      case Some(HunkReview.Rejected) => s" [${index + 1}:rejected]"
+    val header = neutralize(hunk.header) + marker
+    val rows = Vector(header) ++ hunk.lines.map:
+      case DiffLine.Context(text) => s" ${neutralize(text)}"
+      case DiffLine.Add(text)     => s"+${neutralize(text)}"
+      case DiffLine.Remove(text)  => s"-${neutralize(text)}"
+    rows.map { row =>
       val color =
         if row.startsWith("+") then "32"
         else if row.startsWith("-") then "31"
-        else if row.startsWith("@@") then "36"
+        else if row.contains("@@") then "36"
         else ""
-      if color.isEmpty then Vector(clipped)
-      else Vector(s"\u001b[${color}m$clipped\u001b[0m")
+      if color.isEmpty then row
+      else s"\u001b[${color}m$row\u001b[0m"
     }
 
+  private def neutralize(text: String): String =
+    text.replace("\u001b", "␛").replace('\r', '␍').replace('\n', '␊')
+
+  /** Clip to terminal cells. SGR sequences (CSI ... m) pass through with zero
+    * width so colored rows lose no visible content (RAI-192 routed condition).
+    * Any other escape byte is hostile and renders as a visible glyph. A row
+    * truncated inside a colored span keeps its colors balanced with a reset.
+    */
   private def clip(text: String, columns: Int): String =
     val out = new StringBuilder
-    var used = 0
     val points = text.codePoints().toArray
+    var used = 0
     var i = 0
-    var fits = true
-    while i < points.length && fits do
+    var styled = false
+    var full = false
+    while i < points.length && !full do
       val cp = points(i)
-      val width = math.max(0, WCWidth.wcwidth(cp))
-      if used + width <= columns then
-        out.append(new String(Character.toChars(cp)))
-        used += width
-      else fits = false
-      i += 1
-    out.toString
+      if cp == 0x1b then
+        csiAt(points, i) match
+          case Some((seq, next)) =>
+            out.append(seq)
+            styled = true
+            i = next
+          case None =>
+            if used + 1 <= columns then
+              out.append('␛')
+              used += 1
+            else full = true
+            i += 1
+      else
+        val width = math.max(0, WCWidth.wcwidth(cp))
+        if used + width <= columns then
+          out.append(new String(Character.toChars(cp)))
+          used += width
+        else full = true
+        i += 1
+    val clipped = out.toString
+    if styled && !clipped.endsWith("\u001b[0m") then clipped + "\u001b[0m"
+    else clipped
+
+  /** Capture a color-setting CSI sequence (ESC [ digits/semicolons m) starting
+    * at `at`; bounded so pathological runs cannot loop unbounded. Non-color
+    * escapes (cursor movement, device control) return None.
+    */
+  private def csiAt(points: Array[Int], at: Int): Option[(String, Int)] =
+    val maxSpan = 32
+    if at + 1 < points.length && points(at + 1) == '[' then
+      val start = at
+      var j = at + 2
+      var done = false
+      var ok = false
+      while j < points.length && (j - start) < maxSpan && !done do
+        val c = points(j).toChar
+        if c == 'm' then
+          done = true
+          ok = true
+          j += 1
+        else if c.isDigit || c == ';' then j += 1
+        else done = true
+      if ok then
+        val seq = points
+          .slice(start, j)
+          .map(cp => new String(Character.toChars(cp)))
+          .mkString
+        Some((seq, j))
+      else None
+    else None
 
   private def cellWidth(text: String): Int =
     text.codePoints().toArray.map(cp => math.max(0, WCWidth.wcwidth(cp))).sum

@@ -10,6 +10,32 @@ import raider.ui.{ChatAnsiRenderer, ChatLayout}
 import raider.tools.files.edit.UnifiedDiff
 import zio.{UIO, ZIO}
 
+/** RAI-192: one parsed diff fence (existing tools parser) and its `---`/`+++`
+  * target path, when the fence declares one.
+  */
+final case class ReviewDiff(
+    target: Option[String],
+    hunks: List[UnifiedDiff.Hunk]
+)
+
+/** RAI-192: immutable snapshot of the open per-hunk review. `decisions` is
+  * index-aligned with the flattened hunk order rendered in the chat frame.
+  */
+final case class ReviewSnapshot(
+    diffs: Vector[ReviewDiff],
+    decisions: Vector[Option[Boolean]],
+    applied: Boolean,
+    provenance: Option[String]
+):
+  def hunkCount: Int = decisions.size
+  def decidedCount: Int = decisions.count(_.isDefined)
+
+  def acceptedIndices: Vector[Int] =
+    decisions.zipWithIndex.collect { case (Some(true), index) => index }
+
+  def targets: Vector[String] = diffs.flatMap(_.target).distinct
+  def allHunks: List[UnifiedDiff.Hunk] = diffs.flatMap(_.hunks).toList
+
 /** Streaming chat view used by the opt-in `--chat` shell. The sink is created
   * in the Scala REPL interpreter world and owns only bounded render state; the
   * JLine reader remains the input/history owner.
@@ -33,6 +59,15 @@ final class ChatLayoutSink(
   private var taskSnapshot = PlanTab.Snapshot.idle
   private var taskCursor = 0
   private var tasksVisible = false
+
+  // RAI-192 per-hunk review state: decisions are index-aligned with the
+  // flattened parsed hunks; provenance is the target file sha256 captured at
+  // the FIRST decision (or apply) so a workspace change under an open review
+  // is a typed refusal, never a silent overwrite.
+  private var reviewDiffs = Vector.empty[ReviewDiff]
+  private var reviewDecisions = Vector.empty[Option[Boolean]]
+  private var reviewApplied = false
+  private var reviewProvenance = Option.empty[String]
 
   /** Replace the display snapshot from the existing ADR-028 plan panel. */
   def updateTasks(snapshot: PlanTab.Snapshot): Unit = synchronized:
@@ -69,13 +104,28 @@ final class ChatLayoutSink(
     streamState = "streaming"
     deltaCount = 0
     parsedDiffHunks = Vector.empty
+    reviewDiffs = Vector.empty
+    reviewDecisions = Vector.empty
+    reviewApplied = false
+    reviewProvenance = None
     messages = messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, "")
     draw("streaming")
 
   def completeAssistant(): Unit = synchronized:
     if !cancelled then
       streamState = "idle"
-      draw("ready")
+      draw(readyStatus)
+
+  /** Status line after a completed turn: the open review advertises the exact
+    * commands that drive it.
+    */
+  private def readyStatus: String =
+    if reviewDecisions.isEmpty then "ready"
+    else
+      s"ready | diff review open: ${decidedCountOf}/${reviewDecisions.size} decided | " +
+        ":hunk <n> accept | :hunk <n> reject | :hunk apply"
+
+  private def decidedCountOf: Int = reviewDecisions.count(_.isDefined)
 
   def finishAssistant(): Unit = completeAssistant()
 
@@ -116,6 +166,16 @@ final class ChatLayoutSink(
               updated
             )
             parsedDiffHunks = ChatLayoutSink.parseDiffHunks(updated.text)
+            // RAI-192: keep the review set in lockstep with the parsed hunks.
+            // While the turn streams the set can grow; decisions only survive
+            // when the hunk count is stable, and a growing set resets them.
+            val review = ChatLayoutSink.parseReview(updated.text)
+            reviewDiffs = review
+            val hunkTotal = review.flatMap(_.hunks).size
+            if reviewDecisions.size != hunkTotal then
+              reviewDecisions = Vector.fill(hunkTotal)(None)
+              reviewApplied = false
+              reviewProvenance = None
           else
             messages =
               messages :+ ChatLayout.Message(ChatLayout.Role.Assistant, text)
@@ -205,6 +265,56 @@ final class ChatLayoutSink(
         }
       case None => ZIO.succeed(false)
 
+  // --- RAI-192 per-hunk review surface (driven by the facade commands) ---
+
+  /** Immutable snapshot of the open review; None when the turn has no hunks. */
+  def reviewSnapshot(): Option[ReviewSnapshot] = synchronized:
+    if reviewDiffs.isEmpty && reviewDecisions.isEmpty then None
+    else
+      Some(
+        ReviewSnapshot(
+          diffs = reviewDiffs,
+          decisions = reviewDecisions,
+          applied = reviewApplied,
+          provenance = reviewProvenance
+        )
+      )
+
+  /** Record a 0-based hunk decision. Refuses an applied review and any
+    * out-of-range index; the caller owns the user-facing message.
+    */
+  def setHunkDecision(index0: Int, accepted: Boolean): Boolean = synchronized:
+    if reviewApplied then false
+    else if index0 < 0 || index0 >= reviewDecisions.size then false
+    else
+      reviewDecisions = reviewDecisions.updated(index0, Some(accepted))
+      draw(streamState)
+      true
+
+  /** Anchor the target-file sha256 exactly once (first caller wins). */
+  def attachReviewProvenance(sha: String): Unit = synchronized:
+    if reviewProvenance.isEmpty && sha.nonEmpty then
+      reviewProvenance = Some(sha)
+
+  /** Lock the review after a successful apply — a second apply is refused, so
+    * one review set can never mutate the workspace twice.
+    */
+  def sealReview(): Unit = synchronized:
+    reviewApplied = true
+    draw("review applied | decisions locked until the next turn")
+
+  /** Push a status line into the transcript (shared by the facade commands). */
+  def note(text: String): Unit = synchronized:
+    messages = (messages :+ ChatLayout.Message(ChatLayout.Role.Status, text))
+      .takeRight(ChatLayout.HistoryLimit)
+    draw(streamState)
+
+  private def reviewMarker(index: Int): ChatLayout.HunkReview =
+    reviewDecisions.lift(index).flatten match
+      case Some(true)  => ChatLayout.HunkReview.Accepted
+      case Some(false) => ChatLayout.HunkReview.Rejected
+      case None        => ChatLayout.HunkReview.Pending
+
   private def draw(status: String): Unit =
     val auxiliaryLines =
       if tasksVisible then Some(taskLines)
@@ -224,7 +334,9 @@ final class ChatLayoutSink(
         s"model $model | budget unknown | stream $streamState | $status | :aux :chat :help :quit",
       auxiliary = auxiliaryLines,
       scrollOffset = scrollOffset,
-      diffHunks = parsedDiffHunks
+      diffHunks = parsedDiffHunks.zipWithIndex.map { (hunk, index) =>
+        hunk.copy(review = Some(reviewMarker(index)))
+      }
     )
     val output = renderer.draw(frame).mkString
     if output.nonEmpty then renderBridge.accept(output)
@@ -270,6 +382,41 @@ private object ChatLayoutSink:
         )
       }
       .toVector
+
+  /** RAI-192 review parse: the SAME fences through the SAME tools parser, kept
+    * as typed hunks with their `---`/`+++` target path. Fences that fail to
+    * parse drop (the raw text still renders); the flattened hunk order is
+    * identical to [[parseDiffHunks]].
+    */
+  private[repl] def parseReview(text: String): Vector[ReviewDiff] =
+    val normalized = text.replace("\r\n", "\n").replace('\r', '\n')
+    FencedDiff
+      .findAllMatchIn(normalized)
+      .flatMap { m =>
+        val body = m.group(1)
+        UnifiedDiff
+          .parse(body)
+          .toOption
+          .toVector
+          .map(hunks => ReviewDiff(targetOf(body), hunks))
+      }
+      .toVector
+
+  /** `+++ b/path` wins (deletions fall back to `--- a/path`); `/dev/null` and
+    * unprefixed forms yield None so application fails closed later.
+    */
+  private def targetOf(body: String): Option[String] =
+    val lines = body.linesIterator.toVector
+    def pathOf(line: Option[String], prefix: String): Option[String] =
+      line.filter(_.startsWith(prefix)).flatMap { l =>
+        val raw = l.drop(prefix.length).trim
+        if raw == "/dev/null" then None
+        else
+          val stripped = raw.stripPrefix("a/").stripPrefix("b/")
+          if stripped.isEmpty then None else Some(stripped)
+      }
+    pathOf(lines.find(_.startsWith("+++ ")), "+++ ")
+      .orElse(pathOf(lines.find(_.startsWith("--- ")), "--- "))
 
   def bounded(value: String, limit: Int): String =
     val singleLine = value.replace('\r', ' ').replace('\n', ' ')

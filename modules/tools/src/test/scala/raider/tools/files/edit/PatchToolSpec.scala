@@ -230,5 +230,113 @@ object PatchToolSpec extends ZIOSpecDefault:
             }
           }
         }
+      ),
+      suite("fs_patch applySelected (RAI-192 per-hunk review policy)")(
+        test("applies only the selected hunk subset; other hunks untouched") {
+          withWorkspace { (ws, dir) =>
+            val sha = write(dir, "Calc.scala", Original)
+            val tool = new PatchTool(ws)
+            val multi =
+              """@@ -2,3 +2,3 @@
+                |
+                | object Calc:
+                |-  def add(a: Int, b: Int): Int = a + b
+                |+  def add(a: Int, b: Int): Int = a + b // sum
+                |@@ -5,2 +5,3 @@
+                |   def sub(a: Int, b: Int): Int = a - b
+                |+  def div(a: Int, b: Int): Int = a / b
+                |""".stripMargin
+            val hunks = UnifiedDiff.parse(multi).toOption.get
+            // user accepted only the SECOND hunk
+            tool
+              .applySelected("Calc.scala", List(hunks(1)), sha)
+              .map { result =>
+                val out = new String(
+                  Files.readAllBytes(dir.resolve("Calc.scala")),
+                  UTF_8
+                )
+                assertTrue(
+                  result.oldSha256 == sha,
+                  result.newSha256 != sha,
+                  // accepted hunk applied
+                  out.contains("def div(a: Int, b: Int): Int = a / b"),
+                  // rejected hunk NOT applied
+                  !out.contains("// sum"),
+                  out.contains("def add(a: Int, b: Int): Int = a + b\n")
+                )
+              }
+          }
+        },
+        test("stale sha is refused (ToolDenied), file untouched") {
+          withWorkspace { (ws, dir) =>
+            write(dir, "Calc.scala", Original)
+            val tool = new PatchTool(ws)
+            val hunks = UnifiedDiff.parse(SimplePatch).toOption.get
+            tool
+              .applySelected("Calc.scala", hunks, "deadbeef" + "0" * 56)
+              .exit
+              .map: res =>
+                val err = failuresOf(res)
+                assertTrue(
+                  err.exists(_.isInstanceOf[RaiderError.ToolDenied]),
+                  err.exists(_.detail.contains("STALE PATCH"))
+                )
+          }
+        },
+        test("empty selection and escaping paths are typed refusals") {
+          withWorkspace { (ws, dir) =>
+            val sha = write(dir, "Calc.scala", Original)
+            val tool = new PatchTool(ws)
+            for
+              empty <- tool
+                .applySelected("Calc.scala", List.empty, sha)
+                .exit
+              escape <- tool
+                .applySelected("../outside.txt", List.empty, sha)
+                .exit
+            yield
+              val emptyErr = failuresOf(empty)
+              val escapeErr = failuresOf(escape)
+              assertTrue(
+                emptyErr.exists(_.isInstanceOf[RaiderError.InputValidation]),
+                emptyErr.exists(_.detail.contains("no hunks selected")),
+                escapeErr.exists(_.isInstanceOf[RaiderError.InputValidation])
+              )
+          }
+        },
+        test("path containment still enforced for selected hunks") {
+          withWorkspace { (ws, dir) =>
+            val sha = write(dir, "Calc.scala", Original)
+            val tool = new PatchTool(ws)
+            val hunks = UnifiedDiff.parse(SimplePatch).toOption.get
+            tool
+              .applySelected("../../etc/passwd", hunks, sha)
+              .exit
+              .map: res =>
+                val err = failuresOf(res)
+                assertTrue(err.exists(_.isInstanceOf[RaiderError.ToolDenied]))
+          }
+        }
+      ),
+      suite("fs_patch currentSha (RAI-192 provenance read)")(
+        test("returns the current sha through the containment policy") {
+          withWorkspace { (ws, dir) =>
+            val sha = write(dir, "Calc.scala", Original)
+            val tool = new PatchTool(ws)
+            for
+              read <- tool.currentSha("Calc.scala")
+              escape <- tool.currentSha("../outside.txt").exit
+              missing <- tool.currentSha("nope.txt").exit
+            yield
+              val escapeErr = failuresOf(escape)
+              val missingErr = failuresOf(missing)
+              assertTrue(
+                read == sha,
+                escapeErr.exists(_.isInstanceOf[RaiderError.ToolDenied]),
+                missingErr.exists(_.isInstanceOf[RaiderError.ToolFailed]),
+                missingErr.exists(_.detail.contains("file not found"))
+              )
+          }
+        }
       )
     )
