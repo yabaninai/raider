@@ -6037,7 +6037,7 @@
         "RAI-198",
         "RAI-160"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
