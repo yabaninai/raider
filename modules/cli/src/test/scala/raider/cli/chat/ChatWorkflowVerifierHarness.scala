@@ -168,6 +168,15 @@ object ChatWorkflowVerifierHarness:
   given JsonCodec[E01Doc] = DeriveJsonCodec.gen
 
   // ---- CWF-E02 expectations ----
+
+  /** One executed-check evidence entry the blocking result must record (the
+    * trusted-check result bound to the observed run, RAI-195 contract).
+    */
+  final case class E02CheckEvidence(
+      id: String,
+      outcome: String
+  )
+
   final case class E02Case(
       id: String,
       kind: String,
@@ -180,6 +189,8 @@ object ChatWorkflowVerifierHarness:
       expectedParentNotCreated: Option[Boolean] = None,
       expectedSecretNeverEchoed: Option[Boolean] = None,
       expectedVerdictAbsent: Option[Boolean] = None,
+      expectedTaskVerdict: Option[String] = None,
+      expectedCheckEvidence: Option[List[E02CheckEvidence]] = None,
       expectNoDispatch: Option[Boolean] = None,
       expectedInjectionInert: Option[Boolean] = None,
       expectedCredentialAbsentFromSource: Option[Boolean] = None,
@@ -188,6 +199,7 @@ object ChatWorkflowVerifierHarness:
   )
 
   final case class E02Doc(expectationId: String, cases: List[E02Case])
+  given JsonCodec[E02CheckEvidence] = DeriveJsonCodec.gen
   given JsonCodec[E02Case] = DeriveJsonCodec.gen
   given JsonCodec[E02Doc] = DeriveJsonCodec.gen
 
@@ -268,7 +280,7 @@ object ChatWorkflowVerifierHarness:
   // integrity assertion. This is tamper evidence for verifier inputs, not a
   // security boundary against changes to verifier code or this anchor.
   private val E02ExpectationSha256 =
-    "797dcb60df69bbf920b647d8739f697b98f96caab1f801c054fd2104abbfff3d"
+    "31de00b5e3daccda0aaeb188bccf705769f27b5739a939e4a2fc388dbb2c7731"
 
   private def sha256(bytes: Array[Byte]): String =
     MessageDigest
@@ -938,13 +950,19 @@ object ChatWorkflowVerifierHarness:
   final case class ArtIdentity(sourceDigest: String)
   final case class ArtError(code: String, detail: String)
 
+  /** The executed-check evidence subset the verifier reads (§7 run.json
+    * `checks`; the outcome string is the CheckOutcome codec value).
+    */
+  final case class ArtCheck(id: String, outcome: String, detail: String)
+
   final case class RunArtifact(
       status: String,
       exitCode: Int,
       taskVerdict: Option[String],
       output: Option[ArtOutput],
       buildIdentity: Option[ArtIdentity],
-      error: Option[ArtError]
+      error: Option[ArtError],
+      checks: Option[List[ArtCheck]]
   )
 
   object ArtOutput:
@@ -955,6 +973,9 @@ object ChatWorkflowVerifierHarness:
 
   object ArtError:
     given zio.json.JsonCodec[ArtError] = DeriveJsonCodec.gen
+
+  object ArtCheck:
+    given zio.json.JsonCodec[ArtCheck] = DeriveJsonCodec.gen
 
   object RunArtifact:
     given zio.json.JsonCodec[RunArtifact] = DeriveJsonCodec.gen
@@ -1017,6 +1038,12 @@ object ChatWorkflowVerifierHarness:
 
   def runErrorDetail(a: Option[RunArtifact]): Option[String] =
     a.flatMap(_.error).map(_.detail)
+
+  /** Executed-check evidence recorded in run.json under the RAI-195 blocking
+    * contract (each entry is the observed result of one executed check).
+    */
+  def runChecks(a: Option[RunArtifact]): List[ArtCheck] =
+    a.flatMap(_.checks).getOrElse(Nil)
 
   // ------------------------------------------------------------------//
   // Deterministic normalization (spec: contracts/chat-workflow/README)  //

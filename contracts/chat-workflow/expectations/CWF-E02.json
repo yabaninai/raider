@@ -108,11 +108,15 @@
       "id": "bogus-success",
       "kind": "run",
       "expectedExitCode": 10,
-      "expectedErrorCode": "RA-OUT",
-      "expectedDetailContains": ["check 'marker' failed with exit code"],
       "expectedRunStatus": "Failed",
-      "expectedVerdictAbsent": true,
-      "note": "the agent claims done without doing the work; the independent check fails and the run stays failed on BOTH launchers (R9: a failed check is never talked past)"
+      "expectedTaskVerdict": "task-failed",
+      "expectedCheckEvidence": [
+        {
+          "id": "marker",
+          "outcome": "Failed"
+        }
+      ],
+      "note": "the agent claims done without doing the work; the independent check fails and the run stays failed on BOTH launchers (R9: a failed check is never talked past); superseded expectation (run.json omits the verdict plus legacy error-detail wording 'check ... failed with exit code') migrated to the RAI-195 blocking-result contract: run.json records the truthful task-failed verdict and executed-check evidence bound to the observed result; the typed RA-OUT failure stays observable on the local launcher stderr"
     },
     {
       "id": "prompt-injection-stays-data",

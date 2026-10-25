@@ -484,18 +484,26 @@ object ChatWorkflowVerifierE02Spec extends ZIOSpecDefault:
                 )
                 bogusStatus = runStatus(ciBogus.runArtifact)
                 bogusVerdict = runVerdict(ciBogus.runArtifact)
-                bogusDetail = runErrorDetail(ciBogus.runArtifact).getOrElse("")
+                bogusChecks = runChecks(ciBogus.runArtifact)
                 bogusOk = assertTrue(
                   ciBogus.process.exitCode == bogusExp.expectedExitCode
                     .getOrElse(-999),
                   bogusStatus.contains(
                     bogusExp.expectedRunStatus.getOrElse("MISSED")
                   ),
-                  bogusVerdict.isEmpty ==
-                    bogusExp.expectedVerdictAbsent.contains(true),
-                  bogusExp.expectedDetailContains
+                  // RAI-195 blocking-result contract: the truthful verdict is
+                  // recorded, with the executed-check evidence bound to the
+                  // observed result (supersedes the verdict-omission plus
+                  // legacy run.json error-detail wording expectation).
+                  bogusVerdict.contains(
+                    bogusExp.expectedTaskVerdict.getOrElse("MISSED")
+                  ),
+                  bogusExp.expectedCheckEvidence
                     .getOrElse(Nil)
-                    .forall(d => bogusDetail.contains(d)),
+                    .forall(ev =>
+                      bogusChecks
+                        .exists(c => c.id == ev.id && c.outcome == ev.outcome)
+                    ),
                   localBogus.exitCode == 1,
                   localBogus.stderr.contains("RA-OUT"),
                   effectsOf(bogusWs1).isEmpty,

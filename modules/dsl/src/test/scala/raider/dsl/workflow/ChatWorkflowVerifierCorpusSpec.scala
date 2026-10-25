@@ -27,7 +27,7 @@ object ChatWorkflowVerifierCorpusSpec extends ZIOSpecDefault:
   // expectation document it authenticates. Changing an expected verdict must
   // therefore fail closed before the changed expectation can be used.
   private val E02ExpectationSha256 =
-    "797dcb60df69bbf920b647d8739f697b98f96caab1f801c054fd2104abbfff3d"
+    "31de00b5e3daccda0aaeb188bccf705769f27b5739a939e4a2fc388dbb2c7731"
 
   private def sha256(bytes: Array[Byte]): String =
     MessageDigest
