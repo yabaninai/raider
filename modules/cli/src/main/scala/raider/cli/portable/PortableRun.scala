@@ -936,9 +936,10 @@ object PortableRun:
               System.out.flush()
               System.err.flush()
               val exit = outcome.exitCode
-              // System.exit does not flush piped stdout: flushed above.
-              System.exit(exit)
-              exit // unreachable; types the Unsafe block as Int
+              // The command path returns the exit code; raider.cli.Main owns
+              // the process exit boundary (RAI-091 allowlist) and flushes the
+              // streams before its own System.exit.
+              exit
             }
       case other =>
         System.err.println(
