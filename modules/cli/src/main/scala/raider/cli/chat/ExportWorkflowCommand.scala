@@ -1,6 +1,13 @@
 package raider.cli.chat
 
+import raider.cli.portable.PortableTrustedRegistry
 import raider.core.RaiderError
+import raider.dsl.portable.{
+  PortableChatExport,
+  PortableExportOptions,
+  PortableExportResult,
+  PortableExportTarget
+}
 import raider.dsl.workflow.{
   ChatWorkflowExport,
   ExportResult,
@@ -10,10 +17,12 @@ import raider.dsl.workflow.{
 
 import java.nio.file.{Files, Path, Paths}
 
-/** RAI-160: `:export-workflow [--out <dir>] [--name <name>] [--target-path
-  * <path>] [--summary <text>]` — the chat command that wires the validated task
-  * selection snapshot (RAI-155.b) through the TaskWorkflowAdapter into
-  * `ChatWorkflowExport.exportTo` (RAI-155.c; ADR-033 §6 export semantics).
+/** RAI-160: `:export-workflow [--out <dir>] [--name <name>] [--format
+  * scala|portable] [--target-path <path>] [--summary <text>]` — the chat
+  * command that wires the validated task selection snapshot (RAI-155.b) through
+  * the TaskWorkflowAdapter into `ChatWorkflowExport.exportTo` (RAI-155.c;
+  * ADR-033 §6 export semantics) or, with `--format portable`, into
+  * `PortableChatExport.exportTo` (RAI-203).
   *
   * Discipline:
   *   - the command consumes ONLY the stored selection snapshot — a session
@@ -24,10 +33,16 @@ import java.nio.file.{Files, Path, Paths}
   * intent turn id (provenance, not invention); `--out` defaults to
   * `chat-workflow-export` under the current directory (its parent must exist —
   * export never creates parents);
+  *   - `--format scala` (default) keeps the native source export byte-for-byte;
+  * `--format portable` renders the same validated snapshot as a portable
+  * workflow v1 document + closed manifest + input example — a selection with
+  * named trusted checks is refused there (CWF-R3, the checks are not
+  * representable in portable v1 and the refusal names the retained Scala
+  * option);
   *   - staging+rename, never-overwrite and the R5 path rules are INHERITED
-  * from `ChatWorkflowExport` unchanged; refusals surface typed with the
-  * structured `CWF-R…` detail (ADR-033 §8);
-  *   - the success message names the three §6.2 artifact paths (source,
+  * unchanged from the two exporters; refusals surface typed with the structured
+  * `CWF-R…` detail (ADR-033 §8);
+  *   - the success message names the three §6.2 artifact paths (document,
   * manifest, input example) plus the identity digests.
   *
   * `execute` returns the lines the REPL prints (console-adapter discipline: the
@@ -39,16 +54,21 @@ object ExportWorkflowCommand:
 
   val usageText: String =
     "usage: :export-workflow [--out <dir>] [--name <name>] " +
-      "[--target-path <path>] [--summary <text — consumes the rest of the line>]"
+      "[--format scala|portable] [--target-path <path>] " +
+      "[--summary <text — consumes the rest of the line>]"
 
   /** Default target directory (under the current directory; the parent of the
     * target — here the cwd — must already exist, R5).
     */
   val DefaultOutDir: String = "chat-workflow-export"
 
+  val FormatScala: String = "scala"
+  val FormatPortable: String = "portable"
+
   final case class Args(
       out: Option[String] = None,
       name: Option[String] = None,
+      format: Option[String] = None,
       targetPath: Option[String] = None,
       summary: Option[String] = None
   )
@@ -66,6 +86,13 @@ object ExportWorkflowCommand:
       case Nil                   => Right(acc)
       case "--out" :: v :: tail  => loop(tail, acc.copy(out = Some(v)))
       case "--name" :: v :: tail => loop(tail, acc.copy(name = Some(v)))
+      case "--format" :: v :: tail =>
+        if v == FormatScala || v == FormatPortable then
+          loop(tail, acc.copy(format = Some(v)))
+        else
+          Left(
+            s"unknown --format '$v' (supported: scala, portable); $usageText"
+          )
       case "--target-path" :: v :: tail =>
         loop(tail, acc.copy(targetPath = Some(v)))
       // The summary is free TEXT (the externalized per-run task instance,
@@ -150,7 +177,9 @@ object ExportWorkflowCommand:
           "with :task mark <n> intent + :task select <n>"
       )
 
-  /** One export attempt over a concrete snapshot. */
+  /** One export attempt over a concrete snapshot. The format flag dispatches
+    * between the native Scala export (default) and the portable v1 export.
+    */
   def run(
       selection: TaskSelection,
       sessionId: String,
@@ -160,17 +189,30 @@ object ExportWorkflowCommand:
       args: Args,
       cwd: Path
   ): Vector[String] =
-    exportSelection(
-      selection,
-      sessionId,
-      chatProvider,
-      model,
-      baseUrl,
-      args,
-      cwd
-    ) match
-      case Left(err)     => Vector(refusalLine(err))
-      case Right(result) => successLines(result)
+    if args.format.getOrElse(FormatScala) == FormatPortable then
+      exportPortableSelection(
+        selection,
+        sessionId,
+        chatProvider,
+        model,
+        baseUrl,
+        args,
+        cwd
+      ) match
+        case Left(err)     => Vector(refusalLine(err))
+        case Right(result) => portableSuccessLines(result)
+    else
+      exportSelection(
+        selection,
+        sessionId,
+        chatProvider,
+        model,
+        baseUrl,
+        args,
+        cwd
+      ) match
+        case Left(err)     => Vector(refusalLine(err))
+        case Right(result) => successLines(result)
 
   private def refusalLine(err: RaiderError): String =
     s"export refused [${err.code}]: ${err.detail.take(400)}"
@@ -218,6 +260,78 @@ object ExportWorkflowCommand:
       s"  identity: spec sha256-${result.specDigest}, source sha256-${result.sourceDigest}",
       "Edit the artifact, then compile with 'raider compile <source> --out <dir>' " +
         "and run with 'raider workflow run --classes <dir> --input <file> --out <out>'."
+    )
+
+  /** The portable export pipeline (RAI-203): the same adapter seam, then
+    * `PortableChatExport.exportTo` with THIS launcher's pinned trusted
+    * references (profile `coder`, toolset `workspace`, check
+    * `workspace-marker-present`, pinned snapshot digest). The document only
+    * NAMES these authorities; a run must resolve them against the same pins.
+    *
+    * By construction this pipeline refuses CWF-R3 for every supported chat
+    * selection: ADR-033 §4.1 requires at least one NAMED trusted check in a
+    * validated selection and portable v1 has no user-named check construct, so
+    * `requireRepresentable` refuses while naming the retained Scala option. The
+    * command-level value of the portable format is the explained refusal plus
+    * this seam; the portable happy path (check-free selections from other
+    * launchers, the shipped recipes) is exercised directly against
+    * `PortableChatExport`.
+    */
+  def exportPortableSelection(
+      selection: TaskSelection,
+      sessionId: String,
+      chatProvider: String,
+      model: String,
+      baseUrl: String,
+      args: Args,
+      cwd: Path
+  ): Either[RaiderError, PortableExportResult] =
+    for
+      origin <- TaskWorkflowAdapter.toStsOrigin(chatProvider, model, baseUrl)
+      params <- buildParams(args)
+      sts <- TaskWorkflowAdapter.toStsSelection(
+        sessionId,
+        origin,
+        selection,
+        params
+      )
+      name = args.name.getOrElse(defaultName(selection))
+      outDir = cwd.resolve(args.out.getOrElse(DefaultOutDir))
+      result <- PortableChatExport.exportTo(
+        sts,
+        PortableExportOptions(name),
+        PortableExportTarget(
+          PortableTrustedRegistry.ProfileCoder,
+          PortableTrustedRegistry.ToolsetWorkspace,
+          PortableTrustedRegistry.CheckWorkspaceMarker,
+          PortableTrustedRegistry.workspaceMarkerSnapshot
+        ),
+        outDir,
+        System.currentTimeMillis()
+      )
+    yield result
+
+  /** Success message for a portable export: the three artifact paths, the
+    * identity digests, and the validate/run next steps of the shipped launcher
+    * (including the pinned marker-check precondition).
+    */
+  def portableSuccessLines(result: PortableExportResult): Vector[String] =
+    val document =
+      result.files.find(_.getFileName.toString.endsWith(".workflow.json"))
+    val manifest =
+      result.files.find(_.getFileName.toString.endsWith("-manifest.json"))
+    val input =
+      result.files.find(_.getFileName.toString.endsWith(".input.json"))
+    Vector(
+      s"workflow exported (portable v1): ${result.targetDir}",
+      s"  document: ${document.map(_.toString).getOrElse("(missing)")}",
+      s"  manifest: ${manifest.map(_.toString).getOrElse("(missing)")}",
+      s"  input example: ${input.map(_.toString).getOrElse("(missing)")}",
+      s"  identity: document ${result.documentSha256}, input example ${result.inputExampleSha256}",
+      "Edit the document, then validate with 'raider workflow check --doc <file>' " +
+        "and run with 'raider workflow run --doc <file> --input <file> --out <out> " +
+        "--workspace <dir>' (create marker.txt in the workspace first: the pinned " +
+        "check is 'workspace-marker-present')."
     )
 
   /** True when the three §6.2 files of a finished export are all present. */

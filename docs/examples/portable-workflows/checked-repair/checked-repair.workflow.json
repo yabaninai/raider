@@ -1,0 +1,116 @@
+{
+  "format": "raider.portable-workflow",
+  "version": "1.0",
+  "metadata": {
+    "title": "checked-repair",
+    "description": "Extract a task candidate with a pinned agent, normalize it through a declared bounded repair, then verify the normalized shape with a trusted check."
+  },
+  "limits": {
+    "deadlineMs": 600000,
+    "attempts": 4,
+    "parallelism": 1,
+    "children": 0,
+    "tokens": 50000
+  },
+  "schemas": {
+    "inputs": {
+      "task": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "instruction"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "instruction": { "type": "string" }
+        }
+      }
+    },
+    "outputs": {
+      "candidate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "patch"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "patch": { "type": "string" }
+        }
+      },
+      "normalized": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["taskId", "normalized", "detail"],
+        "properties": {
+          "taskId": { "type": "string" },
+          "normalized": { "type": "boolean" },
+          "detail": { "type": "string" }
+        }
+      },
+      "checkVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "detail"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed"]
+          },
+          "detail": { "type": "string" }
+        }
+      },
+      "flowVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["status", "detail"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["passed", "failed"]
+          },
+          "detail": { "type": "string" }
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "draft",
+      "kind": "agent",
+      "profile": "coder",
+      "toolset": "workspace",
+      "input": "#/inputs/task",
+      "structuredOutput": true,
+      "outputSchema": "candidate"
+    },
+    {
+      "id": "normalize",
+      "kind": "repair",
+      "operationStep": "draft",
+      "maxAttempts": 3,
+      "safeOperationRef": "normalize-task-v1",
+      "input": "#/steps/draft/output",
+      "outputSchema": "normalized"
+    },
+    {
+      "id": "verify",
+      "kind": "trustedCheck",
+      "checkId": "normalized-task-shape",
+      "registrySnapshot": "sha256:bb788ad23f74c3c1e5d610f0e4ff8c317ec4b8fc8fc738d3180a59671cc09456",
+      "input": "#/steps/normalize/output",
+      "outputSchema": "checkVerdict"
+    },
+    {
+      "id": "run",
+      "kind": "sequence",
+      "steps": ["draft", "normalize", "verify"],
+      "outputSchema": "flowVerdict"
+    }
+  ],
+  "outputs": {
+    "bindings": {
+      "result": "#/steps/run/output"
+    },
+    "verdict": {
+      "from": "#/steps/run/output",
+      "authority": "trustedVerifier"
+    }
+  }
+}

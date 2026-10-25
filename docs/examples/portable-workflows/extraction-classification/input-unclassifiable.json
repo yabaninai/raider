@@ -1,0 +1,18 @@
+{
+  "inputs": {
+    "documents": [
+      {
+        "id": "d1",
+        "body": "Customer asks for a refund of the November invoice."
+      },
+      {
+        "id": "d2",
+        "body": "What is included in the enterprise pricing tier?"
+      },
+      {
+        "id": "d3",
+        "body": "Xyzzy plugh quux with no recognizable signal at all."
+      }
+    ]
+  }
+}
