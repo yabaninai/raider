@@ -1128,7 +1128,14 @@ object WorkflowRun:
     st.error.foreach(e =>
       sb.append(" — ").append(e.code).append(": ").append(e.detail.take(200))
     )
-    sb.append("\n\n")
+    sb.append("\n")
+    // RAI-217: name the recorded task verdict so a success-with-advisory run
+    // is never presented as a plain all-checks-passed run. The label is the
+    // frozen verdict already persisted in run.json/result.json (CiReport).
+    st.taskVerdict.foreach(v =>
+      sb.append("verdict: **").append(v).append("**\n")
+    )
+    sb.append("\n")
     st.identity.foreach { id =>
       sb.append("- source: sha256-").append(id.sourceDigest).append("\n")
       sb.append("- classes: sha256-").append(id.classDigest).append("\n")

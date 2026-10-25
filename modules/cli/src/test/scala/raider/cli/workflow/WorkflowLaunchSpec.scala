@@ -5,6 +5,8 @@ import zio.test.Assertion.*
 import zio.{Task as ZTask, ZIO, ZLayer}
 import zio.json.DecoderOps
 
+import raider.cli.run.CiReport
+
 import raider.dsl.workflow.{
   ChatWorkflowRenderer,
   NamedCheck,
@@ -93,6 +95,34 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
 
   private val FinalAnswer = "stand final answer 155d"
   private val StandKey = "stand-key-155d"
+
+  // ----- RAI-217 pinned trusted-check policy digests --------------------------
+  // The exact CiReport.policyDigest hex for this spec's fixture policies
+  // (SHA-256 over the canonical form
+  // "trusted-check-policy-v1\n<byteLen>:<checkId>:<advisory>\n"). The literals
+  // are PINNED: any drift in the digest computation or in the serialized
+  // advisory flag makes the child result.json assertions fail instead of
+  // silently re-deriving the expected value from the same code under test.
+  //   "trusted-check-policy-v1\n13:fixture-check:true\n"
+  private val PinnedAdvisoryDigest =
+    "aaeb905c9f435b3501537aeb3dbae4a51a7950e21e6c807e8678176c2970b0c6"
+
+  //   "trusted-check-policy-v1\n13:fixture-check:false\n"
+  private val PinnedBlockingDigest =
+    "df3f96a4763d99bfbf9ff9783d7f5dc18a37688538b774805cc65edc8a96bdaa"
+
+  //   "trusted-check-policy-v1\n6:marker:false\n" (the CWF-D01 marker check)
+  private val PinnedMarkerDigest =
+    "3cd56db0d4511666eba42ff786964cf85a28e7c5700b77809bcee7af3b213a2a"
+
+  private val advisoryPolicy =
+    List(CiReport.CheckPolicy("fixture-check", advisory = true))
+
+  private val blockingPolicy =
+    List(CiReport.CheckPolicy("fixture-check", advisory = false))
+
+  private val markerPolicy =
+    List(CiReport.CheckPolicy("marker", advisory = false))
 
   /** Round 1: streaming tool_calls — the agent stage must really execute
     * proc_run (touch marker.txt) inside the input workspace.
@@ -296,6 +326,27 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
       if !Files.isRegularFile(f) then ""
       else Files.readString(f, StandardCharsets.UTF_8)
 
+  /** Tolerant read of one artifact of the first work directory ("" when the run
+    * never produced it — the assertions then fail on content, not on a thrown
+    * IO error).
+    */
+  private def artifactOf(out: Path, name: String): String =
+    val dirs = workDirsOf(out)
+    if dirs.isEmpty then ""
+    else
+      val f = dirs.head.resolve(name)
+      if !Files.isRegularFile(f) then ""
+      else Files.readString(f, StandardCharsets.UTF_8)
+
+  private def resultJsonOf(out: Path): String =
+    artifactOf(out, "result.json")
+
+  /** RAI-217: the result.json digest claim equals the pinned hex ("sha256-"
+    * prefix, exact match — a missing or tampered claim fails the assertion).
+    */
+  private def digestIs(resultJson: String, pinnedHex: String): Boolean =
+    jsonStr(resultJson, "checkPolicyDigest") == "sha256-" + pinnedHex
+
   private def jsonStr(json: String, field: String): String =
     zio.json.ast.Json.decoder
       .decodeJson(json)
@@ -431,6 +482,11 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
             )
           yield
             val runJsonB = runJsonOf(outB)
+            // RAI-217: the passing run's result.json pins its own compiled
+            // policy digest (the marker check declaration, advisory = false),
+            // and the summary names the plain passed verdict truthfully.
+            val resultJsonB = resultJsonOf(outB)
+            val summaryB = artifactOf(outB, "summary.md")
             val reportA = stdoutA.asScala.mkString("\n")
             val checksLine = "checks passed: marker; target=marker.txt"
             assertTrue(
@@ -448,6 +504,9 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
               runJsonB.contains("\"buildIdentity\""),
               runJsonB.contains("\"inputDigest\""),
               runJsonB.contains("\"taskVerdict\":\"trusted-checks-passed\""),
+              digestIs(resultJsonB, PinnedMarkerDigest),
+              PinnedMarkerDigest == CiReport.policyDigest(markerPolicy),
+              summaryB.contains("verdict: **trusted-checks-passed**"),
               // REAL tool effects on BOTH fresh workspaces (the agent
               // stage's proc_run created the markers; the check only
               // verified them — an independent verdict per workspace).
@@ -586,6 +645,16 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
             Files.readString(advisoryDir.resolve("result.json"))
           val blockingResult =
             Files.readString(blockingDir.resolve("result.json"))
+          // RAI-217: the human summary names the recorded verdict — a
+          // success-with-advisory run never reads as a plain passed run.
+          val advisorySummary =
+            Files.readString(advisoryDir.resolve("summary.md"))
+          val blockingSummary =
+            Files.readString(blockingDir.resolve("summary.md"))
+          // JUnit stays truthful on the advisory path: the failed advisory
+          // check keeps its recorded <failure>.
+          val advisoryJunit =
+            Files.readString(advisoryDir.resolve("checks.junit.xml"))
           assertTrue(
             advisoryFinished,
             advisoryExit == 0,
@@ -593,10 +662,30 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
               "\"taskVerdict\":\"success-with-advisory\""
             ),
             advisoryResult.contains("\"fixture-check\""),
+            // RAI-217: result.json pins the compiled policy digest — the two
+            // children ran the SAME failing argv under DIFFERENT frozen
+            // declarations, and each result carries its own digest.
+            digestIs(advisoryResult, PinnedAdvisoryDigest),
+            // A mismatched pin fails: neither result satisfies the other
+            // policy's digest (the advisory flag is part of the canonical
+            // form).
+            !digestIs(advisoryResult, PinnedBlockingDigest),
             blockingFinished,
             blockingExit == 10,
             blockingResult.contains("\"taskVerdict\":\"task-failed\""),
-            blockingResult.contains("\"fixture-check\"")
+            blockingResult.contains("\"fixture-check\""),
+            digestIs(blockingResult, PinnedBlockingDigest),
+            !digestIs(blockingResult, PinnedAdvisoryDigest),
+            // The pins stay bound to the classifier's canonical digest for
+            // the exact fixture declarations compiled into these children.
+            PinnedAdvisoryDigest == CiReport.policyDigest(advisoryPolicy),
+            PinnedBlockingDigest == CiReport.policyDigest(blockingPolicy),
+            PinnedAdvisoryDigest != PinnedBlockingDigest,
+            // The advisory summary names the advisory verdict; the blocking
+            // summary names the failure.
+            advisorySummary.contains("verdict: **success-with-advisory**"),
+            blockingSummary.contains("verdict: **task-failed**"),
+            advisoryJunit.contains("<failure")
           )
         }
       },
