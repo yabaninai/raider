@@ -3,6 +3,7 @@ package raider.cli.workflow
 import zio.test.*
 import zio.test.Assertion.*
 import zio.{Task as ZTask, ZIO, ZLayer}
+import zio.json.DecoderOps
 
 import raider.dsl.workflow.{
   ChatWorkflowRenderer,
@@ -337,6 +338,55 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
     env.foreach { (k, v) => pb.environment().put(k, v) }
     pb.start()
 
+  private def compiledCheckBuild(
+      stand: StandHandle,
+      advisory: Boolean,
+      argv: List[String]
+  ): Path =
+    val selection = probe.copy(
+      checks = List(NamedCheck("fixture-check", argv, advisory))
+    )
+    val rendered = ChatWorkflowRenderer
+      .render(selection, RenderOptions("wf_report_child"))
+      .fold(e => throw new IllegalStateException(e.detail), identity)
+    val edited = rendered.source.replace(
+      "val baseUrl: String = \"http://127.0.0.1:1/v1\"",
+      "val baseUrl: String = \"" + stand.url + "\""
+    )
+    if edited == rendered.source then
+      throw new IllegalStateException("mock stand URL edit did not apply")
+    val work = Files.createTempDirectory("rai186-check-child")
+    val source = work.resolve("wf_report_child.scala")
+    Files.writeString(source, edited, StandardCharsets.UTF_8)
+    val out = work.resolve("build")
+    val exit =
+      WorkflowCompile.command(List(source.toString, "--out", out.toString))
+    if exit != 0 then
+      throw new IllegalStateException(
+        "raider workflow fixture compile failed: " + exit
+      )
+    out
+
+  private def spawnWorkflowChild(
+      build: Path,
+      input: Path,
+      out: Path
+  ): java.lang.Process =
+    spawnJava(
+      Map("RAIDER_API_KEY" -> StandKey),
+      "-cp",
+      System.getProperty("java.class.path", ""),
+      "raider.cli.Main",
+      "workflow",
+      "run",
+      "--classes",
+      build.toString,
+      "--input",
+      input.toString,
+      "--out",
+      out.toString
+    )
+
   // ----- spec ----------------------------------------------------------------
 
   private def suiteSpec =
@@ -492,6 +542,245 @@ object WorkflowLaunchSpec extends ZIOSpecDefault:
               !runJson.contains("\"status\":\"Succeeded\"")
             )
           }
+        }
+      },
+      test(
+        "FCI-REPORT-01: real workflow children record advisory failure with exit 0 and blocking failure with exit 10"
+      ) {
+        ZIO.serviceWithZIO[LaunchEnv] { env =>
+          val advisoryBuild = compiledCheckBuild(
+            env.stand,
+            advisory = true,
+            List("/usr/bin/false")
+          )
+          val blockingBuild = compiledCheckBuild(
+            env.stand,
+            advisory = false,
+            List("/usr/bin/false")
+          )
+          val advisoryWs = freshWorkspace()
+          val blockingWs = freshWorkspace()
+          val advisoryInput = Files.createTempFile("rai186-advisory", ".json")
+          val blockingInput = Files.createTempFile("rai186-blocking", ".json")
+          Files.writeString(advisoryInput, inputJson(advisoryWs))
+          Files.writeString(blockingInput, inputJson(blockingWs))
+          val advisoryOut = Files.createTempDirectory("rai186-advisory-out")
+          val blockingOut = Files.createTempDirectory("rai186-blocking-out")
+          val advisoryChild =
+            spawnWorkflowChild(advisoryBuild, advisoryInput, advisoryOut)
+          val advisoryDrain = drainAsync(advisoryChild)._1
+          val advisoryFinished = advisoryChild.waitFor(90, TimeUnit.SECONDS)
+          val advisoryExit =
+            if advisoryFinished then advisoryChild.exitValue() else -1
+          val blockingChild =
+            spawnWorkflowChild(blockingBuild, blockingInput, blockingOut)
+          val blockingDrain = drainAsync(blockingChild)._1
+          val blockingFinished = blockingChild.waitFor(90, TimeUnit.SECONDS)
+          val blockingExit =
+            if blockingFinished then blockingChild.exitValue() else -1
+          advisoryDrain.join(2000)
+          blockingDrain.join(2000)
+          val advisoryDir = workDirsOf(advisoryOut).head
+          val blockingDir = workDirsOf(blockingOut).head
+          val advisoryResult =
+            Files.readString(advisoryDir.resolve("result.json"))
+          val blockingResult =
+            Files.readString(blockingDir.resolve("result.json"))
+          assertTrue(
+            advisoryFinished,
+            advisoryExit == 0,
+            advisoryResult.contains(
+              "\"taskVerdict\":\"success-with-advisory\""
+            ),
+            advisoryResult.contains("\"fixture-check\""),
+            blockingFinished,
+            blockingExit == 10,
+            blockingResult.contains("\"taskVerdict\":\"task-failed\""),
+            blockingResult.contains("\"fixture-check\"")
+          )
+        }
+      },
+      test(
+        "FCI-REPORT-04: hostile trusted-check stdout is neutralized in summary and XML-escaped in JUnit"
+      ) {
+        ZIO.serviceWithZIO[LaunchEnv] { env =>
+          val hostile = "<&>\" ::error::check ::warning::next"
+          val script =
+            "printf '%s\\n' '" + hostile.replace("'", "'\\''") + "'; exit 1"
+          val build = compiledCheckBuild(
+            env.stand,
+            advisory = false,
+            List("/bin/sh", "-c", script)
+          )
+          val ws = freshWorkspace()
+          val input = Files.createTempFile("rai186-hostile", ".json")
+          val out = Files.createTempDirectory("rai186-hostile-out")
+          Files.writeString(input, inputJson(ws))
+          val child = spawnWorkflowChild(build, input, out)
+          val drain = drainAsync(child)._1
+          val finished = child.waitFor(90, TimeUnit.SECONDS)
+          val exit = if finished then child.exitValue() else -1
+          drain.join(2000)
+          val workDir = workDirsOf(out).head
+          val summary = Files.readString(workDir.resolve("summary.md"))
+          val junit = Files.readString(workDir.resolve("checks.junit.xml"))
+          assertTrue(
+            finished,
+            exit == 10,
+            summary.contains(
+              "%3A%3Aerror%3A%3Acheck %3A%3Awarning%3A%3Anext%0A"
+            ),
+            !summary.contains("::error::"),
+            !summary.contains("::warning::"),
+            !summary.contains("<&>\""),
+            summary.contains("&lt;&amp;&gt;\""),
+            junit.contains("&lt;&amp;&gt;&quot;"),
+            junit.contains("::error::check"),
+            !junit.contains("<failure message=\"<&>")
+          )
+        }
+      },
+      test(
+        "FCI-REPORT-03: real child artifact-write failure after a blocking check outranks the verdict"
+      ) {
+        ZIO.serviceWithZIO[LaunchEnv] { env =>
+          val readyName = "check-started.signal"
+          val script =
+            "touch " + readyName + "; sleep 2; exit 1"
+          val build = compiledCheckBuild(
+            env.stand,
+            advisory = false,
+            List("/bin/sh", "-c", script)
+          )
+          val ws = freshWorkspace()
+          val input = Files.createTempFile("rai186-write-failure", ".json")
+          val out = Files.createTempDirectory("rai186-write-failure-out")
+          Files.writeString(input, inputJson(ws))
+          val child = spawnWorkflowChild(build, input, out)
+          val drain = drainAsync(child)._1
+          val deadline = System.currentTimeMillis() + 90000L
+          var workDir = Option.empty[Path]
+          while workDir.isEmpty && System.currentTimeMillis() < deadline do
+            workDir = workDirsOf(out).headOption
+            Thread.sleep(10L)
+          val startedDeadline = System.currentTimeMillis() + 90000L
+          while !Files.exists(ws.resolve(readyName)) &&
+            System.currentTimeMillis() < startedDeadline
+          do Thread.sleep(10L)
+          val checkStarted = Files.exists(ws.resolve(readyName))
+          val moved = out.resolve("preserved-work-dir")
+          val originalWorkDir =
+            workDir.getOrElse(out.resolve("missing-work-dir"))
+          if checkStarted && workDir.nonEmpty then
+            Files.move(originalWorkDir, moved)
+            Files.writeString(
+              originalWorkDir,
+              "deliberately blocks artifact writes"
+            )
+          val finished = child.waitFor(90, TimeUnit.SECONDS)
+          val exit = if finished then child.exitValue() else -1
+          if !finished then child.destroyForcibly()
+          drain.join(2000)
+          val hasTemporary =
+            if !Files.isDirectory(moved) then false
+            else
+              val paths = Files.walk(moved)
+              try
+                paths
+                  .iterator()
+                  .asScala
+                  .exists(p =>
+                    Files.isRegularFile(p) && p.getFileName.toString
+                      .endsWith(".tmp")
+                  )
+              finally paths.close()
+          assertTrue(
+            checkStarted,
+            workDir.nonEmpty,
+            finished,
+            exit == 27,
+            Files.isRegularFile(originalWorkDir),
+            Files.isDirectory(moved),
+            !Files.exists(moved.resolve("result.json")),
+            !hasTemporary
+          )
+        }
+      },
+      test(
+        "FCI-REPORT-05: SIGTERM after check completion preserves honest finalization state without temporary files"
+      ) {
+        ZIO.serviceWithZIO[LaunchEnv] { env =>
+          val build = compiledCheckBuild(
+            env.stand,
+            advisory = false,
+            List("/bin/sh", "-c", "head -c 65536 /dev/zero; exit 1")
+          )
+          val ws = freshWorkspace()
+          val input = Files.createTempFile("rai186-finalize-signal", ".json")
+          val out = Files.createTempDirectory("rai186-finalize-signal-out")
+          Files.writeString(input, inputJson(ws))
+          val child = spawnWorkflowChild(build, input, out)
+          val drain = drainAsync(child)._1
+          val deadline = System.currentTimeMillis() + 90000L
+          var workDir = Option.empty[Path]
+          var terminalObserved = false
+          while !terminalObserved && System.currentTimeMillis() < deadline do
+            workDir = workDirsOf(out).headOption
+            terminalObserved = workDir.exists { dir =>
+              val events = dir.resolve("events.jsonl")
+              Files.isRegularFile(events) && {
+                val text = Files.readString(events)
+                text.contains("Failed") || text.contains("Succeeded")
+              }
+            }
+            if !terminalObserved then Thread.sleep(1L)
+          if terminalObserved then child.destroy()
+          val finished = child.waitFor(15, TimeUnit.SECONDS)
+          val exit = if finished then child.exitValue() else -1
+          if !finished then child.destroyForcibly()
+          drain.join(2000)
+          val dir = workDir.getOrElse(out.resolve("missing-work-dir"))
+          val files =
+            if Files.isDirectory(dir) then
+              val stream = Files.walk(dir)
+              try
+                stream
+                  .iterator()
+                  .asScala
+                  .filter(Files.isRegularFile(_))
+                  .toVector
+              finally stream.close()
+            else Vector.empty
+          val manifest = dir.resolve("artifacts.json")
+          val manifestAbsentOrComplete =
+            if !Files.exists(manifest) then true
+            else
+              val tmpPresent =
+                files.exists(_.getFileName.toString.endsWith(".tmp"))
+              val raw = Files.readString(manifest)
+              val entries = raw.fromJson[List[raider.core.result.ArtifactEntry]]
+              !tmpPresent && entries.exists(_.nonEmpty) && entries.exists(
+                _.forall { entry =>
+                  val artifact = dir.resolve(entry.path)
+                  Files.isRegularFile(artifact) &&
+                  Files.size(artifact) == entry.sizeBytes &&
+                  WorkflowBuildIdentity.sha256Hex(
+                    Files.readAllBytes(artifact)
+                  ) == entry.sha256
+                }
+              )
+          val runJson =
+            if Files.isRegularFile(dir.resolve("run.json")) then
+              Files.readString(dir.resolve("run.json"))
+            else ""
+          assertTrue(
+            terminalObserved,
+            finished,
+            exit == 143,
+            files.forall(path => !path.getFileName.toString.endsWith(".tmp")),
+            manifestAbsentOrComplete,
+            !runJson.contains("\"status\":\"Succeeded\"")
+          )
         }
       },
       test(

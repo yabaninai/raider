@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.dev/contracts/ci/trusted-check-policy.schema.json",
+  "title": "Raider trusted workflow check policy v1",
+  "description": "Workflow-bound trusted check metadata. Missing advisory decodes as false for v1 compatibility. Policy is frozen with the trusted workflow or bundle and cannot be supplied by CI context, CLI, model output, or task input.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["checkId"],
+    "properties": {
+      "checkId": { "type": "string", "minLength": 1 },
+      "advisory": { "type": "boolean", "default": false }
+    }
+  },
+  "uniqueItems": true,
+  "x-raider-verdict": {
+    "failure": "Only a failed or errored check with an exact trusted declaration and advisory=true is non-blocking.",
+    "advisoryFailure": { "taskVerdict": "success-with-advisory", "exitCode": 0 },
+    "blockingFailure": { "taskVerdict": "task-failed", "exitCode": 10 },
+    "failSafe": "Missing, unknown, duplicate, skipped, or mismatched check evidence/declaration is blocking.",
+    "policyDigest": "SHA-256 of UTF-8 trusted-check-policy-v1\\n followed by UTF-8-byte-length:checkId:boolean\\n declarations sorted by checkId.",
+    "thresholds": "Not defined in v1."
+  }
+}

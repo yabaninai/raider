@@ -162,6 +162,15 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
     ) {
       val r = renderOrThrow(fixture, options)
       val src = r.source
+      val advisoryRendered = renderOrThrow(
+        fixture.copy(
+          checks = List(
+            NamedCheck("review", List("review"), advisory = true)
+          )
+        ),
+        options
+      )
+      val advisorySource = advisoryRendered.source
       assertTrue(
         r.name == "fix_widget_task",
         src.contains("object Fix_widget_task:"),
@@ -180,9 +189,13 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
         src.contains(
           "val checkWidget_tests: List[String] = List(\"sbt\", \"--batch\", \"widget/test\")"
         ),
-        src.contains("val trustedChecks: List[(String, List[String])] = List("),
-        src.contains("(\"compile\", checkCompile),"),
-        src.contains("(\"widget-tests\", checkWidget_tests),"),
+        src.contains(
+          "val trustedChecks: List[(String, List[String], Boolean)] = List("
+        ),
+        src.contains("(\"compile\", checkCompile, false),"),
+        src.contains("(\"widget-tests\", checkWidget_tests, false),"),
+        advisorySource.contains("(\"review\", checkReview, true),"),
+        advisoryRendered.manifestJson.contains("\"advisory\": true"),
         src.contains("Make the failing widget module compile again"),
         src.contains("Refinement: Do not touch the public API"),
         src.contains("{workspace}"),
@@ -194,7 +207,7 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
         ),
         src.contains("decodeOrRefuse(rawInput)"),
         src.contains("agentStage(launch, prompt)"),
-        src.contains("runAllChecks(input)"),
+        src.contains("runTrustedChecks(raw)"),
         src.contains("AgentLoop.newRoot()"),
         src.contains("loop.runText("),
         src.contains(
@@ -341,7 +354,7 @@ object ChatWorkflowRendererSpec extends ZIOSpecDefault:
         src.contains("sess-\\x01-hostile\\\"quote"),
         src.contains("turns [t\\x01i\\\"nl, t2]"),
         // check name with control char -> trustedChecks tuple literal:
-        src.contains("(\"check\\u0003one\", checkCheck_one)"),
+        src.contains("(\"check\\u0003one\", checkCheck_one, false)"),
         // model / baseUrl -> literals:
         src.contains("mo\\u0005del\\\"x"),
         src.contains("http://127.0.0.1:1/v\\u00061"),

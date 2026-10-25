@@ -193,7 +193,9 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
 
   private def sentinelAbsentFromArtifacts(out: Path): Boolean =
     artifacts(out).forall { file =>
-      !Files.readString(file, UTF_8).contains("fixture-secret-must-not-leak")
+      val text = Files.readString(file, UTF_8)
+      !text.contains("fixture-secret-must-not-leak") &&
+      !text.contains("CI_TOKEN_SENTINEL_7d59")
     }
 
   private def sha256(bytes: Array[Byte]): String =
@@ -225,6 +227,132 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
 
   def spec = suite("RAI-185 First CI real-process acceptance")(
     test(
+      "FCI-REPORT-01/03/04: check evidence, exit precedence, and hostile report values"
+    ) {
+      import CiReport.{Failure, TaskVerdict}
+      import raider.core.result.{CheckOutcome, CheckResult, ExitCodes}
+      val blocking = CheckResult("compile", CheckOutcome.Failed, "check failed")
+      val advisory = CheckResult("review", CheckOutcome.Errored, "finding")
+      val advisoryPolicy = List(
+        CiReport.CheckPolicy("compile"),
+        CiReport.CheckPolicy("review", advisory = true)
+      )
+      val policyCases = List(
+        (
+          List(CheckResult("compile", CheckOutcome.Passed, "exit 0"), advisory),
+          advisoryPolicy,
+          TaskVerdict.Advisory
+        ),
+        (
+          List(blocking),
+          List(CiReport.CheckPolicy("compile")),
+          TaskVerdict.Blocking
+        ),
+        (
+          List(advisory),
+          List(CiReport.CheckPolicy("review")),
+          TaskVerdict.Blocking
+        ),
+        (
+          List(CheckResult("review", CheckOutcome.Skipped, "not run")),
+          List(CiReport.CheckPolicy("review", advisory = true)),
+          TaskVerdict.Blocking
+        ),
+        (List(advisory), Nil, TaskVerdict.Blocking),
+        (
+          List(
+            advisory,
+            CheckResult("unregistered", CheckOutcome.Passed, "exit 0")
+          ),
+          advisoryPolicy,
+          TaskVerdict.Blocking
+        )
+      )
+      val legacyDeclarationDefaultsBlocking =
+        """{"name":"legacy","argv":["true"]}"""
+          .fromJson[raider.cli.chat.NamedCheck]
+          .exists(check => !check.advisory)
+      val policyDecisions =
+        policyCases.map { case (evidence, policy, expected) =>
+          val decision = CiReport.classify(evidence, policy)
+          decision.verdict == expected && decision.policyDigest.matches(
+            "[0-9a-f]{64}"
+          )
+        }
+      val table = List(
+        (Set(Failure.Success), ExitCodes.Success),
+        (Set(Failure.BlockingCheck), ExitCodes.TaskRejected),
+        (Set(Failure.Deadline), ExitCodes.DeadlineExceeded),
+        (Set(Failure.PolicyDenial), ExitCodes.PolicyDenied),
+        (Set(Failure.Uncertainty), ExitCodes.Uncertain),
+        (Set(Failure.WriteFailure), ExitCodes.ArtifactWriteFailure),
+        (
+          Set(Failure.WriteFailure, Failure.Uncertainty),
+          ExitCodes.ArtifactWriteFailure
+        ),
+        (
+          Set(Failure.WriteFailure, Failure.BlockingCheck),
+          ExitCodes.ArtifactWriteFailure
+        ),
+        (Set(Failure.Uncertainty, Failure.Deadline), ExitCodes.Uncertain),
+        (
+          Set(Failure.PolicyDenial, Failure.Deadline),
+          ExitCodes.DeadlineExceeded
+        ),
+        (
+          Set(Failure.WriteFailure, Failure.CancellationSignal(143)),
+          ExitCodes.SigTerm
+        ),
+        (Set(Failure.Preflight(21), Failure.BlockingCheck), 21)
+      )
+      assertTrue(
+        policyDecisions.forall(identity),
+        legacyDeclarationDefaultsBlocking,
+        CiReport.exitCode(TaskVerdict.Advisory) == ExitCodes.Success,
+        CiReport.exitCode(TaskVerdict.Blocking) == ExitCodes.TaskRejected,
+        CiReport
+          .classify(
+            List(advisory),
+            List(CiReport.CheckPolicy("review", advisory = true))
+          )
+          .policyDigest != CiReport.policyDigest(
+          List(CiReport.CheckPolicy("review"))
+        ),
+        CiReport
+          .taskVerdict(List(blocking), Set("review")) == TaskVerdict.Blocking,
+        CiReport
+          .taskVerdict(List(advisory), Set("review")) == TaskVerdict.Advisory,
+        CiReport.taskVerdict(Nil, Set("review")) == TaskVerdict.Passed,
+        table.forall((causes, expected) =>
+          CiReport.exitCode(causes) == expected
+        ),
+        CiReport.xmlEscape("<&\"'\u0001") == "&lt;&amp;&quot;'�", {
+          val hostile = "<&>\"' ::error::test\nnext"
+          val junit = CiReport.junit(
+            List(
+              CheckResult(
+                "check<&>\"'",
+                CheckOutcome.Failed,
+                hostile
+              )
+            )
+          )
+          junit.contains("name=\"check&lt;&amp;&gt;&quot;'\"") &&
+          junit.contains(
+            "&lt;&amp;&gt;&quot;' ::error::test\nnext"
+          ) &&
+          !junit.contains("<failure message=\"<&>")
+        },
+        CiReport.neutralizeWorkflowCommands(
+          "::error::x%\n"
+        ) == "%3A%3Aerror%3A%3Ax%25%0A",
+        CiReport.safeRelativePath("checks.junit.xml"),
+        !CiReport.safeRelativePath("../outside"),
+        !CiReport.safeRelativePath("/absolute/path"),
+        !CiReport.safeRelativePath("C:\\outside")
+      )
+    },
+    test(
       "FCI-CLI-01/02 and FCI-CTX-01: real CLI, artifact integrity, and environment parity"
     ) {
       val work = tempDir()
@@ -250,6 +378,13 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           artifacts(out).find(_.getFileName.toString == "result.json").get
         Files.readString(file, UTF_8)
       }
+      val successfulVerdict = resultDocs.forall { raw =>
+        raw.contains("\"taskVerdict\":\"trusted-checks-passed\"") &&
+        raw.contains("\"checkPolicyDigest\":\"sha256-") &&
+        raw.contains(
+          "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
+        )
+      }
       val outputsArePlain = childResults.forall { result =>
         !result.stdout.exists(c => c == '\u001b' || c == '\u009b') &&
         !result.stderr.exists(c => c == '\u001b' || c == '\u009b') &&
@@ -274,6 +409,7 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         childResults.forall(_.exit == 0),
         childResults.forall(_.stdout.contains("\"exitCode\":0")),
         outputsArePlain,
+        successfulVerdict,
         resultDocs.distinct.size == 1,
         validateArtifacts(genericOut),
         validateArtifacts(githubOut),
@@ -329,12 +465,74 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
           file =>
             !Files.readString(file, UTF_8).contains("\"accounting\"")
         }
+      def blockingVerdict(out: Path): Boolean =
+        artifacts(out)
+          .find(_.getFileName.toString == "result.json")
+          .exists(file =>
+            Files
+              .readString(file, UTF_8)
+              .contains("\"taskVerdict\":\"task-failed\"") &&
+              Files
+                .readString(file, UTF_8)
+                .contains(
+                  "\"checkEvidence\":[\"bundle-preflight\",\"run-outcome\",\"run-result-schema\"]"
+                )
+          )
       assertTrue(
-        contextResult.exit == 21 && noLedger(contextOut),
+        contextResult.exit == 21 && noLedger(contextOut) &&
+          blockingVerdict(contextOut),
         bundleResult.exit == 21 && noLedger(bundleOut),
         inputResult.exit == 21 && noLedger(inputOut),
         contextResult.stdout + contextResult.stderr != "",
         bundleResult.stdout + bundleResult.stderr != ""
+      )
+    },
+    test(
+      "FCI-REPORT-04: hostile workflow output and JUnit check evidence are escaped"
+    ) {
+      val work = tempDir()
+      val bundle = makeBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("hostile-output")
+      val hostile = "<&>\"' ::error::workflow\n::warning::next"
+      val args = baseArgs(bundle, context, out)
+      val inputIndex = args.indexOf("inspect the project")
+      val hostileArgs = args.updated(inputIndex, hostile)
+      val result = child(hostileArgs, out, ciEnv("github"))
+      val summary = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "summary.md").get,
+        UTF_8
+      )
+      val junit = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "checks.junit.xml").get,
+        UTF_8
+      )
+      assertTrue(
+        result.exit == 0,
+        summary.contains(
+          "&lt;&amp;&gt;&quot;' %3A%3Aerror%3A%3Aworkflow %3A%3Awarning%3A%3Anext"
+        ),
+        !summary.contains("::error::"),
+        !summary.contains("::warning::"),
+        junit.contains("<testsuite"),
+        sentinelAbsentFromArtifacts(out),
+        validateArtifacts(out)
+      )
+    },
+    test(
+      "FCI-REPORT-03: a real artifact preflight write failure cannot be green"
+    ) {
+      val work = tempDir()
+      val bundle = makeBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("output-is-a-file")
+      Files.writeString(out, "not a directory", UTF_8)
+      val result = child(baseArgs(bundle, context, out), out)
+      assertTrue(
+        result.exit == 27,
+        result.stdout.isEmpty,
+        result.stderr.contains("no complete report is available"),
+        Files.isRegularFile(out)
       )
     }
   ) @@ TestAspect.sequential

@@ -18,6 +18,7 @@
 // on this path stays unpriced/unknown, never zero.
 
 import raider.core.{ModelBackend, Program, RaiderError, RequestMessage, Task, ToolRegistry}
+import raider.core.result.{CheckOutcome, CheckResult}
 import raider.runtime.admission.Admission
 import raider.runtime.budget.{BudgetLimits, CostEstimate}
 import raider.runtime.loop.AgentLoop
@@ -58,9 +59,10 @@ object Fix_widget_task:
 
   val checkWidget_tests: List[String] = List("sbt", "--batch", "widget/test")
 
-  val trustedChecks: List[(String, List[String])] = List(
-    ("compile", checkCompile),
-    ("widget-tests", checkWidget_tests),
+  // advisory is frozen workflow metadata; legacy declarations default false.
+  val trustedChecks: List[(String, List[String], Boolean)] = List(
+    ("compile", checkCompile, false),
+    ("widget-tests", checkWidget_tests, false),
   )
 
   // Bound of the ONE sequential agent stage (ADR-033 §4.1); must stay >= 1.
@@ -243,7 +245,6 @@ object Fix_widget_task:
         prompt = renderPrompt(promptTemplate, input)
         answer <- agentStage(launch, prompt)
         validated <- validateOutput(answer)
-        _ <- runAllChecks(input)
       yield report(validated, input)
 
   /** ONE sequential bounded agent stage (ADR-033 §4.1): model+tool
@@ -293,15 +294,19 @@ object Fix_widget_task:
   * pass on the NEW workspace; "the agent said done" is never a
   * verdict).
   */
-  private def runAllChecks(input: Input): Task[Unit] =
+  def runTrustedChecks(raw: String): Task[List[raider.core.result.CheckResult]] =
     Task(
-      ZIO.foreach(trustedChecks) { case (name, argv) =>
-        Task.zio(runNamedCheck(input, name, argv))
-      }.unit
+      ZIO.fromEither(raw.fromJson[Input]).mapError(err =>
+        RaiderError.InputValidation("CWF-input: invalid input JSON: " + err)
+      ).flatMap { input =>
+        ZIO.foreach(trustedChecks) { case (name, argv, _) =>
+          runNamedCheck(input, name, argv)
+        }
+      }
     )
 
   /** One named check: argv runs WITHOUT a shell in the workspace
-  * directory, bounded wait, output inherited. The argv comes ONLY from
+  * directory, bounded wait, with output retained as executed evidence. The argv comes ONLY from
   * the editable constants above — never from the input JSON
   * (text-is-data, §8). Nonzero exit is a typed failed run (R9): a
   * failed check stays failed.
@@ -310,53 +315,56 @@ object Fix_widget_task:
       input: Input,
       name: String,
       argv: List[String]
-  ): Task[Unit] =
-    Task(
+  ): ZIO[Any, Nothing, raider.core.result.CheckResult] =
       ZIO
         .attemptBlocking {
           val proc = new ProcessBuilder(argv*)
             .directory(java.nio.file.Paths.get(input.workspace).toFile)
             .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+            .redirectOutput(ProcessBuilder.Redirect.PIPE)
             .start()
+          val captured = new java.io.ByteArrayOutputStream()
+          val reader = new Thread(() => {
+            val stream = proc.getInputStream
+            val buffer = new Array[Byte](8192)
+            var total = 0
+            var count = stream.read(buffer)
+            while count >= 0 do
+              val keep = math.min(count, 65536 - total)
+              if keep > 0 then captured.write(buffer, 0, keep)
+              total += keep
+              count = stream.read(buffer)
+            stream.close()
+          }, "raider-trusted-check-output")
+          reader.setDaemon(true)
+          reader.start()
           if proc.waitFor(
               checkTimeoutSeconds.toLong,
               java.util.concurrent.TimeUnit.SECONDS
             )
-          then Right(proc.exitValue()): Either[String, Int]
+          then
+            reader.join()
+            val output = new String(captured.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
+            Right((proc.exitValue(), output)): Either[String, (Int, String)]
           else
             proc.destroyForcibly()
+            proc.waitFor()
+            reader.join()
             Left(
               "exceeded the " + checkTimeoutSeconds +
                 "s bound and was destroyed"
-            ): Either[String, Int]
+            ): Either[String, (Int, String)]
         }
-        .mapError(t =>
-          RaiderError.OutputValidation(
-            "check '" + name + "' could not start: " +
-              String.valueOf(t)
-          )
-        )
-        .flatMap {
-          case Right(0) => ZIO.unit
-          case Right(code) =>
-            ZIO.fail(
-              RaiderError.OutputValidation(
-                "check '" + name + "' failed with exit code " + code
-              )
-            )
-          case Left(reason) =>
-            ZIO.fail(
-              RaiderError.DeadlineExceeded(
-                "check '" + name + "' " + reason
-              )
-            )
+        .either.map {
+          case Right(Right((0, output))) => CheckResult(name, CheckOutcome.Passed, output)
+          case Right(Right((code, output))) => CheckResult(name, CheckOutcome.Failed, output + "check exited with code " + code)
+          case Right(Left(reason)) => CheckResult(name, CheckOutcome.Errored, reason)
+          case Left(error) => CheckResult(name, CheckOutcome.Errored, error.toString)
         }
-    )
 
   /** Deterministic textual report (the Program output). */
   private def report(answer: String, input: Input): String =
-    "checks passed: " + trustedChecks.map((name, _) => name)
+    "checks passed: " + trustedChecks.map((name, _, _) => name)
       .mkString(", ") + "; target=" + input.task.targetPath + "\n" + answer
 
   // ---- launcher (Option L, ADR-033 §3/§6.3) ----
@@ -391,6 +399,10 @@ object Fix_widget_task:
       input <- decodeOrRefuse(raw)
       launch <- buildLaunch(input)
       result <- Task(Task.zio(workflow(launch)(raw)))
+      checks <- Task(Task.zio(runTrustedChecks(raw)))
+      _ <- if checks.exists(c => c.outcome != CheckOutcome.Passed && !trustedChecks.exists((name, _, advisory) => name == c.id && advisory)) then
+        Task.fail(RaiderError.OutputValidation("blocking trusted check failed"))
+      else Task.succeed(())
       _ <- Task(ZIO.succeed(println(result)))
     yield ()
 

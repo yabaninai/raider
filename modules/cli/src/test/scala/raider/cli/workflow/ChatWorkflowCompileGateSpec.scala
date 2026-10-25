@@ -1,5 +1,6 @@
 package raider.cli.workflow
 
+import zio.{Unsafe, ZIO}
 import zio.test.*
 import zio.test.Assertion.*
 
@@ -406,7 +407,7 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
       "Program.fromFunction(",
       "decodeOrRefuse(rawInput)",
       "agentStage(launch, prompt)",
-      "runAllChecks(input)",
+      "runTrustedChecks(raw)",
       "AgentLoop.newRoot()",
       "loop.runText(",
       "new ProcessBuilder(",
@@ -457,6 +458,13 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
   private def runTask[A](task: Task[A]): Either[RaiderError, A] =
     zio.Unsafe.unsafe { implicit u =>
       zio.Runtime.default.unsafe.run(Task.zio(task).either).getOrThrow()
+    }
+
+  private def runCheck(
+      effect: ZIO[Any, Nothing, raider.core.result.CheckResult]
+  ) =
+    Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe.run(effect).getOrThrow()
     }
 
   /** Reflection façade over the compiled probe object. */
@@ -788,27 +796,25 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
 
         // -- (2) second-input behavior on the SAME compiled artifact ---------
         val markerArgv: AnyRef = List("/bin/test", "-f", "marker.txt")
-        val ws1Check = runTask(
+        val ws1Check = runCheck(
           loaded
             .invoke(
               "runNamedCheck",
               Seq(newInput(loaded, ws1), "marker", markerArgv)
             )
-            .asInstanceOf[Task[?]]
+            .asInstanceOf[ZIO[Any, Nothing, raider.core.result.CheckResult]]
         )
-        val ws2Check = runTask(
+        val ws2Check = runCheck(
           loaded
             .invoke(
               "runNamedCheck",
               Seq(newInput(loaded, ws2), "marker", markerArgv)
             )
-            .asInstanceOf[Task[?]]
+            .asInstanceOf[ZIO[Any, Nothing, raider.core.result.CheckResult]]
         )
-        val ws1Green = ws1Check.isRight
-        val ws2Red = ws2Check match
-          case Left(e: RaiderError.OutputValidation) =>
-            e.detail.contains("marker") && e.detail.contains("exit code 1")
-          case _ => false
+        val ws1Green =
+          ws1Check.outcome == raider.core.result.CheckOutcome.Passed
+        val ws2Red = ws2Check.outcome == raider.core.result.CheckOutcome.Failed
 
         // -- (3) edit-without-regeneration -----------------------------------
         // NEGATIVE CONTROL: the outcome flip below is driven ONLY by the
@@ -839,21 +845,30 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
         // set is fully green: marker green, `/usr/bin/true` green.
         val originalAllGreen = runTask(
           loaded
-            .invoke("runAllChecks", Seq(newInput(loaded, ws1)))
+            .invoke("runTrustedChecks", Seq(inputJson(ws1)))
             .asInstanceOf[Task[?]]
-        ).isRight
+        ).exists(
+          _.asInstanceOf[List[raider.core.result.CheckResult]].forall(
+            _.outcome == raider.core.result.CheckOutcome.Passed
+          )
+        )
         // The EDITED artifact — identical except `/usr/bin/true` →
         // `/usr/bin/false` in the compiled `pass` constant — fails its OWN
-        // `runAllChecks` on the SAME input: the edit changed run behavior
+        // `runTrustedChecks` on the SAME input: the edit changed run behavior
         // WITHOUT any regeneration, and the typed red names the flipped
         // check.
         val editedRed = runTask(
           edited
-            .invoke("runAllChecks", Seq(newInput(edited, ws1)))
+            .invoke("runTrustedChecks", Seq(inputJson(ws1)))
             .asInstanceOf[Task[?]]
         ) match
-          case Left(e: RaiderError.OutputValidation) =>
-            e.detail.contains("pass") && e.detail.contains("exit code 1")
+          case Right(checks: List[?]) =>
+            checks
+              .asInstanceOf[List[raider.core.result.CheckResult]]
+              .exists(c =>
+                c.id == "pass" &&
+                  c.outcome == raider.core.result.CheckOutcome.Failed
+              )
           case _ => false
 
         // Capture every fact BEFORE cleanup (assertions re-evaluate lazily).

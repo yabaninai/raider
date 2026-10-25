@@ -1,6 +1,6 @@
 package raider.cli.workflow
 
-import raider.cli.run.{Credentials, EventsJsonlWriter, HeadlessRunner}
+import raider.cli.run.{CiReport, Credentials, EventsJsonlWriter, HeadlessRunner}
 import raider.core.{
   JobId,
   ModelBackend,
@@ -206,6 +206,9 @@ object WorkflowRun:
       output: Option[String] = None,
       inputDigest: String = "",
       identity: Option[WorkflowBuildIdentity] = None,
+      checks: List[CheckResult] = Nil,
+      taskVerdict: Option[String] = None,
+      checkPolicyDigest: Option[String] = None,
       artifactsWritten: Boolean = false
   )
 
@@ -288,7 +291,7 @@ object WorkflowRun:
           body(args, env, workDir).fold(
             err =>
               Outcome(HeadlessRunner.exitCodeFor(err), args.out, Some(err)),
-            _ => Outcome(raider.core.result.ExitCodes.Success, args.out, None)
+            code => Outcome(code, workDir, None)
           )
 
   /** Checkpoint policy is declared by the launcher and gates dispatch only. The
@@ -461,7 +464,7 @@ object WorkflowRun:
       args: Args,
       env: Map[String, String],
       workDir: Path
-  ): ZIO[Scope, RaiderError, Unit] =
+  ): ZIO[Scope, RaiderError, Int] =
     ZIO.scoped:
       for
         startedAt <- ZIO.succeed(Instant.now())
@@ -508,7 +511,7 @@ object WorkflowRun:
         _ <- flow(args, env, state, root, startedAt, workDir, emit)
           .onInterrupt(
             state.update(st =>
-              if st.error.isEmpty && st.status != ExecutionStatus.Succeeded then
+              if st.error.isEmpty && !st.artifactsWritten then
                 st.copy(
                   status = ExecutionStatus.Interrupted,
                   terminal = JobStatus.Interrupted,
@@ -517,7 +520,8 @@ object WorkflowRun:
               else st
             )
           )
-      yield ()
+        finalState <- state.get
+      yield finalState.exitCode
 
   /** The launch flow: preflight → load → credential preflight → validated
     * decode → CLI-internal assembly → THE single dispatch → artifacts. Every
@@ -622,16 +626,43 @@ object WorkflowRun:
           ) *> emit(EventPayload.Terminal(terminal)) *> ZIO.fail(err)
         case Right(report) =>
           for
+            checks <- record(
+              state,
+              ZIO
+                .attempt(
+                  invokeTask(module, "runTrustedChecks", rawInput)
+                    .asInstanceOf[Task[List[CheckResult]]]
+                )
+                .mapError(t =>
+                  RaiderError.InputValidation(
+                    s"compiled artifact has no callable 'runTrustedChecks(String)' member: ${String.valueOf(t)}"
+                  )
+                )
+                .flatMap(task => Task.zio(task))
+            )
+            policy <- ZIO.fromEither(trustedCheckPolicy(module))
+            decision = CiReport.classify(checks, policy)
+            blocking = decision.verdict == CiReport.TaskVerdict.Blocking
             _ <- state.update(
               _.copy(
                 phase = Phase.Completed,
-                status = ExecutionStatus.Succeeded,
-                terminal = JobStatus.Succeeded,
-                exitCode = raider.core.result.ExitCodes.Success,
-                output = Some(report)
+                status =
+                  if blocking then ExecutionStatus.Failed
+                  else ExecutionStatus.Succeeded,
+                terminal =
+                  if blocking then JobStatus.Failed else JobStatus.Succeeded,
+                exitCode = CiReport.exitCode(decision.verdict),
+                output = Some(report),
+                checks = checks,
+                taskVerdict = Some(CiReport.verdictLabel(decision.verdict)),
+                checkPolicyDigest = Some(decision.policyDigest)
               )
             )
-            _ <- emit(EventPayload.Terminal(JobStatus.Succeeded))
+            _ <- emit(
+              EventPayload.Terminal(
+                if blocking then JobStatus.Failed else JobStatus.Succeeded
+              )
+            )
             // In-flow artifact write for the success path: a write failure
             // must fail the run (never green without artifacts).
             st <- state.get
@@ -639,6 +670,17 @@ object WorkflowRun:
               .mapError(t =>
                 RaiderError.JournalFailure(
                   s"cannot write run artifacts under $workDir: ${String.valueOf(t)}"
+                )
+              )
+              .tapError(err =>
+                state.update(
+                  _.copy(
+                    status = ExecutionStatus.Failed,
+                    terminal = JobStatus.Failed,
+                    exitCode = HeadlessRunner.exitCodeFor(err),
+                    error = Some(err),
+                    artifactsWritten = false
+                  )
                 )
               )
             _ <- state.update(_.copy(artifactsWritten = true))
@@ -804,6 +846,27 @@ object WorkflowRun:
   private def readStringField(input: AnyRef, name: String): String =
     member(input, name).invoke(input).asInstanceOf[String]
 
+  private def trustedCheckPolicy(
+      module: AnyRef
+  ): Either[RaiderError, List[CiReport.CheckPolicy]] =
+    try
+      val raw = member(module, "trustedChecks")
+        .invoke(module)
+        .asInstanceOf[scala.collection.Iterable[Product]]
+      Right(raw.iterator.map { declaration =>
+        CiReport.CheckPolicy(
+          declaration.productElement(0).asInstanceOf[String],
+          declaration.productElement(2).asInstanceOf[Boolean]
+        )
+      }.toList)
+    catch
+      case t: Throwable =>
+        Left(
+          RaiderError.InputValidation(
+            s"compiled artifact has no valid trustedChecks declaration: ${String.valueOf(t)}"
+          )
+        )
+
   // ------------------------------------------------------------------//
   // CLI-internal assembly (the artifact's OWN factory + runtime parts)  //
   // ------------------------------------------------------------------//
@@ -900,10 +963,11 @@ object WorkflowRun:
         rootId = root,
         status = st.status,
         exitCode = st.exitCode,
-        taskVerdict =
-          if st.status == ExecutionStatus.Succeeded then
-            Some("trusted-checks-passed")
-          else None,
+        taskVerdict = st.taskVerdict.orElse(
+          Option.when(st.status == ExecutionStatus.Succeeded)(
+            "trusted-checks-passed"
+          )
+        ),
         checks = artifactChecks(st),
         artifacts = List.empty,
         output = st.output.map(r =>
@@ -913,40 +977,95 @@ object WorkflowRun:
         startedAt = startedAt.toString,
         finishedAt = finishedAt.toString
       )
-      ZIO.attempt {
-        Files.createDirectories(workDir)
-        // run.json — validated BEFORE the write (the schema check result is
-        // part of the document, same discipline as HeadlessRunner).
-        val schemaOk = RunResult.validate(base)
-        val validated = schemaOk.fold(
-          err =>
-            base.copy(checks =
-              base.checks :+ CheckResult(
-                "run-result-schema",
-                CheckOutcome.Failed,
-                err.detail
+      ZIO
+        .attempt {
+          Files.createDirectories(workDir)
+          // run.json — validated BEFORE the write (the schema check result is
+          // part of the document, same discipline as HeadlessRunner).
+          val schemaOk = RunResult.validate(base)
+          val validated = schemaOk.fold(
+            err =>
+              base.copy(checks =
+                base.checks :+ CheckResult(
+                  "run-result-schema",
+                  CheckOutcome.Failed,
+                  err.detail
+                )
+              ),
+            _ =>
+              base.copy(checks =
+                base.checks :+ CheckResult(
+                  "run-result-schema",
+                  CheckOutcome.Passed,
+                  "validated pre-write"
+                )
               )
-            ),
-          _ =>
-            base.copy(checks =
-              base.checks :+ CheckResult(
-                "run-result-schema",
-                CheckOutcome.Passed,
-                "validated pre-write"
-              )
+          )
+          writeAtomic(
+            workDir.resolve("run.json"),
+            spliceIdentity(validated.toJson, st)
+          )
+          val verdict = st.taskVerdict.getOrElse("task-failed")
+          val evidence = validated.checks
+            .map(c => zio.json.ast.Json.Str(c.id))
+            .toList
+          val payload = validated.output.fold(
+            validated.error.fold("null")(e =>
+              s"{\"code\":\"${e.code}\",\"detail\":\"${e.detail.replace("\\", "\\\\").replace("\"", "\\\"")}\"}"
             )
+          )(_.toJson)
+          val checkEvidence =
+            zio.json.ast.Json.Arr(zio.Chunk.fromIterable(evidence)).toJson
+          val policyDigest = st.checkPolicyDigest.getOrElse("")
+          writeAtomic(
+            workDir.resolve("result.json"),
+            s"{\"result\":$payload,\"taskVerdict\":\"$verdict\",\"checkEvidence\":$checkEvidence,\"checkPolicyDigest\":\"sha256-$policyDigest\"}"
+          )
+          writeAtomic(
+            workDir.resolve("checks.junit.xml"),
+            CiReport.junit(validated.checks)
+          )
+          writeAtomic(workDir.resolve("summary.md"), summaryMd(st, root))
+          val artifactNames = List(
+            "run.json",
+            "result.json",
+            "events.jsonl",
+            "summary.md",
+            "checks.junit.xml"
+          )
+          val manifest = artifactNames.flatMap { name =>
+            val path = workDir.resolve(name)
+            if !Files.isRegularFile(path) then None
+            else
+              val bytes = Files.readAllBytes(path)
+              val digest = java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(bytes)
+                .map(b => f"${b & 0xff}%02x")
+                .mkString
+              Some(
+                raider.core.result.ArtifactEntry(
+                  raider.core.ArtifactId(name.replace('/', '-')),
+                  digest,
+                  Option(Files.probeContentType(path))
+                    .getOrElse("application/octet-stream"),
+                  bytes.length.toLong,
+                  name
+                )
+              )
+          }
+          writeAtomic(workDir.resolve("artifacts.json"), manifest.toJson)
+          ()
+        }
+        .mapError(t =>
+          RaiderError.JournalFailure(
+            s"cannot write run artifacts under $workDir: ${String.valueOf(t)}"
+          )
         )
-        writeAtomic(
-          workDir.resolve("run.json"),
-          spliceIdentity(validated.toJson, st)
-        )
-        writeAtomic(workDir.resolve("summary.md"), summaryMd(st, root))
-        ()
-      }.orDie
     }
 
   private def artifactChecks(st: RunState): List[CheckResult] =
-    st.identity.toList.map { id =>
+    st.checks ++ st.identity.toList.map { id =>
       CheckResult(
         "build-identity-verified",
         CheckOutcome.Passed,
@@ -1016,6 +1135,25 @@ object WorkflowRun:
     }
     if st.inputDigest.nonEmpty then
       sb.append("- input: sha256-").append(st.inputDigest).append("\n")
+    if st.checks.nonEmpty then
+      sb.append("\n## Trusted check evidence\n\n")
+      st.checks.foreach { check =>
+        sb.append("- ")
+          .append(
+            CiReport.markdownEscape(
+              CiReport.neutralizeWorkflowCommands(check.id)
+            )
+          )
+          .append(" (**")
+          .append(check.outcome.toString)
+          .append("**): ")
+          .append(
+            CiReport.markdownEscape(
+              CiReport.neutralizeWorkflowCommands(check.detail.take(4000))
+            )
+          )
+          .append("\n")
+      }
     sb.append(
       "- accounting: unpriced/unknown on this path (CostEstimate.Unknown); no cost is reported as zero\n"
     )

@@ -185,7 +185,9 @@ object TaskWorkflowAdapter:
           intent = intent,
           refinements = refinements,
           taskParams = taskParams,
-          checks = selection.checks.map(c => DslNamedCheck(c.name, c.argv)),
+          checks = selection.checks.map(c =>
+            DslNamedCheck(c.name, c.argv, c.advisory)
+          ),
           agentStage = StsAgentStage(selection.maxRoundsBound),
           origin = origin
         )
