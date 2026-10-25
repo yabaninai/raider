@@ -274,10 +274,20 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); accepted (advisory Boolean frozen on the trustedChecks surface with provenance binding; fail-safe blocking on missing/unknown/mismatched IDs); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
 - **RAI-207** [Protected CWF-E02 expectation migration under the RAI-195 check-policy contract](m0.md#rai-207-protected-cwf-e02-expectation-migration-under-the-rai-195-check-policy-contract); accepted (bogus-success asserts task-failed + check evidence + RA-OUT on stderr; digest anchors migrated; independent review approve); dependencies: RAI-195; profiles: static, unit, contracts, ci, eval.
 - **RAI-208** [TUI-X.B3.b: live plan/budget wiring in the chat shell](m2-p2.md#rai-208-tui-xb3b-live-planbudget-wiring-in-the-chat-shell); accepted (round-2 approve; TUI-X.B3 fully closed); dependencies: RAI-190, RAI-188; profiles: static, unit, contracts, repl.
+- **RAI-209** [Raise the sbt-test gate timeout under host contention](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: none; profiles: fast, static, unit.
+- **RAI-210** [FCI-REPORT-02 post-run artifact mutation fixture](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186; profiles: static, unit, ci.
+- **RAI-211** [Portable polish: sub-second deadline precision and argv --doc corner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, ci.
+- **RAI-212** [verdict.from agent-step hardening](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, contracts.
+- **RAI-213** [Export staging race: fail-fast without deleting the winner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts.
+- **RAI-214** [Launcher-side manifest digest verification](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts, runtime, ci.
+- **RAI-215** [Named-check to trustedCheck export mapping (ADR + implementation)](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203, RAI-198; profiles: static, unit, contracts, docs.
+- **RAI-216** [Bounded finalization for the generated check runner](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186; profiles: static, unit, ci, runtime.
+- **RAI-217** [CI report polish: policyDigest assertion and advisory-aware summary](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186, RAI-195; profiles: static, unit, ci.
+- **RAI-218** [bootstrap.sh CA resolution on stock macOS](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: none; profiles: fast, static.
 
 ## Cross-ecosystem program (2026-10-23)
 
-[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196, RAI-200, RAI-202, and RAI-204 are accepted. RAI-197 remains ready with its RAI-196 dependency satisfied; other cards require their dependencies and explicit activation conditions.
+[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196, RAI-200, RAI-202, and RAI-204 are accepted. RAI-197 is accepted; other cards require their dependencies and explicit activation conditions.
 
 - **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
 - **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.

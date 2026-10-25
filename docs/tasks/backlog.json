@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 219,
+  "raider_count": 229,
   "companion_count": 3,
   "cards": [
     {
@@ -6201,6 +6201,286 @@
       },
       "non_goals": "New hubs, event or snapshot APIs/schemas, synthetic plan/budget data, task stores, session registries, schedulers, policy changes, or focus-driven runtime controls.",
       "context": "RAI-190 delivered the session switcher/footer/tasks-panel slice and honest empty states. The remaining live wiring was split after two honest implementation stops caused by classloader-boundary design depth. Follow the RAI-190 coordinator scope note and ADR-024; the interpreter-world hub is shared with ReplSession, while the shell-side hub remains for shell-owned surfaces."
+    },
+    {
+      "id": "RAI-209",
+      "title": "Raise the sbt-test gate timeout under host contention",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/**",
+        "docs/quality-gates.md",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "static",
+        "unit"
+      ],
+      "behavior": "Raise ONLY the sbt-test gate timeout from 900 s to 1800 s in the quality gate policy registry; document the owner authorization (2026-10-26) in docs/quality-gates.md. No other gate threshold changes; the single-rerun allowance stays.",
+      "acceptance": {
+        "normal": "Policy/registry self-check green with the new value asserted; docs updated.",
+        "error": "An artificially slowed probe still classifies as timeout (never skip/pass) under the new cap; no other gate timeout value changed (asserted).",
+        "concurrency": "A full EXECUTE with two concurrent lanes completes without an artificial timeout."
+      },
+      "non_goals": "No gate removal, no threshold lowering, no runner rewrite, no product code.",
+      "context": "Board 2026-10-25 follow-up #4 (sbt-test 900 s cap vs ~530-570 s actual under contention); owner decision 2026-10-26."
+    },
+    {
+      "id": "RAI-210",
+      "title": "FCI-REPORT-02 post-run artifact mutation fixture",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-186"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "ci"
+      ],
+      "behavior": "After a successful run, corrupt/missing/mismatched post-run artifacts (edited bytes, removed required file, swapped digest) are detected by the report/consumer path and fail truthfully with a typed error and non-zero exit; no fabricated success.",
+      "acceptance": {
+        "normal": "Integrity manifest re-hash over the generated set passes.",
+        "error": "Partial byte mutation, removed manifest, mismatched digest each refuse truthfully with typed errors and non-zero exit.",
+        "concurrency": "Mutation racing finalization follows the existing precedence rules; no fabricated passed checks."
+      },
+      "non_goals": "New report formats; changes to frozen fixtures or gate policy.",
+      "context": "RAI-186 record: FCI-REPORT-02 mutation half deferred; stack review follow-up #1 (2026-10-25)."
+    },
+    {
+      "id": "RAI-211",
+      "title": "Portable polish: sub-second deadline precision and argv --doc corner",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-199"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/portable/PortableRun.scala",
+        "modules/cli/src/test/scala/raider/cli/portable/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "ci"
+      ],
+      "behavior": "Pass the deadline as a millisecond Duration directly in PortableRun (no Duration.fromSeconds floor) so sub-second --deadline-s values bind precisely; pin the classification of an argv value-position element that is exactly `--doc`.",
+      "acceptance": {
+        "normal": "A 250 ms deadline aborts by wall clock within tolerance.",
+        "error": "Argv `--doc` in value position is classified as a value, not a switch (pinned test); sub-second values are no longer floored.",
+        "concurrency": "Unchanged cancellation/ownership semantics."
+      },
+      "non_goals": "CLI surface redesign; new flags; registry changes.",
+      "context": "RAI-199 review follow-ups #1 and #3 (2026-10-25)."
+    },
+    {
+      "id": "RAI-212",
+      "title": "verdict.from agent-step hardening",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-199"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/portable/**",
+        "modules/dsl/src/test/scala/raider/dsl/portable/**",
+        "modules/cli/src/main/scala/raider/cli/portable/**",
+        "modules/cli/src/test/scala/raider/cli/portable/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "When verdict evidence originates from an agent step rather than the root trusted check, the portable path never claims taskVerdict authority: typed permissive outcome per the RAI-198 lowerer table, recorded verbatim; exit-code mapping stays RA-OUT-safe.",
+      "acceptance": {
+        "normal": "Root trusted-check verdicts unchanged (pinned).",
+        "error": "Agent-step-only, mixed, and contradictory verdict evidence each produce the pinned typed outcome: no fabrication, no silent drop.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Changing the RAI-198 ruling or frozen lowerer table; scheduler changes.",
+      "context": "RAI-199 review follow-up #2 (2026-10-25); RAI-198 ruling XE-LOWER-01..03."
+    },
+    {
+      "id": "RAI-213",
+      "title": "Export staging race: fail-fast without deleting the winner",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-203"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/portable/PortableChatExport.scala",
+        "modules/dsl/src/test/scala/raider/dsl/portable/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "Distinguish FileAlreadyExistsException inside writeStaging so a losing concurrent export refuses WITHOUT deleting the winner in-flight staging; correct the Scaladoc claim (fail-fast exclusion, not serialization); add a true two-thread concurrent-export test.",
+      "acceptance": {
+        "normal": "Single-export behavior unchanged.",
+        "error": "Latched two-thread race: exactly one publishes; the loser refuses typed with nothing half-published and the winner staging intact.",
+        "concurrency": "The race test is deterministic (latches, not sleeps)."
+      },
+      "non_goals": "Cross-process locking; filesystem changes.",
+      "context": "RAI-203 review follow-ups #1/#2 (2026-10-25)."
+    },
+    {
+      "id": "RAI-214",
+      "title": "Launcher-side manifest digest verification",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-203"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/portable/**",
+        "modules/dsl/src/test/scala/raider/dsl/portable/**",
+        "modules/cli/src/main/scala/raider/cli/workflow/**",
+        "modules/cli/src/test/scala/raider/cli/workflow/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
+      "behavior": "The workflow launcher verifies chat-portable-export-manifest-v1 sha256 digests against bundle bytes before lowering; mismatch/missing/extra files refuse typed with no partial lowering; additive consumer, no schema change.",
+      "acceptance": {
+        "normal": "Valid exported bundle lowers and runs as before with verification green.",
+        "error": "Tampered file, missing bundle file, extra unmanifested file each refuse typed before any lowering.",
+        "concurrency": "Verification is pure and bounded; no lock contention."
+      },
+      "non_goals": "Schema changes; signature/PKI; network fetch.",
+      "context": "RAI-203 review follow-up #3 (2026-10-25)."
+    },
+    {
+      "id": "RAI-215",
+      "title": "Named-check to trustedCheck export mapping (ADR + implementation)",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-203",
+        "RAI-198"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/adr/**",
+        "modules/dsl/src/main/scala/raider/dsl/portable/**",
+        "modules/dsl/src/test/scala/raider/dsl/portable/**",
+        "modules/cli/src/main/scala/raider/cli/chat/ExportWorkflowCommand.scala",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "contracts/workflow-portable/**",
+        "docs/examples/portable-workflows/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "docs"
+      ],
+      "behavior": "Write the ADR first (next free number) deciding the mapping, then implement: chat named checks whose (checkId, registrySnapshot) exactly match launcher-pinned trusted checks map onto trustedCheck steps so --format portable succeeds from the chat command; any non-matching check still refuses CWF-R3 with the explanation; ADR plus consumers/examples updated per the public-contract policy.",
+      "acceptance": {
+        "normal": "Exact-match selection exports, validates, edits and runs through native lowering.",
+        "error": "Partial match, renamed check, unknown registry each refuse without fabrication or dispatch.",
+        "concurrency": "Mapping is pure; no registry mutation; concurrent exports unchanged."
+      },
+      "non_goals": "Inlining argv/policy into exports; changing TurnLedger selection semantics; new wire beyond the ADR decision.",
+      "context": "RAI-203 review contract-adjacent candidate (2026-10-25); ADR-033/036 constraints."
+    },
+    {
+      "id": "RAI-216",
+      "title": "Bounded finalization for the generated check runner",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-186"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "ci",
+        "runtime"
+      ],
+      "behavior": "Bound reader.join() in the generated check runner: deadline-bounded wait, then the typed outcome; SIGTERM path unchanged. A grandchild holding the stdout pipe can no longer stall report finalization indefinitely.",
+      "acceptance": {
+        "normal": "Ordinary runs unchanged.",
+        "error": "Real pipe-holding grandchild: bounded wait elapses, truthful partial state, correct precedence, no hang.",
+        "concurrency": "SIGTERM during the bounded wait keeps exit 143 semantics intact."
+      },
+      "non_goals": "Process-tree reaping guarantees; OS-level sandboxing.",
+      "context": "RAI-186 stack review follow-up #5 (2026-10-25)."
+    },
+    {
+      "id": "RAI-217",
+      "title": "CI report polish: policyDigest assertion and advisory-aware summary",
+      "milestone": "M0",
+      "dependencies": [
+        "RAI-186",
+        "RAI-195"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "ci"
+      ],
+      "behavior": "Assert checkPolicyDigest on the WorkflowLaunchSpec path result.json; label success-with-advisory runs accurately in the human summary instead of a plain checks-passed line.",
+      "acceptance": {
+        "normal": "Advisory run summary names the advisory verdict; verdict line and JUnit stay truthful.",
+        "error": "Digest mismatch in result.json fails the assertion (pinned).",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Report format changes beyond the summary line; new fields.",
+      "context": "RAI-186 stack review follow-ups #3/#4 (2026-10-25)."
+    },
+    {
+      "id": "RAI-218",
+      "title": "bootstrap.sh CA resolution on stock macOS",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/bootstrap.sh",
+        "scripts/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "static"
+      ],
+      "behavior": "Bootstrap resolves a CA bundle on stock macOS automatically (certifi when importable, else the system /etc/ssl/cert.pem) so pinned coordinate downloads need no manual SSL_CERT_FILE; pinned coordinates unchanged; stays Python/bash glue.",
+      "acceptance": {
+        "normal": "Clean bootstrap on a stock macOS python.org distribution resolves 30 coordinates with no warnings.",
+        "error": "No certifi AND no readable system bundle: explicit typed failure message with the remediation hint, not a stack trace.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Shipping product code in Python; changing pinned coordinates or toolchain.",
+      "context": "Observed on RAI-203/RAI-207 lanes (2026-10-25): manual SSL_CERT_FILE workaround; owner-approved glue fix."
     }
   ]
 }
