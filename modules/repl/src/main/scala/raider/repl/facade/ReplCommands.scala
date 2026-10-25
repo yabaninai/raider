@@ -101,6 +101,21 @@ object ReplCommands:
         FacadeOps.unsafeRun(sink.resolveToolApproval(token, approve))
       case _ => false
 
+  /** Current interpreter-world session for sibling facade commands (RAI-192);
+    * None until the prelude installs one — callers must fail closed on None
+    * instead of throwing.
+    */
+  def currentSession: Option[ReplSession] = sessionRef.get()
+
+  /** True while the chat turn job is still non-terminal (RAI-192: a model
+    * switch mid-turn would strand the running job's sink writes and handles).
+    */
+  def chatJobBusy: Boolean =
+    chatJob.exists { job =>
+      val snap = FacadeOps.unsafeRun(session.jobs.snapshotAny(job))
+      !JobStatus.terminal(snap.status)
+    }
+
   private def session: ReplSession =
     sessionRef.get.getOrElse(
       throw RaiderError.Configuration(

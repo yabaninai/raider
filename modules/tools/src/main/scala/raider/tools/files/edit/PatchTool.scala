@@ -17,6 +17,11 @@ import java.nio.file.{Files, Path}
   *
   * RAI-067 adds [[applyAll]]: multi-file git-style diffs with an all-or-nothing
   * commit. The single-file [[apply]] path and its API are unchanged.
+  *
+  * RAI-192 adds [[applySelected]]: apply a caller-chosen SUBSET of parsed hunks
+  * (per-hunk diff review in the chat layout) and [[currentSha]]: a provenance
+  * read through the same containment policy. Both route through the identical
+  * policy path as [[apply]].
   */
 final class PatchTool(workspace: Workspace):
 
@@ -38,72 +43,119 @@ final class PatchTool(workspace: Workspace):
     else if diff.trim.isEmpty then
       ZIO.fail(RaiderError.InputValidation("diff must be non-empty"))
     else
+      UnifiedDiff.parse(diff) match
+        case Left(err) =>
+          ZIO.fail(RaiderError.InputValidation(s"diff: $err"))
+        case Right(Nil) =>
+          ZIO.fail(RaiderError.InputValidation("diff contains no hunks"))
+        case Right(hunks) =>
+          applyParsed(relativePath, hunks, expectedSha256)
+
+  /** RAI-192 per-hunk review application: apply a SUBSET of already-parsed
+    * hunks through the exact same fs_patch policy (expected-sha provenance,
+    * workspace containment, size bound, atomic write) as [[apply]] — no second
+    * policy path exists. Hunks reuse their original headers; positioning is
+    * anchored by old context, so subsets need no line renumbering.
+    */
+  def applySelected(
+      relativePath: String,
+      hunks: List[UnifiedDiff.Hunk],
+      expectedSha256: String
+  ): ZIO[Any, RaiderError, EditResult] =
+    if relativePath.trim.isEmpty then
+      ZIO.fail(RaiderError.InputValidation("path must be non-empty"))
+    else if expectedSha256.trim.isEmpty then
+      ZIO.fail(
+        RaiderError.InputValidation(
+          "patch requires expected_sha256 of the current file (fs_read provides it)"
+        )
+      )
+    else if hunks.isEmpty then
+      ZIO.fail(RaiderError.InputValidation("no hunks selected"))
+    else applyParsed(relativePath, hunks, expectedSha256)
+
+  /** Provenance read for the review flow (RAI-192): resolves the path through
+    * the same containment policy and returns the file's current sha256.
+    */
+  def currentSha(relativePath: String): ZIO[Any, RaiderError, String] =
+    if relativePath.trim.isEmpty then
+      ZIO.fail(RaiderError.InputValidation("path must be non-empty"))
+    else
       editor.resolveSafe(relativePath).flatMap { real =>
         editor
           .attemptR {
-            if !java.nio.file.Files.exists(real) then
-              Left(
-                RaiderError.ToolFailed(
-                  s"file not found: $relativePath (patches apply to existing files; use fs_edit to create)"
-                )
-              )
-            else if java.nio.file.Files.size(real) > EditTool.MaxFileBytes then
-              Left(
-                RaiderError.InputValidation(
-                  s"file too large: ${java.nio.file.Files.size(real)} > ${EditTool.MaxFileBytes}"
-                )
-              )
+            if !Files.exists(real) then
+              Left(RaiderError.ToolFailed(s"file not found: $relativePath"))
             else
-              val currentBytes =
-                java.nio.file.Files.readAllBytes(real)
-              val currentSha = editor.sha256(currentBytes)
-              if currentSha != expectedSha256.trim then
-                Left(
-                  RaiderError.ToolDenied(
-                    s"STALE PATCH: expected sha256=$expectedSha256 but file has $currentSha. " +
-                      "Re-read the file and retry with the current sha."
-                  )
-                )
-              else
-                val content = new String(currentBytes, UTF_8)
-                val trailingNewline = content.endsWith("\n")
-                val src =
-                  if content.isEmpty then Nil
-                  else content.stripSuffix("\n").linesIterator.toList
-                UnifiedDiff
-                  .parse(diff)
-                  .left
-                  .map(err => RaiderError.InputValidation(s"diff: $err"))
-                  .flatMap: hunks =>
-                    if hunks.isEmpty then
-                      Left(
-                        RaiderError.InputValidation("diff contains no hunks")
-                      )
-                    else
-                      UnifiedDiff
-                        .applyTo(src, hunks)
-                        .left
-                        .map(err =>
-                          RaiderError.InputValidation(s"patch failed: $err")
-                        )
-                        .map: patchedLines =>
-                          val out = patchedLines.mkString(
-                            "",
-                            "\n",
-                            if trailingNewline then "\n" else ""
-                          )
-                          val bytes = out.getBytes(UTF_8)
-                          editor.atomicWrite(real, bytes)
-                          EditResult(
-                            relativePath,
-                            currentSha,
-                            editor.sha256(bytes),
-                            bytes.length,
-                            created = false
-                          )
+              Right(
+                editor.sha256(Files.readAllBytes(real))
+              )
           }
           .flatMap(_.fold(ZIO.fail, ZIO.succeed))
       }
+
+  /** Shared single-file policy: provenance check, in-memory application of the
+    * given hunks, bounded atomic write.
+    */
+  private def applyParsed(
+      relativePath: String,
+      hunks: List[UnifiedDiff.Hunk],
+      expectedSha256: String
+  ): ZIO[Any, RaiderError, EditResult] =
+    editor.resolveSafe(relativePath).flatMap { real =>
+      editor
+        .attemptR {
+          if !java.nio.file.Files.exists(real) then
+            Left(
+              RaiderError.ToolFailed(
+                s"file not found: $relativePath (patches apply to existing files; use fs_edit to create)"
+              )
+            )
+          else if java.nio.file.Files.size(real) > EditTool.MaxFileBytes then
+            Left(
+              RaiderError.InputValidation(
+                s"file too large: ${java.nio.file.Files.size(real)} > ${EditTool.MaxFileBytes}"
+              )
+            )
+          else
+            val currentBytes =
+              java.nio.file.Files.readAllBytes(real)
+            val currentSha = editor.sha256(currentBytes)
+            if currentSha != expectedSha256.trim then
+              Left(
+                RaiderError.ToolDenied(
+                  s"STALE PATCH: expected sha256=$expectedSha256 but file has $currentSha. " +
+                    "Re-read the file and retry with the current sha."
+                )
+              )
+            else
+              val content = new String(currentBytes, UTF_8)
+              val trailingNewline = content.endsWith("\n")
+              val src =
+                if content.isEmpty then Nil
+                else content.stripSuffix("\n").linesIterator.toList
+              UnifiedDiff
+                .applyTo(src, hunks)
+                .left
+                .map(err => RaiderError.InputValidation(s"patch failed: $err"))
+                .map: patchedLines =>
+                  val out = patchedLines.mkString(
+                    "",
+                    "\n",
+                    if trailingNewline then "\n" else ""
+                  )
+                  val bytes = out.getBytes(UTF_8)
+                  editor.atomicWrite(real, bytes)
+                  EditResult(
+                    relativePath,
+                    currentSha,
+                    editor.sha256(bytes),
+                    bytes.length,
+                    created = false
+                  )
+        }
+        .flatMap(_.fold(ZIO.fail, ZIO.succeed))
+    }
 
   /** Multi-file apply (RAI-067): validate EVERY section first (workspace
     * containment, provenance, hunks — all in memory), then commit all or

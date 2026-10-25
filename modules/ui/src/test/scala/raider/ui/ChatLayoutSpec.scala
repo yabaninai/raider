@@ -200,6 +200,119 @@ object ChatLayoutSpec extends ZIOSpecDefault:
           rendered.contains("\u001b[31m-old value\u001b[0m"),
           rendered.contains("\u001b[32m+new value\u001b[0m")
         )
+      },
+      test(
+        "hostile ESC bytes and carriage returns inside hunk rows are neutralized (RAI-192)"
+      ) {
+        val rendered = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              60,
+              8,
+              Vector.empty,
+              Vector.empty,
+              "ready",
+              diffHunks = Vector(
+                ChatLayout.DiffHunk(
+                  "@@ -1,1 +1,1 @@",
+                  Vector(
+                    ChatLayout.DiffLine.Remove("old \u001b[2Jvalue\r\nbroken"),
+                    ChatLayout.DiffLine.Add("new \u001b]0;titlevalue")
+                  )
+                )
+              )
+            )
+          )
+          .mkString("\n")
+        assertTrue(
+          // raw escape reaches no terminal consumer through any path
+          !rendered.contains("\u001b[2J"),
+          !rendered.contains("\u001b]0;"),
+          !rendered.contains("\r"),
+          !rendered.contains("\nbroken"),
+          // hostile bytes render as visible glyphs instead
+          rendered.contains("␛[2J"),
+          rendered.contains("␛]0;"),
+          rendered.contains("␍"),
+          rendered.contains("\u001b[31m-old ␛[2Jvalue␍␊broken\u001b[0m"),
+          rendered.contains("\u001b[32m+new ␛]0;titlevalue\u001b[0m")
+        )
+      },
+      test(
+        "SGR-aware clip keeps full visible width and balances colors on truncation (RAI-192)"
+      ) {
+        val long = "x" * 60
+        val lines = ChatLayout.render(
+          ChatLayout.Frame(
+            20,
+            7,
+            Vector.empty,
+            Vector.empty,
+            "ready",
+            diffHunks = Vector(
+              ChatLayout.DiffHunk(
+                "@@ -1 +1 @@",
+                Vector(
+                  ChatLayout.DiffLine.Remove("y" * 60),
+                  ChatLayout.DiffLine.Add(long)
+                )
+              )
+            )
+          )
+        )
+        val colored = lines.filter(l =>
+          l.contains("\u001b[32m") || l.contains("\u001b[31m")
+        )
+        assertTrue(
+          colored.size == 2,
+          colored.forall { line =>
+            val plain = Ansi.replaceAllIn(line, "")
+            width(plain) <= 20 &&
+            line.endsWith("\u001b[0m") &&
+            // the colored add row is not clipped earlier than the columns
+            // bound: the old width-counting bug lost visible content
+            (if line.startsWith("\u001b[32m") then width(plain) == 20 else true)
+          },
+          colored.exists(l => Ansi.replaceAllIn(l, "") == "+" + "x" * 19),
+          colored.exists(l => Ansi.replaceAllIn(l, "") == "-" + "y" * 19)
+        )
+      },
+      test("per-hunk review markers render with hunk numbers (RAI-192)") {
+        val rendered = ChatLayout
+          .render(
+            ChatLayout.Frame(
+              60,
+              9,
+              Vector.empty,
+              Vector.empty,
+              "ready",
+              diffHunks = Vector(
+                ChatLayout.DiffHunk(
+                  "@@ -1,1 +1,1 @@",
+                  Vector(
+                    ChatLayout.DiffLine.Remove("old one"),
+                    ChatLayout.DiffLine.Add("new one")
+                  ),
+                  review = Some(ChatLayout.HunkReview.Accepted)
+                ),
+                ChatLayout.DiffHunk(
+                  "@@ -5,1 +5,1 @@",
+                  Vector(
+                    ChatLayout.DiffLine.Remove("old two"),
+                    ChatLayout.DiffLine.Add("new two")
+                  ),
+                  review = Some(ChatLayout.HunkReview.Pending)
+                )
+              )
+            )
+          )
+          .mkString("\n")
+        assertTrue(
+          rendered.contains("[1:accepted]"),
+          rendered.contains("[2:pending]"),
+          rendered.contains("\u001b[32m+new one\u001b[0m"),
+          rendered.contains("\u001b[31m-old two\u001b[0m")
+        )
       }
     )
 
