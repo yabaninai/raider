@@ -1,116 +1,81 @@
-# Bring Raider to working condition through OpenCode
+# Continue Raider development through OpenCode
 
-## Current request: 12,000 hours, parallel development
+## Current request
 
-For further work, use [roadmap-12k](roadmap-12k.md) and the
-[full prompt](prompts/opencode-12k-parallel.txt). Open OpenCode at the repository
-root, select Build, and paste:
+The 2026-10-23 owner revision adds a competitive path beyond Scala based on
+[LLM4S/LangChain4j research](research/llm4s-langchain4j-2026-10-23.md).
+Use the [cross-ecosystem plan](cross-ecosystem-plan.md),
+[roadmap §6e](roadmap-12k.md#6e-cross-ecosystem-workflows), and
+[canonical prompt](prompts/opencode-12k-parallel.txt).
+The implementation remains Scala 3 + ZIO. Portable workflows and a local
+process boundary are proposed; contracts and evidence precede claims.
 
-```text
-Execute @docs/prompts/opencode-12k-parallel.txt according to @docs/roadmap-12k.md.
-Start by checking the actual source/board and nearest ready cards.
-Coordinator + up to 3 workers in isolated worktrees/snapshot copies.
-Priority: live statuses, subagent tabs, convenient plugins.
-Yabanin strictly in final phase P11, after standalone candidate P10 is accepted.
-Continue implementation, review, integration, and checks; save a handoff if the session limit is reached.
-```
-
-The old `/raider-finish` and `/raider-build` below describe the previous finish
-target. They do not replace the new prompt or its Yabanin-last order. The
-coordinator checks installed tools and isolated-cwd support at startup.
-
-## Launch
-
-From the repository root, start `opencode`, then:
+Open OpenCode in the repository root and provide:
 
 ```text
-/raider-finish
+Execute @docs/prompts/opencode-12k-parallel.txt with @docs/cross-ecosystem-plan.md
+and @docs/roadmap-12k.md section 6e. First inspect git status, the current board,
+active workers/worktrees and actual implementation. Preserve in-flight CI/TUI
+work; do not reopen accepted RAI-155/160/193. Start new ready RAI-196 and RAI-204
+when their paths are exclusively assigned. Freeze ADRs before portable/protocol
+implementation. Continue through narrow cards, visible workers, independent
+review and integrated gates. Keep demand/live quality separate from offline checks.
 ```
 
-The command [.opencode/commands/raider-finish.md](../.opencode/commands/raider-finish.md)
-selects Build and includes the full [finish prompt](prompts/opencode-finish.txt).
-The old name `/raider-build` remains an identical alias. Vendor/model are not
-hardcoded: the owner-selected coding profile is used. Project command format
-is confirmed in [OpenCode docs](https://opencode.ai/docs/commands/); OpenCode
-1.18.34 was installed at the time of review. Before launch, the worker checks
-its actual version and available subagent tools.
+Use `/raider-wave` for visible worktree workers under
+[parallel-development](parallel-development.md). Respect current capacity and
+heavy-build limits there; a spawned session alone is not an isolated checkout.
+The coordinator owns shared contracts/build/board and merges sequentially.
+Do not start background `opencode run` loops. Fewer ready cards than capacity
+means fewer lanes; do not invent work to fill slots.
 
-Short prompt for manual insertion in Build:
+## Current baseline and next actions
+
+At planning baseline `a351d3c`, runtime, CLI, real REPL, chat export and local
+JVM distribution exist. The release is local, not publicly hosted. Current
+First CI 186/195/187, live-wire 184 and TUI-X 188..192 obligations remain;
+read the board rather than treating this dated snapshot as permanent.
+
+New sequence: 196 architecture/reuse ADR; 197 portable contract; 198 validation
+and lowering; 199 CLI parity. In parallel after 196: 200 protocol ADR then 201
+adapter, and 202 capability audit/contract. 203 adds portable export/recipes;
+204 improves installed onboarding; 205 verifies integrated and external-consumer
+results; 206 is a demand-gated Java embedding design spike. Exact dependencies,
+paths, gates and exclusions are in [cards](tasks/m1.md) and
+[backlog](tasks/backlog.json), not inferred from card numbering.
+
+The proposed DSL starts with a bounded schema-backed data format, not a new
+expression grammar. Native Scala remains the full authoring surface. Every
+adapter uses the existing runtime/policy/accounting/evidence. No Python or
+TypeScript product implementation, daemon, durable-closure recovery or new
+paid budget is authorized by the roadmap revision.
+
+## Evidence and handoff
+
+Before completion run `make quality-changed`,
+`make quality-changed QUALITY_EXECUTE=1`, and the card's required profiles.
+`python3 scripts/plan/validate.py --out artifacts/plan-review/report.json`
+validates planning metadata, not runtime behavior. Do not weaken protected
+verifiers to make a card pass. A shared candidate needs its own evidence;
+lane logs alone do not establish integrated acceptance.
+
+Record independent review, source identity, actual commands/exits/manifests,
+remaining obligations and next runnable action. Engineering readiness, live
+provider verification, model/framework comparisons, foreign-language usability
+and repeat user demand are separate results. Do not publish/contact people or
+spend on model comparisons without applicable authorization. Yabanin stays P11;
+neighboring repository edits need separate cards.
+
+## Resume
 
 ```text
-Bring Raider to a working coding agent according to @docs/working-product.md.
-Execute @docs/prompts/opencode-finish.txt and AGENTS.md.
-Account for the current code and @docs/reviews/2026-10-03-readiness.md; do not start over.
-Parallel development is authorized: coordinator + up to 3 workers
-in isolated worktrees/snapshot copies per docs/parallel-development.md.
-Fix defects, integrate, run checks, and continue through W01–W17.
-Show the installed CLI, real REPL/DSL, coding workflow, and CI evidence.
-Report live/model comparison separately; do not present mock success as parity.
+Continue docs/prompts/opencode-12k-parallel.txt with docs/cross-ecosystem-plan.md.
+Inspect active workers, worktrees, current source and board; preserve pending work.
+Resume the nearest dependency-ready card. Integrate reviewed results and rerun
+required checks. Save active lanes, source hashes, evidence and exact next action
+if the session ends; do not call incomplete work finished.
 ```
 
-## What exists and where to continue
-
-There is a specification, `docs/work/board.md`, records, and real REPL/headless
-and OpenAI-compatible feasibility spikes. The [independent review](reviews/2026-10-03-readiness.md)
-found false-green results in both launchers, incomplete harness/evidence
-reproducibility, and uncovered production guarantees. Product build/runtime/DSL/provider/tools/CLI/gates
-still need implementation. The next session first checks the actual repository:
-status may have changed.
-
-The first result of a new run is closure of current review findings and
-foundation prerequisites, then parallel runtime/providers/tools slices. Old
-“32/32” and “6/6” do not close full acceptance: confirm their scope and check
-reliability. Preserve original evidence; each new run gets separate hash/run
-identity.
-
-`python3 scripts/plan/validate.py` checks only the plan/links/backlog/prompts.
-A successful exit does not prove Scala execution or coding-agent readiness.
-Create and execute product gates according to the [stage contract](quality-gates.md).
-
-## Coordinator authority
-
-The owner has authorized parallel development. The coordinator assigns ready
-child cards, separate directories, path ownership, and an independent reviewer
-without asking again for each task. The coordinator alone integrates changes,
-controls shared APIs/build/quality registry, and reruns affected shared tests.
-Spawning a subagent does not create a worktree; verify the isolation mechanism
-before coding.
-
-Git is currently unborn/untracked: until a suitable commit exists, use
-immutable source snapshot copies that include needed untracked files and exclude
-secrets/.git/outputs. Do not create a commit/stash/reset of others' work for
-convenience. Each worker gets an absolute path/baseline/exact files/signatures/tests
-and returns a patch+hashes/evidence. See the [detailed runbook](parallel-development.md).
-
-Use narrow packets for simpler models. A fresh-context reviewer reads the
-actual diff and tests/logs. Split large contracts before implementation; do not
-let new architecture appear silently inside a worker diff. Future-stage checks
-remain pending; do not disable active failing tests.
-
-## When work is complete
-
-[W01–W17](working-product.md) require more than an M0 runtime: useful file tools,
-a test-driven coding loop, sessions/history/context/compaction, typed DSL, real
-REPL, installable package, and CI. One binary/source snapshot passes shared
-acceptance. Baseline Yabanin contract W17 is required offline; gateway execution,
-enriched integration, and external backends are optional and do not replace
-the native loop.
-
-Report these separately: engineering_ready, live_verified, opencode_comparison.
-Run live smoke/comparison with a configured endpoint and explicit budget;
-without those, mark the result pending. The coding model used by OpenCode is
-part of the owner-selected development session, not product paid evals.
-
-## Resume after a session stops
-
-```text
-Continue executing docs/prompts/opencode-finish.txt.
-Check git status, board/records, active lane paths/baselines/session IDs.
-Check live workers and applied patches; do not duplicate them.
-Resume the nearest ready action, integrate, and rerun affected gates.
-Complete W01–W17; list external blockers precisely and continue the rest of the work.
-```
-
-For every handoff: active task, source baseline, actual changed paths, exact
-commands/exits/log hashes, reviewer verdict, remaining obligations, and next
-executable action. A list of files or spawned workers does not close a milestone.
+The older `/raider-finish` and `/raider-build` aliases retain historical finish
+obligations. They do not override the current roadmap, cross-ecosystem revision,
+visible-worker mechanics or Yabanin-last order.

@@ -1,0 +1,215 @@
+{
+  "card": "RAI-184",
+  "endpointHost": "demo.yabanin.ai",
+  "capUsd": 5.0,
+  "reservationUsdPerResponse": 0.1,
+  "maxInferenceRequests": 100,
+  "inferenceHttpResponses": 17,
+  "clientAttempts": 20,
+  "actualProviderSpendUsd": 0.0,
+  "reservedExposureUsd": 0.0,
+  "remainingCapUsd": 4.793098,
+  "remainingInferenceRequests": 83,
+  "stopped": true,
+  "stopReason": "Matrix completed (#3-#17); guard stopped per semantics after cancellation charge uncertainty (#17) and the conservative Unknown settlement of the pre-generation 400 (#3). No further dispatch.",
+  "entries": [
+    {
+      "requestNumber": 1,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "direct-chat",
+      "model": "glm-5.3-flash",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.0,
+      "usage": null,
+      "outcome": "HTTP 401 Unauthorized",
+      "latencyMs": 713,
+      "chargeStatus": "known provider-auth refusal; reservation released; no generation usage returned"
+    },
+    {
+      "requestNumber": 2,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "minimal-auth-retry",
+      "model": "glm-5.3-flash",
+      "endpointHost": "demo.yabanin.ai",
+      "credentialConfigEntry": "provider.yabanin-stand; masked key tail 122",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.0,
+      "usage": null,
+      "outcome": "HTTP 401 Unauthorized",
+      "latencyMs": 704,
+      "chargeStatus": "known provider-auth refusal; reservation released; no generation usage returned"
+    },
+    {
+      "requestNumber": 3,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "probe-auth (first attempt, harness Host-header bug: zero Host)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.1,
+      "costStatus": "Unknown (conservative; pre-generation client error)",
+      "outcome": "HTTP 400 text/plain '400 Bad Request'"
+    },
+    {
+      "requestNumber": 4,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "diagnostic repro (dup/zero Host investigation)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.0,
+      "costStatus": "Observed (pre-generation client error)",
+      "outcome": "HTTP 400; harness bug confirmed"
+    },
+    {
+      "requestNumber": 5,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "diagnostic repro 2",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.0,
+      "costStatus": "Observed (pre-generation client error)",
+      "outcome": "HTTP 400; harness bug confirmed"
+    },
+    {
+      "requestNumber": 6,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "curl probe (config-from-stdin auth, key out of argv)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000297,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; glm-5.3-flash; usage 19 in/16 out; auth confirmed non-401"
+    },
+    {
+      "requestNumber": 7,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "raw-socket header binary-search A",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000297,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; usage observed"
+    },
+    {
+      "requestNumber": 8,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "raw-socket header binary-search B (python-min headers)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000287,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; usage observed"
+    },
+    {
+      "requestNumber": 9,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "probe-auth (fixed harness)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000297,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; usage 19 in/16 out (reasoning 16)"
+    },
+    {
+      "requestNumber": 10,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "direct-chat v1",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.00081,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; glm-5.3-flash; finish=length; reasoning-only finals finding"
+    },
+    {
+      "requestNumber": 11,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "streaming v1",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000819,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; 1 content chunk + final usage"
+    },
+    {
+      "requestNumber": 12,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "tool-round-leg1 (glm-5.3)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.001128,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; finish=tool_calls add_numbers"
+    },
+    {
+      "requestNumber": 13,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "tool-round-leg2 (glm-5.3)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.001047,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; finish=stop; correlated final content; cached_tokens=128"
+    },
+    {
+      "requestNumber": 14,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "cancel-mid-stream v1 (stream completed before abort)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000831,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; scenario NOT exercised; superseded by #17"
+    },
+    {
+      "requestNumber": 15,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "direct-chat v2 (thinking disabled)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.00081,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; still reasoning-only finals under 50-token cap; finding stands"
+    },
+    {
+      "requestNumber": 16,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "streaming v2 (thinking disabled)",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.000279,
+      "costStatus": "Estimated",
+      "outcome": "HTTP 200; 9 content chunks + final usage 23 in/14 out"
+    },
+    {
+      "requestNumber": 17,
+      "provider": "OpenAI-compatible Yabanin gateway",
+      "scenario": "cancel-mid-stream v2",
+      "endpointHost": "demo.yabanin.ai",
+      "reservedUsdBeforeDispatch": 0.1,
+      "settledUsd": 0.1,
+      "costStatus": "Unknown (charge uncertainty retained)",
+      "outcome": "HTTP 200 headers then connection closed after first content chunk; final usage never received; reservation retained; guard stopped"
+    }
+  ],
+  "preflight": {
+    "unauthenticatedProbeHttpStatuses": [
+      405,
+      401
+    ],
+    "tlsFailure": "Default Python CA validation failed before HTTP dispatch; no inference request reached the endpoint",
+    "credentialReference": "RAIDER_API_KEY captured at runtime from OpenCode config provider.yabanin-stand inline apiKey; masked tail 122",
+    "credentialCandidates": [
+      "provider.yabanin (demo baseURL): apiKey absent; not tried",
+      "provider.yabanin-stand: inline apiKey tried against demo base; masked tail 122"
+    ],
+    "credentialValuePrinted": false,
+    "authenticatedResponseBody": "not retained; response body omitted from output",
+    "costTelemetry": "No gateway cost endpoint queried; auth refusal recorded at zero under the live-wire guard's known-no-charge auth semantics"
+  },
+  "estimatedSpendUsdAtPlaceholderRates": 0.006902,
+  "committedReservedUsd": 0.206902,
+  "resume20261025": {
+    "credential": "infra .local/demo-20261024/opencode-api-key; masked tail ***715 (path-only reference; value never recorded)",
+    "costBasis": "settled amounts are ESTIMATES at unverified placeholder rates; actual per-token gateway pricing unknown; reservations bound exposure at $0.10/response; observed usage recorded per entry where returned"
+  }
+}

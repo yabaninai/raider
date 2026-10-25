@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema", "$id": "https://raider.invalid/contracts/workflow-portable/workflow-v1.schema.json",
+  "format": "raider.portable-workflow", "version": "1.0", "limits": { "deadlineMs": 30000, "attempts": 2, "parallelism": 1, "children": 0, "tokens": 1000 },
+  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "text": { "type": "string" }, "verdict": { "type": "string", "enum": ["pass", "fail", "incomplete", "uncertain", "refused"] } } },
+  "steps": [{ "id": "verify", "kind": "trustedCheck", "checkId": "final-verifier", "registrySnapshot": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "input": "#/inputs/request", "outputSchema": "verdict" }],
+  "outputs": { "bindings": { "report": "#/steps/verify/output" }, "artifacts": [{ "name": "check-report", "from": "#/steps/verify/output" }], "verdict": { "from": "#/steps/verify/output", "authority": "trustedVerifier" } }
+}

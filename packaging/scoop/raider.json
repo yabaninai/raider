@@ -1,0 +1,16 @@
+{
+  "version": "VERSION",
+  "description": "Scala-based AI-native SDLC CLI",
+  "homepage": "https://github.com/raider-dev/raider",
+  "license": "MIT",
+  "url": "https://github.com/raider-dev/raider/releases/download/vVERSION/raider-cli.jar",
+  "hash": "REPLACE_WITH_RELEASE_SHA256",
+  "pre_install": "$version | Set-Content -Encoding ASCII $dir\\version; @('@echo off', 'setlocal', 'set \"HERE=%~dp0\"', 'if \"%~1\"==\"--version\" (set /p RAIDER_VER=<\"%HERE%version\" & echo raider %RAIDER_VER% & exit /b 0)', 'java -jar \"%HERE%raider-cli.jar\" %*', 'exit /b %ERRORLEVEL%') | Set-Content -Encoding ASCII $dir\\raider.cmd",
+  "bin": [["raider.cmd", "raider"]],
+  "checkver": {
+    "github": "https://github.com/raider-dev/raider"
+  },
+  "autoupdate": {
+    "url": "https://github.com/raider-dev/raider/releases/download/v$version/raider-cli.jar"
+  }
+}

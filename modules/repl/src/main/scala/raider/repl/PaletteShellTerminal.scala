@@ -59,6 +59,8 @@ object PaletteShellTerminal:
 
       def close: UIO[Unit] = underlying.close
 
+      override def size: (Int, Int) = underlying.size
+
   /** Palette-enabled real JLine terminal, scoped like the frozen factory. */
   def jline: ZIO[Scope, Throwable, ShellTerminal] =
     ZIO
@@ -95,5 +97,7 @@ object PaletteShellTerminal:
       }
 
     def close: UIO[Unit] = ZIO.attempt(terminal.close()).orDie
+
+    override def size: (Int, Int) = (terminal.getWidth, terminal.getHeight)
 
 end PaletteShellTerminal

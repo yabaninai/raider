@@ -1,0 +1,7 @@
+{
+  "format": "raider.portable-workflow", "version": "1.0",
+  "limits": { "deadlineMs": 60000, "attempts": 2, "parallelism": 1, "children": 0, "tokens": 12000 },
+  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "text": { "type": "string" } } },
+  "steps": [{ "id": "answer", "kind": "agent", "profile": "coder", "toolset": "workspace", "input": "#/inputs/request", "outputSchema": "text", "structuredOutput": true }],
+  "outputs": { "bindings": { "answer": "#/steps/answer/output" } }
+}

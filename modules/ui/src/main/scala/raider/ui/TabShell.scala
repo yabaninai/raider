@@ -25,6 +25,14 @@ import zio.{Queue, Scope, UIO, ZIO}
   */
 object TabShell:
 
+  /** Optional chat behavior hosted by the same input loop as the tab shell.
+    * Commands remain routed by the shell; only ordinary lines and explicitly
+    * chat-owned commands are delegated.
+    */
+  trait ChatMode:
+    def command(raw: String): Option[UIO[Unit]]
+    def submit(prompt: String): UIO[Unit]
+
   final case class Config(
       prompt: String = "raider> ",
       closePrompt: String =
@@ -46,11 +54,12 @@ object TabShell:
       resolver: CloseChoiceResolver,
       config: Config = Config(),
       views: ShellViews = ShellViews.detached,
-      aux: Option[AuxTabProvider] = None
+      aux: Option[AuxTabProvider] = None,
+      chat: Option[ChatMode] = None
   ): ZIO[Scope, Throwable, Unit] =
     for
       pump <- TabBarPump.make(hub, registry, terminal)
-      _ <- loop(registry, terminal, resolver, config, pump, views, aux)
+      _ <- loop(registry, terminal, resolver, config, pump, views, aux, chat)
     yield ()
 
   private def loop(
@@ -60,7 +69,8 @@ object TabShell:
       config: Config,
       pump: TabBarPump,
       views: ShellViews,
-      aux: Option[AuxTabProvider]
+      aux: Option[AuxTabProvider],
+      chat: Option[ChatMode]
   ): ZIO[Any, Throwable, Unit] =
     terminal.readLine(config.prompt).flatMap {
       case None => ZIO.unit // EOF: same as :quit
@@ -69,31 +79,61 @@ object TabShell:
         // Idle Ctrl+C (JLine already cleared the line) or a blank line: no
         // action, no output — drafts and tabs untouched.
         if trimmed.isEmpty then
-          loop(registry, terminal, resolver, config, pump, views, aux)
+          loop(registry, terminal, resolver, config, pump, views, aux, chat)
         else
-          for
-            tabs <- registry.tabs
-            focused <- registry.focused
-            feedback <-
-              CommandRouter
-                .parse(line, tabs, focused)
-                .fold(
-                  err => ZIO.succeed(ShellFeedback.Hint(err)),
-                  cmd => ShellExecutor.run(cmd, registry, resolver, views, aux)
+          val chatAction = chat.flatMap(_.command(line))
+          chatAction match
+            case Some(action) =>
+              action *> loop(
+                registry,
+                terminal,
+                resolver,
+                config,
+                pump,
+                views,
+                aux,
+                chat
+              )
+            case None =>
+              for
+                tabs <- registry.tabs
+                focused <- registry.focused
+                feedback <-
+                  CommandRouter
+                    .parse(line, tabs, focused)
+                    .fold(
+                      err =>
+                        err match
+                          case ShellInputError.UnknownCommand(_)
+                              if chat.nonEmpty =>
+                            chat.get
+                              .submit(line)
+                              .as(ShellFeedback.Help(Vector.empty))
+                          case _ => ZIO.succeed(ShellFeedback.Hint(err)),
+                      cmd =>
+                        cmd match
+                          case ShellCommand.Draft(text) if chat.nonEmpty =>
+                            chat.get
+                              .submit(text)
+                              .as(ShellFeedback.Help(Vector.empty))
+                          case _ =>
+                            ShellExecutor
+                              .run(cmd, registry, resolver, views, aux)
+                    )
+                _ <- terminal.printAbove(ShellFeedback.render(feedback))
+                _ <- afterCommand(feedback, pump)
+                _ <- continue(
+                  feedback,
+                  registry,
+                  terminal,
+                  resolver,
+                  config,
+                  pump,
+                  views,
+                  aux,
+                  chat
                 )
-            _ <- terminal.printAbove(ShellFeedback.render(feedback))
-            _ <- afterCommand(feedback, pump)
-            _ <- continue(
-              feedback,
-              registry,
-              terminal,
-              resolver,
-              config,
-              pump,
-              views,
-              aux
-            )
-          yield ()
+              yield ()
     }
 
   private def afterCommand(
@@ -120,12 +160,13 @@ object TabShell:
       config: TabShell.Config,
       pump: TabBarPump,
       views: ShellViews,
-      aux: Option[AuxTabProvider]
+      aux: Option[AuxTabProvider],
+      chat: Option[ChatMode]
   ): ZIO[Any, Throwable, Unit] =
     feedback match
       case ShellFeedback.Quit => ZIO.unit
       case _ =>
-        loop(registry, terminal, resolver, config, pump, views, aux)
+        loop(registry, terminal, resolver, config, pump, views, aux, chat)
 
   /** Background tab-bar pump: one fiber reading signals; `Watch(jobId)`
     * subscribes to the hub for that job and re-renders the bar on EVERY

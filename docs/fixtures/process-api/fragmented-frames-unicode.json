@@ -1,0 +1,7 @@
+{
+  "id": "XE-WIRE-02-fragmented-unicode",
+  "description": "One valid frame arrives across arbitrary byte chunks, including UTF-8 code-point boundaries.",
+  "wireFrame": "{\"protocolVersion\":{\"major\":1,\"minor\":0},\"type\":\"submit\",\"requestId\":\"req-utf8\",\"input\":{\"text\":\"Δelta 漢字 🧪\",\"separators\":\"A\\u2028B\\u2029C\"}}\n",
+  "chunksHex": ["7b2270726f746f636f6c56657273696f6e223a7b226d616a6f72223a312c226d696e6f72223a307d2c2274797065223a227375626d6974222c22726571756573744964223a227265712d75746638222c22696e707574223a7b2274657874223a22ce", "94656c746120e6", "bca2e5ad97", "20f09f", "a7aa222c22736570617261746f7273223a22415c7532303238425c753230323943227d7d0a"],
+  "requiredBehavior": ["Incremental framing accepts arbitrary read chunks and does not decode partial UTF-8 as replacement characters.", "Exactly one submit is emitted only after the complete LF-terminated frame has been assembled and validated.", "Decoded text is exactly Δelta 漢字 🧪 and A U+2028 B U+2029 C; neither Unicode separator is a frame delimiter."]
+}

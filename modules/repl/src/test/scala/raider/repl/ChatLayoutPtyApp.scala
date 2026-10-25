@@ -1,0 +1,57 @@
+package raider.repl
+
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Path, Paths}
+
+/** Test-scope launcher that can resize its own controlling PTY on driver
+  * request.
+  */
+object ChatLayoutPtyApp:
+
+  def main(args: Array[String]): Unit =
+    if sys.env.get("RAI191_COMBINED_FIXTURE").contains("1") then
+      System.setProperty(
+        "raider.chat.testAnswer",
+        "# Combined view\n```scala\nval answer = 42\n```\n" +
+          "```diff\n@@ -1,1 +1,1 @@\n-old\n+new\n```"
+      )
+    // RAI-192: per-hunk review fixture — a diff fence with ---/+++ target
+    // headers so the rendered hunks carry a reviewable target path.
+    if sys.env.get("RAI192_REVIEW_FIXTURE").contains("1") then
+      System.setProperty(
+        "raider.chat.testAnswer",
+        "Review this proposal.\n```diff\n" +
+          "--- a/raider-review-demo.txt\n+++ b/raider-review-demo.txt\n" +
+          "@@ -1,3 +1,3 @@\n alpha\n-beta\n+BETA\n gamma\n```"
+      )
+    val request = Paths.get(sys.env("RAI188_RESIZE_REQUEST"))
+    val watcher = new Thread(() => resizeLoop(request))
+    watcher.setDaemon(true)
+    watcher.start()
+    Main.main(Array("--chat"))
+
+  private def resizeLoop(request: Path): Unit =
+    while true do
+      if Files.exists(request) then
+        try
+          val dimensions = Files
+            .readString(request, StandardCharsets.UTF_8)
+            .trim
+            .split("\\s+")
+          if dimensions.length == 2 then
+            val rows = dimensions(0)
+            val columns = dimensions(1)
+            val exitCode =
+              new ProcessBuilder("stty", "rows", rows, "cols", columns)
+                .inheritIO()
+                .start()
+                .waitFor()
+            Files.writeString(resultFor(request), exitCode.toString)
+            Files.deleteIfExists(request)
+        catch case _: Exception => ()
+      Thread.sleep(20)
+
+  private def resultFor(request: Path): Path =
+    request.resolveSibling("resize.result")
+
+end ChatLayoutPtyApp

@@ -1,6 +1,11 @@
 # Raider Prompts
 
-Current owner-directed development prompt:
+Current owner-directed development prompt (2026-10-23):
+
+Use the [cross-ecosystem plan](../cross-ecosystem-plan.md) and
+[competitor research](../research/llm4s-langchain4j-2026-10-23.md) with the
+canonical prompt below. RAI-196 and RAI-204 are the first new ready cards;
+existing CI/TUI work continues. Old continuation wave labels are historical.
 
 - [opencode-12k-parallel.txt](opencode-12k-parallel.txt)
 - [opencode-1k-continuation.txt](opencode-1k-continuation.txt) — continuation for ~1,000 hours from

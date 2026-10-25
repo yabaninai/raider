@@ -1,0 +1,14 @@
+{
+  "id": "XE-WIRE-03-cancel",
+  "description": "Cancellation is acknowledged while work is active, then cleanup settles.",
+  "transport": {"encoding": "UTF-8", "framing": "LF", "clientReadsAll": true},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-cancel", "input": {"schemaVersion": 1, "task": "Long scripted task"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-cancel", "rootId": "root-cancel"}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observation", "requestId": "req-cancel", "sequence": 1, "event": {"kind": "progress", "message": "Running"}}},
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "cancel", "requestId": "req-cancel"}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "cancelAck", "requestId": "req-cancel", "status": "accepted"}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "terminal", "requestId": "req-cancel", "rootId": "root-cancel", "executionStatus": "cancelled", "taskVerdict": "incomplete", "safetyVerdict": "passed", "protocolVerdict": "passed", "accountingStatus": "complete", "cleanupStatus": "complete", "exitCode": 130, "artifacts": []}}
+  ],
+  "requiredBehavior": ["cancelAck accepted means requested, not completed cleanup.", "The owner cancels the root subtree and applies bounded cleanup.", "Exactly one terminal record settles the cancellation race.", "No later ordinary observation follows terminal."]
+}

@@ -147,4 +147,34 @@ object TabShellHost:
       )
     yield ()
 
+  /** Chat entry point: the same terminal, command router, tab pump and input
+    * framing as --tabs, with free-text submissions delegated to the chat loop.
+    */
+  def runChat(
+      wiring: Wiring,
+      scrollback: ScrollbackCommands,
+      chat: raider.ui.TabShell.ChatMode,
+      auxiliary: AuxTabProvider
+  ): ZIO[Scope, Throwable, Unit] =
+    for
+      terminal <- paletteTerminal
+      resolver = CloseChoiceResolver.fromTerminal(
+        terminal,
+        TabShell.Config().closePrompt
+      )
+      _ = Main.updateChatSize(terminal)
+      _ <- (zio.ZIO.sleep(zio.Duration.fromMillis(100)) *>
+        zio.ZIO.succeed(Main.updateChatSize(terminal))).forever.forkScoped
+      _ <- Main.renderChatFrames(terminal)
+      _ <- TabShell.run(
+        wiring.hub,
+        wiring.registry,
+        scrollback.commandTerminal(terminal),
+        resolver,
+        config = TabShell.Config(prompt = "you> "),
+        aux = Some(auxiliary),
+        chat = Some(chat)
+      )
+    yield ()
+
 end TabShellHost

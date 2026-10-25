@@ -1,0 +1,45 @@
+#!/bin/sh
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+JAR=${RAIDER_JAR:-"$HERE/raider-cli.jar"}
+VER_FILE="$HERE/version"
+
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-V" ]; then
+  if [ -r "$VER_FILE" ]; then
+    REL_VER=$(cat "$VER_FILE")
+    printf 'raider %s\n' "$REL_VER"
+    exit 0
+  fi
+  printf '%s\n' 'raider: version metadata is missing' >&2
+  exit 21
+fi
+
+if [ ! -r "$JAR" ]; then
+  printf 'raider: distribution jar not found: %s\n' "$JAR" >&2
+  exit 21
+fi
+if [ -n "${JAVA_HOME:-}" ]; then
+  JAVA="$JAVA_HOME/bin/java"
+else
+  JAVA=$(command -v java || true)
+fi
+if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
+  printf '%s\n' 'raider: Java 21 or newer is required' >&2
+  exit 21
+fi
+JAVA_MAJOR=$("$JAVA" -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }' || true)
+case "$JAVA_MAJOR" in
+  ''|*[!0-9]*) JAVA_MAJOR=0 ;;
+esac
+if [ "$JAVA_MAJOR" -lt 21 ]; then
+  printf '%s\n' 'raider: Java 21 or newer is required' >&2
+  exit 21
+fi
+
+# The fat JAR is added to Coursier's launch classpath; the Scala library
+# coordinate satisfies Coursier's dependency input without publishing Raider.
+if command -v cs >/dev/null 2>&1 && [ "${RAIDER_USE_COURSIER:-1}" = 1 ]; then
+  exec cs launch --main raider.cli.Main --extra-jars "$JAR" -- "$@"
+fi
+exec "$JAVA" -jar "$JAR" "$@"

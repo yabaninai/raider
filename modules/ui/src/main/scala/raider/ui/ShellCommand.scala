@@ -55,7 +55,11 @@ object ShellInputError:
     val message: String = s"unknown command: $raw"
 
     val hints: Vector[String] =
-      Vector(s"available commands: ${CommandRouter.commands.mkString(" ")}")
+      val primary = Vector(":tabs", ":new")
+      val remaining = CommandRouter.commands.filterNot(c =>
+        c == ":sessions" || primary.contains(c)
+      )
+      Vector(s"available commands: ${(primary ++ remaining).mkString(" ")}")
 
   final case class MissingArgument(command: String, usage: String)
       extends ShellInputError:

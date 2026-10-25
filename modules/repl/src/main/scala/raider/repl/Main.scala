@@ -10,6 +10,8 @@ import org.jline.reader.{
 import org.jline.terminal.{Terminal, TerminalBuilder}
 import zio.ZIO
 import zio.Unsafe
+import raider.runtime.events.{EventCodecs, EventEnvelope, EventPayload}
+import zio.json.{DecoderOps, DeriveJsonDecoder, JsonDecoder}
 
 /** W10 REPL entrypoint (fast-path slice).
   *
@@ -33,6 +35,151 @@ import zio.Unsafe
   * direct java classpath path — scripts/quality/repl_smoke.sh).
   */
 object Main:
+
+  private val chatFrames =
+    new java.util.concurrent.ArrayBlockingQueue[String](256)
+
+  private val chatPlanSnapshot =
+    new java.util.concurrent.atomic.AtomicReference[Option[
+      PlanSnapshotPayload
+    ]](
+      None
+    )
+
+  private val chatRenderBridge = new java.util.function.Consumer[String]:
+    def accept(frame: String): Unit =
+      try chatFrames.put(frame)
+      catch
+        case _: InterruptedException =>
+          Thread.currentThread().interrupt()
+          throw new IllegalStateException("chat render bridge interrupted")
+
+  private[repl] def installChatRenderBridge(): Unit =
+    System.getProperties.put("raider.chat.renderBridge", chatRenderBridge)
+
+  private[repl] def renderChatFrames(
+      terminal: raider.ui.ShellTerminal
+  ): zio.ZIO[zio.Scope, Nothing, Unit] =
+    zio.ZIO
+      .attemptBlockingInterrupt(chatFrames.take())
+      .orDie
+      .flatMap { frame =>
+        if frame.startsWith("\u0000PLAN:") then
+          renderPlanSnapshot(terminal, frame.substring("\u0000PLAN:".length))
+        else if frame.startsWith("\u0000ADR024:") then
+          renderSessionEvent(terminal, frame.substring("\u0000ADR024:".length))
+        else
+          val (columns, rows) = terminal.size
+          System.setProperty("raider.chat.columns", columns.toString)
+          System.setProperty("raider.chat.rows", rows.toString)
+          terminal.printAbove(Vector(frame))
+      }
+      .forever
+      .forkScoped
+      .unit
+
+  private def renderSessionEvent(
+      terminal: raider.ui.ShellTerminal,
+      json: String
+  ): zio.UIO[Unit] =
+    import EventCodecs.given
+    json.fromJson[EventEnvelope] match
+      case Right(envelope) =>
+        envelope.payload match
+          case EventPayload.BudgetChanged(reserved, observed, unknown) =>
+            terminal.printAbove(
+              Vector(
+                s"budget | reserved=${reserved.value} micro-USD | " +
+                  s"observed=${observed.value} micro-USD | " +
+                  s"unpriced attempts=$unknown"
+              )
+            )
+          case _ => zio.ZIO.unit
+      case Left(_) => zio.ZIO.unit
+
+  private final case class PlanSnapshotPayload(
+      phase: String,
+      title: Option[String],
+      tasks: Vector[String],
+      rejection: Option[String],
+      execution: Option[String]
+  )
+
+  private object PlanSnapshotPayload:
+
+    given JsonDecoder[PlanSnapshotPayload] =
+      DeriveJsonDecoder.gen[PlanSnapshotPayload]
+
+  private def renderPlanSnapshot(
+      terminal: raider.ui.ShellTerminal,
+      json: String
+  ): zio.UIO[Unit] =
+    import PlanSnapshotPayload.given
+    json.fromJson[PlanSnapshotPayload] match
+      case Right(snapshot) =>
+        chatPlanSnapshot.set(Some(snapshot))
+        val heading = snapshot.title.fold(
+          s"tasks | plan ${snapshot.phase}"
+        )(title => s"tasks | plan ${snapshot.phase}: $title")
+        val tasks =
+          if snapshot.tasks.isEmpty then
+            Vector(
+              if snapshot.phase == "idle" then "tasks | no plan started"
+              else "tasks | no populated tasks in this snapshot"
+            )
+          else
+            snapshot.tasks.zipWithIndex.map { case (task, index) =>
+              s"tasks | ${index + 1}. $task"
+            }
+        terminal.printAbove(
+          Vector(heading) ++ tasks ++
+            snapshot.rejection.map(reason => s"tasks | unavailable: $reason") ++
+            snapshot.execution.map(id => s"tasks | execution job $id")
+        )
+      case Left(_) =>
+        chatPlanSnapshot.set(None)
+        terminal.printAbove(Vector("tasks | snapshot unavailable"))
+
+  private[repl] def chatAuxiliary(
+      lineage: raider.ui.AuxTabProvider
+  ): raider.ui.AuxTabProvider = new raider.ui.AuxTabProvider:
+    def title: String = "Tasks"
+
+    def available: Boolean = true
+
+    def render: String =
+      chatPlanSnapshot.get() match
+        case Some(snapshot) if snapshot.phase == "idle" =>
+          Vector(
+            "no plan started",
+            if lineage.available then lineage.render
+            else "lineage unavailable"
+          ).mkString("\n")
+        case Some(snapshot) =>
+          val heading = snapshot.title.fold(s"plan ${snapshot.phase}")(title =>
+            s"plan ${snapshot.phase}: $title"
+          )
+          val tasks =
+            if snapshot.tasks.isEmpty then
+              Vector(
+                if snapshot.phase == "idle" then "no plan started"
+                else "no populated tasks in this snapshot"
+              )
+            else
+              snapshot.tasks.zipWithIndex.map { case (task, index) =>
+                s"${index + 1}. $task"
+              }
+          (Vector(heading) ++ tasks ++ snapshot.rejection.map(reason =>
+            s"unavailable: $reason"
+          ) ++ snapshot.execution.map(id => s"execution job $id"))
+            .mkString("\n")
+        case None if lineage.available => lineage.render
+        case None                      => "no plan started; lineage unavailable"
+
+  private[repl] def updateChatSize(terminal: raider.ui.ShellTerminal): Unit =
+    val (columns, rows) = terminal.size
+    System.setProperty("raider.chat.columns", columns.toString)
+    System.setProperty("raider.chat.rows", rows.toString)
 
   private val Prompt = "raider> "
   private val Continuation = "     | "
@@ -59,13 +206,15 @@ object Main:
       sources: List[String],
       notices: List[String]
   ):
+
     /** RAI-108: true when this plan wires the scripted/mock backend (mock
       * provider, an unresolvable live key, or a live provider whose transport
       * this slice does not wire) — the ONLY mode where the fixture tab-stream
       * provider ([[ScriptedTabStream]]) may run; a live backend never gets
       * synthetic events.
       */
-    private[repl] def isScripted: Boolean = sources == scriptedSources
+    private[repl] def isScripted: Boolean =
+      sources.exists(_.contains("ScriptedModelBackend"))
 
   private[repl] def preludePlan(
       env: Map[String, String] = sys.env
@@ -96,7 +245,7 @@ object Main:
         // mock fallback — never a fake live wire. Only the masked key form
         // may reach the notice.
         PreludePlan(
-          scriptedSources,
+          scriptedSources(env.get("RAI208_PLAN_FIXTURE").contains("1")),
           List(
             s"RAIDER_PROVIDER=$provider: API key resolved (masked: " +
               s"${LiveCredentials.mask(key)}), but this REPL slice wires " +
@@ -105,9 +254,15 @@ object Main:
           )
         )
       case Right(None) =>
-        PreludePlan(scriptedSources, Nil) // provider=mock — unchanged path
+        PreludePlan(
+          scriptedSources(env.get("RAI208_PLAN_FIXTURE").contains("1")),
+          Nil
+        ) // provider=mock — unchanged path
       case Left(message) =>
-        PreludePlan(scriptedSources, List(message))
+        PreludePlan(
+          scriptedSources(env.get("RAI208_PLAN_FIXTURE").contains("1")),
+          List(message)
+        )
 
   /** Live OpenAI-compatible wiring: the env-resolved key (RAI-090) replaces the
     * old hardcoded "no-key" placeholder. The key exists only as an
@@ -198,13 +353,41 @@ object Main:
 
   /** The scripted fixture branch — the historical mock path, unchanged by
     * RAI-090; reused verbatim for the live-without-key fallback.
+    *
+    * Merged RAI-208 + RAI-191 semantics: the plan-fixture JSON must stay a
+    * single pure-JSON delta (`PlanProposal.parse` decodes the whole candidate),
+    * while the plain scripted default keeps the RAI-191 two-delta streaming
+    * shape (renderer re-parses per delta). `raider.chat.testAnswer` (RAI-191
+    * combined fixture) overrides the first delta's content when set.
     */
-  private def scriptedSources: List[String] =
+  private def scriptedSources(planFixture: Boolean = false): List[String] =
+    val firstDelta =
+      if planFixture then
+        "{\"title\":\"PTY wiring plan\",\"steps\":[" +
+          "\"Inspect the session hub\",\"Verify budget events\"]}"
+      else "[scripted-fixture] mock answer"
+    // First delta references the __answer binding so the `raider.chat.testAnswer`
+    // override (RAI-191 combined fixture) reaches the backend; the optional
+    // second delta keeps the scripted provenance suffix as a separate chunk.
+    val deltas =
+      (s"raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), __answer)" ::
+        (if planFixture then Nil
+         else
+           List(
+             " (ScriptedModelBackend; no live network in this slice)"
+           ))).zipWithIndex
+        .map:
+          case (delta, 0) => delta
+          case (suffix, _) =>
+            s"raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"${scalaStr(suffix)}\")"
+        .mkString(", ")
     List(
       "import raider.repl.facade.*",
       "import raider.runtime.budget.BudgetLimits",
       "import raider.testkit.ScriptedModelBackend",
-      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \"[scripted-fixture] mock answer\"), raider.core.ModelEvent.TextDelta(raider.core.AttemptId(\"$attemptId\"), \" (ScriptedModelBackend; no live network in this slice)\"), raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      s"val __answer = Option(System.getProperty(\"raider.chat.testAnswer\")).getOrElse(\"${scalaStr(firstDelta)}\")",
+      s"val __backend = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ScriptedModelBackend(raider.core.ModelEvent.Started(raider.core.AttemptId(\"$attemptId\")), $deltas, raider.core.ModelEvent.Finished(raider.core.AttemptId(\"$attemptId\"), \"stop\"))).getOrThrow() }",
+      "val __model = \"scripted\"",
       // scripted branch: echo stays OFF (fixture tests/smoke assert on the
       // plain transcript; live echo is an interactive-live-provider feature)
       "val __session = zio.Unsafe.unsafe { implicit u => zio.Runtime.default.unsafe.run(ReplSession.make(__backend, BudgetLimits.make())).getOrThrow() }",
@@ -223,6 +406,9 @@ object Main:
     s.flatMap:
       case '\\'         => "\\\\"
       case '"'          => "\\\""
+      case '\n'         => "\\n"
+      case '\r'         => "\\r"
+      case '\t'         => "\\t"
       case c if c < ' ' => f"\\u${c.toInt}%04x"
       case c            => c.toString
 
@@ -231,20 +417,25 @@ object Main:
     // every other argument keeps the historical ignore-behavior, so the legacy
     // path (piped smoke, scripts) is untouched bit-for-bit.
     val tabs = args.contains("--tabs")
+    val chat = args.contains("--chat") && !tabs
     val engine =
       Unsafe.unsafe { implicit u =>
         zio.Runtime.default.unsafe.run(ReplEngine.make()).getOrThrow()
       }
     // the banner's backend line needs the interpreter-world session, so the
     // prelude runs first
-    val plan = runPrelude(engine)
-    banner(engine, plan, tabs)
-    if tabs then runTabs(engine, plan) else loop(engine)
+    if chat then installChatRenderBridge()
+    val plan = runPrelude(engine, chat)
+    banner(engine, plan, tabs, chat)
+    if tabs then runTabs(engine, plan)
+    else if chat then runChat(engine, plan)
+    else loop(engine)
 
   private def banner(
       engine: ReplEngine,
       plan: PreludePlan,
-      tabs: Boolean
+      tabs: Boolean,
+      chat: Boolean
   ): Unit =
     println("Raider REPL (W10 fast-path slice)")
     println("  engine : scala3-repl 3.9.0 (in-process compiler)")
@@ -264,6 +455,11 @@ object Main:
           "  stream : live backend wired; tab streams follow jobs started by the runtime"
         )
       println("  note   : Scala eval loop runs WITHOUT --tabs (legacy mode)")
+    else if chat then
+      println(
+        "  mode   : chat — TabShell input loop with streaming chat renderer; :sessions, :tasks and :aux available"
+      )
+      println("  note   : Scala eval loop runs WITHOUT --chat (legacy mode)")
     else
       println(
         """  try    : scout.ask("hello")   |   val j = worker.start("bg"); j.await()"""
@@ -305,14 +501,239 @@ object Main:
     }
     shutdown(engine)
 
-  private def runPrelude(engine: ReplEngine): PreludePlan =
-    val plan = preludePlan()
+  private def runChat(engine: ReplEngine, plan: PreludePlan): Unit =
+    if sys.env.get("TERM").contains("dumb") then
+      println("Chat layout unavailable for this terminal; using the line REPL.")
+      ttyLoop(engine)
+      return
+    Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe
+        .run(
+          ZIO.scoped {
+            for
+              wiring <- TabShellHost.wiring
+              lineageDir = sys.env
+                .get("RAIDER_LINEAGE_DIR")
+                .map(java.nio.file.Paths.get(_).toAbsolutePath.normalize())
+              lineage <- ReplLineageProvider.make(lineageDir)
+              _ <- ScriptedTabStream.run(wiring).when(plan.isScripted).fork
+              _ <- TabShellHost.runChat(
+                wiring,
+                ScrollbackCommands(wiring.registry),
+                new TabShellHostChatMode(engine),
+                Main.chatAuxiliary(lineage)
+              )
+            yield ()
+          }
+        )
+        .getOrThrow()
+    }
+    shutdown(engine)
+
+  private def runPrelude(
+      engine: ReplEngine,
+      chat: Boolean = false
+  ): PreludePlan =
+    val initial = preludePlan()
+    val plan =
+      if chat then
+        initial.copy(
+          sources = withChatRenderer(initial.sources, initial.isScripted)
+        )
+      else initial
     // RAI-090: a live start without a resolvable key explains how to enable
     // live mode BEFORE the banner; the REPL then keeps running the scripted/
     // mock path (also re-printed on :reset, which re-reads the environment).
     plan.notices.foreach(println)
     plan.sources.foreach(src => submit(src, engine, silent = true))
     plan
+
+  private def withChatRenderer(
+      sources: List[String],
+      scripted: Boolean
+  ): List[String] =
+    val wired = sources.flatMap { source =>
+      if source.startsWith("val __session =") then
+        val withSink =
+          if source.contains("echoStream = true") then
+            source.replace(
+              "echoStream = true",
+              "echoStream = true, renderSink = Some(__chatSink), toolApproval = Some(__chatSink)"
+            )
+          else
+            source.replace(
+              "ReplSession.make(__backend, BudgetLimits.make())",
+              "ReplSession.make(__backend, BudgetLimits.make(), echoStream = true, renderSink = Some(__chatSink), toolApproval = Some(__chatSink))"
+            )
+        List(
+          s"val __chatSink = new raider.repl.ChatLayoutSink(System.getProperties.get(\"raider.chat.renderBridge\").asInstanceOf[java.util.function.Consumer[String]], zio.Duration.fromMillis(${
+              if scripted then 180 else 0
+            }L), model = __model)",
+          withSink
+        )
+      else List(source)
+    }
+    wired
+
+  /** Exact command match: `name` alone or `name` + space (a near-miss like
+    * `:modelx` falls through to the interpreter, RAI-192).
+    */
+  private def exactCommand(raw: String, name: String): Option[String] =
+    if raw == name then Some("")
+    else if raw.startsWith(name + " ") then Some(raw.drop(name.length + 1).trim)
+    else None
+
+  private val HunkUsage =
+    "usage: :hunk | :hunk <n> accept|reject | :hunk apply"
+
+  /** RAI-192: `:hunk` args -> a facade call the interpreter evaluates. Parse
+    * errors are usage lines emitted directly (console world), valid forms go
+    * through `evalChatControl` as `val _ = …` so the Unit result stays silent
+    * and all feedback arrives as sink Status lines.
+    */
+  private def hunkSource(rest: String): Either[String, String] =
+    val parts = rest.split("\\s+").filter(_.nonEmpty).toList
+    parts match
+      case Nil => Right("raider.repl.facade.DiffReviewCommands.status()")
+      case "apply" :: Nil =>
+        Right("raider.repl.facade.DiffReviewCommands.applyAccepted()")
+      case List(number, verb) =>
+        number.toIntOption.filter(_ > 0) match
+          case Some(n) =>
+            verb match
+              case "accept" =>
+                Right(s"raider.repl.facade.DiffReviewCommands.decide($n, true)")
+              case "reject" =>
+                Right(
+                  s"raider.repl.facade.DiffReviewCommands.decide($n, false)"
+                )
+              case _ => Left(HunkUsage)
+          case None => Left(HunkUsage)
+      case _ => Left(HunkUsage)
+
+  /** RAI-192: `:model` args -> facade call. Total: bare `:model` describes the
+    * current binding; unknown providers are refused inside [[ModelCommands]].
+    */
+  private def modelSource(rest: String): String =
+    val parts = rest.split("\\s+").filter(_.nonEmpty).toList
+    parts match
+      case Nil => "raider.repl.facade.ModelCommands.describe()"
+      case List(provider) =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\")"
+      case List(provider, model) =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\", \"${scalaStr(model)}\")"
+      case provider :: model :: restUrl =>
+        s"raider.repl.facade.ModelCommands.switch(\"${scalaStr(provider)}\", \"${scalaStr(model)}\", \"${scalaStr(restUrl.mkString(" "))}\")"
+
+  private def evalChatControl(engine: ReplEngine, source: String): Unit =
+    def emit(text: String): Unit =
+      if System.getProperties.containsKey("raider.chat.renderBridge") then
+        chatRenderBridge.accept(text)
+      else println(text)
+
+    Unsafe.unsafe { implicit u =>
+      zio.Runtime.default.unsafe.run(engine.eval(source)).getOrThrow() match
+        case EvalResult.Value(repr) if repr.trim.nonEmpty => emit(repr.trim)
+        case EvalResult.CompileError(msg)                 => emit(msg.trim)
+        case EvalResult.RuntimeFailure(msg) =>
+          emit(s"runtime failure: ${msg.trim}")
+        case _ => ()
+    }
+
+  private final class TabShellHostChatMode(engine: ReplEngine)
+      extends raider.ui.TabShell.ChatMode:
+    import zio.UIO
+
+    def command(raw: String): Option[UIO[Unit]] =
+      raw.trim match
+        case command if command.startsWith(":plan ") =>
+          val prompt = command.stripPrefix(":plan ").trim
+          if prompt.isEmpty then
+            Some(ZIO.succeed(chatRenderBridge.accept("usage: :plan <task>")))
+          else
+            Some(
+              ZIO.succeed(
+                evalChatControl(
+                  engine,
+                  s"raider.repl.facade.ReplCommands.startPlan(\"${scalaStr(prompt)}\")"
+                )
+              )
+            )
+        case ":plan" =>
+          Some(ZIO.succeed(chatRenderBridge.accept("usage: :plan <task>")))
+        case decision if decision.startsWith(":approve ") =>
+          val token = decision.stripPrefix(":approve ").trim
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                s"raider.repl.facade.ReplCommands.resolveToolApproval(\"${scalaStr(token)}\", true)"
+              )
+            )
+          )
+        case decision if decision.startsWith(":deny ") =>
+          val token = decision.stripPrefix(":deny ").trim
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                s"raider.repl.facade.ReplCommands.resolveToolApproval(\"${scalaStr(token)}\", false)"
+              )
+            )
+          )
+        case ":approve" | ":deny" =>
+          Some(
+            ZIO.succeed(
+              chatRenderBridge.accept(
+                "decision requires the exact request token"
+              )
+            )
+          )
+        case ":cancel" =>
+          Some(
+            ZIO.succeed(
+              evalChatControl(
+                engine,
+                "val _ = raider.repl.facade.ReplCommands.cancelChat()"
+              )
+            )
+          )
+        case review if exactCommand(review, ":hunk").isDefined =>
+          val rest = exactCommand(review, ":hunk").getOrElse("")
+          hunkSource(rest) match
+            case Right(source) =>
+              Some(ZIO.succeed(evalChatControl(engine, s"val _ = $source")))
+            case Left(usage) =>
+              Some(ZIO.succeed(chatRenderBridge.accept(usage)))
+        case switching if exactCommand(switching, ":model").isDefined =>
+          val rest = exactCommand(switching, ":model").getOrElse("")
+          Some(
+            ZIO.succeed(
+              evalChatControl(engine, s"val _ = ${modelSource(rest)}")
+            )
+          )
+        case ":chat" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.showChat()")))
+        case ":scroll-up" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollUp()")))
+        case ":scroll-down" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.scrollDown()")))
+        case ":tasks" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.showTasks()")))
+        case ":task-up" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.moveTask(-1)")))
+        case ":task-down" =>
+          Some(ZIO.succeed(evalChatControl(engine, "__chatSink.moveTask(1)")))
+        case _ => None
+
+    def submit(prompt: String): UIO[Unit] =
+      val literal = scalaStr(prompt)
+      ZIO.succeed(
+        evalChatControl(
+          engine,
+          s"raider.repl.facade.ReplCommands.startChat(\"$literal\")"
+        )
+      )
 
   private def loop(engine: ReplEngine): Unit =
     if Option(System.console()).isEmpty then pipeLoop(engine)

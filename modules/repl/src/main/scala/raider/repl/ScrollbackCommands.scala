@@ -72,6 +72,8 @@ final class ScrollbackCommands(registry: SessionRegistry):
 
       def close: UIO[Unit] = underlying.close
 
+      override def size: (Int, Int) = underlying.size
+
   /** One scrollback command on the read path: NO gate is held (a bounded
     * registry read + one printAbove block), so the inline dispatch cannot
     * deadlock anything and keeps the transcript order deterministic.

@@ -1,5 +1,14 @@
 # Raider: 12,000 hours to a useful daily tool
 
+> **Owner revision 2026-10-23: compete beyond Scala.** The
+> [cross-ecosystem plan](cross-ecosystem-plan.md) and
+> [LLM4S/LangChain4j research](research/llm4s-langchain4j-2026-10-23.md)
+> add RAI-196..206 under §6e. Portable workflow authoring and a local process
+> boundary are proposed on the existing Scala/ZIO runtime; separate ADRs come
+> first. Preserve active First CI and TUI-X work. RAI-155/160/193 are accepted;
+> historical "next" instructions below do not reopen them. New scope is
+> estimated separately; the old envelope is not a current remaining budget.
+
 Owner's revision dated 2026-10-05. Canonical order for further development;
 replaces the sequence and budget in [roadmap v2](roadmap-10k.md).
 Result: one local Raider with subagent tabs, clear intermediate statuses, and
@@ -804,11 +813,50 @@ No existing acceptance obligation is removed to accommodate the new path.
 Implementation and independent verifier ownership must be separate; protected
 verifiers or global gate policy changes require their own reviewed card.
 
+## 6e. Cross-ecosystem workflows
+
+The owner requested deeper LLM4S/LangChain4j research and a competitive path
+outside Scala on 2026-10-23. The [delivery plan](cross-ecosystem-plan.md) is
+canonical for this increment; the [research](research/llm4s-langchain4j-2026-10-23.md)
+separates releases, current guides, experimental APIs and proposed Raider work.
+
+The first audience is polyglot development/platform teams using checked recipes
+locally and in generic CI. JVM embedding and read-only extraction/classification
+are adjacent hypotheses, not an immediate general AI-platform commitment.
+Scala remains both the implementation language and advanced authoring surface.
+A portable JSON/schema subset and an opt-in managed-child process protocol
+allow consumers from other languages without requiring a new runtime or SDK.
+YAML, language builders and custom syntax require evidence before implementation.
+
+RAI-196 (architecture/reuse ADR) and RAI-204 (installed onboarding) are ready.
+RAI-197/200/202 freeze format, protocol and capability proposals; RAI-198/199/201/203
+implement bounded slices; RAI-205 independently verifies integrated behavior,
+comparisons and external use; RAI-206 is a demand-gated Java design spike.
+Cards and exact dependencies live in [M1](tasks/m1.md) and
+[backlog](tasks/backlog.json). First CI 186/195/187 and TUI-X 188..192 continue;
+no accepted result is replaced by this revision. Gateway P11 remains last.
+
+RAI-196..205 estimate 444–888 additional engineering hours including review
+and tests; optional RAI-206 adds 16–32. These are provisional ranges outside
+both the old 13,100-hour envelope and TUI-X, not approved elapsed hours or a
+promise to implement all surfaces immediately. Audit reuse, record allocation
+and split oversized cards before implementation. Capability implementation
+gaps discovered by 202 require separate estimated child cards.
+
+No new public contract is accepted by this planning edit. Schema evolution,
+unsupported-node refusal, deterministic checks, root limits, cancellation,
+uncertain effects and source/evidence identities remain mandatory. The first
+portable acceptance includes Scala parity, process failures, two non-Scala
+repository scenarios and one read-only data scenario. Live/model superiority,
+foreign-client usability and repeat use remain separate evidence categories.
+
 ## 7. Scope control
 
-Not included in this budget: web/cloud console, hosted marketplace, remote
-distributed execution, a new DSL parser/macros, second runtime, other product
-languages, or reworking Yabanin. These parts of the previous roadmap yield to the
+Not included in the historical budget: web/cloud console, hosted marketplace,
+remote distributed execution, a new DSL grammar/macros, second runtime, other
+product implementation languages, or reworking Yabanin. Section 6e separately
+estimates a portable data-format decoder and process adapter after reviewed ADRs;
+it does not authorize a bespoke language parser or non-Scala product code. These parts of the previous roadmap yield to the
 usability of the local product. All product modules/tests/HTTP stands use Scala 3
 + ZIO; follow the existing license policy; add no dependencies without a specific
 card and review.

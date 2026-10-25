@@ -1,6 +1,6 @@
 package raider.repl.facade
 
-import raider.core.{JobId, RaiderError}
+import raider.core.{JobId, RaiderError, RequestMessage}
 import raider.provider.anthropic.AnthropicMessagesBackend
 import raider.runtime.jobs.JobStatus
 import raider.testkit.ScriptedModelBackend
@@ -18,11 +18,103 @@ import zio.ZIO
   */
 object ReplCommands:
 
+  private var chatJob: Option[raider.runtime.jobs.JobHandle[String]] = None
+
   private val sessionRef =
     java.util.concurrent.atomic.AtomicReference[Option[ReplSession]](None)
 
   /** Called by the prelude right after the session is constructed. */
   def install(s: ReplSession): Unit = sessionRef.set(Some(s))
+
+  /** Start chat through the session-owned job manager. The detached waiter is
+    * runtime-owned; the REPL compiler remains confined to the input thread.
+    */
+  def startChat(prompt: String): Unit =
+    val sink = session.renderSink
+    sink.foreach(_.asInstanceOf[raider.repl.ChatLayoutSink].beginUser(prompt))
+    sink.foreach(_.asInstanceOf[raider.repl.ChatLayoutSink].beginAssistant())
+    val job = FacadeOps.startSteerable(
+      session,
+      AgentRef("scout"),
+      prompt,
+      identity
+    )
+    chatJob = Some(job)
+    FacadeOps.unsafeRun(
+      session.jobs
+        .await(job)
+        .tapError {
+          case denied: RaiderError.ToolDenied =>
+            sink match
+              case Some(render) =>
+                val chat = render.asInstanceOf[raider.repl.ChatLayoutSink]
+                chat.toolCallCard(
+                  "approval",
+                  "{}",
+                  Some(s"${denied.code}: ${denied.detail.take(160)}")
+                ) *> ZIO.succeed(chat.finishAssistant())
+              case None => ZIO.unit
+          case _ =>
+            ZIO.succeed(
+              sink.foreach(
+                _.asInstanceOf[raider.repl.ChatLayoutSink].finishAssistant()
+              )
+            )
+        }
+        .tap(_ =>
+          ZIO.succeed(
+            sink.foreach(
+              _.asInstanceOf[raider.repl.ChatLayoutSink].finishAssistant()
+            )
+          )
+        )
+        .forkDaemon
+    )
+
+  /** Start a real PlanSession proposal and keep its serialized snapshot live
+    * for the chat shell's tasks panel.
+    */
+  def startPlan(prompt: String): Unit =
+    val planJob = FacadeOps.unsafeRun(
+      session.planSession.startPlan(
+        List(RequestMessage("user", prompt)),
+        session.limits,
+        session.limits.maxAttempts
+      )
+    )
+    FacadeOps.unsafeRun(session.planPanel.track(planJob).forkDaemon.unit)
+
+  /** Request bounded cancellation and keep any text already rendered. */
+  def cancelChat(): Boolean =
+    val requested =
+      chatJob.exists(job => FacadeOps.unsafeRun(session.jobs.cancel(job)))
+    session.renderSink.foreach { sink =>
+      val chat = sink.asInstanceOf[raider.repl.ChatLayoutSink]
+      if requested then chat.cancelAssistant() else chat.completeAssistant()
+    }
+    requested
+
+  /** Resolve the active chat tool approval in the interpreter world. */
+  def resolveToolApproval(token: String, approve: Boolean): Boolean =
+    session.renderSink match
+      case Some(sink: raider.repl.ChatLayoutSink) =>
+        FacadeOps.unsafeRun(sink.resolveToolApproval(token, approve))
+      case _ => false
+
+  /** Current interpreter-world session for sibling facade commands (RAI-192);
+    * None until the prelude installs one — callers must fail closed on None
+    * instead of throwing.
+    */
+  def currentSession: Option[ReplSession] = sessionRef.get()
+
+  /** True while the chat turn job is still non-terminal (RAI-192: a model
+    * switch mid-turn would strand the running job's sink writes and handles).
+    */
+  def chatJobBusy: Boolean =
+    chatJob.exists { job =>
+      val snap = FacadeOps.unsafeRun(session.jobs.snapshotAny(job))
+      !JobStatus.terminal(snap.status)
+    }
 
   private def session: ReplSession =
     sessionRef.get.getOrElse(

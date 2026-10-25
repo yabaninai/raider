@@ -1,0 +1,12 @@
+{
+  "id": "XE-WIRE-02-duplicate-submit",
+  "description": "A client sends another submit after one root has been accepted.",
+  "transport": {"encoding": "UTF-8", "framing": "LF"},
+  "frames": [
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-once", "input": {"schemaVersion": 1, "task": "One invocation"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "accepted", "requestId": "req-once", "rootId": "root-once"}},
+    {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "submit", "requestId": "req-twice", "input": {"schemaVersion": 1, "task": "Do not run this"}}},
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "error", "requestId": "req-twice", "code": "duplicate_submit", "message": "This process invocation already owns a root."}}
+  ],
+  "requiredBehavior": ["Reject the second submit without allocating a root or causing a provider/tool effect.", "Do not interpret either requestId as an idempotency token or as permission to repeat a mutation.", "The first root retains ownership and produces at most its one terminal result."]
+}
