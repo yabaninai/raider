@@ -5628,7 +5628,7 @@
       "title": "Live-wire execution — budget guard and provider matrix",
       "milestone": "M1",
       "dependencies": ["RAI-171"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/budget/**", "modules/runtime/src/test/scala/raider/runtime/budget/**", "modules/provider-chat/**", "modules/provider-anthropic/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "transport"],
       "behavior": "Implement a per-response spend-ledger guard that checks the remaining USD cap and request-count cap before every provider call and returns a typed refusal at the admission boundary when another response could exceed either limit. Unit-test the guard without live calls. Then execute the live-wire-request.md scenario matrix independently against owner-configured OpenAI-compatible and Anthropic-compatible endpoints: direct response, streaming, complete tool round, cancellation mid-stream, and usage/cost reporting. Credentials are available only through environment-variable references or an approved helper. Record spend, latency, observed usage, estimates, unknown cost, endpoint/model identity, and each refusal/check; incomplete or failed scenarios are findings, never passes. Stop on cap exhaustion or uncertain charges, with no retry beyond the cap.",
