@@ -128,13 +128,13 @@ object PortableChatExportSpec extends ZIOSpecDefault:
       sel: StsSelection = selection,
       name: String = "portable-task",
       tgt: PortableExportTarget = target,
-      outDir: Path = null
+      outDir: Option[Path] = None
   ): Either[RaiderError, PortableExportResult] =
     PortableChatExport.exportTo(
       sel,
       PortableExportOptions(name),
       tgt,
-      if outDir == null then tmp.resolve("out") else outDir,
+      outDir.getOrElse(tmp.resolve("out")),
       1750000000000L
     )
 
@@ -700,7 +700,7 @@ object PortableChatExportSpec extends ZIOSpecDefault:
             val noParent = exportTo(
               tmp,
               name = "p1",
-              outDir = tmp.resolve("missing").resolve("out")
+              outDir = Some(tmp.resolve("missing").resolve("out"))
             )
             val firstResult =
               PortableChatExport.exportTo(
