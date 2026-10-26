@@ -32,8 +32,12 @@ final case class ExportResult(
   *     SYMLINK) is a typed refusal — export never overwrites user edits;
   *   - a leftover staging directory from a previous interruption is a typed
   * refusal naming the remnant (restart = explicit re-export after removal);
-  *   - concurrent exports to the same target serialize on the fixed staging
-  * name (the loser refuses); exports to different targets are independent;
+  *   - concurrent exports to the same target are NOT serialized — they are
+  *     excluded fail-fast on the fixed staging name: exactly one export claims
+  *     staging and publishes, while a loser's `Files.createDirectory` fails
+  *     with `FileAlreadyExistsException` and refuses typed WITHOUT deleting the
+  *     winner's in-flight staging (RAI-219); exports to different targets are
+  *     independent;
   *   - parent directories are never created implicitly (no path escape by
   * construction): the target's parent must already exist and be a real
   * directory.
@@ -153,6 +157,25 @@ object ChatWorkflowExport:
       }
       Right(())
     catch
+      case _: FileAlreadyExistsException =>
+        // RAI-219 (mirror of the accepted RAI-213 fix in PortableChatExport):
+        // the staging claim was lost — the winning concurrent export already
+        // created the staging directory between this export's freshness check
+        // and its own createDirectory (the check-then-create window), or
+        // another obstruction occupies the path. Fail fast WITHOUT deleting:
+        // the cleanup below must only ever remove the staging directory THIS
+        // export created, never the winner's in-flight staging, so exactly
+        // one export publishes (ADR-033 §6.2/§9.1).
+        Left(
+          refuse(
+            "R5",
+            "staging claim lost: " + staging + " already exists (a concurrent " +
+              "export claimed the staging name, or a remnant/obstruction " +
+              "appeared after the freshness check); refusing WITHOUT deleting " +
+              "it — inspect the staging path explicitly before re-exporting " +
+              "(ADR-033 §6.2/§9.1)"
+          )
+        )
       case NonFatal(t) =>
         // Best-effort cleanup of THIS attempt's partial staging so the next
         // export is not blocked by our own torn write. Cleanup failures keep
