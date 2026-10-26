@@ -141,6 +141,17 @@ object Main:
         System.exit(code)
       case None => () // fall through to the unchanged chat/run paths below
 
+    // RAI-201: `process-api` dispatch — same pre-parse slot. The adapter owns
+    // its own strict argv (ADR-037 §5); run/chat flags must never leak into
+    // it. Stdout is the protocol channel: the session writes to fd 1 directly
+    // and diagnostics go to stderr.
+    if argv.nonEmpty && argv(0) == "process-api" then
+      val code =
+        raider.cli.processapi.ProcessApiCommand.command(argv.toList.drop(1))
+      System.out.flush()
+      System.err.flush()
+      System.exit(code)
+
     // `chat` mode: interactive session with context continuity
     if argv.nonEmpty && argv(0) == "chat" then
       // RAI-064: --api-key is REMOVED — reject it with a typed error pointing
