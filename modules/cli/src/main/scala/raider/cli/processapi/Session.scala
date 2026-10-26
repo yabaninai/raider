@@ -336,8 +336,10 @@ object Session:
         .start(cfg.launch, hub, manager, writer, root, task)(forward(requestId))
         .flatMap { started =>
           // ADR-037 §4: a successfully started root is acknowledged with an
-          // `accepted` frame carrying the rootId, enqueued before any event
-          // observation can be forwarded (receipt queue is FIFO).
+          // `accepted` frame carrying the rootId. No strict FIFO guarantee
+          // ties this receipt to event observations — an observation with
+          // sequence 1 can be forwarded before the accepted frame lands — so
+          // consumers correlate frames by requestId, not by arrival order.
           outbound
             .receipt(Protocol.accepted(requestId, root.value))
             .catchAll(_ => ZIO.unit) *>

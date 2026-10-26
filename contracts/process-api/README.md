@@ -109,8 +109,11 @@ diagnostic and exit code 21 (`ConfigInvalid`) before any frame is read.
     (checks failed), `taskVerdict success|task-failed`, accounting complete.
   - typed run failure → `executionStatus "failed"`, exit per
     `HeadlessRunner.exitCodeFor` (22/25 render `safetyVerdict "denied"`).
-  - client cancel / EOF after dispatch / peer death / protocol failure with a
-    live root → `executionStatus "cancelled"`, exit 26, cleanup `bounded`.
+  - fatal protocol failure (with or without a live root) → `executionStatus
+    "failed"`, exit 20 (RuntimeFailure, ADR-037 §6); a live root is still
+    cancelled with bounded cleanup before the terminal frame.
+  - client cancel / EOF after dispatch / peer death → `executionStatus
+    "cancelled"`, exit 26, cleanup `bounded`.
   - SIGTERM → `executionStatus "interrupted"`, exit 143. OS-signal deaths the
     adapter cannot handle surface as the process's own signal status (130/143)
     — the fixture corpus' `exitCode 130` is the signal value, not an adapter
