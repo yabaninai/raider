@@ -26,6 +26,17 @@ import java.nio.file.{Files, Path, Paths}
   * typed Configuration error here; a malformed or incomplete payload is refused
   * later by [[CiContext.parse]] as a typed `CiContextError` during the runner
   * preflight (before any dispatch).
+  *
+  * RAI-187: `--deadline <seconds>` bounds the bundle program's work (ci-runtime
+  * §6: the internal deadline is shorter than the CI timeout, leaving time for
+  * cleanup/artifact upload). The value is validated at PARSE time — a missing,
+  * non-numeric, zero, or negative value is a typed Configuration error (exit
+  * 21) before any dispatch/spend. When the deadline fires, the bundle program
+  * is interrupted, the failure is rendered through the normal artifact path
+  * (run.json/result.json/report carry the honest deadline failure), and the
+  * process exits 24 (§8) — never a fabricated success. The flag applies to the
+  * `--bundle/--workflow` (First CI) path; combining it with `--agent` is a
+  * typed refusal so the surface never accepts a flag it would silently ignore.
   */
 final case class CliArgs(
     target: CliArgs.Target,
@@ -39,7 +50,8 @@ final case class CliArgs(
     workspace: Option[Path] = None,
     context: Option[Path] = None,
     requireProvenance: Option[Path] = None,
-    ci: Option[String] = None
+    ci: Option[String] = None,
+    deadlineSeconds: Option[Long] = None
 ):
   // RAI-064: NO credential field — the key is resolved from the environment
   // (RAIDER_API_KEY / RAIDER_API_KEY_CMD) at runtime, never carried in args.
@@ -119,7 +131,8 @@ object CliArgs:
       "--workspace",
       "--context",
       "--require-provenance",
-      "--ci"
+      "--ci",
+      "--deadline"
     )
 
   /** Parse `run` argv (the subcommand token included). */
@@ -289,6 +302,39 @@ object CliArgs:
               s"unknown --ci '$value' (github|gitlab|generic)"
             )
           )
+      // RAI-187: parse-time deadline validation (ci-runtime §6 "validated
+      // before dispatch") — a non-numeric/zero/negative value is a typed
+      // Configuration refusal before any dispatch/spend. The deadline bounds
+      // the BUNDLE program's work in this slice; `--agent` runs have their own
+      // loop budgets, so accepting the flag there would be a silently ignored
+      // surface — refused instead.
+      deadlineSeconds <- acc.get("--deadline") match
+        case None => Right(None)
+        case Some(raw) =>
+          val parsed = raw.trim.toLongOption
+          parsed match
+            case Some(seconds) if seconds > 0 =>
+              Right(Some(seconds))
+            case Some(_) =>
+              Left(
+                RaiderError.Configuration(
+                  s"--deadline must be a positive number of seconds, got '$raw'"
+                )
+              )
+            case None =>
+              Left(
+                RaiderError.Configuration(
+                  s"--deadline must be a positive number of seconds, got '$raw'"
+                )
+              )
+      _ <- (deadlineSeconds, agent) match
+        case (Some(_), Some(_)) =>
+          Left(
+            RaiderError.Configuration(
+              "--deadline applies to --bundle/--workflow runs; it is not an --agent flag"
+            )
+          )
+        case _ => Right(())
       target <- (agent, bundle, workflow) match
         case (Some(a), None, None) =>
           if BuiltInAgents.contains(a) then Right(Target.Agent(a))
@@ -328,7 +374,8 @@ object CliArgs:
       workspace,
       context,
       requireProvenance,
-      ci
+      ci,
+      deadlineSeconds
     )
 
   private def requireString(
