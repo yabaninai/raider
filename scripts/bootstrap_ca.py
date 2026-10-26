@@ -38,9 +38,14 @@ def certifi_bundle() -> str | None:
     """Return the certifi bundle path when certifi is importable and usable."""
     try:
         import certifi
-    except ImportError:
+
+        where = certifi.where()
+    except Exception:
+        # ImportError for an absent certifi, or any failure raised by a
+        # half-installed certifi whose where() explodes (RAI-221): treat
+        # certifi as absent and fall through to the next candidate. The
+        # resolver never surfaces a traceback (RAI-218 protocol).
         return None
-    where = certifi.where()
     if isinstance(where, str) and os.path.isfile(where):
         return where
     return None
