@@ -37,11 +37,16 @@ object PortableBundleVerifierSpec extends ZIOSpecDefault:
 
   private val snapshot = "sha256:" + ("ab" * 32)
 
+  // Integration adaptation: RAI-215 widened PortableExportTarget from a single
+  // (checkId, registrySnapshot) pair to a pinned `checks` list; the fixture's
+  // single pinned check and its identity keying in the registry are preserved
+  // verbatim through the list shape.
+  private val checkId = "workspace-marker-present"
+
   private val target = PortableExportTarget(
     profile = "coder",
     toolset = "workspace",
-    checkId = "workspace-marker-present",
-    registrySnapshot = snapshot
+    checks = List(PortablePinnedCheck(checkId, snapshot))
   )
 
   private val selection: StsSelection = StsSelection(
@@ -84,7 +89,7 @@ object PortableBundleVerifierSpec extends ZIOSpecDefault:
 
   private val registry = PortableProgramRegistry(
     agents = Map(target.profile -> identityProgram),
-    checks = Map((target.checkId, snapshot) -> identityProgram)
+    checks = Map((checkId, snapshot) -> identityProgram)
   )
 
   // -- fixture helpers -------------------------------------------------------
