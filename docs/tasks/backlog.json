@@ -5976,7 +5976,7 @@
         "RAI-200",
         "RAI-187"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/processapi/**",
         "modules/cli/src/main/scala/raider/cli/Main.scala",
@@ -6261,7 +6261,7 @@
       "dependencies": [
         "RAI-199"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/portable/PortableRun.scala",
         "modules/cli/src/test/scala/raider/cli/portable/**",
@@ -6288,7 +6288,7 @@
       "dependencies": [
         "RAI-199"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
@@ -6317,7 +6317,7 @@
       "dependencies": [
         "RAI-203"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/PortableChatExport.scala",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
@@ -6344,7 +6344,7 @@
       "dependencies": [
         "RAI-203"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/portable/**",
         "modules/dsl/src/test/scala/raider/dsl/portable/**",
@@ -6376,7 +6376,7 @@
         "RAI-203",
         "RAI-198"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/adr/**",
         "modules/dsl/src/main/scala/raider/dsl/portable/**",

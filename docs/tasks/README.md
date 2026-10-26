@@ -276,11 +276,11 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-208** [TUI-X.B3.b: live plan/budget wiring in the chat shell](m2-p2.md#rai-208-tui-xb3b-live-planbudget-wiring-in-the-chat-shell); accepted (round-2 approve; TUI-X.B3 fully closed); dependencies: RAI-190, RAI-188; profiles: static, unit, contracts, repl.
 - **RAI-209** [Raise the sbt-test gate timeout under host contention](m1.md); accepted (owner decision 2026-10-26, gates b83930ce…/ca893bed…, self-check pins 15 budgets); dependencies: none; profiles: fast, static, unit.
 - **RAI-210** [FCI-REPORT-02 post-run artifact mutation fixture](m0.md); accepted (a837d21b…/9f8bf301…); dependencies: RAI-186; profiles: static, unit, ci.
-- **RAI-211** [Portable polish: sub-second deadline precision and argv --doc corner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, ci.
-- **RAI-212** [verdict.from agent-step hardening](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, contracts.
-- **RAI-213** [Export staging race: fail-fast without deleting the winner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts.
-- **RAI-214** [Launcher-side manifest digest verification](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts, runtime, ci.
-- **RAI-215** [Named-check to trustedCheck export mapping (ADR + implementation)](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203, RAI-198; profiles: static, unit, contracts, docs.
+- **RAI-211** [Portable polish: sub-second deadline precision and argv --doc corner](m1.md); accepted (dispatch window 308ms proof; integrated gates discharge lane timeouts); dependencies: RAI-199; profiles: static, unit, ci.
+- **RAI-212** [verdict.from agent-step hardening](m1.md); accepted (0e408afc…); dependencies: RAI-199; profiles: static, unit, contracts.
+- **RAI-213** [Export staging race: fail-fast without deleting the winner](m1.md); accepted (race 30/30 + red-check; integrated gates discharge); dependencies: RAI-203; profiles: static, unit, contracts.
+- **RAI-214** [Launcher-side manifest digest verification](m1.md); accepted (verifier 16/16; wiring deferred → follow-up card); dependencies: RAI-203; profiles: static, unit, contracts, runtime, ci.
+- **RAI-215** [Named-check to trustedCheck export mapping (ADR + implementation)](m1.md); accepted (ADR-038; d607a5ed…/7dfadba3…); dependencies: RAI-203, RAI-198; profiles: static, unit, contracts, docs.
 - **RAI-216** [Bounded finalization for the generated check runner](m0.md); accepted (RATIFIED scope: ChatWorkflowRenderer + regenerated golden, e37cd824…/408fcd7e…); dependencies: RAI-186; profiles: static, unit, ci, runtime.
 - **RAI-217** [CI report polish: policyDigest assertion and advisory-aware summary](m0.md); accepted (registration fix: allowed paths corrected to raider/cli/workflow/**; gates discharged by integration run); dependencies: RAI-186, RAI-195; profiles: static, unit, ci.
 - **RAI-218** [bootstrap.sh CA resolution on stock macOS](m1.md); accepted (glue-only, cc13f3ab…/af408768…); dependencies: none; profiles: fast, static.
@@ -294,7 +294,7 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-198** [Portable workflow validation and native lowering](m1.md); accepted (ruling executed; 63-field frozen conformance table, typed repair exhaustion); dependencies: RAI-197; profiles: static, unit, contracts, runtime, security.
 - **RAI-199** [Portable CLI execution and Scala parity](m1.md); accepted (opt-in `workflow check|explain|run --doc`; launcher-pinned registry snapshots; declared deadline binds; SIGTERM 143 + parity on normalized evidence); dependencies: RAI-198, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
 - **RAI-200** [Language-neutral local process protocol contract](m1.md); accepted; dependencies: RAI-196; profiles: docs, contracts.
-- **RAI-201** [Local process adapter with owned execution](m1.md); dependencies: RAI-200, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
+- **RAI-201** [Local process adapter with owned execution](m1.md); ready (deps RAI-200, RAI-187 both accepted; unblocked by wave A); dependencies: RAI-200, RAI-187; profiles: static, unit, contracts, runtime, ci, security.
 - **RAI-202** [Provider and structured-output capability audit and contract](m1.md); accepted; dependencies: RAI-196; profiles: docs, contracts.
 - **RAI-203** [Portable chat export and useful recipe pair](m1.md); accepted (portable v1 export with staged atomic publication and closed-schema manifest; `--format scala|portable` with honest CWF-R3 refusal at chat; two mock-mode recipes); dependencies: RAI-198, RAI-160; profiles: static, unit, contracts, runtime, ci, docs, security.
 - **RAI-204** [Installed first-use path and coherent onboarding](m1.md); accepted; dependencies: RAI-193; profiles: docs, release.
