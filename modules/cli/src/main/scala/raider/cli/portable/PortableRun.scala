@@ -465,9 +465,12 @@ object PortableRun:
           s"roundsPerAgent=${effective.maxRoundsPerAgent} " +
           s"tokens<=${effective.tokenCeiling} " +
           // The ENFORCED outer bound: min(--deadline-s, declared deadlineMs).
+          // Millisecond precision (RAI-211): the bound is enforced as-is at
+          // the dispatch below, so the artifact reports it without a seconds
+          // floor (a 250 ms bound must not read as 0 s).
           (effective.outerDeadline match
-            case Some(d) => s"outerDeadlineS=${d.getSeconds}"
-            case None    => s"outerDeadlineS=none")
+            case Some(d) => s"outerDeadlineMs=${d.toMillis}"
+            case None    => s"outerDeadlineMs=none")
       _ <- state.update(
         _.copy(
           phase = Phase.Assembled,
@@ -489,9 +492,16 @@ object PortableRun:
             .zio(lowered.program(inputJson))
             .timeoutFail(
               RaiderError.DeadlineExceeded(
-                s"invocation deadline of ${d.getSeconds}s exceeded"
+                s"invocation deadline of ${d.toMillis}ms exceeded"
               )
-            )(zio.Duration.fromSeconds(d.getSeconds))
+            )(
+              // RAI-211: the millisecond Duration binds AS-IS — no
+              // `zio.Duration.fromSeconds(d.getSeconds)` floor (that conversion
+              // turned a declared 250 ms deadline into a ~0 ms abort and a
+              // "0s exceeded" message, because getSeconds is the SECONDS PART
+              // of a java.time.Duration).
+              d
+            )
         case None => Task.zio(lowered.program(inputJson))
       result <- dispatchZio.either
       _ <- ZIO.succeed(tokenUsed.get()).flatMap { observed =>

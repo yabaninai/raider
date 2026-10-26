@@ -202,6 +202,45 @@ object PortableRunSpec extends ZIOSpecDefault:
         assert(refused.left.toOption.map(_.code))(isSome(equalTo("RA-CFG")))
       },
       test(
+        "an argv value-position element exactly '--doc' classifies as a VALUE, not a switch (RAI-211 pinned corner)"
+      ) {
+        val in = inputFile("{}")
+        val out = Files.createTempDirectory("pwrun-docval")
+        // (1) The routing flag's own value is exactly '--doc': positional
+        // pairing keeps it a VALUE (a path named '--doc'); the parser must not
+        // re-read it as a switch ("requires a value" / unknown argument).
+        val routingValue = PortableRun.parse(
+          List("--doc", "--doc", "--input", in.toString, "--out", out.toString)
+        )
+        // (2) The same corner behind a non-routing flag: '--doc' after
+        // '--input' is that flag's value, never a second switch.
+        val inputValue = PortableRun.parse(
+          List("--doc", "doc.json", "--input", "--doc", "--out", out.toString)
+        )
+        // (3) The contrast stays pinned: a SWITCH-position duplicate '--doc'
+        // is still the typed twice-error.
+        val duplicateSwitch = PortableRun.parse(
+          List(
+            "--doc",
+            "a.json",
+            "--doc",
+            "b.json",
+            "--input",
+            in.toString,
+            "--out",
+            out.toString
+          )
+        )
+        assertTrue(
+          routingValue.isRight,
+          routingValue.toOption.map(_.doc.toString).contains("--doc"),
+          inputValue.isRight,
+          inputValue.toOption.map(_.input.toString).contains("--doc"),
+          duplicateSwitch.isLeft,
+          duplicateSwitch.left.toOption.map(_.code).contains("RA-CFG")
+        )
+      },
+      test(
         "a missing workspace directory refuses typed RA-CFG before any dispatch"
       ) {
         val doc = verdictDoc()
