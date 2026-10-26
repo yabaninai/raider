@@ -1,6 +1,23 @@
 package raider.cli.portable
 
 import raider.core.RaiderError
+import raider.dsl.portable.{
+  PortableBundleVerifier,
+  PortableChatExport,
+  PortableExportOptions,
+  PortableExportResult,
+  PortableExportTarget,
+  PortablePinnedCheck
+}
+import raider.dsl.workflow.{
+  StsAgentStage,
+  StsOrigin,
+  StsParam,
+  StsSelection,
+  StsTurn,
+  StsTurnKind,
+  StsTurnStatus
+}
 import zio.*
 import zio.test.*
 import zio.test.Assertion.*
@@ -156,6 +173,105 @@ object PortableRunSpec extends ZIOSpecDefault:
     * route resolves credentials only for live providers).
     */
   private val env: Map[String, String] = Map.empty
+
+  // -- RAI-220 fixtures: REAL published bundles through the producer ---------
+
+  private val BundleName = "rai220-bundle"
+  private val BundleDocName = BundleName + ".workflow.json"
+  private val BundleManifestName = BundleName + "-manifest.json"
+  private val BundleInputName = BundleName + ".input.json"
+
+  /** The chat-workflow selection the producer renders (mirrors the RAI-214
+    * verifier fixtures).
+    */
+  private val bundleSelection: StsSelection = StsSelection(
+    sessionId = "sess-rai220",
+    intent = StsTurn(
+      "t-1",
+      StsTurnKind.Intent,
+      StsTurnStatus.Completed,
+      "make module X compile and keep checks green"
+    ),
+    refinements = List(
+      StsTurn(
+        "t-2",
+        StsTurnKind.Refinement,
+        StsTurnStatus.Completed,
+        "do not touch the public API"
+      )
+    ),
+    taskParams = List(
+      StsParam("targetPath", "modules/x"),
+      StsParam("summary", "one-paragraph run summary")
+    ),
+    checks = Nil,
+    agentStage = StsAgentStage(2),
+    origin = StsOrigin(
+      "openai-compatible",
+      "mock-model",
+      Some("http://127.0.0.1:1/v1")
+    )
+  )
+
+  /** The export target names EXACTLY what THIS launcher pins (profile, toolset
+    * and the real marker check with its real snapshot), so the exported
+    * document lowers natively on the run path.
+    */
+  private val bundleTarget = PortableExportTarget(
+    profile = PortableTrustedRegistry.ProfileCoder,
+    toolset = PortableTrustedRegistry.ToolsetWorkspace,
+    checks = List(
+      PortablePinnedCheck(
+        PortableTrustedRegistry.CheckWorkspaceMarker,
+        PortableTrustedRegistry.workspaceMarkerSnapshot
+      )
+    )
+  )
+
+  /** Builds a REAL published bundle through the producer (staging + atomic
+    * publish): `parent` must exist, the target directory itself must not.
+    */
+  private def exportBundle(parent: Path): PortableExportResult =
+    PortableChatExport
+      .exportTo(
+        bundleSelection,
+        PortableExportOptions(BundleName),
+        bundleTarget,
+        parent.resolve("bundle"),
+        1750000000000L
+      ) match
+      case Right(published) => published
+      case Left(err) => throw err // typed fixture failure; never swallowed
+
+  /** Extracts the `docDigest` hex from a run.json body. */
+  private def docDigestHexOf(runJson: String): Option[String] =
+    "\"docDigest\":\"sha256-([0-9a-f]{64})\"".r
+      .findFirstMatchIn(runJson)
+      .map(_.group(1))
+
+  /** Appends one byte to a file (the tamper mutation). */
+  private def appendByte(path: Path): Unit =
+    Files.write(path, Files.readAllBytes(path) :+ 32.toByte)
+
+  /** Waits (bounded) until the run's events.jsonl contains a line carrying the
+    * marker text — the happens-AFTER-the-gate signal for mid-run mutations (the
+    * events writer flushes per line, so the poll is deterministic).
+    */
+  private def awaitEventLine(
+      out: Path,
+      marker: String
+  ): ZIO[Any, Throwable, Unit] =
+    ZIO.attemptBlocking {
+      val deadline = java.lang.System.currentTimeMillis() + 30000L
+      var found = false
+      while !found && java.lang.System.currentTimeMillis() < deadline do
+        found = eventsLinesOf(out).exists(_.contains(marker))
+        if !found then Thread.sleep(10L)
+      if !found then
+        throw new IllegalStateException(
+          "the run never flushed the expected event line: " + marker
+        )
+    }
 
   def spec =
     suite("raider workflow run --doc (mock)")(
@@ -386,6 +502,246 @@ object PortableRunSpec extends ZIOSpecDefault:
         yield assertTrue(
           o.exitCode == raider.core.result.ExitCodes.ConfigInvalid,
           o.error.exists(_.code == "RA-INP")
+        )
+      },
+      test(
+        "RAI-220: a valid published bundle verifies and runs green end-to-end, unchanged from the plain document"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val parent = Files.createTempDirectory("pwrun-bundle")
+        val published = exportBundle(parent)
+        val docPath = published.targetDir.resolve(BundleDocName)
+        val detected = PortableBundleVerifier.detectForDocument(docPath)
+        val verified = detected
+          .flatMap(d => PortableBundleVerifier.verifyBundle(d).toOption)
+        val inPath = published.targetDir.resolve(BundleInputName)
+        // Control: the SAME document bytes WITHOUT the sibling manifest keep
+        // the pre-existing un-manifested behavior (no bundle event either).
+        val plainDir = Files.createTempDirectory("pwrun-plaindoc")
+        val plainDoc = plainDir.resolve(BundleDocName)
+        Files.write(plainDoc, Files.readAllBytes(docPath))
+        val plainIn = plainDir.resolve("input.json")
+        Files.write(plainIn, Files.readAllBytes(inPath))
+        val out = Files.createTempDirectory("pwrun-bundlerun")
+        val plainOut = Files.createTempDirectory("pwrun-plainrun")
+        for
+          bundled <- PortableRun.run(args(docPath, inPath, ws, out), env)
+          plain <- PortableRun.run(args(plainDoc, plainIn, ws, plainOut), env)
+        yield
+          val bundledJson = runJsonOf(out)
+          val plainJson = runJsonOf(plainOut)
+          val expectedHex =
+            verified.map(v => PortableDoc.sha256Hex(v.documentBytes))
+          val verifiedBytesOnDisk = verified.exists(v =>
+            java.util.Arrays.equals(
+              v.documentBytes,
+              Files.readAllBytes(docPath)
+            )
+          )
+          assertTrue(
+            detected.isDefined,
+            verified.isDefined,
+            verifiedBytesOnDisk,
+            bundled.exitCode == 0,
+            bundled.error.isEmpty,
+            plain.exitCode == 0,
+            plain.error.isEmpty,
+            bundledJson.contains("\"taskVerdict\":\"trusted-checks-passed\""),
+            plainJson.contains("\"taskVerdict\":\"trusted-checks-passed\""),
+            // what was lowered is EXACTLY the verified payload
+            docDigestHexOf(bundledJson) == expectedHex,
+            docDigestHexOf(plainJson) == expectedHex,
+            eventsLinesOf(out)
+              .exists(_.contains("bundle verified: " + BundleManifestName)),
+            !eventsLinesOf(plainOut).exists(_.contains("bundle verified"))
+          )
+      },
+      test(
+        "RAI-220: a tampered bundle refuses typed CWF-R1 before any dispatch"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val parent = Files.createTempDirectory("pwrun-tamper")
+        val published = exportBundle(parent)
+        val docPath = published.targetDir.resolve(BundleDocName)
+        appendByte(docPath)
+        val out = Files.createTempDirectory("pwrun-tamperrun")
+        for o <- PortableRun.run(
+            args(
+              docPath,
+              published.targetDir.resolve(BundleInputName),
+              ws,
+              out
+            ),
+            env
+          )
+        yield
+          val events = eventsLinesOf(out)
+          val runJson = runJsonOf(out)
+          assertTrue(
+            o.exitCode == raider.core.result.ExitCodes.ConfigInvalid,
+            o.error.exists(_.code == "RA-INP"),
+            o.error.exists(_.detail.startsWith("CWF-R1: ")),
+            o.error.exists(_.detail.contains("tampered or corrupted")),
+            o.error.exists(_.detail.contains(BundleDocName)),
+            runJson.contains("\"status\":\"Failed\""),
+            !runJson.contains("\"taskVerdict\""),
+            runJson.contains("CWF-R1"),
+            // the refusal precedes launch-layer assembly and dispatch
+            !events.exists(_.contains("effective launch limits")),
+            events.nonEmpty && events.last.contains("\"Terminal\"")
+          )
+      },
+      test(
+        "RAI-220: a missing manifested file refuses typed before any dispatch"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val docGone = exportBundle(Files.createTempDirectory("pwrun-miss-doc"))
+        Files.deleteIfExists(docGone.targetDir.resolve(BundleDocName))
+        val inputGone =
+          exportBundle(Files.createTempDirectory("pwrun-miss-input"))
+        Files.deleteIfExists(inputGone.targetDir.resolve(BundleInputName))
+        val outDoc = Files.createTempDirectory("pwrun-missdocrun")
+        val outInput = Files.createTempDirectory("pwrun-missinrun")
+        for
+          oDoc <- PortableRun.run(
+            args(
+              docGone.targetDir.resolve(BundleDocName),
+              docGone.targetDir.resolve(BundleInputName),
+              ws,
+              outDoc
+            ),
+            env
+          )
+          oInput <- PortableRun.run(
+            args(
+              inputGone.targetDir.resolve(BundleDocName),
+              inputGone.targetDir.resolve(BundleInputName),
+              ws,
+              outInput
+            ),
+            env
+          )
+        yield
+          val docErr = oDoc.error.map(_.detail)
+          val inputErr = oInput.error.map(_.detail)
+          assertTrue(
+            oDoc.exitCode == raider.core.result.ExitCodes.ConfigInvalid,
+            oDoc.error.exists(_.code == "RA-INP"),
+            docErr.exists(d =>
+              d.startsWith("CWF-R1: ") && d
+                .contains(
+                  "the manifest names a file that is absent: " + BundleDocName
+                )
+            ),
+            oInput.exitCode == raider.core.result.ExitCodes.ConfigInvalid,
+            oInput.error.exists(_.code == "RA-INP"),
+            inputErr.exists(d =>
+              d.startsWith("CWF-R1: ") && d
+                .contains(
+                  "the manifest names a file that is absent: " + BundleInputName
+                )
+            ),
+            !eventsLinesOf(outDoc).exists(
+              _.contains("effective launch limits")
+            ),
+            !eventsLinesOf(outInput).exists(
+              _.contains("effective launch limits")
+            )
+          )
+      },
+      test(
+        "RAI-220: an extra unmanifested file refuses typed before any dispatch"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val parent = Files.createTempDirectory("pwrun-extra")
+        val published = exportBundle(parent)
+        Files.writeString(
+          published.targetDir.resolve("notes.txt"),
+          "unmanifested"
+        )
+        val out = Files.createTempDirectory("pwrun-extrarun")
+        for o <- PortableRun.run(
+            args(
+              published.targetDir.resolve(BundleDocName),
+              published.targetDir.resolve(BundleInputName),
+              ws,
+              out
+            ),
+            env
+          )
+        yield assertTrue(
+          o.exitCode == raider.core.result.ExitCodes.ConfigInvalid,
+          o.error.exists(_.code == "RA-INP"),
+          o.error.exists(err =>
+            err.detail.startsWith("CWF-R1: ") && err.detail
+              .contains("unmanifested entries: notes.txt")
+          ),
+          !runJsonOf(out).contains("\"taskVerdict\""),
+          !eventsLinesOf(out).exists(_.contains("effective launch limits"))
+        )
+      },
+      test(
+        "RAI-220: lowering consumes the VERIFIED bytes - an on-disk mutation after the gate cannot change the run (TOCTOU pin)"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val parent = Files.createTempDirectory("pwrun-toctou")
+        val published = exportBundle(parent)
+        val docPath = published.targetDir.resolve(BundleDocName)
+        val detected = PortableBundleVerifier.detectForDocument(docPath)
+        val verified = detected
+          .flatMap(d => PortableBundleVerifier.verifyBundle(d).toOption)
+        val inPath = published.targetDir.resolve(BundleInputName)
+        val out = Files.createTempDirectory("pwrun-toctourun")
+        for
+          fiber <- PortableRun.run(args(docPath, inPath, ws, out), env).fork
+          // The gate consumed the document bytes BEFORE this diagnostic line
+          // is flushed; mutating afterwards cannot reach a consumer of the
+          // returned bytes. The mutated text is not even valid JSON, so any
+          // post-gate re-read would refuse typed.
+          _ <- awaitEventLine(out, "portable document validated")
+          _ <- ZIO.attempt(
+            Files.writeString(docPath, "{tampered-after-verify")
+          )
+          o <- fiber.join
+        yield
+          val runJson = runJsonOf(out)
+          val expectedHex =
+            verified.map(v => PortableDoc.sha256Hex(v.documentBytes))
+          assertTrue(
+            o.exitCode == 0,
+            o.error.isEmpty,
+            runJson.contains("\"status\":\"Succeeded\""),
+            runJson.contains("\"taskVerdict\":\"trusted-checks-passed\""),
+            docDigestHexOf(runJson) == expectedHex,
+            !runJson.contains("tampered-after-verify")
+          )
+      },
+      test(
+        "RAI-220: a *.workflow.json document WITHOUT a sibling manifest keeps the un-manifested behavior"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val dir = Files.createTempDirectory("pwrun-nomanifest")
+        val doc = dir.resolve("plain.workflow.json")
+        Files.writeString(
+          doc,
+          Files.readString(verdictDoc(), StandardCharsets.UTF_8)
+        )
+        val detected = PortableBundleVerifier.detectForDocument(doc)
+        val in = inputFile("""{"request": "prepare the workspace"}""")
+        val out = Files.createTempDirectory("pwrun-nomanifestrun")
+        for o <- PortableRun.run(args(doc, in, ws, out), env)
+        yield assertTrue(
+          detected.isEmpty,
+          o.exitCode == 0,
+          o.error.isEmpty,
+          runJsonOf(out).contains("\"taskVerdict\":\"trusted-checks-passed\""),
+          !eventsLinesOf(out).exists(_.contains("bundle verified"))
         )
       }
     )

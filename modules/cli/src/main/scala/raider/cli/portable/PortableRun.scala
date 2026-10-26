@@ -15,7 +15,12 @@ import raider.core.result.{
   OutputPayload,
   RunResult
 }
-import raider.dsl.portable.{PortableVerdictEvidence, PortableWorkflowLowerer}
+import raider.dsl.portable.{
+  PortableBundleVerifier,
+  PortableVerifiedBundle,
+  PortableVerdictEvidence,
+  PortableWorkflowLowerer
+}
 import raider.runtime.admission.Admission
 import raider.runtime.events.{EventEnvelope, EventPayload}
 import raider.runtime.jobs.JobStatus
@@ -56,6 +61,11 @@ import scala.util.control.NonFatal
   *     model can neither manufacture success nor veto the exit code, and any
   *     verdict-shaped assertion outside the trusted check is recorded verbatim
   *     as contradictory evidence;
+  *   - bundle gate (RAI-214/RAI-220): a sibling `X-manifest.json` engages
+  *     launcher-side verification; the launch consumes ONLY the VERIFIED bytes
+  *     the verifier returns (never a re-read of the document), and any verifier
+  *     refusal is typed (CWF-R1) BEFORE validation, credentials, assembly,
+  *     lowering or dispatch;
   */
 object PortableRun:
 
@@ -340,8 +350,39 @@ object PortableRun:
           )
       yield ()
 
-  /** The launch flow: document gate → credentials → launch-layer assembly → THE
-    * single dispatch → verdict projection → artifacts.
+  /** One document gate result: the bytes every later stage consumes, plus the
+    * verified bundle when a sibling manifest engaged the RAI-214 contract.
+    */
+  private final case class DocumentGate(
+      bytes: Array[Byte],
+      verified: Option[PortableVerifiedBundle]
+  )
+
+  /** The RAI-214 bundle seam wired into the launch (RAI-220):
+    * [[PortableBundleVerifier.detectForDocument]] decides whether the `--doc`
+    * path carries the export-bundle contract (a sibling `X-manifest.json`); a
+    * detected bundle is [[PortableBundleVerifier.verifyBundle]]-ed and ONLY its
+    * returned bytes are used — the launcher never re-reads a verified document
+    * from disk, so what is validated and lowered is exactly what the manifest
+    * pins. Any verifier refusal (tampered digest, missing manifested file,
+    * unmanifested extra entry, non-regular entry, oversized or invalid
+    * manifest) maps via `PortableBundleRefusal.toRaiderError` onto the existing
+    * CWF-R1 input-validation channel and fails the launch BEFORE validation,
+    * credential resolution, assembly, lowering or dispatch. A plain document
+    * (no sibling manifest) keeps the existing un-manifested read.
+    */
+  private def loadDocumentGate(doc: Path): Either[RaiderError, DocumentGate] =
+    PortableBundleVerifier.detectForDocument(doc) match
+      case None =>
+        PortableDoc.readBytes(doc).map(bytes => DocumentGate(bytes, None))
+      case Some(bundle) =>
+        PortableBundleVerifier.verifyBundle(bundle) match
+          case Left(refusal) => Left(refusal.toRaiderError)
+          case Right(verified) =>
+            Right(DocumentGate(verified.documentBytes, Some(verified)))
+
+  /** The launch flow: bundle/document gate → credentials → launch-layer
+    * assembly → THE single dispatch → verdict projection → artifacts.
     */
   private def flow(
       args: Args,
@@ -353,12 +394,23 @@ object PortableRun:
       emit: EventPayload => ZIO[Any, Nothing, Unit]
   ): ZIO[Scope, RaiderError, Unit] =
     for
-      // ---- zero-dispatch document gate ----
-      docBytes <- record(
-        state,
-        ZIO.fromEither(PortableDoc.readBytes(args.doc))
-      )
+      // ---- zero-dispatch document gate (RAI-220: the RAI-214 bundle seam) ----
+      // A sibling `X-manifest.json` engages the export-bundle contract: the
+      // document bytes are the VERIFIED bytes the verifier returned and no
+      // later stage re-reads the document (the verify→lower TOCTOU window
+      // stays closed). A refusal is typed (CWF-R1) BEFORE validation,
+      // credentials, assembly, lowering or dispatch.
+      gate <- record(state, ZIO.fromEither(loadDocumentGate(args.doc)))
+      docBytes = gate.bytes
       docDigest = PortableDoc.sha256Hex(docBytes)
+      _ <- gate.verified.fold(ZIO.unit) { v =>
+        emit(
+          EventPayload.Diagnostics(
+            s"bundle verified: ${v.manifestFileName} (document ${v.documentFileName}, " +
+              s"input example ${v.inputExampleFileName}; on-disk bytes match the manifest pins)"
+          )
+        )
+      }
       document <- record(
         state,
         ZIO.fromEither(
