@@ -55,7 +55,7 @@ class SpawnSleepWorkflow extends BundleWorkflow:
                     s"exec sleep $sleepSeconds"
                   ).start()
                   val parent = marker.getParent
-                  if parent != null then Files.createDirectories(parent)
+                  Option(parent).foreach(Files.createDirectories(_))
                   Files.writeString(marker, s"pid=${process.pid()}", UTF_8)
                   process
                 }
