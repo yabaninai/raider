@@ -6387,7 +6387,7 @@
         "RAI-200",
         "RAI-187"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/processapi/**",
         "modules/cli/src/main/scala/raider/cli/Main.scala",
@@ -6517,7 +6517,7 @@
         "RAI-204",
         "RAI-202"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "docs/acceptance/cross-ecosystem/**",
         "contracts/acceptance/cross-ecosystem/**",
@@ -6916,7 +6916,7 @@
       "dependencies": [
         "RAI-213"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/dsl/src/main/scala/raider/dsl/workflow/ChatWorkflowExport.scala",
         "modules/dsl/src/test/scala/raider/dsl/workflow/**",
@@ -6943,7 +6943,7 @@
       "dependencies": [
         "RAI-214"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/portable/**",
         "modules/cli/src/test/scala/raider/cli/portable/**",
@@ -6972,7 +6972,7 @@
       "dependencies": [
         "RAI-218"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/**",
         "docs/work/records/**"
