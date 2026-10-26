@@ -310,6 +310,13 @@ object Fix_widget_task:
   * the editable constants above — never from the input JSON
   * (text-is-data, §8). Nonzero exit is a typed failed run (R9): a
   * failed check stays failed.
+  *
+  * Finalization is deadline-bounded (RAI-216): the direct child's
+  * exit does not close the stdout pipe when a grandchild inherited
+  * the write end, so every drain join waits at most the same bound
+  * and then yields the typed errored outcome with the truthful
+  * partial capture instead of stalling report finalization
+  * indefinitely.
   */
   private def runNamedCheck(
       input: Input,
@@ -338,21 +345,43 @@ object Fix_widget_task:
           }, "raider-trusted-check-output")
           reader.setDaemon(true)
           reader.start()
+          // RAI-216: a grandchild inheriting the stdout write end
+          // keeps the pipe open after the direct child exits, so
+          // every drain join is deadline-bounded; the elapsed bound
+          // produces the typed errored outcome with the partial
+          // capture as evidence (never a hang).
+          val finalizeMillis = checkTimeoutSeconds.toLong * 1000L
           if proc.waitFor(
               checkTimeoutSeconds.toLong,
               java.util.concurrent.TimeUnit.SECONDS
             )
           then
-            reader.join()
-            val output = new String(captured.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
-            Right((proc.exitValue(), output)): Either[String, (Int, String)]
+            reader.join(finalizeMillis)
+            if reader.isAlive then
+              Left(
+                "check exited with code " + proc.exitValue() +
+                  " but the output capture did not close within the " +
+                  checkTimeoutSeconds + "s finalization bound" +
+                  " (a grandchild holding the inherited stdout pipe is the" +
+                  " usual cause); " + captured.size() +
+                  " bytes captured before the cutoff: " +
+                  new String(captured.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
+              ): Either[String, (Int, String)]
+            else
+              val output = new String(captured.toByteArray, java.nio.charset.StandardCharsets.UTF_8)
+              Right((proc.exitValue(), output)): Either[String, (Int, String)]
           else
             proc.destroyForcibly()
             proc.waitFor()
-            reader.join()
+            reader.join(finalizeMillis)
+            val cutoff =
+              if reader.isAlive then
+                "; the output capture was cut off by the finalization bound with " +
+                  captured.size() + " bytes retained"
+              else ""
             Left(
               "exceeded the " + checkTimeoutSeconds +
-                "s bound and was destroyed"
+                "s bound and was destroyed" + cutoff
             ): Either[String, (Int, String)]
         }
         .either.map {
