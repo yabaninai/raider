@@ -459,6 +459,58 @@ object PortableParitySpec extends ZIOSpecDefault:
         }
       },
       test(
+        "RAI-211: a sub-second declared deadlineMs (250) aborts by wall clock within tolerance — no seconds floor"
+      ) {
+        ZIO.serviceWithZIO[ParityEnv] { env =>
+          ZIO
+            .attempt {
+              val original =
+                Files.readString(portableDoc(), StandardCharsets.UTF_8)
+              val edited =
+                original.replace("\"deadlineMs\": 60000", "\"deadlineMs\": 250")
+              if edited == original then
+                throw new IllegalStateException(
+                  "deadline fixture edit did not apply"
+                )
+              val f = Files
+                .createTempDirectory("p199-doc")
+                .resolve("deadline-250ms.json")
+              Files.writeString(f, edited, StandardCharsets.UTF_8)
+              f
+            }
+            .flatMap { doc250 =>
+              val ws = freshWorkspace()
+              val out = Files.createTempDirectory("p199-deadline-ms")
+              env.stand.hang.set(true) // arm: requests hang in-flight
+              val started = java.lang.System.nanoTime()
+              PortableRun
+                .run(
+                  portableArgs(env.stand, portableInput(), out, ws)
+                    .copy(doc = doc250),
+                  cliEnv
+                )
+                .ensuring(ZIO.succeed(env.stand.hang.set(false)))
+                .map { o =>
+                  val elapsedMs =
+                    (java.lang.System.nanoTime() - started) / 1000000L
+                  val runJson = runJsonOf(out)
+                  assertTrue(
+                    o.exitCode == raider.core.result.ExitCodes.DeadlineExceeded,
+                    o.error.exists(_.code == "RA-DEADLINE"),
+                    // The bound binds BY WALL CLOCK: never before the sub-second
+                    // deadline (the removed floor aborted at ~0 ms), and well
+                    // before the 30 s hang could answer.
+                    elapsedMs >= 240,
+                    elapsedMs <= 10000,
+                    // The artifact reports the enforced bound at ms precision.
+                    runJson.contains("outerDeadlineMs=250"),
+                    !runJson.contains("\"status\":\"Succeeded\"")
+                  )
+                }
+            }
+        }
+      },
+      test(
         "XE-CLI-03: SIGTERM during portable model work -> bounded stop (143), truthful incomplete evidence, no fake completion"
       ) {
         ZIO.serviceWithZIO[ParityEnv] { env =>
