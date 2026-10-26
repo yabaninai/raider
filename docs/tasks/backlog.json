@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 229,
+  "raider_count": 232,
   "companion_count": 3,
   "cards": [
     {
@@ -5188,10 +5188,17 @@
       "id": "RAI-163",
       "title": "Design the public SDLC effects API and consumer migration",
       "milestone": "M1",
-      "dependencies": ["RAI-117"],
+      "dependencies": [
+        "RAI-117"
+      ],
       "status": "accepted",
-      "allowed_paths": ["docs/adr/ADR-034-sdlc-effects-api.md", "docs/tasks/m1.md"],
-      "profiles": ["docs"],
+      "allowed_paths": [
+        "docs/adr/ADR-034-sdlc-effects-api.md",
+        "docs/tasks/m1.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
       "behavior": "Separate reviewed public API ADR for ADR-030 D7; specify effect/capability ownership, semantics, compatibility/versioning and ADR-029 H8 consumer migration; map SDLC-01–05 without freezing signatures. Independent design review must precede any signature freeze. Estimate 8–12 h, within packet A1's 32–48 h.",
       "acceptance": {
         "normal": "SDLC-API-01: independent review approves effects contract, H8 migration plan, versioning and case mapping.",
@@ -5205,10 +5212,26 @@
       "id": "RAI-164",
       "title": "Implement SDLC stages and typed evidence schemas",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-163"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-163"
+      ],
       "status": "accepted",
-      "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "examples/workflows/sdlc/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci"],
+      "allowed_paths": [
+        "contracts/sdlc/**",
+        "modules/core/src/main/scala/raider/core/sdlc/**",
+        "modules/core/src/test/scala/raider/core/sdlc/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "examples/workflows/sdlc/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
       "behavior": "ADR-030 §2 stage model and §2.1 evidence identity using reviewed RAI-163 contract. Typed Scala schemas in contracts/ for check-result, review-verdict, candidate-identity and integration-result; versioned JSON in run.json/events.jsonl. Estimate 24–36 h, allocated with RAI-163 within packet A1's 32–48 h.",
       "acceptance": {
         "normal": "SDLC-STG-01: stage inputs/results and typed evidence roundtrip through versioned JSON with source/candidate/policy/toolchain/verifier identity.",
@@ -5222,10 +5245,20 @@
       "id": "RAI-174",
       "title": "SDLC evidence persistence: versioned event/run schema extension",
       "milestone": "M1",
-      "dependencies": ["RAI-164"],
+      "dependencies": [
+        "RAI-164"
+      ],
       "status": "accepted",
-      "allowed_paths": ["contracts/sdlc/**", "modules/core/src/main/scala/raider/core/sdlc/**", "modules/core/src/test/scala/raider/core/sdlc/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**"],
-      "profiles": ["contracts"],
+      "allowed_paths": [
+        "contracts/sdlc/**",
+        "modules/core/src/main/scala/raider/core/sdlc/**",
+        "modules/core/src/test/scala/raider/core/sdlc/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**"
+      ],
+      "profiles": [
+        "contracts"
+      ],
       "behavior": "Reviewed versioned extension of the event/run artifact schema with an additive record union carrying typed check-result, review-verdict, candidate-identity and integration-result records. Keep v1 consumers unaffected and pin v1 output bit-for-bit where no SDLC evidence exists; unknown-field typed refusal follows RAI-164's evolution policy. RAI-143 is the versioned additive-wire precedent.",
       "acceptance": {
         "normal": "SDLC-WIRE-01: v1-pinning golden remains bit-for-bit unchanged without SDLC evidence; additive decoding and roundtrip succeed for each of the four typed evidence records.",
@@ -5239,10 +5272,26 @@
       "id": "RAI-165",
       "title": "Implement approval artifacts and new-invocation recheck",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-163", "RAI-164"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-163",
+        "RAI-164"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "contracts/sdlc/approval/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci"],
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**",
+        "modules/runtime/src/test/scala/raider/runtime/sdlc/approval/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "contracts/sdlc/approval/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
       "behavior": "ADR-030 §3/D1 approval request artifact (checkpoint ID, candidate digest, expiry), separate decision file, headless NeedsApproval without stdin wait/auto-approval, and a new invocation re-reading current policy/repository/task/base/candidate/expiry/evidence. No fiber resume. Estimate 16–24 h (packet A2).",
       "acceptance": {
         "normal": "SDLC-APR-01: request and decision bind checkpoint, digest and expiry; fresh invocation proceeds only under current state and owner capabilities.",
@@ -5256,10 +5305,27 @@
       "id": "RAI-166",
       "title": "Build the generic forge protocol stand",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-163", "RAI-164"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-163",
+        "RAI-164"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/testkit/src/main/scala/raider/testkit/sdlc/forge/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**", "modules/runtime/src/main/scala/raider/runtime/sdlc/forge/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/forge/**", "contracts/sdlc/forge/**", "examples/sdlc/forge-stand/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "integration"],
+      "allowed_paths": [
+        "modules/testkit/src/main/scala/raider/testkit/sdlc/forge/**",
+        "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**",
+        "modules/runtime/src/main/scala/raider/runtime/sdlc/forge/**",
+        "modules/runtime/src/test/scala/raider/runtime/sdlc/forge/**",
+        "contracts/sdlc/forge/**",
+        "examples/sdlc/forge-stand/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "integration"
+      ],
       "behavior": "Full local Scala generic protocol stand plus disposable Git: commit, PR status, merge, stale-ref, conflict, duplicate and unknown/uncertain outcome, with read-only reconciliation and all ADR-030 §4 outcome distinctions. No real forge. Estimate 20–30 h, allocated with RAI-167 within packet A3's 32–48 h.",
       "acceptance": {
         "normal": "SDLC-FORGE-01: stand/disposable Git exercise commit, PR status and merge with identity-bound outcomes and reconcile.",
@@ -5273,10 +5339,26 @@
       "id": "RAI-167",
       "title": "Enforce configured integration rules and reconcile before mutation",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-163", "RAI-164", "RAI-165", "RAI-166"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-163",
+        "RAI-164",
+        "RAI-165",
+        "RAI-166"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/sdlc/integration/**", "modules/runtime/src/test/scala/raider/runtime/sdlc/integration/**", "contracts/sdlc/integration/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**"],
-      "profiles": ["static", "unit", "contracts", "runtime"],
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/sdlc/integration/**",
+        "modules/runtime/src/test/scala/raider/runtime/sdlc/integration/**",
+        "contracts/sdlc/integration/**",
+        "modules/testkit/src/test/scala/raider/testkit/sdlc/forge/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
       "behavior": "ADR-030 D2: Scala workflow config is authoritative for required checks/review and target; read-only forge reconcile before every mutation compares repo/target/head/base/candidate/evidence/current policy/capabilities; divergence is typed refusal, never blind retry. Estimate 12–18 h, allocated with RAI-166 within packet A3's 32–48 h.",
       "acceptance": {
         "normal": "SDLC-INT-01: configured rules govern required checks/review and target; only matching fresh preconditions authorize a mutation.",
@@ -5290,10 +5372,28 @@
       "id": "RAI-168",
       "title": "Create strictly local SemVer release artifacts",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-163", "RAI-164", "RAI-165", "RAI-167"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-163",
+        "RAI-164",
+        "RAI-165",
+        "RAI-167"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/release/**", "modules/cli/src/test/scala/raider/cli/release/**", "contracts/release/**", "docs/release/**", "examples/release/**", "artifacts/release/**"],
-      "profiles": ["static", "unit", "contracts", "release"],
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/release/**",
+        "modules/cli/src/test/scala/raider/cli/release/**",
+        "contracts/release/**",
+        "docs/release/**",
+        "examples/release/**",
+        "artifacts/release/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "release"
+      ],
       "behavior": "ADR-030 §5/D5 and SDLC-05: SemVer, Keep a Changelog, local v<semver> tag, checksummed/provenance-linked artifacts under artifacts/release/<version>/. Existing version/tag refuses without overwrite. Strictly local; no push/publish/deploy. Estimate 16–24 h (packet A4).",
       "acceptance": {
         "normal": "SDLC-REL-01: disposable repository produces SemVer/changelog, local tag and versioned checksummed artifacts with source identity.",
@@ -5307,10 +5407,28 @@
       "id": "RAI-169",
       "title": "Independently verify SDLC-01–04 stages, approval, and integration",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-164", "RAI-165", "RAI-166", "RAI-167"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-164",
+        "RAI-165",
+        "RAI-166",
+        "RAI-167"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/test/scala/raider/cli/sdlc/acceptance/**", "modules/testkit/src/test/scala/raider/testkit/sdlc/verification/**", "contracts/acceptance/sdlc/**", "docs/acceptance/sdlc/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci", "integration"],
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/sdlc/acceptance/**",
+        "modules/testkit/src/test/scala/raider/testkit/sdlc/verification/**",
+        "contracts/acceptance/sdlc/**",
+        "docs/acceptance/sdlc/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci",
+        "integration"
+      ],
       "behavior": "Independent deterministic verifier SDLC-01–04 against local Scala stand/disposable Git. Verify evidence/invalidation, approval recheck, owner/capability limits, full generic protocol/reconciliation/no-blind-retry, and capture target source identity/commands/TokenRouter recheck procedure; target-specific evidence is pending until actually supplied. Estimate 24–40 h (packet V1).",
       "acceptance": {
         "normal": "SDLC-V-01: deterministic local task-to-review and authorized generic integration cases retain source/candidate/policy/toolchain/verifier identity.",
@@ -5324,10 +5442,26 @@
       "id": "RAI-170",
       "title": "Independently verify the local-only release contract",
       "milestone": "M1",
-      "dependencies": ["RAI-117", "RAI-164", "RAI-165", "RAI-166", "RAI-167", "RAI-169"],
+      "dependencies": [
+        "RAI-117",
+        "RAI-164",
+        "RAI-165",
+        "RAI-166",
+        "RAI-167",
+        "RAI-169"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/test/scala/raider/cli/release/verification/**", "contracts/acceptance/sdlc/release/**", "docs/acceptance/sdlc/release/**"],
-      "profiles": ["static", "unit", "contracts", "release"],
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/release/verification/**",
+        "contracts/acceptance/sdlc/release/**",
+        "docs/acceptance/sdlc/release/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "release"
+      ],
       "behavior": "Independent SDLC-05 verifier in disposable repositories: SemVer/changelog/local tag/artifacts/checksums/provenance, existing version/tag, build failure, interruption/reconcile; assert absence of push/publish/deploy. Estimate 8–16 h (packet V2).",
       "acceptance": {
         "normal": "SDLC-VREL-01: clean disposable release yields matching local v<semver>, changelog, checksums and provenance.",
@@ -5343,8 +5477,13 @@
       "milestone": "M1",
       "dependencies": [],
       "status": "in-progress",
-      "allowed_paths": ["docs/tasks/m1.md", "docs/provider-protocols.md"],
-      "profiles": ["docs"],
+      "allowed_paths": [
+        "docs/tasks/m1.md",
+        "docs/provider-protocols.md"
+      ],
+      "profiles": [
+        "docs"
+      ],
       "behavior": "Prepare a scoped execution-card text with credential-free endpoint identities, model/build, explicit mode and per-profile/total budget cap, isolation/data handling, stop conditions and acceptance mapped to all seven provider-protocols §5 gates. Endpoint/budget values remain OWNER-GATED per the board Open Obligations row. Preparation only: no paid/live call; separate explicit owner budget authorization and endpoint configuration are required before any call.",
       "acceptance": {
         "normal": "LIVE-PREP-01: scoped card enumerates the seven §5 scenarios: clean no-YABANIN dual-wire acceptance; equivalent normalized semantics; header/session-mint separation; unknown price versus usage; mixed-provider root accounting/role; doctor unavailable with explicit model and pre-spend tool refusal; optional Yabanin separate profile/base release independence.",
@@ -5381,7 +5520,9 @@
       "id": "RAI-173",
       "title": "LIN-03.b: Lineage snapshot commit protocol across readers",
       "milestone": "LIN",
-      "dependencies": ["LIN-03"],
+      "dependencies": [
+        "LIN-03"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/lineage/**",
@@ -5390,7 +5531,12 @@
         "modules/cli/src/test/scala/raider/cli/run/**",
         "contracts/lineage/**"
       ],
-      "profiles": ["static", "unit", "contracts", "ci"],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
       "behavior": "LIN-03 pair-snapshot atomicity is effective only when readers honor its commit pointer. Authorize ReplayCli, HeadlessRunner, and live export to read a shared snapshot commit manifest or use equivalent write-then-rename discipline for the data/source pair. Prove zero torn reads with a concurrent-reader fixture aligned to LIN-14 expectations. Define the authorized mechanism for required live pinned-compiler validation. Parallel-safe reader changes only, after LIN-03 fold wiring merges.",
       "acceptance": {
         "normal": "LIN3B-01: ReplayCli, HeadlessRunner, and live export resolve one committed data/source snapshot through the shared reader protocol; a concurrent writer/reader fixture proves zero torn reads across repeated updates, using LIN-14 snapshot expectations.",
@@ -5404,13 +5550,20 @@
       "id": "RAI-175",
       "title": "PLANUI-02 authorized reproducer (plan settlement/approval capture)",
       "milestone": "M2",
-      "dependencies": ["RAI-110", "RAI-119"],
+      "dependencies": [
+        "RAI-110",
+        "RAI-119"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/test/scala/raider/repl/**",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "repl"],
+      "profiles": [
+        "static",
+        "unit",
+        "repl"
+      ],
       "behavior": "PLANUI-02 red appeared once on an integrated run (manifest `artifacts/quality/20261018-023805-12527-0001`; `PlanPanelSpec`: `ready2Fresh`/`approved2` false and `plan-exec` absent). Twenty focused attempts were green (10 isolated + 10 loaded, load >50). Mechanism analysis in `artifacts/planui02-diag/REPORT.md`: the watcher `outcomeRef` race could explain stale `ready2Fresh` but not missing `plan-exec`; approval starts execution only after plan-2 settlement (`PlanSession.scala:121–165`), and settlement/approval outcome was not captured. Instrument the PLANUI-02 fixture to capture plan-2 settlement and approval state in structured form, with no assertion changes, then run the authorized isolated + loaded probe matrices until the red recurs or the capture exonerates the suspects. Deliverable is a captured reproducer or recorded exoneration. No product fix in this card; any fix follows only from a captured reproducer (RAI-123 pattern). RAI-123 remains conditional because its mechanism was not established.",
       "acceptance": {
         "normal": "PLANUI2-CAP-01: capture plan-2 settlement and approval state structurally in the PLANUI-02 fixture without changing assertions; execute isolated and loaded probe matrices until recurrence or exoneration, preserving exact run logs/load observations.",
@@ -5453,7 +5606,11 @@
       "id": "RAI-177",
       "title": "LIN-04.b: REPL-host live-lineage adapter and real PTY acceptance",
       "milestone": "LIN",
-      "dependencies": ["LIN-04", "LIN-03", "RAI-173"],
+      "dependencies": [
+        "LIN-04",
+        "LIN-03",
+        "RAI-173"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
@@ -5462,7 +5619,12 @@
         "modules/ui/src/test/scala/raider/ui/LineageTabSpec.scala",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "repl", "docs"],
+      "profiles": [
+        "static",
+        "unit",
+        "repl",
+        "docs"
+      ],
       "behavior": "Complete the accepted LineageTab slice in the product REPL by wiring a live provider into the REPL host. Consume the LIN-03 live incremental projection and/or snapshots resolved exclusively through the RAI-173 commit-pointer protocol; never read a fixed artifact path or bypass the protocol. Surface invalid projections through a typed status that the tab renders honestly under ADR-024. Prove tab switching while a live producer updates the projection, using real PTY acceptance rather than only scripted-terminal tests.",
       "acceptance": {
         "normal": "LIN4B-01: product REPL host supplies a live lineage provider; a real producer's successive committed updates appear in the Lineage tab without blocking editable input, and rendering uses only complete pointer-resolved snapshots or the accepted live projection.",
@@ -5486,7 +5648,13 @@
         "docs/work/records/**",
         "artifacts/**"
       ],
-      "profiles": ["static", "unit", "runtime", "ci", "docs"],
+      "profiles": [
+        "static",
+        "unit",
+        "runtime",
+        "ci",
+        "docs"
+      ],
       "behavior": "Diagnose the full raiderCli/test timeout after the ZIO.sleep sweep: capture WIR-01 WorkflowLaunchSpec fiber trace/timeline under suite load and per-suite sbt wall times; adjudicate real-process fixture wall time, suite-duration growth under unchanged budgets, and residual blocking waits. Deliver the minimal evidence-supported fixture/parallelism correction and/or measured sbt-test budget calibration. e846d84 is precedent for measured calibration with identical assertions, not a bar change.",
       "acceptance": {
         "normal": "WIR01-STAB-01: capture an actionable WIR-01 fiber trace/timeline and per-suite sbt wall-time report from the full suite; correlate internal deadlines and test process activity, and identify blocking-wait evidence or explicitly rule it out for implicated fixtures.",
@@ -5500,7 +5668,11 @@
       "id": "RAI-179",
       "title": "SDLC checkpoint dispatch boundary (workflow→launcher seam)",
       "milestone": "M1",
-      "dependencies": ["RAI-165", "RAI-166", "RAI-164"],
+      "dependencies": [
+        "RAI-165",
+        "RAI-166",
+        "RAI-164"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/sdlc/approval/**",
@@ -5513,7 +5685,14 @@
         "docs/tasks/**",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci", "docs"],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci",
+        "docs"
+      ],
       "behavior": "Define and implement a typed SDLC checkpoint contract at the workflow-to-launcher dispatch seam under ADR-030 D1 and ADR-034 §composition, without freezing signatures. Carry trusted candidate identity, checkpoint ID and expiry, current-state re-read, and owner capability through dispatch; propagate NeedsApproval as the defined exit outcome and expose decision-file handling through the CLI. This supplies the dispatch boundary required to complete RAI-165.",
       "acceptance": {
         "normal": "SDLC-DISPATCH-01: the supported launcher dispatch path carries the typed checkpoint request and decision-file inputs; an authorized current-state approval is rechecked before a new invocation proceeds.",
@@ -5527,10 +5706,27 @@
       "id": "RAI-180",
       "title": "Clock contract for embeddable poll loops",
       "milestone": "M1",
-      "dependencies": ["RAI-178"],
+      "dependencies": [
+        "RAI-178"
+      ],
       "status": "accepted",
-      "allowed_paths": ["docs/runtime-contracts.md", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/main/scala/raider/cli/lineage/**", "modules/cli/src/test/scala/raider/cli/lineage/**", "docs/tasks/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci", "docs"],
+      "allowed_paths": [
+        "docs/runtime-contracts.md",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/lineage/**",
+        "modules/cli/src/test/scala/raider/cli/lineage/**",
+        "docs/tasks/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci",
+        "docs"
+      ],
       "behavior": "Define the clock source and deadline contract for runtime poll loops used by embedders. Harden affected main-source loops, including EventExport.awaitCaughtUp, so a wall-clock-bounded escape remains reachable regardless of ambient clock source while preserving live-clock cadence and semantics. Add fixtures proving termination under a frozen virtual clock.",
       "acceptance": {
         "normal": "CLOCK-POLL-01: runtime documentation defines clock/deadline behavior; affected loops preserve live-clock cadence and completion behavior.",
@@ -5544,7 +5740,11 @@
       "id": "RAI-181",
       "title": "SDLC release contract extension: LocalRelease stage + typed release evidence",
       "milestone": "M1",
-      "dependencies": ["RAI-168", "RAI-174", "RAI-179"],
+      "dependencies": [
+        "RAI-168",
+        "RAI-174",
+        "RAI-179"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "contracts/release/**",
@@ -5560,7 +5760,14 @@
         "docs/tasks/m1.md",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "contracts", "runtime", "ci", "release"],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci",
+        "release"
+      ],
       "behavior": "Complete RAI-168 by adding an additive release record kind to the RAI-174 SdlcArtifactSchema carrier, preserving v1 bytes without SDLC evidence and refusing unknown typed fields. Wire SdlcStages.LocalRelease to compose the existing bounded ReleaseStage service and emit typed release evidence to run.json/events.jsonl. Parse and cross-validate accepted check, review, and integration records against one identical candidate digest; absence, rejection, or mismatch refuses release. At the stage boundary require owner-granted release authority and the configured checkpoint under the RAI-165/179 launcher-policy discipline; checkpoints may narrow or pause capability, never grant it.",
       "acceptance": {
         "normal": "SDLC-REL-STAGE-01: a bounded LocalRelease stage composes the existing local release service and persists a typed release record through run.json and events.jsonl; valid parsed check/review/integration records all bind to the same accepted candidate digest.",
@@ -5574,7 +5781,11 @@
       "id": "RAI-182",
       "title": "LIN-06.b: CLI live-rerun wiring scope",
       "milestone": "LIN",
-      "dependencies": ["LIN-06", "LIN-03", "RAI-173"],
+      "dependencies": [
+        "LIN-06",
+        "LIN-03",
+        "RAI-173"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/runtime/src/main/scala/raider/runtime/lineage/**",
@@ -5586,7 +5797,12 @@
         "docs/tasks/lineage.md",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "contracts", "runtime"],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime"
+      ],
       "behavior": "Authorize the runtime-owned live-rerun seam needed by LIN-06 without widening its parent paths: a runtime lineage rerun backend implemented by CLI ReplayHarness, fresh live execution against fresh inputs resolved through pointer-aware LineageSnapshot, and IsolatedRerun live-mode wiring. Preserve recorded provenance and ADR-033/ADR-031 honesty: no replay of historical mutations and no durable-resume claims. Add LIN6-live acceptance for success, budget-bound refusal, and mid-rerun cancellation with honest interruption and prior-snapshot readability.",
       "acceptance": {
         "normal": "LIN6-LIVE-01: CLI ReplayHarness implements the runtime-owned rerun seam; live IsolatedRerun executes fresh against pointer-resolved LineageSnapshot inputs, records provenance, and reports the live-vs-recorded result without replaying historical mutations.",
@@ -5600,7 +5816,11 @@
       "id": "RAI-183",
       "title": "LIN-08.b: producer-origin lineage scopes + toolchain-pin production",
       "milestone": "LIN",
-      "dependencies": ["LIN-08", "LIN-03", "RAI-173"],
+      "dependencies": [
+        "LIN-08",
+        "LIN-03",
+        "RAI-173"
+      ],
       "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/chat/**",
@@ -5613,7 +5833,14 @@
         "docs/tasks/lineage.md",
         "docs/work/records/**"
       ],
-      "profiles": ["static", "unit", "contracts", "ci", "repl", "docs"],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "repl",
+        "docs"
+      ],
       "behavior": "Complete the LIN-08 producer side: chat sessions publish lineage artifacts through the existing LIN-03 export machinery with scope=chat; headless and campaign entrypoints stamp their respective scopes and write a toolchain.json beside each produced run. The pin uses the ReplayCli consumer contract: scala, jdk, raider, and optional model; unknown model identity remains absent rather than guessed. A chat-produced run is discoverable in the catalog under chat scope with a readable pin, and replay exercises the environment-pin report end to end.",
       "acceptance": {
         "normal": "LIN8B-01: chat sessions publish lineage using the existing LIN-03 machinery, stamped scope=chat; headless and campaign entrypoints stamp their scopes and write a readable toolchain.json with scala, jdk, raider, and optional model; a chat-produced run is cataloged under chat scope and replay completes with its environment-pin report.",
@@ -5627,10 +5854,23 @@
       "id": "RAI-184",
       "title": "Live-wire execution — budget guard and provider matrix",
       "milestone": "M1",
-      "dependencies": ["RAI-171"],
+      "dependencies": [
+        "RAI-171"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/runtime/src/main/scala/raider/runtime/budget/**", "modules/runtime/src/test/scala/raider/runtime/budget/**", "modules/provider-chat/**", "modules/provider-anthropic/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "transport"],
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/budget/**",
+        "modules/runtime/src/test/scala/raider/runtime/budget/**",
+        "modules/provider-chat/**",
+        "modules/provider-anthropic/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "transport"
+      ],
       "behavior": "Implement a per-response spend-ledger guard that checks the remaining USD cap and request-count cap before every provider call and returns a typed refusal at the admission boundary when another response could exceed either limit. Unit-test the guard without live calls. Then execute the live-wire-request.md scenario matrix independently against owner-configured OpenAI-compatible and Anthropic-compatible endpoints: direct response, streaming, complete tool round, cancellation mid-stream, and usage/cost reporting. Credentials are available only through environment-variable references or an approved helper. Record spend, latency, observed usage, estimates, unknown cost, endpoint/model identity, and each refusal/check; incomplete or failed scenarios are findings, never passes. Stop on cap exhaustion or uncertain charges, with no retry beyond the cap.",
       "acceptance": {
         "normal": "LIVE-EXEC-01: per-response pre-call guard enforces both total spend and request count, with typed refusal at the boundary; deterministic unit cases cover below-cap, exact-cap, next-request refusal, concurrent reservations, and settlement without any live call.",
@@ -5644,10 +5884,24 @@
       "id": "RAI-185",
       "title": "First CI — CLI process acceptance and adapter fixtures",
       "milestone": "M0",
-      "dependencies": ["RAI-131", "RAI-078"],
+      "dependencies": [
+        "RAI-131",
+        "RAI-078"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/ci/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "ci"],
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "contracts/ci/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
       "behavior": "Close the First CI CLI/process and adapter-fixture gap. Launch the exact First CI command as a real NON-TTY child process using `--ci generic`, `--context`, `--out`, and the mock backend; discover and validate the emitted artifacts, including distinct `result.json` and `artifacts.json` required by ci-runtime.md §7. Assert that `result.json` exists as a separate result surface; `run.json` is not its substitute. GitHub and GitLab environment-variable fixtures (actual CI variables, not only context files) must have semantic parity with generic context. Malformed context, bundle, or input must be rejected before dispatch with zero model calls/spend.",
       "acceptance": {
         "normal": "FCI-CLI-01: exact non-TTY mock invocation runs as a child process; discover all required artifacts and validate schemas/integrity, including distinct `result.json` and `artifacts.json` per ci-runtime §7; record exact argv and artifact paths.",
@@ -5661,10 +5915,28 @@
       "id": "RAI-186",
       "title": "First CI — report, checks, and exit contract closure",
       "milestone": "M0",
-      "dependencies": ["RAI-131", "RAI-185"],
+      "dependencies": [
+        "RAI-131",
+        "RAI-185"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/main/scala/raider/cli/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/ci/reports/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "ci", "tools", "security", "eval"],
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/cli/src/main/scala/raider/cli/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "contracts/ci/reports/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "tools",
+        "security",
+        "eval"
+      ],
       "behavior": "Close First CI report/check/exit acceptance. Verdicts must derive advisory-versus-blocking outcomes from actual deterministic check evidence and the frozen policy, never model-authored success. Require and integrity-check the run/result/events/JUnit/summary/artifacts manifest set. Specify and test table-driven exit mapping and precedence for write failure, uncertain outcome, deadline, policy denial, and cancellation. Exercise reporter escaping against hostile XML, Markdown, filesystem paths, and command-like content; a required artifact write failure is always nonzero and never exit 0.",
       "acceptance": {
         "normal": "FCI-REPORT-01: actual check evidence and frozen policy produce the expected advisory/blocking verdict, report, and exit; model output cannot manufacture successful check evidence.",
@@ -5678,10 +5950,26 @@
       "id": "RAI-187",
       "title": "First CI — lifecycle and joint acceptance record",
       "milestone": "M0",
-      "dependencies": ["RAI-185", "RAI-186"],
+      "dependencies": [
+        "RAI-185",
+        "RAI-186"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/acceptance/ci/**", "docs/acceptance/ci/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "ci", "runtime"],
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "contracts/acceptance/ci/**",
+        "docs/acceptance/ci/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci",
+        "runtime"
+      ],
       "behavior": "Verify First CI lifecycle behavior and publish the minimal combined acceptance matrix. A deadline run must yield the defined policy exit and honest artifacts. Send PARENT-DELIVERED OS SIGTERM to the real CLI child process; verify owned-child/process-group cleanup within a bounded stop, signal exit semantics, and truthful partial artifacts. Fiber-interrupt tests are lower-level evidence only and do not substitute for process-level signaling. Run one minimal combined fixture against every First CI clause and record exact commands and evidence.",
       "acceptance": {
         "normal": "FCI-LIFE-01: a deadline fixture exits according to policy and emits truthful deadline/accounting/result/report artifacts, with no fabricated success.",
@@ -5695,10 +5983,31 @@
       "id": "RAI-195",
       "title": "CI check-policy contract: advisory/blocking declaration on trusted checks",
       "milestone": "M0",
-      "dependencies": ["RAI-186", "RAI-131"],
+      "dependencies": [
+        "RAI-186",
+        "RAI-131"
+      ],
       "status": "accepted",
-      "allowed_paths": ["docs/tasks/m0.md", "docs/tasks/backlog.json", "docs/tasks/README.md", "docs/work/board.md", "docs/ci-runtime.md", "docs/adr/**", "contracts/ci/**", "contracts/bundle/**", "modules/ci/**", "modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "ci"],
+      "allowed_paths": [
+        "docs/tasks/m0.md",
+        "docs/tasks/backlog.json",
+        "docs/tasks/README.md",
+        "docs/work/board.md",
+        "docs/ci-runtime.md",
+        "docs/adr/**",
+        "contracts/ci/**",
+        "contracts/bundle/**",
+        "modules/ci/**",
+        "modules/cli/src/main/scala/raider/cli/run/**",
+        "modules/cli/src/test/scala/raider/cli/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "ci"
+      ],
       "behavior": "Define and freeze an advisory Boolean on trusted workflow/bundle check metadata, specifically the exported-workflow trustedChecks surface. Policy is workflow-bound, not CI-context configuration, CLI override, model output, or task input. Advisory check failure produces a success-with-advisory verdict, exit 0, and recorded verdict/evidence per ci-runtime §§7–8; blocking failure remains task-failed. Missing, unknown, or mismatched check IDs are blocking by fail-safe default. Freeze serialization and provenance with the bundle and record resolved policy identity in run outcomes. Threshold semantics are excluded from v1. RAI-186 completes FCI-REPORT-01 under this contract.",
       "acceptance": {
         "normal": "CI-POLICY-01: trusted workflow/bundle metadata round-trips advisory with immutable provenance; advisory failure records success-with-advisory and exits 0, while blocking failure exits 10.",
@@ -5714,8 +6023,19 @@
       "milestone": "P2",
       "dependencies": [],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "repl"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl"
+      ],
       "behavior": "Build a chat-centric layout in the existing custom ANSI renderer around the current ChatLoop/facade. Render streaming through the ADR-024 renderer seam, provide bounded scroll regions, and integrate existing tabs and :aux. Preserve existing real PTY acceptance patterns.",
       "acceptance": {
         "normal": "TUIX-B1-01: interactive chat uses the central pane, streams via the renderer seam, and scroll regions display bounded chat history.",
@@ -5729,10 +6049,27 @@
       "id": "RAI-189",
       "title": "TUI-X.B2: tool-call cards with inline approval",
       "milestone": "P2",
-      "dependencies": ["RAI-188"],
+      "dependencies": [
+        "RAI-188"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "repl",
+        "security"
+      ],
       "behavior": "Render fs_read, fs_search, proc_run, and fs_patch calls as cards with inline approve/deny wired to existing plan-mode and approval machinery. Launcher policy and tool policy remain authoritative; the interface never expands authority.",
       "acceptance": {
         "normal": "TUIX-B2-01: supported calls render as bounded cards and explicit decisions reach the existing plan-mode API with correct call/session identity.",
@@ -5746,10 +6083,25 @@
       "id": "RAI-190",
       "title": "TUI-X.B3: session switcher + tasks panel + status footer",
       "milestone": "P2",
-      "dependencies": ["RAI-188"],
+      "dependencies": [
+        "RAI-188"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "repl"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl"
+      ],
       "behavior": "Surface existing :sessions list/switch in the layout; add a tasks/todo panel backed by existing plan-mode data; show model, budget, and stream state from ADR-024 events; upgrade command-palette discoverability to the OpenCode-level target without changing Raider policy or ownership.",
       "acceptance": {
         "normal": "TUIX-B3-01: users can list/switch sessions, view plan tasks/todos, and see model/budget/stream state sourced from the existing event seam.",
@@ -5763,10 +6115,25 @@
       "id": "RAI-191",
       "title": "TUI-X.A1: markdown + syntax highlighting + diff in the own renderer",
       "milestone": "P2",
-      "dependencies": ["RAI-188", "RAI-190"],
+      "dependencies": [
+        "RAI-188",
+        "RAI-190"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "repl", "security"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/tools/src/main/scala/raider/tools/files/**",
+        "modules/tools/src/test/scala/raider/tools/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl",
+        "security"
+      ],
       "behavior": "Extend the own renderer for streaming-safe markdown headings/lists/code blocks, Scala and JSON tokenization with ANSI highlighting, unified diff reusing fs_patch/UnifiedDiff, dark/light themes, and box-drawing. Incomplete streamed blocks remain renderable and recover.",
       "acceptance": {
         "normal": "TUIX-A1-01: complete and incremental markdown, Scala, JSON, and diff fixtures render with stable wrapping, themes, ANSI styling, and box-drawing.",
@@ -5780,10 +6147,30 @@
       "id": "RAI-192",
       "title": "TUI-X.C1: diff review accept/reject + model/provider switcher",
       "milestone": "P2",
-      "dependencies": ["RAI-189", "RAI-191"],
+      "dependencies": [
+        "RAI-189",
+        "RAI-191"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "modules/tools/src/main/scala/raider/tools/files/**", "modules/tools/src/test/scala/raider/tools/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "runtime", "repl", "security"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "modules/tools/src/main/scala/raider/tools/files/**",
+        "modules/tools/src/test/scala/raider/tools/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "repl",
+        "security"
+      ],
       "behavior": "Provide per-hunk diff accept/reject through fs_patch application policy; switch model/provider from TUI through existing environment policy without displaying credentials; fold the existing lineage tab into the layout.",
       "acceptance": {
         "normal": "TUIX-C1-01: each hunk is explicitly accepted/rejected through existing patch policy; configured model/provider choices switch at the environment-policy boundary; lineage is reachable.",
@@ -5799,8 +6186,20 @@
       "milestone": "P2",
       "dependencies": [],
       "status": "accepted",
-      "allowed_paths": ["packaging/**", "scripts/release/**", "contracts/package/**", "docs/releases/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "release", "security"],
+      "allowed_paths": [
+        "packaging/**",
+        "scripts/release/**",
+        "contracts/package/**",
+        "docs/releases/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "release",
+        "security"
+      ],
       "behavior": "Deliver a coursier launcher and existing fat-jar base, Homebrew and Scoop formulas, versioned releases through Raider's own SDLC release pipeline, and install smoke tests. Dogfood SemVer, changelog, and checksum requirements; hosted publication is not implied.",
       "acceptance": {
         "normal": "TUIX-D1-01: clean-directory coursier/fat-jar install starts the supported entry point; version, changelog, and checksums agree.",
@@ -5814,10 +6213,22 @@
       "id": "RAI-194",
       "title": "TUI-X.D2: GraalVM native-image evaluation (spike)",
       "milestone": "P2",
-      "dependencies": ["RAI-193"],
+      "dependencies": [
+        "RAI-193"
+      ],
       "status": "accepted",
-      "allowed_paths": ["packaging/**", "scripts/release/**", "docs/research/**", "docs/adr/**", "docs/work/records/**"],
-      "profiles": ["static", "release", "docs"],
+      "allowed_paths": [
+        "packaging/**",
+        "scripts/release/**",
+        "docs/research/**",
+        "docs/adr/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "release",
+        "docs"
+      ],
       "behavior": "Evaluate native-image feasibility for pinned Scala/ZIO: reflection/configuration reachability, reproducible build feasibility, startup and binary-size measurements, and honest go/no-go recommendation. A go decision requires a separate ADR before implementation.",
       "acceptance": {
         "normal": "TUIX-D2-01: pinned-toolchain feasibility build and reachability/configuration inventory are reproducible from documented commands.",
@@ -6189,10 +6600,26 @@
       "id": "RAI-208",
       "title": "TUI-X.B3.b: live plan/budget wiring in the chat shell",
       "milestone": "P2",
-      "dependencies": ["RAI-190", "RAI-188"],
+      "dependencies": [
+        "RAI-190",
+        "RAI-188"
+      ],
       "status": "accepted",
-      "allowed_paths": ["modules/ui/src/main/scala/raider/ui/**", "modules/ui/src/test/scala/raider/ui/**", "modules/repl/src/main/scala/raider/repl/**", "modules/repl/src/test/scala/raider/repl/**", "modules/cli/src/main/scala/raider/cli/chat/**", "modules/cli/src/test/scala/raider/cli/chat/**", "docs/work/records/**"],
-      "profiles": ["static", "unit", "contracts", "repl"],
+      "allowed_paths": [
+        "modules/ui/src/main/scala/raider/ui/**",
+        "modules/ui/src/test/scala/raider/ui/**",
+        "modules/repl/src/main/scala/raider/repl/**",
+        "modules/repl/src/test/scala/raider/repl/**",
+        "modules/cli/src/main/scala/raider/cli/chat/**",
+        "modules/cli/src/test/scala/raider/cli/chat/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "repl"
+      ],
       "behavior": "Wire the chat shell to the real plan and budget state using the 2026-10-24 classloader-boundary decision: construct one session EventHub in the interpreter world with ReplSession; serialize ADR-024 events and PlanSession snapshots over the existing bridge; do not cross the boundary with typed runtime classes or manufacture values. Populate the tasks panel from real plan snapshots and the footer from real budget transitions, retaining honest unknown/unavailable states until sourced values exist.",
       "acceptance": {
         "normal": "TUIX-B3B-01: real PlanSession snapshot state populates tasks/todos in the chat shell through the serialized bridge; real ADR-024 budget events update the footer without synthetic values.",
@@ -6481,6 +6908,87 @@
       },
       "non_goals": "Shipping product code in Python; changing pinned coordinates or toolchain.",
       "context": "Observed on RAI-203/RAI-207 lanes (2026-10-25): manual SSL_CERT_FILE workaround; owner-approved glue fix."
+    },
+    {
+      "id": "RAI-219",
+      "title": "ChatWorkflowExport staging-race mirror: fail-fast without deleting the winner",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-213"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/dsl/src/main/scala/raider/dsl/workflow/ChatWorkflowExport.scala",
+        "modules/dsl/src/test/scala/raider/dsl/workflow/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts"
+      ],
+      "behavior": "The Scala chat exporter gains the same FileAlreadyExistsException branch accepted for the portable exporter in RAI-213: a lost staging claim refuses typed without deleting the winner's in-flight staging; the stale \"concurrent exports serialize\" Scaladoc is corrected to the fail-fast exclusion discipline.",
+      "acceptance": {
+        "normal": "Single-export publish behavior is byte-identical to the accepted baseline.",
+        "error": "A lost staging claim (deterministic dangling-symlink pin and a latched two-thread race) refuses typed without deleting the winner's staging; no half-published bundle.",
+        "concurrency": "Latched two-thread concurrent export: exactly one publishes, loser refuses typed, winner staging intact, iterated at least 30 times without sleeps."
+      },
+      "non_goals": "Serializing concurrent exports; changing publish semantics or the manifest schema; touching the portable exporter (fixed in RAI-213).",
+      "context": "RAI-213 review (2026-10-26) flagged ChatWorkflowExport.scala:179 as the same defect class (FAEE lands in the generic branch and deletes staging) plus the stale Scaladoc at :35."
+    },
+    {
+      "id": "RAI-220",
+      "title": "Wire PortableBundleVerifier into PortableRun lowering",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-214"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/portable/**",
+        "modules/cli/src/test/scala/raider/cli/portable/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "static",
+        "unit",
+        "contracts",
+        "runtime",
+        "ci"
+      ],
+      "behavior": "PortableRun consumes the documented RAI-214 seam: detect the sibling manifest, verifyBundle, and lower exactly the returned verified bytes; tampered, missing, or extra-unmanifested bundles refuse typed before any lowering; valid bundles run unchanged.",
+      "acceptance": {
+        "normal": "A valid published bundle verifies and lowers to the same behavior as before, end-to-end through the run path.",
+        "error": "Tampered file, missing file, and extra unmanifested file each refuse typed before any lowering through the run path (no dispatch, no partial run.json claims).",
+        "concurrency": "Verification remains pure and bounded; the TOCTOU window stays closed by consuming the returned bytes, pinned by a test."
+      },
+      "non_goals": "Schema or manifest changes; new refusals beyond the RAI-214 typed set; changing PortableChatExport or the verifier itself.",
+      "context": "RAI-214 deferred the wiring with a documented one-call seam (211/212 owned cli/portable that wave); review called the wiring follow-up mandatory."
+    },
+    {
+      "id": "RAI-221",
+      "title": "bootstrap_ca.py hardening and named-case evidence retention",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-218"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "static"
+      ],
+      "behavior": "certifi.where() is called inside the ImportError guard so a broken certifi install cannot produce a traceback; the four named-case bootstrap logs are retained lane-locally under artifacts/rai218/ with their sha256 values appended to the work record.",
+      "acceptance": {
+        "normal": "Clean and idempotent bootstrap on stock macOS unchanged (pinned coordinates and toolchain untouched).",
+        "error": "certifi that imports but raises in where() produces the typed failure message with remediation hint and exit 1, zero traceback lines, zero fetch attempts.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Product code; changing resolution precedence or pinned coordinates; repo commits under artifacts/ (gitignored; retention is lane-local with hashes in the record).",
+      "context": "RAI-218 review (2026-10-26): where() sits outside the try (only path violating never-a-traceback); named-case logs lacked retained hashes."
     }
   ]
 }

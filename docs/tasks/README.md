@@ -300,3 +300,6 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-204** [Installed first-use path and coherent onboarding](m1.md); accepted; dependencies: RAI-193; profiles: docs, release.
 - **RAI-205** [Independent cross-ecosystem comparison and consumer acceptance](m1.md); dependencies: RAI-199, RAI-201, RAI-203, RAI-204, RAI-202; profiles: docs, contracts, ci, runtime, eval, security.
 - **RAI-206** [Demand-gated Java embedding facade design spike](m1.md); dependencies: RAI-205; profiles: docs.
+- **RAI-219** [ChatWorkflowExport staging-race mirror: fail-fast without deleting the winner](m1.md); ready; dependencies: RAI-213; profiles: static, unit, contracts.
+- **RAI-220** [Wire PortableBundleVerifier into PortableRun lowering](m1.md); ready; dependencies: RAI-214; profiles: static, unit, contracts, runtime, ci.
+- **RAI-221** [bootstrap_ca.py hardening and named-case evidence retention](m1.md); ready; dependencies: RAI-218; profiles: fast, static.
