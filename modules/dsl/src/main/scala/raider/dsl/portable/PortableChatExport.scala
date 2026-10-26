@@ -13,21 +13,33 @@ import java.security.MessageDigest
 import scala.util.control.NonFatal
 
 import raider.core.RaiderError
-import raider.dsl.workflow.StsSelection
+import raider.dsl.workflow.{NamedCheck, StsSelection}
 import zio.json.*
 import zio.json.ast.Json
 
+/** One launcher-pinned trusted check reference a portable export may NAME
+  * (ADR-038): the pinned check id plus its pinned registry snapshot digest.
+  * Plain data — the pair is exactly the key the run-side
+  * `PortableProgramRegistry.checks` resolves, so a document naming these
+  * references lowers natively on the same launcher. Check argv is never part of
+  * the exported wire; it is bound only through the snapshot digest.
+  */
+final case class PortablePinnedCheck(
+    checkId: String,
+    registrySnapshot: String
+)
+
 /** The launcher/stand-side trusted references a portable export NAMES in its
-  * document and manifest (RAI-203; ADR-036 trust rules): the export never
-  * embeds credentials or argv — it records only the pinned profile, toolset,
-  * check id and the pinned registry snapshot digest. A run must resolve these
-  * names against an equal snapshot or the launcher refuses typed.
+  * document and manifest (RAI-203; ADR-036 trust rules; ADR-038 mapping): the
+  * export never embeds credentials or argv — it records only the pinned
+  * profile, toolset and the pinned check references (id + snapshot digest). A
+  * run must resolve these names against an equal snapshot or the launcher
+  * refuses typed.
   */
 final case class PortableExportTarget(
     profile: String,
     toolset: String,
-    checkId: String,
-    registrySnapshot: String
+    checks: List[PortablePinnedCheck]
 )
 
 /** Export options: the artifact base name (R1 rules below). */
@@ -44,17 +56,18 @@ final case class PortableExportResult(
     inputExampleSha256: String
 )
 
-/** Portable chat export (RAI-203): renders a validated `StsSelection` (the chat
-  * workflow subset of ADR-033) as a self-contained portable workflow v1
-  * document plus a closed manifest and an input example, WITHOUT weakening the
-  * existing Scala export.
+/** Portable chat export (RAI-203; ADR-038 mapping): renders a validated
+  * `StsSelection` (the chat workflow subset of ADR-033) as a self-contained
+  * portable workflow v1 document plus a closed manifest and an input example,
+  * WITHOUT weakening the existing Scala export.
   *
   * Discipline:
-  *   - the selection's named trusted checks are NOT representable in portable
-  *     workflow v1 (checks enter a portable document only through the
-  *     launcher-pinned registry, never through the document): an export that
-  *     would lose them refuses typed (CWF-R3) and names the retained Scala
-  *     export — nothing is silently dropped;
+  *   - the selection's named trusted checks map onto `trustedCheck` steps ONLY
+  *     by exact match against the export target's launcher-pinned check table
+  *     (same id AND same definition digest `[[checkSnapshot]]`, non-advisory):
+  *     any other check refuses typed (CWF-R3) with the per-check reason and
+  *     names the retained Scala export — nothing is silently dropped, no
+  *     snapshot is fabricated, no argv is inlined;
   *   - the rendered document is validated by [[PortableWorkflowValidator]] and
   *     the manifest by its own closed schema check BEFORE any byte is written;
   *     a self-check failure is an honest typed refusal, never a broken export;
@@ -95,7 +108,7 @@ object PortableChatExport:
   private val GateStepId = "gate"
   private val RunStepId = "run"
 
-  /** Export pipeline: representability -> naming/provenance checks -> render ->
+  /** Export pipeline: gate mapping -> naming/provenance checks -> render ->
     * self-validate -> staging -> atomic publish.
     */
   def exportTo(
@@ -106,15 +119,16 @@ object PortableChatExport:
       exportedAtMs: Long
   ): Either[RaiderError, PortableExportResult] =
     for
-      _ <- requireRepresentable(selection)
+      gates <- resolveGateChecks(selection, target)
       _ <- requireValidName(options.name)
       _ <- requireBoundedProvenance(selection, exportedAtMs)
-      documentText = documentJson(selection, target).toJson
+      documentText = documentJson(selection, target, gates).toJson
       inputText = inputExampleJson(selection).toJson
       manifestText =
         manifestJson(
           selection,
           target,
+          gates,
           options.name,
           documentText,
           inputText,
@@ -159,26 +173,94 @@ object PortableChatExport:
         "sha256-" + sha256Hex(inputText.getBytes(StandardCharsets.UTF_8))
     )
 
-  /** R3: named trusted checks are not representable in portable workflow v1.
-    * The refusal names the unsupported construct and keeps the Scala option.
+  /** The canonical pinned-definition digest of a trusted check (ADR-038 §2.1):
+    * `sha256:` + lowercase hex over the UTF-8 bytes of the check id and the
+    * full argv vector joined by NUL separators. This is the wire-level
+    * derivation the launcher registry (`PortableTrustedRegistry.checkSnapshot`)
+    * pins; a pinned test asserts both derivations agree, so a chat check can
+    * match a pinned entry only when its name AND entire argv are definitionally
+    * identical.
     */
-  def requireRepresentable(
-      selection: StsSelection
-  ): Either[RaiderError, Unit] =
-    if selection.checks.nonEmpty then
-      val names = selection.checks.map(_.name).mkString(", ")
-      Left(
-        refuse(
-          "R3",
-          "this selection names " + selection.checks.size + " trusted check(s) (" +
-            names + "): portable workflow v1 has no user-named check construct — " +
-            "checks enter a portable document only through the launcher-pinned " +
-            "registry, so exporting them would silently drop them; re-export " +
-            "without :task mark'ed checks, or keep the existing Scala export " +
-            "which renders named checks natively"
+  def checkSnapshot(checkId: String, argv: List[String]): String =
+    val material = (checkId +: argv).mkString("\u0000")
+    "sha256:" + sha256Hex(material.getBytes(StandardCharsets.UTF_8))
+
+  /** R3 (ADR-038 §2.1): the pure exact-match mapping of chat named checks onto
+    * the export target's launcher-pinned check table. A check maps iff it is
+    * non-advisory and a pinned entry exists with the SAME id AND the SAME
+    * definition digest. All-or-nothing: the first unmappable check refuses
+    * CWF-R3 with the specific reason and the retained Scala option; mapped
+    * duplicates fold into one reference, preserving first-occurrence order.
+    * Pure: no I/O, no dispatch, no registry mutation.
+    */
+  def mapNamedChecks(
+      checks: List[NamedCheck],
+      pinned: List[PortablePinnedCheck]
+  ): Either[RaiderError, List[PortablePinnedCheck]] =
+    if checks.isEmpty then Right(List.empty)
+    else
+      val unmappable = checks.find { c =>
+        c.advisory || !pinned.exists(p =>
+          p.checkId == c.name &&
+            p.registrySnapshot == checkSnapshot(c.name, c.argv)
         )
-      )
-    else Right(())
+      }
+      unmappable match
+        case None =>
+          val mapped = checks
+            .map(c =>
+              pinned
+                .find(p =>
+                  p.checkId == c.name &&
+                    p.registrySnapshot == checkSnapshot(c.name, c.argv)
+                )
+                .get
+            )
+            .distinct
+          Right(mapped)
+        case Some(c) if c.advisory =>
+          Left(
+            refuse(
+              "R3",
+              "this selection names the advisory trusted check '" + c.name +
+                "': a portable trustedCheck result always feeds the trusted " +
+                "verdict (blocking), so mapping it would silently strengthen " +
+                "the check; portable exports name pinned checks only — keep " +
+                "the existing Scala export which renders advisory checks " +
+                "natively"
+            )
+          )
+        case Some(c) =>
+          val pinnedSameId =
+            pinned.find(_.checkId == c.name).map(_.checkId)
+          val reason = pinnedSameId match
+            case Some(_) =>
+              "a pinned check with this id exists but its pinned " +
+                "registrySnapshot differs (the digest binds id and full argv)"
+            case None =>
+              "no launcher-pinned trusted check has this id"
+          Left(
+            refuse(
+              "R3",
+              "'" + c.name + "' does not exact-match the launcher-pinned " +
+                "check table (" + reason + ") — portable exports may only " +
+                "NAME pinned (checkId, registrySnapshot) pairs, never inline " +
+                "check argv; register the exact pinned definition or keep " +
+                "the Scala export"
+            )
+          )
+
+  /** The gate steps of an export (ADR-038 §2.2): a selection without named
+    * checks renders the target's pinned entries (the launcher-default gate
+    * path); a selection with named checks must exact-match them (all-or-
+    * nothing). Pure.
+    */
+  def resolveGateChecks(
+      selection: StsSelection,
+      target: PortableExportTarget
+  ): Either[RaiderError, List[PortablePinnedCheck]] =
+    if selection.checks.isEmpty then Right(target.checks)
+    else mapNamedChecks(selection.checks, target.checks)
 
   private def requireValidName(name: String): Either[RaiderError, Unit] =
     if namePattern.matches(name) then Right(())
@@ -217,15 +299,28 @@ object PortableChatExport:
       )
     else Right(())
 
-  /** The portable workflow v1 document: one pinned agent stage + one pinned
-    * gate check folded by a sequence; the run verdict is the sequence output
-    * under trustedVerifier authority. All per-run content (intent, refinements,
-    * task params) stays in the input example, never inlined into the document.
+  /** The portable workflow v1 document (ADR-038 §2.2): one pinned agent stage +
+    * one trustedCheck gate step per resolved gate reference folded by a
+    * sequence; the run verdict is the sequence output under trustedVerifier
+    * authority. All per-run content (intent, refinements, task params) stays in
+    * the input example, never inlined into the document.
     */
   def documentJson(
       selection: StsSelection,
-      target: PortableExportTarget
+      target: PortableExportTarget,
+      gates: List[PortablePinnedCheck]
   ): Json =
+    val gateIds = gateStepIds(gates.size)
+    val gateSteps = gates.zip(gateIds).map { case (gate, id) =>
+      Json.Obj(
+        "id" -> Json.Str(id),
+        "kind" -> Json.Str("trustedCheck"),
+        "checkId" -> Json.Str(gate.checkId),
+        "registrySnapshot" -> Json.Str(gate.registrySnapshot),
+        "input" -> Json.Str("#/steps/act/output"),
+        "outputSchema" -> Json.Str("gateVerdict")
+      )
+    }
     Json.Obj(
       "format" -> Json.Str("raider.portable-workflow"),
       "version" -> Json.Str(DocumentVersion),
@@ -273,32 +368,28 @@ object PortableChatExport:
         )
       ),
       "steps" -> Json.Arr(
-        Json.Obj(
-          "id" -> Json.Str(ActStepId),
-          "kind" -> Json.Str("agent"),
-          "profile" -> Json.Str(target.profile),
-          "toolset" -> Json.Str(target.toolset),
-          "input" -> Json.Str("#/inputs/task"),
-          "structuredOutput" -> Json.Bool(true),
-          "outputSchema" -> Json.Str("actReport")
-        ),
-        Json.Obj(
-          "id" -> Json.Str(GateStepId),
-          "kind" -> Json.Str("trustedCheck"),
-          "checkId" -> Json.Str(target.checkId),
-          "registrySnapshot" -> Json.Str(target.registrySnapshot),
-          "input" -> Json.Str("#/steps/act/output"),
-          "outputSchema" -> Json.Str("gateVerdict")
-        ),
-        Json.Obj(
-          "id" -> Json.Str(RunStepId),
-          "kind" -> Json.Str("sequence"),
-          "steps" -> Json.Arr(
-            Json.Str(ActStepId),
-            Json.Str(GateStepId)
-          ),
-          "outputSchema" -> Json.Str("flowVerdict")
-        )
+        (
+          List(
+            Json.Obj(
+              "id" -> Json.Str(ActStepId),
+              "kind" -> Json.Str("agent"),
+              "profile" -> Json.Str(target.profile),
+              "toolset" -> Json.Str(target.toolset),
+              "input" -> Json.Str("#/inputs/task"),
+              "structuredOutput" -> Json.Bool(true),
+              "outputSchema" -> Json.Str("actReport")
+            )
+          ) ++ gateSteps ++ List(
+            Json.Obj(
+              "id" -> Json.Str(RunStepId),
+              "kind" -> Json.Str("sequence"),
+              "steps" -> Json.Arr(
+                (ActStepId +: gateIds).map(id => Json.Str(id))*
+              ),
+              "outputSchema" -> Json.Str("flowVerdict")
+            )
+          )
+        )*
       ),
       "outputs" -> Json.Obj(
         "bindings" -> Json.Obj(
@@ -310,6 +401,16 @@ object PortableChatExport:
         )
       )
     )
+
+  /** Deterministic gate step ids (ADR-038 §2.2): `gate`, `gate-2`, `gate-3`, …
+    * — the first gate keeps the historical RAI-203 id.
+    */
+  def gateStepIds(count: Int): List[String] =
+    if count <= 0 then List.empty
+    else
+      val first = GateStepId
+      val rest = (2 to count).map(i => GateStepId + "-" + i).toList
+      first +: rest
 
   private def verdictSchema: Json =
     Json.Obj(
@@ -346,17 +447,41 @@ object PortableChatExport:
     )
 
   /** The closed export manifest: provenance + identity digests + the pinned
-    * trusted references. No credential values, no argv.
+    * trusted references. No credential values, no argv. `trusted` records the
+    * FIRST gate; when the export mapped named chat checks, `trustedChecks`
+    * (ADR-038 §2.4, additive optional field) carries the complete ordered list;
+    * the check-free path keeps the RAI-203 manifest shape byte-for-byte.
     */
   def manifestJson(
       selection: StsSelection,
       target: PortableExportTarget,
+      gates: List[PortablePinnedCheck],
       name: String,
       documentText: String,
       inputText: String,
       exportedAtMs: Long
   ): Json =
-    Json.Obj(
+    val trustedFields =
+      List(
+        "profile" -> Json.Str(target.profile),
+        "toolset" -> Json.Str(target.toolset),
+        "checkId" -> Json.Str(gates.head.checkId),
+        "registrySnapshot" -> Json.Str(gates.head.registrySnapshot)
+      )
+    val trustedChecksField =
+      if selection.checks.isEmpty then List.empty
+      else
+        List(
+          "trustedChecks" -> Json.Arr(
+            gates.map(g =>
+              Json.Obj(
+                "checkId" -> Json.Str(g.checkId),
+                "registrySnapshot" -> Json.Str(g.registrySnapshot)
+              )
+            )*
+          )
+        )
+    val baseFields = List(
       "schemaVersion" -> Json.Num(BigDecimal(1)),
       "kind" -> Json.Str(ManifestKind),
       "exportedAtMs" -> Json.Num(BigDecimal(exportedAtMs)),
@@ -389,17 +514,14 @@ object PortableChatExport:
           "sha256:" + sha256Hex(inputText.getBytes(StandardCharsets.UTF_8))
         )
       ),
-      "trusted" -> Json.Obj(
-        "profile" -> Json.Str(target.profile),
-        "toolset" -> Json.Str(target.toolset),
-        "checkId" -> Json.Str(target.checkId),
-        "registrySnapshot" -> Json.Str(target.registrySnapshot)
-      )
+      "trusted" -> Json.Obj(trustedFields*)
     )
+    Json.Obj((baseFields ++ trustedChecksField)*)
 
   /** The closed manifest schema check (mirrors
     * `contracts/workflow-portable/schema/chat-portable-export-manifest-v1.schema.json`):
-    * every field closed, types and bounds exact.
+    * every field closed, types and bounds exact. `trustedChecks` is the one
+    * additive OPTIONAL field (ADR-038 §2.4).
     */
   def validateManifest(text: String): Either[String, Json] =
     text.fromJson[Json] match
@@ -407,7 +529,7 @@ object PortableChatExport:
       case Right(json) =>
         json match
           case root: Json.Obj =>
-            val expected =
+            val required =
               Set(
                 "schemaVersion",
                 "kind",
@@ -419,10 +541,12 @@ object PortableChatExport:
                 "inputExample",
                 "trusted"
               )
+            val optional = Set("trustedChecks")
             val actual = root.fields.map(_._1).toSet
-            if actual != expected then
+            if actual != required && actual != required ++ optional then
               Left(
-                "manifest fields must be exactly " + expected.mkString(", ") +
+                "manifest fields must be exactly " +
+                  (required ++ optional).mkString(", ") +
                   "; found: " + actual.mkString(", ")
               )
             else
@@ -474,8 +598,38 @@ object PortableChatExport:
                   _ <- requireIdentifier(trusted, "checkId")
                   _ <- requireSha256(trusted, "registrySnapshot")
                 yield ()
+                _ <- trustedChecksOk(root)
               yield json
           case _ => Left("the manifest must be a JSON object")
+
+  /** The optional `trustedChecks` array (ADR-038 §2.4): 1..64 entries, each a
+    * closed `{checkId, registrySnapshot}` object.
+    */
+  private def trustedChecksOk(root: Json.Obj): Either[String, Unit] =
+    root.fields.collectFirst { case ("trustedChecks", value) => value } match
+      case None => Right(())
+      case Some(Json.Arr(values)) =>
+        if values.isEmpty || values.size > 64 then
+          Left("manifest 'trustedChecks' must have 1..64 entries")
+        else
+          val wellFormed = values.forall(isPinnedCheckRef)
+          if wellFormed then Right(())
+          else
+            Left(
+              "manifest 'trustedChecks' entries must be closed objects " +
+                "{checkId, registrySnapshot}"
+            )
+      case Some(_) =>
+        Left("manifest 'trustedChecks' must be an array")
+
+  private def isPinnedCheckRef(value: Json): Boolean =
+    value match
+      case obj: Json.Obj =>
+        val fields = obj.fields.map(_._1).toSet
+        fields == Set("checkId", "registrySnapshot") &&
+        requireIdentifier(obj, "checkId").isRight &&
+        requireSha256(obj, "registrySnapshot").isRight
+      case _ => false
 
   // -- manifest check helpers ------------------------------------------------
 
