@@ -1,5 +1,6 @@
 package raider.dsl.portable
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 
 import zio.json.*
@@ -20,23 +21,54 @@ import raider.dsl.workflow.{
   StsTurnStatus
 }
 
-/** RAI-203 portable chat export: mapping fidelity (selection -> portable
-  * workflow v1 document + closed manifest + input example), self-validation of
-  * the rendered artifacts, the CWF-R3 refusal that keeps the Scala option when
-  * named checks are present, and the inherited R5 staging/never-overwrite
-  * discipline. FS facts are captured into vals BEFORE cleanup (the assertTrue
-  * macro re-evaluates lazily).
+/** RAI-203/RAI-215 portable chat export: mapping fidelity (selection ->
+  * portable workflow v1 document + closed manifest + input example), the
+  * ADR-038 exact-match mapping of named checks onto pinned trustedCheck
+  * references (purity, all-or-nothing refusals without fabrication), the
+  * self-validation of the rendered artifacts, and the inherited R5
+  * staging/never-overwrite discipline. FS facts are captured into vals BEFORE
+  * cleanup (the assertTrue macro re-evaluates lazily).
   */
 object PortableChatExportSpec extends ZIOSpecDefault:
 
-  private val snapshot =
-    "sha256:" + ("ab" * 32)
+  /** The launcher marker check definition (ADR-038's worked example): the
+    * pinned id plus the pinned argv vector. The digest below is the FROZEN
+    * pinned snapshot (also asserted by the cli suite against
+    * `PortableTrustedRegistry.checkSnapshot`) — pinning it here means any drift
+    * in the canonical derivation breaks this suite.
+    */
+  private val markerArgv = List("/bin/test", "-f", "marker.txt")
+
+  private val markerCheck =
+    NamedCheck("workspace-marker-present", markerArgv)
+
+  private val markerSnapshot =
+    PortableChatExport.checkSnapshot("workspace-marker-present", markerArgv)
+
+  private val FrozenMarkerSnapshot =
+    "sha256:0c877972cf59788094e1d7653a1f01f6cd1b6c9108d117d5e069bc6b6bdaba0b"
 
   private val target = PortableExportTarget(
     profile = "coder",
     toolset = "workspace",
-    checkId = "workspace-marker-present",
-    registrySnapshot = snapshot
+    checks =
+      List(PortablePinnedCheck("workspace-marker-present", markerSnapshot))
+  )
+
+  /** A second pinned entry for the multi-gate document shape. */
+  private val unitSnapshot =
+    PortableChatExport.checkSnapshot(
+      "unit-tests",
+      List("sbt", "--batch", "test")
+    )
+
+  private val twoCheckTarget = PortableExportTarget(
+    profile = "coder",
+    toolset = "workspace",
+    checks = List(
+      PortablePinnedCheck("workspace-marker-present", markerSnapshot),
+      PortablePinnedCheck("unit-tests", unitSnapshot)
+    )
   )
 
   private val selection: StsSelection = StsSelection(
@@ -68,20 +100,32 @@ object PortableChatExportSpec extends ZIOSpecDefault:
     )
   )
 
-  private val selectionWithChecks = selection.copy(
+  private val selectionWithMarkerCheck =
+    selection.copy(checks = List(markerCheck))
+
+  private val selectionWithUnknownCheck = selection.copy(
     checks = List(NamedCheck("compile", List("sbt", "--batch", "compile")))
+  )
+
+  private val selectionWithBothChecks = selection.copy(
+    checks = List(
+      markerCheck,
+      NamedCheck("unit-tests", List("sbt", "--batch", "test"))
+    )
   )
 
   private def exportTo(
       tmp: Path,
       sel: StsSelection = selection,
-      name: String = "portable-task"
+      name: String = "portable-task",
+      tgt: PortableExportTarget = target,
+      outDir: Path = null
   ): Either[RaiderError, PortableExportResult] =
     PortableChatExport.exportTo(
       sel,
       PortableExportOptions(name),
-      target,
-      tmp.resolve("out"),
+      tgt,
+      if outDir == null then tmp.resolve("out") else outDir,
       1750000000000L
     )
 
@@ -96,15 +140,25 @@ object PortableChatExportSpec extends ZIOSpecDefault:
       case o: Json.Obj => o.fields.collectFirst { case (`name`, v) => v }
       case _           => None
 
-  def spec = suite("PortableChatExport (RAI-203)")(
+  private def stepsOf(doc: Json): List[Json] =
+    field(doc, "steps")
+      .collect { case Json.Arr(values) => values.toList }
+      .getOrElse(Nil)
+
+  private def stepById(doc: Json, id: String): Option[Json] =
+    stepsOf(doc).find(step => field(step, "id").contains(Json.Str(id)))
+
+  def spec = suite("PortableChatExport (RAI-203/RAI-215)")(
     test("document mapping: metadata, limits, steps, outputs, verdict") {
-      val doc = PortableChatExport.documentJson(selection, target)
+      val doc =
+        PortableChatExport.documentJson(selection, target, target.checks)
       val metadata = field(doc, "metadata")
       val limits = field(doc, "limits")
-      val steps = field(doc, "steps")
       val outputs = field(doc, "outputs")
       val bindings = outputs.flatMap(field(_, "bindings"))
       val verdict = outputs.flatMap(field(_, "verdict"))
+      val gate = stepById(doc, "gate")
+      val run = stepById(doc, "run")
       assertTrue(
         field(doc, "format").contains(Json.Str("raider.portable-workflow")),
         metadata
@@ -127,9 +181,21 @@ object PortableChatExportSpec extends ZIOSpecDefault:
           .contains(
             Json.Num(0)
           ),
-        steps.exists {
-          case Json.Arr(values) => values.size == 3; case _ => false
-        },
+        stepsOf(doc).size == 3,
+        gate.flatMap(field(_, "kind")).contains(Json.Str("trustedCheck")),
+        gate
+          .flatMap(field(_, "checkId"))
+          .contains(Json.Str("workspace-marker-present")),
+        gate
+          .flatMap(field(_, "registrySnapshot"))
+          .contains(Json.Str(markerSnapshot)),
+        gate
+          .flatMap(field(_, "input"))
+          .contains(Json.Str("#/steps/act/output")),
+        run.flatMap(field(_, "kind")).contains(Json.Str("sequence")),
+        run
+          .flatMap(field(_, "steps"))
+          .contains(Json.Arr(Json.Str("act"), Json.Str("gate"))),
         bindings
           .flatMap(field(_, "result"))
           .contains(
@@ -148,7 +214,9 @@ object PortableChatExportSpec extends ZIOSpecDefault:
       )
     },
     test("rendered document self-validates against the frozen v1 gate") {
-      val text = PortableChatExport.documentJson(selection, target).toJson
+      val text = PortableChatExport
+        .documentJson(selection, target, target.checks)
+        .toJson
       assertTrue(
         PortableWorkflowValidator.validate(text).isRight
       )
@@ -174,12 +242,15 @@ object PortableChatExportSpec extends ZIOSpecDefault:
         case tmp =>
           try
             val documentText =
-              PortableChatExport.documentJson(selection, target).toJson
+              PortableChatExport
+                .documentJson(selection, target, target.checks)
+                .toJson
             val inputText =
               PortableChatExport.inputExampleJson(selection).toJson
             val manifest = PortableChatExport.manifestJson(
               selection,
               target,
+              target.checks,
               "portable-task",
               documentText,
               inputText,
@@ -197,7 +268,7 @@ object PortableChatExportSpec extends ZIOSpecDefault:
               manifestText.replaceFirst("sha256:", "md5:")
             )
             val malformedSnapshot = PortableChatExport.validateManifest(
-              manifestText.replace("sha256:" + ("ab" * 32), "not-a-digest")
+              manifestText.replace(markerSnapshot, "not-a-digest")
             )
             // The closed schema binds artifact SHAPE, not content: a
             // well-formed digest over different bytes still validates; the
@@ -209,26 +280,236 @@ object PortableChatExportSpec extends ZIOSpecDefault:
                 "sha256:" + ("0" * 64)
               )
             )
+            // The check-free path keeps the RAI-203 manifest shape: no
+            // trustedChecks field.
+            val hasTrustedChecks =
+              manifestText.contains("trustedChecks")
             assertTrue(
               checked.isRight,
               tamperedExtra.isLeft,
               malformedDigest.isLeft,
               malformedSnapshot.isLeft,
-              reDigest.isRight
+              reDigest.isRight,
+              !hasTrustedChecks
             )
           finally cleanup(tmp)
     },
-    test("named trusted checks refuse CWF-R3 and keep the Scala option") {
-      val refusal = PortableChatExport.requireRepresentable(
-        selectionWithChecks
+    test(
+      "ADR-038 mapping: exact match maps onto the pinned pair, is pure and folds duplicates; the derivation matches the frozen pinned digest"
+    ) {
+      val first = PortableChatExport.mapNamedChecks(
+        List(markerCheck, markerCheck),
+        target.checks
       )
+      val second = PortableChatExport.mapNamedChecks(
+        List(markerCheck, markerCheck),
+        target.checks
+      )
+      assertTrue(
+        PortableChatExport.checkSnapshot(
+          "workspace-marker-present",
+          markerArgv
+        ) == FrozenMarkerSnapshot,
+        first.isRight,
+        first.toOption.get ==
+          List(PortablePinnedCheck("workspace-marker-present", markerSnapshot)),
+        first == second,
+        PortableChatExport.gateStepIds(3) ==
+          List("gate", "gate-2", "gate-3"),
+        PortableChatExport.gateStepIds(1) == List("gate"),
+        PortableChatExport.gateStepIds(0) == Nil
+      )
+    },
+    test(
+      "ADR-038 mapping: partial match (pinned name, different argv) refuses CWF-R3 without fabrication"
+    ) {
+      val partial = NamedCheck(
+        "workspace-marker-present",
+        List("/bin/test", "-f", "other.txt")
+      )
+      val refusal =
+        PortableChatExport.mapNamedChecks(List(partial), target.checks)
+      val detail = refusal.left.toOption.get.detail
       assertTrue(
         refusal.isLeft,
         refusal.left.toOption.get.code == "RA-INP",
-        refusal.left.toOption.get.detail.contains("CWF-R3"),
-        refusal.left.toOption.get.detail.contains("compile"),
-        refusal.left.toOption.get.detail.contains("Scala export")
+        detail.contains("CWF-R3"),
+        detail.contains("workspace-marker-present"),
+        detail.contains("registrySnapshot differs"),
+        detail.contains("Scala export"),
+        // No fabricated pair: the refusal carries no suggestion to inline the
+        // registered argv, and the export of the same selection refuses too.
+        !detail.contains("/bin/test")
       )
+    },
+    test(
+      "ADR-038 mapping: renamed check (pinned argv, different name) refuses without fabrication"
+    ) {
+      val renamed = NamedCheck("marker-present", markerArgv)
+      val refusal =
+        PortableChatExport.mapNamedChecks(List(renamed), target.checks)
+      val detail = refusal.left.toOption.get.detail
+      assertTrue(
+        refusal.isLeft,
+        detail.contains("CWF-R3"),
+        detail.contains("marker-present"),
+        detail.contains("no launcher-pinned trusted check has this id"),
+        detail.contains("Scala export")
+      )
+    },
+    test(
+      "ADR-038 mapping: unknown registry check refuses CWF-R3 and keeps the Scala option"
+    ) {
+      val refusal =
+        PortableChatExport.mapNamedChecks(
+          selectionWithUnknownCheck.checks,
+          target.checks
+        )
+      val detail = refusal.left.toOption.get.detail
+      assertTrue(
+        refusal.isLeft,
+        detail.contains("CWF-R3"),
+        detail.contains("compile"),
+        detail.contains("no launcher-pinned trusted check has this id"),
+        detail.contains("Scala export")
+      )
+    },
+    test(
+      "ADR-038 mapping: an advisory check refuses even on a definition-identical pin (mapping would strengthen it)"
+    ) {
+      val advisory =
+        NamedCheck("workspace-marker-present", markerArgv, advisory = true)
+      val refusal =
+        PortableChatExport.mapNamedChecks(List(advisory), target.checks)
+      val detail = refusal.left.toOption.get.detail
+      assertTrue(
+        refusal.isLeft,
+        detail.contains("CWF-R3"),
+        detail.contains("advisory"),
+        detail.contains("Scala export")
+      )
+    },
+    test(
+      "ADR-038 document shape: two mapped checks render gate + gate-2, validate, and the manifest records trustedChecks"
+    ) {
+      val mapped =
+        PortableChatExport.mapNamedChecks(
+          selectionWithBothChecks.checks,
+          twoCheckTarget.checks
+        )
+      val doc = mapped match
+        case Right(gates) =>
+          PortableChatExport.documentJson(
+            selectionWithBothChecks,
+            twoCheckTarget,
+            gates
+          )
+        case Left(_) => Json.Obj()
+      val gate = stepById(doc, "gate")
+      val gate2 = stepById(doc, "gate-2")
+      val run = stepById(doc, "run")
+      val documentValid = mapped match
+        case Right(gates) =>
+          PortableWorkflowValidator.validate(
+            PortableChatExport
+              .documentJson(selectionWithBothChecks, twoCheckTarget, gates)
+              .toJson
+          )
+        case Left(_) => Left("no gates")
+      val manifest = mapped match
+        case Right(gates) =>
+          PortableChatExport
+            .manifestJson(
+              selectionWithBothChecks,
+              twoCheckTarget,
+              gates,
+              "portable-task",
+              PortableChatExport
+                .documentJson(selectionWithBothChecks, twoCheckTarget, gates)
+                .toJson,
+              PortableChatExport
+                .inputExampleJson(selectionWithBothChecks)
+                .toJson,
+              1750000000000L
+            )
+            .toJson
+        case Left(_) => ""
+      val manifestChecked = PortableChatExport.validateManifest(manifest)
+      val tamperedTrustedCheck = PortableChatExport.validateManifest(
+        manifest.replace(
+          "\"checkId\":\"unit-tests\"",
+          "\"checkId\":\"unit-tests\",\"argv\":[\"sbt\"]"
+        )
+      )
+      assertTrue(
+        mapped.isRight,
+        mapped.toOption.get.size == 2,
+        gate
+          .flatMap(field(_, "checkId"))
+          .contains(Json.Str("workspace-marker-present")),
+        gate2.flatMap(field(_, "checkId")).contains(Json.Str("unit-tests")),
+        gate2
+          .flatMap(field(_, "registrySnapshot"))
+          .contains(Json.Str(unitSnapshot)),
+        run
+          .flatMap(field(_, "steps"))
+          .contains(
+            Json.Arr(Json.Str("act"), Json.Str("gate"), Json.Str("gate-2"))
+          ),
+        documentValid.isRight,
+        manifestChecked.isRight,
+        manifest.contains("\"trustedChecks\":["),
+        manifest.contains("\"checkId\":\"unit-tests\""),
+        tamperedTrustedCheck.isLeft
+      )
+    },
+    test(
+      "an exact-match selection exports: the written document names the pinned pair and the manifest carries trustedChecks"
+    ) {
+      Files.createTempDirectory("pce-exact") match
+        case tmp =>
+          try
+            val result = exportTo(tmp, sel = selectionWithMarkerCheck)
+            val document = result.toOption.get.files
+              .find(_.getFileName.toString == "portable-task.workflow.json")
+              .get
+            val manifest = result.toOption.get.files
+              .find(_.getFileName.toString == "portable-task-manifest.json")
+              .get
+            val documentText =
+              Files.readString(document, StandardCharsets.UTF_8)
+            val manifestText =
+              Files.readString(manifest, StandardCharsets.UTF_8)
+            val documentIsFile = Files.isRegularFile(document)
+            assertTrue(
+              result.isRight,
+              documentIsFile,
+              documentText.contains("\"checkId\":\"workspace-marker-present\""),
+              documentText.contains(FrozenMarkerSnapshot),
+              documentText.contains("\"gate-\"") == false,
+              manifestText.contains("\"trustedChecks\":[{"),
+              manifestText.contains(FrozenMarkerSnapshot)
+            )
+          finally cleanup(tmp)
+    },
+    test(
+      "named trusted checks that match nothing refuse CWF-R3 and keep the Scala option; nothing is written"
+    ) {
+      Files.createTempDirectory("pce-r3") match
+        case tmp =>
+          try
+            val refusal = exportTo(tmp, sel = selectionWithUnknownCheck)
+            val detail = refusal.left.toOption.get.detail
+            val nothingWritten = !Files.exists(tmp.resolve("out"))
+            assertTrue(
+              refusal.isLeft,
+              refusal.left.toOption.get.code == "RA-INP",
+              detail.contains("CWF-R3"),
+              detail.contains("compile"),
+              detail.contains("Scala export"),
+              nothingWritten
+            )
+          finally cleanup(tmp)
     },
     test("export names outside the slug rules refuse R1") {
       Files.createTempDirectory("pce-names") match
@@ -266,13 +547,7 @@ object PortableChatExportSpec extends ZIOSpecDefault:
       Files.createTempDirectory("pce-publish") match
         case tmp =>
           try
-            val result = PortableChatExport.exportTo(
-              selection,
-              PortableExportOptions("portable-task"),
-              target,
-              tmp.resolve("out"),
-              1750000000000L
-            )
+            val result = exportTo(tmp)
             val files = result.toOption.get.files
             val document = files
               .find(_.getFileName.toString == "portable-task.workflow.json")
@@ -312,20 +587,19 @@ object PortableChatExportSpec extends ZIOSpecDefault:
       Files.createTempDirectory("pce-r5") match
         case tmp =>
           try
-            val noParent = PortableChatExport.exportTo(
-              selection,
-              PortableExportOptions("p1"),
-              target,
-              tmp.resolve("missing").resolve("out"),
-              0L
+            val noParent = exportTo(
+              tmp,
+              name = "p1",
+              outDir = tmp.resolve("missing").resolve("out")
             )
-            val first = PortableChatExport.exportTo(
-              selection,
-              PortableExportOptions("p2"),
-              target,
-              tmp.resolve("out2"),
-              0L
-            )
+            val firstResult =
+              PortableChatExport.exportTo(
+                selection,
+                PortableExportOptions("p2"),
+                target,
+                tmp.resolve("out2"),
+                0L
+              )
             val again = PortableChatExport.exportTo(
               selection,
               PortableExportOptions("p2"),
@@ -359,7 +633,7 @@ object PortableChatExportSpec extends ZIOSpecDefault:
             val remnantMsg = remnant.left.toOption.get.detail
             assertTrue(
               noParent.isLeft && noParentMsg.contains("never creates parent"),
-              first.isRight,
+              firstResult.isRight,
               again.isLeft && againMsg.contains("never overwrites user edits"),
               symlink.isLeft && symlink.left.toOption.get.detail
                 .contains("symlink"),

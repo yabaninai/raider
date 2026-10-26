@@ -6,7 +6,8 @@ import raider.dsl.portable.{
   PortableChatExport,
   PortableExportOptions,
   PortableExportResult,
-  PortableExportTarget
+  PortableExportTarget,
+  PortablePinnedCheck
 }
 import raider.dsl.workflow.{
   ChatWorkflowExport,
@@ -35,10 +36,10 @@ import java.nio.file.{Files, Path, Paths}
   * export never creates parents);
   *   - `--format scala` (default) keeps the native source export byte-for-byte;
   * `--format portable` renders the same validated snapshot as a portable
-  * workflow v1 document + closed manifest + input example — a selection with
-  * named trusted checks is refused there (CWF-R3, the checks are not
-  * representable in portable v1 and the refusal names the retained Scala
-  * option);
+  * workflow v1 document + closed manifest + input example; named checks map
+  * onto pinned trustedCheck steps only by exact match against this launcher's
+  * pinned check table (ADR-038) — any non-matching check is refused there
+  * (CWF-R3) with the per-check reason and the retained Scala option;
   *   - staging+rename, never-overwrite and the R5 path rules are INHERITED
   * unchanged from the two exporters; refusals surface typed with the structured
   * `CWF-R…` detail (ADR-033 §8);
@@ -262,20 +263,19 @@ object ExportWorkflowCommand:
         "and run with 'raider workflow run --classes <dir> --input <file> --out <out>'."
     )
 
-  /** The portable export pipeline (RAI-203): the same adapter seam, then
-    * `PortableChatExport.exportTo` with THIS launcher's pinned trusted
-    * references (profile `coder`, toolset `workspace`, check
-    * `workspace-marker-present`, pinned snapshot digest). The document only
-    * NAMES these authorities; a run must resolve them against the same pins.
+  /** The portable export pipeline (RAI-203; ADR-038 mapping): the same adapter
+    * seam, then `PortableChatExport.exportTo` with THIS launcher's pinned
+    * trusted references (profile `coder`, toolset `workspace`, pinned check
+    * table: `workspace-marker-present` under its frozen snapshot digest). The
+    * document only NAMES these authorities; a run must resolve them against the
+    * same pins.
     *
-    * By construction this pipeline refuses CWF-R3 for every supported chat
-    * selection: ADR-033 §4.1 requires at least one NAMED trusted check in a
-    * validated selection and portable v1 has no user-named check construct, so
-    * `requireRepresentable` refuses while naming the retained Scala option. The
-    * command-level value of the portable format is the explained refusal plus
-    * this seam; the portable happy path (check-free selections from other
-    * launchers, the shipped recipes) is exercised directly against
-    * `PortableChatExport`.
+    * The selection's named checks map onto pinned `trustedCheck` steps by exact
+    * match (same id, same definition digest, non-advisory — ADR-038 §2.1): an
+    * exact match exports and runs through native lowering on this launcher; any
+    * non-matching check refuses CWF-R3 with the per-check reason while naming
+    * the retained Scala option. Nothing is fabricated and nothing is dispatched
+    * by the export itself.
     */
   def exportPortableSelection(
       selection: TaskSelection,
@@ -303,8 +303,12 @@ object ExportWorkflowCommand:
         PortableExportTarget(
           PortableTrustedRegistry.ProfileCoder,
           PortableTrustedRegistry.ToolsetWorkspace,
-          PortableTrustedRegistry.CheckWorkspaceMarker,
-          PortableTrustedRegistry.workspaceMarkerSnapshot
+          List(
+            PortablePinnedCheck(
+              PortableTrustedRegistry.CheckWorkspaceMarker,
+              PortableTrustedRegistry.workspaceMarkerSnapshot
+            )
+          )
         ),
         outDir,
         System.currentTimeMillis()
