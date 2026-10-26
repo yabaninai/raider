@@ -505,7 +505,7 @@ object ProcessApiAcceptanceSpec extends ZIOSpecDefault:
     ) {
       ZIO.attemptBlocking {
         val work = Files.createTempDirectory("rai201-refusal-")
-        val secret = "SENTINEL-SECRET-4f1a"
+        val secret = "SENTINEL-4f1a"
         val child = startFile(
           work,
           Seq(

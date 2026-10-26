@@ -51,7 +51,8 @@ object Protocol:
   // ---------------------------------------------------------------------------
   // protocol failures (ADR-037 §6): every failure has a wire `code`, a bounded
   // human `message` and a fatality. Fatal failures terminate the session
-  // (exit 20 with no root, cancel + exit 26 with a live root); non-fatal ones
+  // (executionStatus failed, exit 20 RuntimeFailure always — a live root is
+  // cancelled with bounded cleanup before the terminal frame); non-fatal ones
   // are answered with an error frame and the session continues.
   // ---------------------------------------------------------------------------
 
