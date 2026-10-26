@@ -87,6 +87,17 @@ object CliArgs:
       */
     final case class Resume(argv: List[String]) extends Target
 
+    /** RAI-210: the `raider verify-artifacts <run-dir>` subcommand
+      * (FCI-REPORT-02 consumer). Same shape as [[Resume]]: the target carries
+      * the RAW argv (the `verify-artifacts` token included) — the argv contract
+      * (`<run-dir>`, usage errors) stays owned by [[ArtifactIntegrityCommand]],
+      * and the verification is dispatched BEFORE any run/preflight machinery: a
+      * post-run integrity check re-reads a PAST run's manifest, it never
+      * creates a new invocation root and never spends anything. No run/chat
+      * flag is accepted or validated here.
+      */
+    final case class VerifyArtifacts(argv: List[String]) extends Target
+
   /** Built-in agents: scout/worker = plain mock loops; coder = REAL workspace
     * tools (fs_read/fs_search/proc_run) for self-hosting runs.
     */
@@ -124,6 +135,11 @@ object CliArgs:
       // RAI-129: `raider resume <run-dir>` — recognized ADDITIVELY the same
       // way; the raw argv is delegated to [[raider.cli.run.ResumeCommand]].
       case resume @ ("resume" :: _) => Right(resumeArgs(resume))
+      // RAI-210: `raider verify-artifacts <run-dir>` — recognized ADDITIVELY
+      // the same way; the raw argv is delegated to
+      // [[raider.cli.run.ArtifactIntegrityCommand]].
+      case verifyArtifacts @ ("verify-artifacts" :: _) =>
+        Right(verifyArtifactsArgs(verifyArtifacts))
       case other :: _ =>
         Left(
           RaiderError.Configuration(
@@ -154,6 +170,21 @@ object CliArgs:
   private def resumeArgs(fullArgv: List[String]): CliArgs =
     CliArgs(
       target = Target.Resume(fullArgv),
+      input = None,
+      inputJson = None,
+      out = Paths.get(""),
+      mock = false
+    )
+
+  /** The verify-artifacts subcommand's [[CliArgs]] shell — the exact
+    * [[resumeArgs]] shape: NO run/chat flag surface, every argument (and its
+    * usage errors) is validated by [[ArtifactIntegrityCommand]] on the raw
+    * argv. `out` is an inert placeholder: an artifact verification has no
+    * `work-<uuid>` invocation root.
+    */
+  private def verifyArtifactsArgs(fullArgv: List[String]): CliArgs =
+    CliArgs(
+      target = Target.VerifyArtifacts(fullArgv),
       input = None,
       inputJson = None,
       out = Paths.get(""),
