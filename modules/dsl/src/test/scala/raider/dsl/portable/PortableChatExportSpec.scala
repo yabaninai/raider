@@ -1,6 +1,10 @@
 package raider.dsl.portable
 
+import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
+import java.util.concurrent.{Callable, CountDownLatch, Executors, TimeUnit}
+
+import scala.jdk.CollectionConverters.*
 
 import zio.json.*
 import zio.json.ast.Json
@@ -26,6 +30,12 @@ import raider.dsl.workflow.{
   * named checks are present, and the inherited R5 staging/never-overwrite
   * discipline. FS facts are captured into vals BEFORE cleanup (the assertTrue
   * macro re-evaluates lazily).
+  *
+  * RAI-213 adds the staging-race discipline: a lost staging claim
+  * (`FileAlreadyExistsException` inside `writeStaging`) refuses typed WITHOUT
+  * deleting the winner's in-flight staging, proven by a deterministic
+  * public-API pin and a latched two-thread concurrent-export race (latches, not
+  * sleeps).
   */
 object PortableChatExportSpec extends ZIOSpecDefault:
 
@@ -95,6 +105,99 @@ object PortableChatExportSpec extends ZIOSpecDefault:
     obj match
       case o: Json.Obj => o.fields.collectFirst { case (`name`, v) => v }
       case _           => None
+
+  // -- RAI-213 staging-race fixtures -----------------------------------------
+
+  private val RaceIterations = 30
+
+  /** The exact rendered bundle for the standard fixture, keyed by artifact file
+    * name. Both racing exports use identical inputs and rendering is pure, so
+    * whichever thread wins must publish exactly these bytes.
+    */
+  private def expectedBundle: List[(String, String)] =
+    val documentText = PortableChatExport.documentJson(selection, target).toJson
+    val inputText = PortableChatExport.inputExampleJson(selection).toJson
+    val manifestText = PortableChatExport
+      .manifestJson(
+        selection,
+        target,
+        "portable-task",
+        documentText,
+        inputText,
+        1750000000000L
+      )
+      .toJson
+    List(
+      "portable-task.workflow.json" -> documentText,
+      "portable-task-manifest.json" -> manifestText,
+      "portable-task.input.json" -> inputText
+    )
+
+  /** FS facts of one latched two-thread race, all captured before cleanup (the
+    * assertTrue macro re-evaluates lazily).
+    */
+  private case class RaceObservation(
+      published: Int,
+      loserTyped: Boolean,
+      parentExactlyTarget: Boolean,
+      targetExactlyBundle: Boolean,
+      winnerDigestsMatch: Boolean
+  )
+
+  private def listNames(dir: Path): List[String] =
+    val stream = Files.list(dir)
+    try stream.iterator().asScala.map(p => p.getFileName.toString).toList
+    finally stream.close()
+
+  /** One race iteration: two threads released by ONE latch run full exports to
+    * the same target; every verdict is read from the filesystem only after both
+    * threads are joined (latches, not sleeps).
+    */
+  private def raceOnce(
+      pool: java.util.concurrent.ExecutorService,
+      tmp: Path
+  ): RaceObservation =
+    val start = new CountDownLatch(1)
+    val futures = (1 to 2).map { _ =>
+      pool.submit(
+        new Callable[Either[RaiderError, PortableExportResult]]:
+          def call(): Either[RaiderError, PortableExportResult] =
+            start.await()
+            exportTo(tmp)
+      )
+    }
+    start.countDown()
+    val outcomes = futures.map(_.get(60, TimeUnit.SECONDS))
+    val published = outcomes.collect { case Right(r) => r }
+    val refusals = outcomes.collect { case Left(e) => e }
+    val targetDir = tmp.resolve("out")
+    val bundle = expectedBundle
+    val publishedResult = published.headOption
+    val winnerDigestsMatch = publishedResult match
+      case None => false
+      case Some(r) =>
+        bundle.forall { case (fileName, text) =>
+          Files.readAllBytes(targetDir.resolve(fileName)).toSeq ==
+            text.getBytes(StandardCharsets.UTF_8).toSeq
+        } &&
+        r.documentSha256 ==
+          "sha256-" + sha256Hex(
+            bundle.head._2.getBytes(StandardCharsets.UTF_8)
+          ) &&
+          r.inputExampleSha256 ==
+          "sha256-" + sha256Hex(
+            bundle.last._2.getBytes(StandardCharsets.UTF_8)
+          )
+    RaceObservation(
+      published = published.size,
+      loserTyped = refusals.size == 1 &&
+        refusals.head.code == "RA-INP" &&
+        refusals.head.detail.contains("CWF-R5"),
+      parentExactlyTarget = listNames(tmp).sorted == List("out"),
+      targetExactlyBundle = publishedResult.nonEmpty &&
+        listNames(targetDir).sorted == bundle.map(_._1).sorted,
+      winnerDigestsMatch = winnerDigestsMatch
+    )
 
   def spec = suite("PortableChatExport (RAI-203)")(
     test("document mapping: metadata, limits, steps, outputs, verdict") {
@@ -368,6 +471,56 @@ object PortableChatExportSpec extends ZIOSpecDefault:
               )
             )
           finally cleanup(tmp)
+    },
+    test(
+      "RAI-213: a lost staging claim refuses CWF-R5 WITHOUT deleting the existing staging (deterministic)"
+    ) {
+      Files.createTempDirectory("pce-r213-claim") match
+        case tmp =>
+          try
+            val stagingDir =
+              tmp.resolve(".out" + PortableChatExport.StagingSuffix)
+            // Deterministic stand-in for the winner's in-flight staging as it
+            // presents inside writeStaging: the freshness check sees nothing
+            // (a dangling link does not exist for Files.exists) while
+            // Files.createDirectory still fails with
+            // FileAlreadyExistsException — the same check-then-create window
+            // the two-thread race hits, forced without timing.
+            Files.createSymbolicLink(stagingDir, tmp.resolve("absent-target"))
+            val refused = exportTo(tmp)
+            val refusedMsg = refused.left.toOption.get.detail
+            // FS facts captured BEFORE cleanup (lazy assertTrue).
+            val stagingIntact = Files.isSymbolicLink(stagingDir)
+            val nothingPublished = !Files.exists(tmp.resolve("out"))
+            assertTrue(
+              refused.isLeft && refusedMsg.contains("CWF-R5"),
+              refusedMsg.contains("staging claim lost"),
+              refusedMsg.contains("WITHOUT deleting"),
+              stagingIntact,
+              nothingPublished
+            )
+          finally cleanup(tmp)
+    },
+    test(
+      "RAI-213: latched two-thread export race — exactly one publishes, the loser refuses typed, nothing half-published, no staging remnant (latches, 30 repetitions)"
+    ) {
+      val pool = Executors.newFixedThreadPool(2)
+      try
+        val observations = (1 to RaceIterations).map { iteration =>
+          val tmp = Files.createTempDirectory(s"pce-r213-race-$iteration")
+          try raceOnce(pool, tmp)
+          finally cleanup(tmp)
+        }
+        assertTrue(
+          observations.forall(o =>
+            o.published == 1 &&
+              o.loserTyped &&
+              o.parentExactlyTarget &&
+              o.targetExactlyBundle &&
+              o.winnerDigestsMatch
+          )
+        )
+      finally pool.shutdownNow()
     }
   )
 
