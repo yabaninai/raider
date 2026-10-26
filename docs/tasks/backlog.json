@@ -3966,7 +3966,7 @@
         "RAI-119",
         "RAI-110"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/repl/src/main/scala/raider/repl/**",
         "modules/repl/src/test/scala/raider/repl/**"
@@ -5359,7 +5359,7 @@
       "title": "SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)",
       "milestone": "M2",
       "dependencies": [],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/ui/src/test/**",
         "docs/work/records/**"
@@ -5368,14 +5368,14 @@
         "static",
         "unit"
       ],
-      "behavior": "CONDITIONAL card (trigger: recurrence of the integrated red): TAB-02 failed once on an integrated run (manifest artifacts/quality/20261017-162616-53185-0001, evicted 252≠251). Diagnosis (board 2026-10-17): SessionRegistry.scala:453–466 publishes the folded snapshot before appendHistory (:470–483) updates the history vector/eviction counter; TAB-02 gates on lastSeq==451 (SessionRegistrySpec.scala:205–210), which does not imply history quiescence, so history can lag one event under load. It was not reproduced: 10/10 isolated and 10/10 loaded GREEN (artifacts/tab02-diag/). On recurrence only, wait for the relevant history/accounting condition (for example, history's last observed sequence/evicted count stabilizes at the expected fold). Do NOT weaken the exact eviction assertion.",
+      "behavior": "CONDITIONAL card (trigger: recurrence of the integrated red): TAB-02 failed once on an integrated run (manifest artifacts/quality/20261017-162616-83255-0001, evicted 252≠251). Diagnosis (board 2026-10-17): SessionRegistry.scala:453–466 publishes the folded snapshot before appendHistory (:470–483) updates the history vector/eviction counter; TAB-02 gates on lastSeq==451 (SessionRegistrySpec.scala:205–210), which does not imply history quiescence, so history can lag one event under load. It was not reproduced: 10/10 isolated and 10/10 loaded GREEN (artifacts/tab02-diag/). On recurrence only, wait for the relevant history/accounting condition (for example, history's last observed sequence/evicted count stabilizes at the expected fold). Do NOT weaken the exact eviction assertion.",
       "acceptance": {
         "normal": "TAB-02-01: only if the integrated red recurs, fix test synchronization on history/accounting quiescence; focused SessionRegistrySpec TAB-02 is green ×10 post-fix and the exact eviction assertion remains intact.",
         "error": "TAB-02-02: if no recurrence, record observations and do not change tests or product code; the conditional card remains not-triggered.",
         "concurrency": "- Cancellation/concurrency: TAB-02-03: static and unit profiles pass after any test-only fix; retain evidence of the integrated recurrence and post-fix repetitions."
       },
       "non_goals": "Weakening the exact eviction assertion; product change to SessionRegistry publish order without a captured reproducer showing user-visible harm; unrelated changes.",
-      "context": "RAI-123 conditional-determinism pattern. Recurrence evidence: artifacts/quality/20261017-162616-53185-0001; diagnosis and non-reproduction runs: artifacts/tab02-diag/."
+      "context": "RAI-123 conditional-determinism pattern. Recurrence evidence: artifacts/quality/20261017-162616-83255-0001; diagnosis and non-reproduction runs: artifacts/tab02-diag/."
     },
     {
       "id": "RAI-173",
@@ -5679,7 +5679,7 @@
       "title": "First CI — lifecycle and joint acceptance record",
       "milestone": "M0",
       "dependencies": ["RAI-185", "RAI-186"],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": ["modules/cli/src/main/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/run/**", "modules/cli/src/test/scala/raider/cli/**", "contracts/acceptance/ci/**", "docs/acceptance/ci/**", "docs/work/records/**"],
       "profiles": ["static", "unit", "contracts", "ci", "runtime"],
       "behavior": "Verify First CI lifecycle behavior and publish the minimal combined acceptance matrix. A deadline run must yield the defined policy exit and honest artifacts. Send PARENT-DELIVERED OS SIGTERM to the real CLI child process; verify owned-child/process-group cleanup within a bounded stop, signal exit semantics, and truthful partial artifacts. Fiber-interrupt tests are lower-level evidence only and do not substitute for process-level signaling. Run one minimal combined fixture against every First CI clause and record exact commands and evidence.",
@@ -6207,7 +6207,7 @@
       "title": "Raise the sbt-test gate timeout under host contention",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/**",
         "docs/quality-gates.md",
@@ -6234,7 +6234,7 @@
       "dependencies": [
         "RAI-186"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/run/**",
         "modules/cli/src/main/scala/raider/cli/run/**",
@@ -6409,7 +6409,7 @@
       "dependencies": [
         "RAI-186"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/run/**",
@@ -6438,7 +6438,7 @@
         "RAI-186",
         "RAI-195"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/main/scala/raider/cli/run/**",
         "modules/cli/src/test/scala/raider/cli/run/**",
@@ -6463,7 +6463,7 @@
       "title": "bootstrap.sh CA resolution on stock macOS",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/bootstrap.sh",
         "scripts/**",

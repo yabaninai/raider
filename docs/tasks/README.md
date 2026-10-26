@@ -183,7 +183,7 @@ Markdown contains the full contract; JSON is canonical for ID/title/dependency/p
 - **RAI-119** [PTY determinism under load: PlanPanelSpec / TabShellUnreadPtySpec / MainScrollbackPtySpec](m2-p2.md); dependencies: RAI-110, RAI-105, RAI-113; profiles: static, unit, repl, runtime.
 - **RAI-120** [IsolatedRerun canonical-path guard (requireIsolatedTarget alias bypass)](lineage.md); dependencies: LIN-15; profiles: static, unit, contracts, runtime.
 - **RAI-121** [:scrollback precedence — align with frozen :switch](m2-p2.md); dependencies: RAI-113; profiles: static, unit, repl.
-- **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (candidate based on RAI-119 reviewer risk)](m2-p2.md); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
+- **RAI-123** [PlanPanel outcome scoping: per-job outcomeRef (candidate based on RAI-119 reviewer risk)](m2-p2.md); accepted (closed not-triggered, PPS-02, 2026-10-26 — 96 cumulative post-RAI-119 attempts; no product diff); dependencies: RAI-119, RAI-110; profiles: static, unit, repl, runtime.
 - **RAI-122** [tabs_pty_probe: sync with ADR-024 honest-unknowns status text](m1.md); dependencies: RAI-112, RAI-062; profiles: static, unit, docs.
 - **RAI-124** [REPL :type — expression type without evaluation (RAI-019/020 slice)](m2-p2.md); dependencies: RAI-068; profiles: static, unit, repl.
 - **RAI-126** [PTY probes COURSIER_CACHE: env.setdefault instead of hardcoded override](m1.md); dependencies: RAI-122; profiles: static, docs.
@@ -201,7 +201,7 @@ See [backlog.json](backlog.json) for cards added in later revisions, including L
 - **RAI-169** [Independently verify SDLC-01–04 stages, approval, and integration](m1.md); dependencies: RAI-117, RAI-164, RAI-165, RAI-166, RAI-167; profiles: static, unit, contracts, runtime, ci, integration.
 - **RAI-170** [Independently verify the local-only release contract](m1.md); dependencies: RAI-117, RAI-168; profiles: static, unit, contracts, release.
 - **RAI-171** [Live-wire provider verification — scoped preparation](m1.md); dependencies: none; profiles: docs. Execution remains owner-gated on endpoints/budget; no paid/live call is authorized.
-- **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); dependencies: none; profiles: static, unit.
+- **RAI-172** [SessionRegistrySpec TAB-02: gate on history-accounting quiescence (conditional determinism)](m2-p2.md); accepted (closed not-triggered, TAB-02-02, 2026-10-26 — 30 storm runs green; modules/ byte-identical to b90a191); dependencies: none; profiles: static, unit.
 - **RAI-173** [LIN-03.b: Lineage snapshot commit protocol across readers](lineage.md); dependencies: LIN-03; profiles: static, unit, contracts, ci.
 - **RAI-174** [SDLC evidence persistence: versioned event/run schema extension](m1.md); dependencies: RAI-164; profiles: contracts.
 - **RAI-175** [PLANUI-02 authorized reproducer (plan settlement/approval capture)](m2-p2.md); dependencies: RAI-110, RAI-119; profiles: static, unit, repl.
@@ -263,7 +263,7 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-184** [Live-wire execution — budget guard and provider matrix](m1.md#rai-184-live-wire-execution--budget-guard-and-provider-matrix); accepted (5-scenario matrix executed on the OpenAI-compatible demo stand; Anthropic-compatible leg pending endpoint); dependencies: RAI-171; profiles: static, unit, contracts, transport.
 - **RAI-185** [First CI — CLI process acceptance and adapter fixtures](m0.md#rai-185-first-ci--cli-process-acceptance-and-adapter-fixtures); dependencies: RAI-131, RAI-078; profiles: static, unit, contracts, ci.
 - **RAI-186** [First CI — report, checks, and exit contract closure](m0.md#rai-186-first-ci--report-checks-and-exit-contract-closure); accepted (verdict/report precedence from real-child check evidence; JUnit+summary escaping; SIGTERM finalization; interrupted-wave latent red fixed); dependencies: RAI-131, RAI-185; profiles: static, unit, contracts, ci, tools, security, eval.
-- **RAI-187** [First CI — lifecycle and joint acceptance record](m0.md#rai-187-first-ci--lifecycle-and-joint-acceptance-record); dependencies: RAI-185, RAI-186; profiles: static, unit, contracts, ci, runtime.
+- **RAI-187** [First CI — lifecycle and joint acceptance record](m0.md#rai-187-first-ci--lifecycle-and-joint-acceptance-record); accepted (manifest 20261026-042717-15483-0001 + integration lint-fix note: first integrated `fast` red was scalafix-check DisableSyntax.null at FirstCiLifecycleFixtures.scala:58, fixed on main in f62e909, semantics identical); dependencies: RAI-185, RAI-186; profiles: static, unit, contracts, ci, runtime.
 - **RAI-188** [TUI-X.B1: chat-centric layout + streaming panel](m2-p2.md#rai-188-tui-xb1-chat-centric-layout--streaming-panel); dependencies: none; profiles: static, unit, contracts, repl.
 - **RAI-189** [TUI-X.B2: tool-call cards with inline approval](m2-p2.md#rai-189-tui-xb2-tool-call-cards-with-inline-approval); dependencies: RAI-188; profiles: static, unit, contracts, runtime, repl, security.
 - **RAI-190** [TUI-X.B3: session switcher + tasks panel + status footer](m2-p2.md#rai-190-tui-xb3-session-switcher--tasks-panel--status-footer); accepted on the delivered slice basis; live plan/budget wiring is RAI-208; dependencies: RAI-188; profiles: static, unit, contracts, repl.
@@ -274,16 +274,16 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-195** [CI check-policy contract: advisory/blocking declaration on trusted checks](m0.md#rai-195-ci-check-policy-contract-advisoryblocking-declaration-on-trusted-checks); accepted (advisory Boolean frozen on the trustedChecks surface with provenance binding; fail-safe blocking on missing/unknown/mismatched IDs); dependencies: RAI-186, RAI-131; profiles: static, unit, contracts, ci.
 - **RAI-207** [Protected CWF-E02 expectation migration under the RAI-195 check-policy contract](m0.md#rai-207-protected-cwf-e02-expectation-migration-under-the-rai-195-check-policy-contract); accepted (bogus-success asserts task-failed + check evidence + RA-OUT on stderr; digest anchors migrated; independent review approve); dependencies: RAI-195; profiles: static, unit, contracts, ci, eval.
 - **RAI-208** [TUI-X.B3.b: live plan/budget wiring in the chat shell](m2-p2.md#rai-208-tui-xb3b-live-planbudget-wiring-in-the-chat-shell); accepted (round-2 approve; TUI-X.B3 fully closed); dependencies: RAI-190, RAI-188; profiles: static, unit, contracts, repl.
-- **RAI-209** [Raise the sbt-test gate timeout under host contention](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: none; profiles: fast, static, unit.
-- **RAI-210** [FCI-REPORT-02 post-run artifact mutation fixture](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186; profiles: static, unit, ci.
+- **RAI-209** [Raise the sbt-test gate timeout under host contention](m1.md); accepted (owner decision 2026-10-26, gates b83930ce…/ca893bed…, self-check pins 15 budgets); dependencies: none; profiles: fast, static, unit.
+- **RAI-210** [FCI-REPORT-02 post-run artifact mutation fixture](m0.md); accepted (a837d21b…/9f8bf301…); dependencies: RAI-186; profiles: static, unit, ci.
 - **RAI-211** [Portable polish: sub-second deadline precision and argv --doc corner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, ci.
 - **RAI-212** [verdict.from agent-step hardening](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-199; profiles: static, unit, contracts.
 - **RAI-213** [Export staging race: fail-fast without deleting the winner](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts.
 - **RAI-214** [Launcher-side manifest digest verification](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203; profiles: static, unit, contracts, runtime, ci.
 - **RAI-215** [Named-check to trustedCheck export mapping (ADR + implementation)](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-203, RAI-198; profiles: static, unit, contracts, docs.
-- **RAI-216** [Bounded finalization for the generated check runner](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186; profiles: static, unit, ci, runtime.
-- **RAI-217** [CI report polish: policyDigest assertion and advisory-aware summary](m0.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: RAI-186, RAI-195; profiles: static, unit, ci.
-- **RAI-218** [bootstrap.sh CA resolution on stock macOS](m1.md); ready (registered 2026-10-26 from recorded follow-ups); dependencies: none; profiles: fast, static.
+- **RAI-216** [Bounded finalization for the generated check runner](m0.md); accepted (RATIFIED scope: ChatWorkflowRenderer + regenerated golden, e37cd824…/408fcd7e…); dependencies: RAI-186; profiles: static, unit, ci, runtime.
+- **RAI-217** [CI report polish: policyDigest assertion and advisory-aware summary](m0.md); accepted (registration fix: allowed paths corrected to raider/cli/workflow/**; gates discharged by integration run); dependencies: RAI-186, RAI-195; profiles: static, unit, ci.
+- **RAI-218** [bootstrap.sh CA resolution on stock macOS](m1.md); accepted (glue-only, cc13f3ab…/af408768…); dependencies: none; profiles: fast, static.
 
 ## Cross-ecosystem program (2026-10-23)
 
