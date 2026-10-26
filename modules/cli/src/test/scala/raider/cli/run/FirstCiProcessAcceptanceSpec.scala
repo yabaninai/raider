@@ -63,6 +63,47 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
     )
     file
 
+  /** RAI-187: the directory holding THIS spec's compiled test classes, which
+    * contain the lifecycle fixture workflows (FirstCiLifecycleFixtures.scala).
+    */
+  private def testClassesDir: Path =
+    val location = Path.of(
+      getClass.getProtectionDomain.getCodeSource.getLocation.toURI
+    )
+    if Files.isDirectory(location) then location
+    else
+      throw new IllegalStateException(
+        s"test classes are not a directory: $location"
+      )
+
+  /** RAI-187 FCI-LIFE-01/02: a bundle carrying the lifecycle fixture entries
+    * (long-sleep, spawn-sleep), jarred through the same ordinary path as
+    * [[makeBundle]]. Only the two fixture class files are packed so the bundle
+    * is deterministic.
+    */
+  private def makeLifecycleBundle(dir: Path): Path =
+    val jar = dir.resolve("lifecycle.jar")
+    val manifest = new Manifest()
+    manifest.getMainAttributes.putValue("Manifest-Version", "1.0")
+    val output = new JarOutputStream(Files.newOutputStream(jar), manifest)
+    try
+      val bundleManifest =
+        """{"schemaVersion":1,"bundleId":"first-ci-lifecycle","entries":[{"name":"long-sleep","mainClass":"raider.cli.run.LongSleepWorkflow","version":1},{"name":"spawn-sleep","mainClass":"raider.cli.run.SpawnSleepWorkflow","version":1}],"declaredTrustLevel":"trusted-local"}"""
+      output.putNextEntry(new JarEntry(BundleLoader.ManifestEntry))
+      output.write(bundleManifest.getBytes(UTF_8))
+      output.closeEntry()
+      val root = testClassesDir
+      Vector(
+        "raider/cli/run/LongSleepWorkflow.class",
+        "raider/cli/run/SpawnSleepWorkflow.class"
+      ).foreach { name =>
+        output.putNextEntry(new JarEntry(name))
+        Files.copy(root.resolve(name), output)
+        output.closeEntry()
+      }
+    finally output.close()
+    jar
+
   private def child(
       argv: List[String],
       out: Path,
@@ -105,6 +146,57 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
     Files.deleteIfExists(stderrFile)
     result
 
+  /** RAI-187 FCI-LIFE-02: start the real CLI child WITHOUT waiting — the test
+    * stays the parent and delivers the OS signal itself. Same launch discipline
+    * as [[child]] (fresh JVM, closed stdin, separated stdout/stderr capture,
+    * inherited CI variables stripped).
+    */
+  private def startChild(
+      argv: List[String],
+      out: Path,
+      env: Map[String, String] = Map.empty
+  ): java.lang.Process =
+    val stdoutFile = out.resolveSibling(out.getFileName.toString + ".stdout")
+    val stderrFile = out.resolveSibling(out.getFileName.toString + ".stderr")
+    val java = Path.of(System.getProperty("java.home"), "bin", "java")
+    val classpath = System.getProperty("java.class.path")
+    val processBuilder = new ProcessBuilder(
+      (java.toString :: "-cp" :: classpath :: "raider.cli.Main" :: argv)*
+    )
+    processBuilder.redirectOutput(stdoutFile.toFile)
+    processBuilder.redirectError(stderrFile.toFile)
+    val processEnv = processBuilder.environment()
+    processEnv
+      .keySet()
+      .asScala
+      .toList
+      .filter(k =>
+        k.startsWith("GITHUB_") || k.startsWith("CI_") || k.startsWith(
+          "GITLAB_"
+        )
+      )
+      .foreach(processEnv.remove)
+    env.foreach((key, value) => processEnv.put(key, value))
+    val process = processBuilder.start()
+    process.getOutputStream.close()
+    process
+
+  /** Captured child output files (deleted by [[child]]; kept for the SIGTERM
+    * case where the parent reads them after the signal death).
+    */
+  private def capturedOut(out: Path): (Path, Path) =
+    (
+      out.resolveSibling(out.getFileName.toString + ".stdout"),
+      out.resolveSibling(out.getFileName.toString + ".stderr")
+    )
+
+  /** Bounded poll: does the process handle EXIT within `seconds`? */
+  private def exitsWithin(handle: ProcessHandle, seconds: Long): Boolean =
+    val deadline = System.currentTimeMillis() + seconds * 1000L
+    while handle.isAlive && System.currentTimeMillis() < deadline do
+      Thread.sleep(100)
+    !handle.isAlive
+
   private def baseArgs(bundle: Path, context: Path, out: Path): List[String] =
     List(
       "run",
@@ -127,6 +219,32 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
     val index = args.indexOf("--context")
     if index < 0 then args else args.take(index) ++ args.drop(index + 2)
 
+  /** RAI-187: First CI invocation against a lifecycle fixture workflow entry.
+    */
+  private def lifecycleArgs(
+      bundle: Path,
+      context: Path,
+      out: Path,
+      workflow: String,
+      input: String
+  ): List[String] =
+    List(
+      "run",
+      "--bundle",
+      bundle.toString,
+      "--workflow",
+      workflow,
+      "--ci",
+      "generic",
+      "--context",
+      context.toString,
+      "--input",
+      input,
+      "--mock",
+      "--out",
+      out.toString
+    )
+
   private def withCi(args: List[String], ci: String): List[String] =
     val index = args.indexOf("--ci")
     args.updated(index + 1, ci)
@@ -139,6 +257,22 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
 
   private def artifacts(out: Path): Vector[Path] =
     files(out)
+
+  /** RAI-187: immediate `work-<uuid>` run directories under an output root. */
+  private def runDirsOf(out: Path): Vector[Path] =
+    if !Files.exists(out) then Vector.empty
+    else
+      val stream = Files.list(out)
+      try
+        stream
+          .iterator()
+          .asScala
+          .filter(p =>
+            Files.isDirectory(p) &&
+              p.getFileName.toString.startsWith("work-")
+          )
+          .toVector
+      finally stream.close()
 
   private def noTemporaryFiles(runDir: Path): Boolean =
     val stream = Files.walk(runDir)
@@ -166,7 +300,17 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
       Files.readString(file, UTF_8).fromJson[RunResult].isRight
     } && result.exists { file =>
       val raw = Files.readString(file, UTF_8)
-      raw.fromJson[raider.core.result.OutputPayload].isRight && raw.nonEmpty
+      // RAI-187: result.json carries the codec-identified OutputPayload on a
+      // successful run, and the typed error verdict document on a failed run
+      // (FCI-LIFE-01 deadline path) — both are honest complete reports.
+      raw.nonEmpty && (
+        raw.fromJson[raider.core.result.OutputPayload].isRight || {
+          val decoded = raw.fromJson[zio.json.ast.Json]
+          decoded.isRight && raw.contains("\"code\"") && raw.contains(
+            "\"taskVerdict\""
+          )
+        }
+      )
     } && manifestFile.exists { file =>
       val raw = Files.readString(file, UTF_8)
       raw.fromJson[List[ArtifactEntry]].exists { entries =>
@@ -533,6 +677,175 @@ object FirstCiProcessAcceptanceSpec extends ZIOSpecDefault:
         result.stdout.isEmpty,
         result.stderr.contains("no complete report is available"),
         Files.isRegularFile(out)
+      )
+    },
+    test(
+      "FCI-LIFE-01: a real deadline run exits 24 with truthful deadline artifacts and no fabricated success"
+    ) {
+      val work = tempDir()
+      val bundle = makeLifecycleBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("deadline-out")
+      // The fixture workflow would sleep 120000 ms; --deadline 1 interrupts it
+      // in ~1 s inside the admitted slot, so the exit is observed at the REAL
+      // process boundary (java -cp ... raider.cli.Main run ...).
+      val args =
+        lifecycleArgs(bundle, context, out, "long-sleep", "120000") ++
+          List("--deadline", "1")
+      val result = child(args, out, ciEnv("generic"))
+      val runRaw = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "run.json").get,
+        UTF_8
+      )
+      val resultRaw = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "result.json").get,
+        UTF_8
+      )
+      val summary = Files.readString(
+        artifacts(out).find(_.getFileName.toString == "summary.md").get,
+        UTF_8
+      )
+      assertTrue(
+        result.exit == 24,
+        result.stdout.contains("\"exitCode\":24"),
+        !result.stdout.contains("\"exitCode\":0"),
+        runRaw.contains("\"exitCode\":24"),
+        runRaw.toLowerCase.contains("\"status\":\"failed\""),
+        runRaw.contains("RA-DEADLINE"),
+        // the real ledger snapshot reached run.json despite (because of) the
+        // failed admitted slot
+        runRaw.contains("accounting"),
+        !resultRaw.contains("trusted-checks-passed"),
+        summary.contains("FAILED"),
+        summary.contains("RA-DEADLINE"),
+        validateArtifacts(out),
+        runDirsOf(out).forall(noTemporaryFiles),
+        sentinelAbsentFromArtifacts(out)
+      )
+    },
+    test(
+      "FCI-LIFE-01: invalid --deadline values are typed parse-time refusals before any dispatch"
+    ) {
+      val work = tempDir()
+      val bundle = makeLifecycleBundle(work)
+      val context = contextFile(work)
+      val invalid = Vector("0", "-3", "abc", "1.5")
+      val results = invalid.map { raw =>
+        val out = work.resolve(s"deadline-invalid-$raw")
+        val args =
+          lifecycleArgs(bundle, context, out, "inspect", "hello") ++
+            List("--deadline", raw)
+        (child(args, out, ciEnv("generic")), out)
+      }
+      // --deadline bounds the BUNDLE program only; combining it with --agent
+      // is a typed refusal, never a silently ignored flag.
+      val agentOut = work.resolve("deadline-agent")
+      val agentChild = child(
+        List(
+          "run",
+          "--agent",
+          "scout",
+          "--deadline",
+          "5",
+          "--mock",
+          "--out",
+          agentOut.toString
+        ),
+        agentOut,
+        ciEnv("generic")
+      )
+      assertTrue(
+        results.forall { case (result, out) =>
+          result.exit == 21 &&
+          result.stderr.contains("RA-CFG") &&
+          result.stderr.contains("--deadline") &&
+          result.stdout.isEmpty &&
+          // refused BEFORE dispatch: no artifact tree was even created
+          artifacts(out).isEmpty
+        },
+        agentChild.exit == 21,
+        agentChild.stderr.contains("RA-CFG"),
+        agentChild.stderr.contains("--agent"),
+        artifacts(agentOut).isEmpty
+      )
+    },
+    test(
+      "FCI-LIFE-02: parent-delivered SIGTERM stops the real child with bounded cleanup, exit 143, honest partial artifacts, and no orphan"
+    ) {
+      val work = tempDir()
+      val bundle = makeLifecycleBundle(work)
+      val context = contextFile(work)
+      val out = work.resolve("sigterm-out")
+      val marker = work.resolve("grandchild.pid")
+      val args = lifecycleArgs(
+        bundle,
+        context,
+        out,
+        "spawn-sleep",
+        s"$marker|300"
+      )
+      val process = startChild(args, out, ciEnv("generic"))
+      // Wait until the fixture recorded the grandchild pid: the run is then
+      // executing REAL work and owns a live process to clean up.
+      var pid = Option.empty[Long]
+      val pidDeadline = System.currentTimeMillis() + 30000L
+      while pid.isEmpty && System.currentTimeMillis() < pidDeadline do
+        if Files.exists(marker) then
+          pid = Files
+            .readString(marker, UTF_8)
+            .stripPrefix("pid=")
+            .trim
+            .toLongOption
+        if pid.isEmpty then Thread.sleep(100)
+      val grandchildHandle = pid
+        .flatMap { value =>
+          val handle = ProcessHandle.of(value)
+          if handle.isPresent then Some(handle.get) else None
+        }
+        .getOrElse(
+          throw new IllegalStateException(
+            "spawn-sleep did not record a grandchild pid within 30 seconds"
+          )
+        )
+      val grandchildAliveAtStart = grandchildHandle.isAlive
+      // PARENT-DELIVERED OS SIGNAL: Process.destroy sends SIGTERM on POSIX.
+      process.destroy()
+      val exited = process.waitFor(30, TimeUnit.SECONDS)
+      val exitValue = if exited then process.exitValue() else -1
+      // Bounded owned-child cleanup: the grandchild is destroyed by the
+      // runner's interrupt within the stop window (no orphan survives the CLI).
+      val grandchildGone = !exitsWithin(grandchildHandle, 10)
+      val (stdoutFile, stderrFile) = capturedOut(out)
+      val stdout =
+        if Files.exists(stdoutFile) then Files.readString(stdoutFile, UTF_8)
+        else ""
+      val stderr =
+        if Files.exists(stderrFile) then Files.readString(stderrFile, UTF_8)
+        else ""
+      Files.deleteIfExists(stdoutFile)
+      Files.deleteIfExists(stderrFile)
+      // Honest partial artifacts: the streamed events tail persists, but NO
+      // fabricated completion record (run.json/result.json) may exist.
+      val dirs = runDirsOf(out)
+      val eventsPresent = dirs.nonEmpty && dirs.forall { dir =>
+        val events = dir.resolve("events.jsonl")
+        Files.exists(events) && Files.size(events) > 0
+      }
+      val hasRunJson =
+        artifacts(out).exists(_.getFileName.toString == "run.json")
+      val hasResultJson =
+        artifacts(out).exists(_.getFileName.toString == "result.json")
+      assertTrue(
+        grandchildAliveAtStart,
+        exited,
+        exitValue == 143,
+        grandchildGone,
+        eventsPresent,
+        !hasRunJson,
+        !hasResultJson,
+        !stdout.contains("exitCode"),
+        !stdout.contains("trusted-checks-passed"),
+        !stderr.contains("trusted-checks-passed")
       )
     }
   ) @@ TestAspect.sequential

@@ -1,0 +1,161 @@
+{
+  "format": "raider.first-ci-acceptance-matrix",
+  "version": "1.0",
+  "card": "RAI-187",
+  "contract": "docs/ci-runtime.md (§§1-8, 11)",
+  "suites": {
+    "run": "raider.cli.run.FirstCiProcessAcceptanceSpec",
+    "workflowLaunch": "raider.cli.workflow.WorkflowLaunchSpec"
+  },
+  "executionMode": "real OS processes: every clause spawns a fresh `java -cp <test-classpath> raider.cli.Main ...` child; the suite is the parent that observes exit codes, stdout/stderr, and on-disk artifacts. No in-process shortcut substitutes for the process boundary.",
+  "clauses": [
+    {
+      "id": "FCI-CLI-01",
+      "title": "Real CLI child invocation completes with exit 0, a single JSON result line on stdout, and the full honest artifact set",
+      "ciRuntime": "§4, §7",
+      "fixture": "bundle jar `pipelines.jar` with manifest entry `inspect` -> `raider.fixtures.DemoWorkflow`, `--mock` provider, trusted-local declared trust",
+      "expected": {
+        "exitCode": 0,
+        "stdout": "one JSON line containing \"exitCode\":0, no ANSI escape bytes, no prompt text, no fixture secret",
+        "artifacts": [
+          "run.json",
+          "result.json",
+          "events.jsonl",
+          "checks.junit.xml",
+          "summary.md",
+          "artifacts.json"
+        ]
+      },
+      "tests": [
+        "FCI-CLI-01/02 and FCI-CTX-01: real CLI, artifact integrity, and environment parity"
+      ]
+    },
+    {
+      "id": "FCI-CLI-02",
+      "title": "Non-TTY execution: no terminal-specific behavior leaks into the child; parallel children share no state",
+      "ciRuntime": "§4",
+      "fixture": "stdin closed after spawn; stdout/stderr redirected to files; inherited GITHUB_*/CI_*/GITLAB_* variables stripped",
+      "expected": {
+        "exitCode": 0,
+        "assertions": "distinct work-<uuid> directories per concurrent child; no shared artifact paths"
+      },
+      "tests": [
+        "FCI-CLI-01/02 and FCI-CTX-01: real CLI, artifact integrity, and environment parity"
+      ]
+    },
+    {
+      "id": "FCI-CTX-01",
+      "title": "CI environment parity: generic --context payload and github/gitlab environment detection produce equivalent ci records; untrusted context is redacted in run.json",
+      "ciRuntime": "§5",
+      "fixture": "ci-context.json {ci:generic,...}; GITHUB_* / CI_* / GITLAB_* variable sets",
+      "expected": {
+        "exitCode": 0,
+        "assertions": "run.json carries \"ci\" and \"repo\":\"<redacted>\" for env-detected untrusted contexts; result.json taskVerdict is trusted-checks-passed with the same checkPolicyDigest across all three detection paths"
+      },
+      "tests": [
+        "FCI-CLI-01/02 and FCI-CTX-01: real CLI, artifact integrity, and environment parity"
+      ]
+    },
+    {
+      "id": "FCI-CTX-02",
+      "title": "Malformed context, unknown bundle entry, and missing input are typed refusals before any dispatch",
+      "ciRuntime": "§6",
+      "expected": {
+        "exitCode": 21,
+        "assertions": "typed stderr diagnostic; no run.json/result.json fabricated; no artifact tree on parse-stage refusals"
+      },
+      "tests": [
+        "FCI-CTX-02: malformed context, bundle, and missing input fail before dispatch",
+        "FCI-LIFE-01: invalid --deadline values are typed parse-time refusals before any dispatch"
+      ]
+    },
+    {
+      "id": "FCI-REPORT-01",
+      "title": "Check evidence and §8 exit-code precedence: blocking check failure outranks the task verdict; advisory failure does not flip exit 0",
+      "ciRuntime": "§8",
+      "expected": {
+        "assertions": "run.json carries checks, checkPolicyDigest; result.json carries taskVerdict trusted-checks-passed / task-failed with checkEvidence [bundle-preflight, run-outcome, run-result-schema]"
+      },
+      "tests": [
+        "FCI-REPORT-01/03/04: check evidence, exit precedence, and hostile report values",
+        "FCI-REPORT-01: real workflow children record advisory failure with exit 0 and blocking failure with exit 10 (WorkflowLaunchSpec)"
+      ]
+    },
+    {
+      "id": "FCI-REPORT-03",
+      "title": "Real artifact write failures are never green: a preflight write failure exits 27; a post-run write failure outranks the verdict",
+      "ciRuntime": "§7, §8",
+      "expected": {
+        "exitCode": 27,
+        "assertions": "stderr names the missing complete report; --out that is a regular file stays untouched"
+      },
+      "tests": [
+        "FCI-REPORT-03: a real artifact preflight write failure cannot be green",
+        "FCI-REPORT-03: real child artifact-write failure after a blocking check outranks the verdict (WorkflowLaunchSpec)"
+      ]
+    },
+    {
+      "id": "FCI-REPORT-04",
+      "title": "Hostile workflow output and hostile trusted-check stdout are neutralized in summary.md and XML-escaped in checks.junit.xml",
+      "ciRuntime": "§7",
+      "fixture": "output containing workflow-command markers, XML metacharacters, quotes",
+      "expected": {
+        "assertions": "summary.md contains percent-percent-encoded commands and entity-escaped metacharacters; junit contains <testsuite with escaped failure messages"
+      },
+      "tests": [
+        "FCI-REPORT-01/03/04: check evidence, exit precedence, and hostile report values",
+        "FCI-REPORT-04: hostile workflow output and JUnit check evidence are escaped",
+        "FCI-REPORT-04: hostile trusted-check stdout is neutralized in summary and XML-escaped in JUnit (WorkflowLaunchSpec)"
+      ]
+    },
+    {
+      "id": "FCI-REPORT-05",
+      "title": "Parent-delivered OS signals preserve honest finalization: signal exit outranks everything; no fabricated completion",
+      "ciRuntime": "§8",
+      "fixture": "POSIX SIGTERM delivered by the test parent via Process.destroy() to the real CLI child",
+      "expected": {
+        "workflowLaunchPath": "exit 143, truthful interruption evidence, no fake completion (WRI-02/WRI-03); post-check SIGTERM preserves finalization state without temporary files (FCI-REPORT-05)",
+        "firstCiRunPath": "exit 143; streamed events.jsonl tail persists; run.json and result.json ABSENT; no stdout success line; owned grandchild process destroyed within the bounded stop window"
+      },
+      "tests": [
+        "WRI-02/WRI-03: SIGTERM during WorkflowRun model work -> bounded stop (143), truthful interruption evidence, no fake completion (WorkflowLaunchSpec)",
+        "FCI-REPORT-05: SIGTERM after check completion preserves honest finalization state without temporary files (WorkflowLaunchSpec)",
+        "FCI-LIFE-02: parent-delivered SIGTERM stops the real child with bounded cleanup, exit 143, honest partial artifacts, and no orphan"
+      ]
+    },
+    {
+      "id": "FCI-LIFE-01",
+      "title": "Internal deadline (RAI-187): --deadline bounds the bundle program's work; a deadline hit exits 24 with truthful deadline artifacts and the real ledger",
+      "ciRuntime": "§6, §7, §8",
+      "fixture": "lifecycle.jar entries long-sleep (raider.cli.run.LongSleepWorkflow) and spawn-sleep (raider.cli.run.SpawnSleepWorkflow); long-sleep input 120000 ms with --deadline 1",
+      "expected": {
+        "exitCode": 24,
+        "stdout": "single JSON line with \"exitCode\":24",
+        "run.json": "status Failed, exitCode 24, error code RA-DEADLINE, accounting splice present (real ledger reached despite the failed admitted slot)",
+        "result.json": "RA-DEADLINE error verdict document, task-failed; never trusted-checks-passed",
+        "summary.md": "FAILED status line naming RA-DEADLINE",
+        "validation": "invalid values (0, negative, non-numeric) are typed Configuration refusals (exit 21) before any dispatch; --deadline with --agent is a typed refusal"
+      },
+      "tests": [
+        "FCI-LIFE-01: a real deadline run exits 24 with truthful deadline artifacts and no fabricated success",
+        "FCI-LIFE-01: invalid --deadline values are typed parse-time refusals before any dispatch"
+      ]
+    },
+    {
+      "id": "FCI-MATRIX-01",
+      "title": "Joint First CI matrix: the clauses above execute as one suite on one integrated build",
+      "ciRuntime": "§§1-8, 11",
+      "expected": {
+        "assertions": "all listed tests pass in one sequential suite execution; suite result recorded in the work record with exact commands"
+      },
+      "tests": ["(this matrix: the union of all clauses)"]
+    }
+  ],
+  "nonGoals": [
+    "no second scheduler or runtime: the child is the ordinary CLI headless runner",
+    "no hosted CI provider calls: fixtures are local env/file variables only",
+    "no paid provider calls: --mock fixture mode only",
+    "no durable resume or exactly-once claims",
+    "no in-process interrupt substitute: signal clauses are observed through real process boundaries"
+  ]
+}

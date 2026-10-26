@@ -764,6 +764,30 @@ object HeadlessRunner:
             )
             limits <- ZIO.fromEither(BudgetLimits.make())
             admission <- Admission.make(Right(limits))
+            // RAI-187: `--deadline` bounds the BUNDLE program's work only
+            // (ci-runtime §6: the internal deadline stays shorter than the CI
+            // timeout, leaving time for cleanup/artifact upload). Preflight
+            // above and the artifact/report writes below stay OUTSIDE the
+            // deadline, so a deadline hit is rendered through the normal
+            // honest path: the program fiber is interrupted inside the
+            // admitted slot (a real failed attempt in the ledger), the typed
+            // DeadlineExceeded error carries exit 24 (§8), and
+            // run.json/result.json/report/accounting report the truthful
+            // deadline failure — never a fabricated success.
+            built = Task.zio(program(input))
+            programTask = args.deadlineSeconds match
+              case Some(seconds) =>
+                val deadlineError: RaiderError =
+                  RaiderError.DeadlineExceeded(
+                    s"bundle program exceeded --deadline ${seconds}s"
+                  )
+                built
+                  .timeout(zio.Duration.fromSeconds(seconds))
+                  .flatMap {
+                    case Some(text) => ZIO.succeed(text)
+                    case None       => ZIO.fail(deadlineError)
+                  }
+              case None => built
             slotResult <- admission
               .withSlot(
                 SlotKind.Model,
@@ -771,7 +795,7 @@ object HeadlessRunner:
                 CostEstimate.Unknown,
                 None
               ) {
-                Task.zio(program(input)).map(s => (s, MicroUsd(0)))
+                programTask.map(s => (s, MicroUsd(0)))
               }
               .either
             // RAI-086: real ledger snapshot on both slot outcomes
