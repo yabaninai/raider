@@ -127,10 +127,16 @@ object HeadlessRunner:
     // RAI-129: `raider resume <run-dir>` — dispatched the same way, BEFORE any
     // run/preflight machinery ([[ResumeCommand]]): a recovery of a PAST run
     // never creates a new invocation root and never spends anything.
+    // RAI-210: `raider verify-artifacts <run-dir>` — dispatched the same way
+    // ([[ArtifactIntegrityCommand]]): a post-run integrity verification
+    // re-reads a PAST run's manifest; it never creates a new invocation root
+    // and never spends anything.
     args.target match
       case CliArgs.Target.Replay(argv) => ReplayCommand.outcome(argv, args.out)
       case CliArgs.Target.Resume(argv) => ResumeCommand.outcome(argv, args.out)
-      case _                           => runInvocation(args, env, ci)
+      case CliArgs.Target.VerifyArtifacts(argv) =>
+        ArtifactIntegrityCommand.outcome(argv, args.out)
+      case _ => runInvocation(args, env, ci)
 
   /** The unchanged run/chat invocation body (moved verbatim by RAI-109; only
     * the replay dispatch above was added — no run-path line was edited).
@@ -591,6 +597,9 @@ object HeadlessRunner:
     // RAI-129: exhaustivity only — same dispatch-before-run-path rule.
     case CliArgs.Target.Resume(argv) =>
       s"resume ${argv.drop(1).headOption.getOrElse("<run-dir>")}"
+    // RAI-210: exhaustivity only — same dispatch-before-run-path rule.
+    case CliArgs.Target.VerifyArtifacts(argv) =>
+      s"verify-artifacts ${argv.drop(1).headOption.getOrElse("<run-dir>")}"
 
   private def checksFor(
       outcome: Either[RaiderError, String]
@@ -660,6 +669,8 @@ object HeadlessRunner:
       text <- args.target match
         case CliArgs.Target.Replay(argv) => replayLeakDefect(argv)
         case CliArgs.Target.Resume(argv) => resumeLeakDefect(argv)
+        case CliArgs.Target.VerifyArtifacts(argv) =>
+          verifyArtifactsLeakDefect(argv)
         case CliArgs.Target.Agent(name) =>
           for
             limits <- ZIO.fromEither(
@@ -792,6 +803,17 @@ object HeadlessRunner:
     */
   private def resumeLeakDefect(argv: List[String]): ZIO[Any, Nothing, Nothing] =
     ZIO.die(IllegalStateException(s"resume target leaked into run: $argv"))
+
+  /** The loud defect for a verify-artifacts target that reached the run path —
+    * see the RAI-210 note in [[run]] (a post-run verification is dispatched
+    * before the run path; this path is unreachable by construction).
+    */
+  private def verifyArtifactsLeakDefect(
+      argv: List[String]
+  ): ZIO[Any, Nothing, Nothing] =
+    ZIO.die(
+      IllegalStateException(s"verify-artifacts target leaked into run: $argv")
+    )
 
   /** LIN-03A-prep: events.jsonl is NOT written here — it is streamed during the
     * run by [[executeAsJob]] ([[EventsJsonlWriter]]), so it exists and is
