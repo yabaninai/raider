@@ -48,6 +48,33 @@ object PortableRunSpec extends ZIOSpecDefault:
   private def verdictDoc(): Path =
     repoFile("contracts/acceptance/portable/parity-verdict.json")
 
+  /** RAI-212 adversarial shape: the ONLY step is an agent and BOTH the bindings
+    * and the verdict.from (with the literal trustedVerifier authority) aim at
+    * the agent's output — the declaration cannot give the model verdict
+    * authority.
+    */
+  private val agentVerdictDoc: String =
+    """{
+      |  "format": "raider.portable-workflow", "version": "1.0",
+      |  "limits": { "deadlineMs": 60000, "attempts": 2, "parallelism": 1, "children": 0, "tokens": 4000 },
+      |  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "verdict": { "type": "string" } } },
+      |  "steps": [{ "id": "prepare", "kind": "agent", "profile": "coder", "toolset": "workspace", "input": "#/inputs/request", "outputSchema": "verdict", "structuredOutput": true }],
+      |  "outputs": { "bindings": { "result": "#/steps/prepare/output" }, "verdict": { "from": "#/steps/prepare/output", "authority": "trustedVerifier" } }
+      |}""".stripMargin
+
+  /** RAI-212 mixed shape: a join of the agent and the REAL marker check; the
+    * root output is the joined ARRAY, so the run must succeed without a verdict
+    * claim even though the check itself passed.
+    */
+  private val joinVerdictDoc: String =
+    """{
+      |  "format": "raider.portable-workflow", "version": "1.0",
+      |  "limits": { "deadlineMs": 60000, "attempts": 2, "parallelism": 1, "children": 0, "tokens": 4000 },
+      |  "schemas": { "inputs": { "request": { "type": "string" } }, "outputs": { "verdict": { "type": "string" } } },
+      |  "steps": [{ "id": "prepare", "kind": "agent", "profile": "coder", "toolset": "workspace", "input": "#/inputs/request", "outputSchema": "verdict", "structuredOutput": true }, { "id": "gate", "kind": "trustedCheck", "checkId": "workspace-marker-present", "registrySnapshot": "sha256:0c877972cf59788094e1d7653a1f01f6cd1b6c9108d117d5e069bc6b6bdaba0b", "input": "#/steps/prepare/output", "outputSchema": "verdict" }, { "id": "combined", "kind": "join", "steps": ["prepare", "gate"], "failure": "failFast", "outputSchema": "verdict" }],
+      |  "outputs": { "bindings": { "result": "#/steps/combined/output" }, "verdict": { "from": "#/steps/combined/output", "authority": "trustedVerifier" } }
+      |}""".stripMargin
+
   /** The gate references a check the LAUNCHER does not pin (RAI-199: only the
     * launcher-pinned registry is trusted; an unknown checkId/snapshot pair is a
     * typed refusal, never a live lookup).
@@ -149,6 +176,9 @@ object PortableRunSpec extends ZIOSpecDefault:
             o.exitCode == 0,
             o.error.isEmpty,
             runJson.contains("\"taskVerdict\":\"trusted-checks-passed\""),
+            runJson.contains(
+              "\"verdictEvidence\":{\"origin\":\"trusted-check\",\"target\":\"#/steps/run/output\",\"steps\":[\"run\",\"gate\"],\"assertedStatus\":\"passed\"}"
+            ),
             runJson.contains("\"declaredLimits\""),
             runJson.contains("\"effectiveLimits\""),
             runJson.contains("\"docDigest\":\"sha256-"),
@@ -159,7 +189,7 @@ object PortableRunSpec extends ZIOSpecDefault:
           )
       },
       test(
-        "red verdict: the trusted check fails -> exit 10 RA-OUT, NO verdict claim, truthful Failed artifact"
+        "red verdict: the trusted check fails -> exit 10 RA-OUT, NO verdict claim, the check's own status recorded verbatim"
       ) {
         val ws = freshWs() // no marker.txt on purpose
         val doc = verdictDoc()
@@ -173,8 +203,63 @@ object PortableRunSpec extends ZIOSpecDefault:
             o.error.exists(_.code == "RA-OUT"),
             o.error.exists(_.detail.contains("trusted verdict did not pass")),
             !runJson.contains("\"taskVerdict\""),
+            runJson.contains(
+              "\"verdictEvidence\":{\"origin\":\"trusted-check\",\"target\":\"#/steps/run/output\",\"steps\":[\"run\",\"gate\"],\"assertedStatus\":\"failed\"}"
+            ),
             runJson.contains("\"status\":\"Failed\""),
             eventsLinesOf(out).nonEmpty // truthful evidence still lands
+          )
+      },
+      test(
+        "RAI-212 agent-step-only verdict: the agent's output is the root -> exit 0, NO claim, contradictory-capable agent evidence recorded"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val doc = docFile(agentVerdictDoc)
+        val in = inputFile("""{"request": "prepare the workspace"}""")
+        val out = Files.createTempDirectory("pwrun-agent")
+        for o <- PortableRun.run(args(doc, in, ws, out), env)
+        yield
+          val runJson = runJsonOf(out)
+          assertTrue(
+            o.exitCode == 0,
+            o.error.isEmpty,
+            // the declared trustedVerifier authority over agent output mints NOTHING
+            !runJson.contains("\"taskVerdict\""),
+            runJson.contains(
+              "\"verdictEvidence\":{\"origin\":\"agent-step\",\"target\":\"#/steps/prepare/output\",\"steps\":[\"prepare\"]}"
+            ),
+            runJson.contains("\"status\":\"Succeeded\""),
+            runJson.contains("[mock] answer to:"),
+            eventsLinesOf(out).exists(
+              _.contains("verdict evidence origin: agent-step")
+            )
+          )
+      },
+      test(
+        "RAI-212 mixed verdict: join of the agent and a PASSING check -> exit 0, NO claim, mixed evidence recorded"
+      ) {
+        val ws = freshWs()
+        Files.writeString(ws.resolve("marker.txt"), "made-by-test")
+        val doc = docFile(joinVerdictDoc)
+        val in = inputFile("""{"request": "prepare the workspace"}""")
+        val out = Files.createTempDirectory("pwrun-join")
+        for o <- PortableRun.run(args(doc, in, ws, out), env)
+        yield
+          val runJson = runJsonOf(out)
+          assertTrue(
+            o.exitCode == 0,
+            o.error.isEmpty,
+            // even the PASSING check inside the join cannot mint the claim:
+            // the root output is the joined array, not one check's result
+            !runJson.contains("\"taskVerdict\""),
+            runJson.contains(
+              "\"verdictEvidence\":{\"origin\":\"mixed\",\"target\":\"#/steps/combined/output\",\"steps\":[\"combined\",\"prepare\",\"gate\"]}"
+            ),
+            runJson.contains("\"status\":\"Succeeded\""),
+            eventsLinesOf(out).exists(
+              _.contains("verdict evidence origin: mixed")
+            )
           )
       },
       test(

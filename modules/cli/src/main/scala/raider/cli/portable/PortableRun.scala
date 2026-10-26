@@ -15,7 +15,7 @@ import raider.core.result.{
   OutputPayload,
   RunResult
 }
-import raider.dsl.portable.PortableWorkflowLowerer
+import raider.dsl.portable.{PortableVerdictEvidence, PortableWorkflowLowerer}
 import raider.runtime.admission.Admission
 import raider.runtime.events.{EventEnvelope, EventPayload}
 import raider.runtime.jobs.JobStatus
@@ -49,9 +49,13 @@ import scala.util.control.NonFatal
   *     ceiling envelope ([[PortableLaunchPolicy]], [[TokenBudgetBackend]]);
   *   - ci-runtime §7 artifacts (run.json / summary.md / events.jsonl), §8
   *     stable exit codes, SIGTERM bounded stop, closed stdin by construction;
-  *   - the trusted verdict is PROJECTED, not claimed: a launched check that did
-  *     not pass is a failed run (RA-OUT) — the model cannot manufacture
-  *     success.
+  *   - the trusted verdict is PROJECTED, not claimed, and the projection is
+  *     ORIGIN-AWARE (RAI-212): only evidence structurally produced by the
+  *     trusted check gates the claim; a launched check that did not pass is a
+  *     failed run (RA-OUT), while agent/mixed evidence is permissive — the
+  *     model can neither manufacture success nor veto the exit code, and any
+  *     verdict-shaped assertion outside the trusted check is recorded verbatim
+  *     as contradictory evidence;
   */
 object PortableRun:
 
@@ -227,6 +231,7 @@ object PortableRun:
       error: Option[RaiderError] = None,
       output: Option[String] = None,
       verdictClaimed: Boolean = false,
+      verdictEvidence: Option[Json] = None,
       inputDigest: String = "",
       docDigest: String = "",
       declaredLimits: Option[Json] = None,
@@ -367,8 +372,32 @@ object PortableRun:
         ZIO.fromEither(PortableDoc.declaredLimits(document))
       )
       target <- record(state, ZIO.fromEither(outputTargetOf(document)))
+      // RAI-212: the STRUCTURAL verdict-evidence origin is resolved purely,
+      // zero-dispatch, before any credential or dispatch work and recorded on
+      // EVERY exit path. A document may declare trustedVerifier authority over
+      // evidence the trusted check never produced (the frozen corpus itself
+      // carries such verdict.from decorations), so the claim below is gated on
+      // this origin, never on the declared authority or the output value alone.
+      evidenceOrigin = PortableVerdictEvidence.originOf(document)
+      _ <- state.update(
+        _.copy(verdictEvidence =
+          evidenceOrigin.map(origin =>
+            PortableVerdictEvidence.evidenceJson(
+              PortableVerdictEvidence.record(origin, Json.Null),
+              target.pointer
+            )
+          )
+        )
+      )
       _ <- emit(
         EventPayload.Diagnostics(s"output target: ${target.pointer}")
+      )
+      _ <- emit(
+        EventPayload.Diagnostics(
+          s"verdict evidence origin: ${evidenceOrigin
+              .map(_.code)
+              .getOrElse("none")}"
+        )
       )
       _ <- state.update(
         _.copy(
@@ -522,38 +551,52 @@ object PortableRun:
             EventPayload.Terminal(terminal)
           ) *> ZIO.fail(err)
         case Right(outputJson) =>
-          record(
-            state,
-            ZIO.fromEither(projectOutput(outputJson))
-          ).flatMap { projected =>
-            state.update(
-              _.copy(
-                phase = Phase.Completed,
-                status = ExecutionStatus.Succeeded,
-                terminal = JobStatus.Succeeded,
-                exitCode = ExitCodes.Success,
-                output = Some(projected.json),
-                // The verdict is claimed ONLY when the root output IS the
-                // pinned check's passed result; data outputs claim nothing.
-                verdictClaimed = projected.verdictPassed
-              )
-            ) *> state.update(
-              _.copy(terminalEmitted = true)
-            ) *> emit(EventPayload.Terminal(JobStatus.Succeeded)) *> state.get
-              .flatMap { st =>
-                // In-flow artifact write: a failure must fail the run (never
-                // green without artifacts, ci-runtime §7).
-                writeArtifacts(workDir, root, startedAt, st)
-                  .mapError(t =>
-                    RaiderError.JournalFailure(
-                      s"cannot write run artifacts under $workDir: ${String.valueOf(t)}"
+          // RAI-212: refine the structural evidence with the OBSERVED root
+          // output BEFORE projecting, so even an RA-OUT failure records the
+          // verdict-shaped assertion verbatim in run.json.
+          val recorded =
+            evidenceOrigin.map(o =>
+              PortableVerdictEvidence.record(o, outputJson)
+            )
+          val refined =
+            recorded.map(r =>
+              PortableVerdictEvidence.evidenceJson(r, target.pointer)
+            )
+          state
+            .update(_.copy(verdictEvidence = refined))
+            .flatMap { _ =>
+              record(state, ZIO.fromEither(projectOutput(outputJson, recorded)))
+                .flatMap { projected =>
+                  state.update(
+                    _.copy(
+                      phase = Phase.Completed,
+                      status = ExecutionStatus.Succeeded,
+                      terminal = JobStatus.Succeeded,
+                      exitCode = ExitCodes.Success,
+                      output = Some(projected.json),
+                      // The verdict is claimed ONLY when the root output IS
+                      // the pinned check's passed result (structural origin +
+                      // observed value); data outputs claim nothing.
+                      verdictClaimed = projected.verdictPassed
                     )
                   )
-                  .flatMap { _ =>
-                    state.update(_.copy(artifactsWritten = true))
-                  }
-              }
-          }
+                }
+            } *> state.update(
+            _.copy(terminalEmitted = true)
+          ) *> emit(EventPayload.Terminal(JobStatus.Succeeded)) *> state.get
+            .flatMap { st =>
+              // In-flow artifact write: a failure must fail the run (never
+              // green without artifacts, ci-runtime §7).
+              writeArtifacts(workDir, root, startedAt, st)
+                .mapError(t =>
+                  RaiderError.JournalFailure(
+                    s"cannot write run artifacts under $workDir: ${String.valueOf(t)}"
+                  )
+                )
+                .flatMap { _ =>
+                  state.update(_.copy(artifactsWritten = true))
+                }
+            }
     yield ()
 
   /** Records a typed failure into the run state before it propagates — with the
@@ -577,12 +620,11 @@ object PortableRun:
       }
     )
 
-  /** The output target EXACTLY as the lowerer resolves it (frozen corpus
-    * parity): bindings first, then the verdict; when both are declared the
-    * bindings target is the root and the launcher claims NO verdict — the
-    * output flows as data and no green verdict is manufactured. Refusing the
-    * ambiguity would reject valid frozen-corpus documents, so the launcher
-    * mirrors the lowerer instead of inventing stricter semantics.
+  /** The output-target EXACTLY as the lowerer resolves it (frozen corpus
+    * parity): bindings first, then the verdict. The pointer only selects the
+    * root output; whether that output may mint a verdict claim is decided by
+    * the STRUCTURAL evidence origin ([[PortableVerdictEvidence]]), never by the
+    * declared `authority` string.
     */
   private def outputTargetOf(
       document: Json
@@ -595,31 +637,38 @@ object PortableRun:
         )
       )
 
-  /** The output projection (schema parity note: `outputs` REQUIRES both
-    * bindings and verdict, so the root is always the bindings target and the
-    * trusted verdict is observed through the ROOT OUTPUT VALUE): when the root
-    * output carries the pinned check convention `status: passed`, the run may
-    * claim the trusted verdict; any OTHER status value is an honest failed run
-    * (RA-OUT) — a gate check that did not pass can never become a green run,
-    * and the model cannot manufacture success. An output without a `status`
-    * field is data (agent text under this launcher's pinned programs) and
-    * succeeds with NO verdict claim.
+  /** The output projection, ORIGIN-AWARE (RAI-212). The pinned value discipline
+    * applies ONLY when the root output IS the trusted check's result (`status:
+    * passed` → claim, any OTHER status → honest failed run RA-OUT, no status →
+    * data): a gate check that did not pass can never become a green run. Agent,
+    * mixed or otherwise unattributable evidence is PERMISSIVE in both
+    * directions — the observed value can neither claim the verdict (no
+    * manufactured success from a model-controlled `status`) nor veto the exit
+    * code (the model must not control exit codes); the projection records any
+    * verdict-shaped assertion as contradictory evidence, verbatim, upstream in
+    * the flow.
     */
-  private def projectOutput(output: Json): Either[RaiderError, Projected] =
-    val status = output match
-      case obj: Json.Obj =>
-        obj.fields.collectFirst { case ("status", Json.Str(v)) => v }
-      case _ => None
-    status match
-      case Some("passed") =>
-        Right(Projected(output.toJson, verdictPassed = true))
-      case Some(other) =>
-        Left(
-          RaiderError.OutputValidation(
-            s"trusted verdict did not pass: status '$other'"
+  private def projectOutput(
+      output: Json,
+      recorded: Option[PortableVerdictEvidence.Recorded]
+  ): Either[RaiderError, Projected] =
+    val trustedOrigin =
+      recorded.exists(
+        _.origin.isInstanceOf[PortableVerdictEvidence.TrustedCheck]
+      )
+    val asserted = recorded.flatMap(_.assertedStatus)
+    if trustedOrigin then
+      asserted match
+        case Some("passed") =>
+          Right(Projected(output.toJson, verdictPassed = true))
+        case Some(other) =>
+          Left(
+            RaiderError.OutputValidation(
+              s"trusted verdict did not pass: status '$other'"
+            )
           )
-        )
-      case None => Right(Projected(output.toJson, verdictPassed = false))
+        case None => Right(Projected(output.toJson, verdictPassed = false))
+    else Right(Projected(output.toJson, verdictPassed = false))
 
   final case class Projected(json: String, verdictPassed: Boolean)
 
@@ -776,8 +825,9 @@ object PortableRun:
 
   /** Additive splice of the portable provenance into run.json (the RAI-086
     * splice discipline: the frozen core schema is not extended): the document
-    * and input digests, the declared vs effective limits and the observed token
-    * accounting.
+    * and input digests, the declared vs effective limits, the observed token
+    * accounting and the RAI-212 verdict-evidence record (structural origin
+    * refined by the observed root output, recorded on every exit path).
     */
   private def splicePortable(runJson: String, st: RunState): String =
     Json.decoder.decodeJson(runJson) match
@@ -793,7 +843,8 @@ object PortableRun:
                "tokensDeclared" -> Json.Num(st.tokensDeclared),
                "tokensObserved" -> Json.Num(st.tokensObserved)
              )
-           else zio.Chunk.empty)
+           else zio.Chunk.empty) ++
+          st.verdictEvidence.map(j => "verdictEvidence" -> j)
         Json.Obj(obj.fields ++ extras).toJson
       case _ => runJson // unreachable: RunResult JSON is always an object
 
