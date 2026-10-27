@@ -306,3 +306,4 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-222** [process-api cancel-mid-run fixture errata: cancelled settles 26](m1.md); todo; dependencies: RAI-201; profiles: ci, fast.
 - **RAI-223** [forbidden-apis scanner true line attribution](m1.md); todo; dependencies: none; profiles: fast.
 - **RAI-224** [sbt-test gate budget load calibration at wave-scale lane counts](m1.md); todo; dependencies: RAI-209; profiles: docs.
+- **RAI-225** [process-api acceptance determinism: duplicate-submit ownership and OutboundSpec coalesce under load](m1.md); todo; dependencies: RAI-201; profiles: ci, fast.

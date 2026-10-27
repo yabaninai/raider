@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 235,
+  "raider_count": 236,
   "companion_count": 3,
   "cards": [
     {
@@ -7061,6 +7061,32 @@
       },
       "non_goals": "Changing gate budgets or the protected registry; product code; claiming results beyond the measured tier counts.",
       "context": "Wave A follow-up 5 (2026-10-26): load >=200 can still exceed the new 1800 s sbt-test budget under 8-lane contention — an owner calibration question for the next raise or a dedicated gate host; the owner requested dozens-of-streams raises, so calibration evidence is needed."
+    },
+    {
+      "id": "RAI-225",
+      "title": "process-api acceptance determinism: duplicate-submit ownership and OutboundSpec coalesce under load",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-201"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/processapi/**",
+        "modules/cli/src/main/scala/raider/cli/processapi/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "ci",
+        "fast"
+      ],
+      "behavior": "Root-cause and close the load-sensitive failures observed on base 1351538: the XE-PROC-03 duplicate-submit ownership race (a second submit receives input_rejected instead of duplicate_submit when the root is in Phase.Settling) and the OutboundSpec coalesce timing flake; if the product's typed semantics are correct, make the acceptance tests deterministic under concurrent ambient load (content-routed waits, bounded settle, latched iteration); if not, fix the product with typed semantics and disclose the contract reading.",
+      "acceptance": {
+        "normal": "The process-api suites (ProcessApiAcceptanceSpec, OutboundSpec) pass on a calm host and under high concurrent ambient load (repeat the loaded-matrix discipline: at least 10 focused runs under concurrent host load), with no sleeps added as synchronization.",
+        "error": "A genuine duplicate submit still settles duplicate_submit (typed) regardless of concurrent phase transitions; input_rejected stays reserved for its typed causes; no threshold or assertion is weakened.",
+        "concurrency": "Latched or loaded iterations (at least 30, or the RAI-119 discipline) show zero cross-talk; any failure is recorded verbatim and never retried into a pass beyond the MJE-03c allowance."
+      },
+      "non_goals": "Changing the frozen contract vocabulary or exit codes; relaxing quality gates or the 1800 s budget; touching unrelated suites.",
+      "context": "Three wave-D lanes on base 1351538 hit the same family: RAI-224 sbt-test red 3x at calm ambient (2x XE-PROC-03 duplicate-submit Phase.Settling race where Session.scala:322 returns input_rejected; 1x OutboundSpec coalesce), RAI-222 three profile attempts failed on timing-sensitive process-api tests under load 95-199, RAI-205 first execute run failed ProcessApiAcceptanceSpec duplicate-submit (input_rejected vs duplicate_submit, green on reruns); the wave-C integrated run passed at 619.5 s — the window is latent, not absent."
     }
   ]
 }
