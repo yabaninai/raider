@@ -128,28 +128,22 @@ object OutboundSpec extends ZIOSpecDefault:
             json => release.await *> written.update(_ :+ json),
             Duration.ofSeconds(60)
           )
-          fiber <- out.writer.fork
-          // The writer is stuck on the gated sink, so the queue saturates
-          // deterministically once its depth reaches MaxOrdinaryFrames and
-          // the observations below cannot fit: they must coalesce. Producers
-          // are added until the depth probe confirms saturation (bounded).
-          _ <- {
-            def saturate(n: Int, left: Int): UIO[Unit] =
-              if left <= 0 then ZIO.unit
-              else
-                out.queueDepth.flatMap { d =>
-                  if d >= Outbound.MaxOrdinaryFrames then ZIO.unit
-                  else
-                    out.receipt(receipt(n)).forkDaemon *> saturate(
-                      n + 1,
-                      left - 1
-                    )
-                }
-            saturate(1, 256)
+          // The queue is saturated BEFORE the writer fiber exists: sequential
+          // receipts only ever suspend past the capacity bound, so after this
+          // loop the queue holds exactly MaxOrdinaryFrames frames — no forks,
+          // no depth probes, no scheduling races (a writer forked earlier
+          // would keep one frame in flight and permanently free one slot,
+          // letting an observation slip in as an ordinary frame).
+          _ <- ZIO.foreachDiscard(1 to Outbound.MaxOrdinaryFrames) { i =>
+            out.receipt(receipt(i))
           }
+          // The full queue cannot fit the observations: they must coalesce.
           _ <- out.observation("req", 65L, "progress", "one")
           _ <- out.observation("req", 66L, "progress", "two")
           _ <- out.observation("req", 67L, "progress", "three")
+          gapBeforeFlush <- out.openGap
+          // Only now start the writer and let the queue drain.
+          fiber <- out.writer.fork
           _ <- release.succeed(())
           _ <- out.closeInput()
           _ <- out.flushGap("req")
@@ -159,6 +153,7 @@ object OutboundSpec extends ZIOSpecDefault:
           got <- written.get
           gapFrames = got.flatMap(skippedOf(_))
         yield assertTrue(
+          gapBeforeFlush.contains((65L, 3L)),
           gapFrames.size == 1,
           gapFrames.headOption.contains((65L, 3L))
         )

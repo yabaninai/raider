@@ -313,20 +313,32 @@ object Session:
         sub: Protocol.Submit,
         s: SessionState
     ): ZIO[Scope, Nothing, Boolean] =
-      s.phase match
-        case Phase.AwaitingHello =>
-          replyError(Protocol.HandshakeRequired, Some(sub.requestId)).as(true)
-        case Phase.Running =>
-          replyError(Protocol.DuplicateSubmit, Some(sub.requestId)).as(true)
-        case Phase.Settling =>
-          replyError(
-            Protocol.InputRejected("session is settling; submit refused"),
-            Some(sub.requestId)
-          ).as(true)
-        case Phase.Active =>
-          Protocol.validateSubmitInput(sub.input) match
-            case Left(err)   => replyError(err, Some(sub.requestId)).as(true)
-            case Right(task) => startRoot(sub.requestId, task).as(true)
+      // Duplicate detection is OWNERSHIP-keyed, not phase-keyed
+      // (contracts/process-api/README.md — submit while a root is owned:
+      // bounded `duplicate_submit` refusal). A natural settle flips the phase
+      // to Settling while the invocation still owns its root, so a duplicate
+      // submit racing that transition must still get the typed
+      // `duplicate_submit` answer instead of the input-validation error.
+      // `input_rejected` stays reserved for its typed causes (pre-dispatch
+      // validation on a session that owns no root).
+      if s.run.isDefined then
+        replyError(Protocol.DuplicateSubmit, Some(sub.requestId)).as(true)
+      else
+        s.phase match
+          case Phase.AwaitingHello =>
+            replyError(Protocol.HandshakeRequired, Some(sub.requestId)).as(true)
+          case Phase.Active =>
+            Protocol.validateSubmitInput(sub.input) match
+              case Left(err)   => replyError(err, Some(sub.requestId)).as(true)
+              case Right(task) => startRoot(sub.requestId, task).as(true)
+          // Running/Settling without an owned root cannot occur (the phase
+          // only leaves Active together with a started root); keep the
+          // bounded refusal as the honest fallback.
+          case _ =>
+            replyError(
+              Protocol.InputRejected("session is settling; submit refused"),
+              Some(sub.requestId)
+            ).as(true)
 
     private def startRoot(
         requestId: String,
@@ -500,8 +512,11 @@ object Session:
           case SettleMode.Sigterm          => ExitCodes.SigTerm
           case SettleMode.PeerDead(_)      => ExitCodes.Uncertain
           case _                           => ExitCodes.Success
-        _ <- exitDone.succeed(exit)
         _ <- noteSettled(exit)
+        // The note is emitted BEFORE the exit is released: `exitDone.succeed`
+        // lets the main fiber close the scope and exit the JVM, which would
+        // otherwise race (and under load, lose against) this diagnostic write.
+        _ <- exitDone.succeed(exit)
       yield ()
 
     private def settleWithRun(
@@ -570,8 +585,10 @@ object Session:
         finalExit =
           if !channelOk && exit == ExitCodes.Success then ExitCodes.Uncertain
           else exit
-        _ <- exitDone.succeed(finalExit)
         _ <- noteSettled(finalExit)
+        // Same ordering as settleWithoutRun: the diagnostic must be on
+        // stderr before the exit code is released to the main fiber.
+        _ <- exitDone.succeed(finalExit)
       yield ()
 
     private def awaitBounded(
