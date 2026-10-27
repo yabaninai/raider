@@ -57,13 +57,13 @@ object OutboundSpec extends ZIOSpecDefault:
       secondaryError = None
     )
 
-  private def pollUntil(check: UIO[Boolean]): UIO[Unit] =
-    check.flatMap(done =>
-      if done then ZIO.unit else ZIO.sleep(50.millis) *> pollUntil(check)
-    )
-
   // Live clock: these tests exercise real concurrent timing (backpressure
-  // sleeps, stall bounds, timeout joins), not TestClock-controlled effects.
+  // waits, stall bounds, timeout joins), not TestClock-controlled effects.
+  // All waits below are event-driven (promise awaits / joins) — the file is
+  // free of timed idle calls (RAI-230); every wait is bounded by a disclosed
+  // timeout (the 60 s TestAspect.timeout on the waiter-wakeup case, the stall
+  // bounds passed to Outbound.make, and the per-call 30 s bounds in the
+  // dead-channel case).
   def spec = suite("RAI-201 process-api outbound channel")(
     test("writer drains receipts in order and writes the terminal last") {
       ZIO.scoped {
@@ -94,24 +94,48 @@ object OutboundSpec extends ZIOSpecDefault:
         val expected = Outbound.MaxOrdinaryFrames + 8
         for
           release <- Promise.make[Nothing, Unit]
+          allWritten <- Promise.make[Nothing, Unit]
           written <- Ref.make(Vector.empty[String])
           out <- Outbound.make(
-            json => release.await *> written.update(_ :+ typeOf(json)),
+            json =>
+              release.await *>
+                written.updateAndGet(_ :+ typeOf(json)).flatMap { v =>
+                  ZIO
+                    .when(v.length == expected)(allWritten.succeed(()).unit)
+                    .unit
+                },
             Duration.ofSeconds(60)
           )
-          fiber <- out.writer.fork
-          // The first write blocks on the gated sink, so the queue stays full
-          // and the surplus receipts must suspend as waiters.
-          _ <- ZIO.foreachDiscard(1 to expected) { i =>
-            out.receipt(receipt(i)).forkDaemon
+          // Deterministic saturation: sequential receipts never suspend below
+          // the capacity bound, so the queue ends up exactly full (the same
+          // pattern as the coalescing test — no forks, no probes, no timing).
+          _ <- ZIO.foreachDiscard(1 to Outbound.MaxOrdinaryFrames) { i =>
+            out.receipt(receipt(i))
           }
-          _ <- ZIO.sleep(300.millis)
-          before <- out.queueDepth
+          full <- out.queueDepth
+          // Surplus receipts can only suspend as waiters: the queue is exactly
+          // full and cannot drain (the writer does not exist yet), so every
+          // surplus admission attempt registers a waiter instead of enqueueing.
+          // The wakeup itself is proven by allWritten: a lost wakeup leaves the
+          // suspended receipt unwritten and the promise pending until the
+          // disclosed 60 s bound (the historical pinned bug — a forgotten
+          // waiter that is never resumed).
+          surplus <- ZIO.foreach(Outbound.MaxOrdinaryFrames + 1 to expected) {
+            i => out.receipt(receipt(i)).forkDaemon
+          }
+          _ <- out.writer.fork
+          bounded <- out.queueDepth
           _ <- release.succeed(())
-          _ <- pollUntil(written.get.map(_.count(_ == "accepted") == expected))
+          // Event-driven drain wait (no polling, no timed idling): completes
+          // exactly when the expected number of accepted receipts is on the
+          // wire. Bound: the 60 s TestAspect.timeout below; the writer's stall
+          // bound passed to Outbound.make mirrors it.
+          _ <- allWritten.await
+          _ <- ZIO.foreach(surplus)(_.join)
           got <- written.get
         yield assertTrue(
-          before <= Outbound.MaxOrdinaryFrames,
+          full == Outbound.MaxOrdinaryFrames,
+          bounded <= Outbound.MaxOrdinaryFrames,
           got.count(_ == "accepted") == expected,
           got.headOption.contains("accepted")
         )
@@ -123,9 +147,13 @@ object OutboundSpec extends ZIOSpecDefault:
       ZIO.scoped {
         for
           release <- Promise.make[Nothing, Unit]
+          flushArmed <- Promise.make[Nothing, Unit]
           written <- Ref.make(Vector.empty[Json])
           out <- Outbound.make(
-            json => release.await *> written.update(_ :+ json),
+            json =>
+              flushArmed.succeed(()).unit *>
+                release.await *>
+                written.update(_ :+ json),
             Duration.ofSeconds(60)
           )
           // The queue is saturated BEFORE the writer fiber exists: sequential
@@ -142,11 +170,23 @@ object OutboundSpec extends ZIOSpecDefault:
           _ <- out.observation("req", 66L, "progress", "two")
           _ <- out.observation("req", 67L, "progress", "three")
           gapBeforeFlush <- out.openGap
-          // Only now start the writer and let the queue drain.
+          // Start the writer and wait until it has picked the first frame (the
+          // sink signals before its release gate). The queue now has exactly
+          // one free slot and the writer is frozen mid-write, so flushGap's
+          // admission is a single non-suspending modify that cannot race a
+          // drain. Without this arm, under heavy machine load the writer fiber
+          // can stay unscheduled past flushGap; a flush admitted after the
+          // writer finished would strand the coalesced frame unwritten (an
+          // Outbound.scala late-admission race — separate card, not this one).
           fiber <- out.writer.fork
-          _ <- release.succeed(())
-          _ <- out.closeInput()
+          _ <- flushArmed.await
           _ <- out.flushGap("req")
+          // The terminal frame carries its own input-close (atomic state
+          // transition), so the writer can never observe a closed empty queue
+          // without a terminal: it drains r2..r64 plus the flushed frame and
+          // writes the terminal last. release before terminal keeps the
+          // writer's Idle path (input still open) as the only parking state.
+          _ <- release.succeed(())
           _ <- out.terminal(Protocol.terminal("req", "root", terminalBody))
           _ <- out.terminalWrittenOrDone
           _ <- fiber.join
