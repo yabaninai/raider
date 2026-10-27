@@ -1,0 +1,158 @@
+{
+  "id": "XE-205-golden-checks",
+  "description": "RAI-205 cross-ecosystem acceptance goldens: expected scenario set, adapter exit codes, and exact check-name lists (order preserved) per ecosystem consumer. Verified live against the integrated candidate; the independent checker revalidates every run against this file.",
+  "adapterJarSha256": "c9bd87776660f84c6569506b3b9beb9927abd45f0080afcfe9bc4ec272c7acad",
+  "standKey": "sk-stand-205",
+  "ecosystems": {
+    "llm4s": {
+      "framework": "org.llm4s:llm4s-core_3:0.5.1",
+      "scenarios": [
+        {
+          "manifestName": "handshake-terminal",
+          "key": "handshake-terminal",
+          "anchor": "hello-ack-negotiated-1-0",
+          "adapterExitCode": 0,
+          "checks": ["hello-ack-negotiated-1-0", "hello-ack-capabilities-observe-cancel", "adapter-version-raider-process-api-1", "accepted-rootid-proc-prefix", "observations-monotone-sequence", "settle-once-single-terminal", "terminal-completed-success", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-nonfatal",
+          "anchor": "hello-already-negotiated-nonfatal",
+          "adapterExitCode": 0,
+          "checks": ["hello-already-negotiated-nonfatal", "unknown-field-path-reported", "input-rejected-schema-2", "session-continues-after-refusal", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-malformed",
+          "anchor": "malformed-frame-fatal-error-frame",
+          "adapterExitCode": 20,
+          "checks": ["malformed-frame-fatal-error-frame", "adapter-exit-20"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-oversize",
+          "anchor": "oversize-frame-fatal-error-frame",
+          "adapterExitCode": 20,
+          "checks": ["oversize-frame-fatal-error-frame", "adapter-exit-20"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-duplicate-submit",
+          "anchor": "duplicate-submit-refused",
+          "adapterExitCode": 0,
+          "checks": ["duplicate-submit-refused", "duplicate-submit-root-still-settles", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "observe-dedup",
+          "key": "observe-dedup",
+          "anchor": "accepted-before-observe",
+          "adapterExitCode": 0,
+          "checks": ["accepted-before-observe", "observations-nonempty", "sequences-strictly-increasing", "no-duplicate-frames-after-dedup", "terminal-settles-once", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "tool-task",
+          "key": "tool-task",
+          "anchor": "artifacts-manifest-nonempty",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-success", "artifacts-manifest-nonempty", "artifact-sha256-64hex", "tool-contract-parity", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "extraction-task",
+          "key": "extraction-task",
+          "anchor": "result-artifact-present",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-success", "result-artifact-present", "constrained-output-fact-registered", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "cancel-mid-run",
+          "key": "cancel-mid-run",
+          "anchor": "cancel-ack-accepted",
+          "adapterExitCode": 26,
+          "checks": ["cancel-accepted-before-terminal", "cancel-ack-accepted", "terminal-cancelled-incomplete", "cleanup-complete", "adapter-exit-26"]
+        },
+        {
+          "manifestName": "eof-uncertain",
+          "key": "eof-uncertain",
+          "anchor": "eof-after-dispatch-settles",
+          "adapterExitCode": 26,
+          "checks": ["dispatch-accepted-before-eof", "eof-after-dispatch-settles", "terminal-cancelled-uncertain", "adapter-exit-26"]
+        }
+      ]
+    },
+    "langchain4j": {
+      "framework": "dev.langchain4j:langchain4j:1.22.0",
+      "scenarios": [
+        {
+          "manifestName": "handshake-terminal",
+          "key": "handshake-terminal",
+          "anchor": "langchain4j-message-roundtrip",
+          "adapterExitCode": 0,
+          "checks": ["langchain4j-message-roundtrip", "hello-ack-negotiated-1-0", "hello-ack-capabilities-observe-cancel", "adapter-version-raider-process-api-1", "accepted-rootid-proc-prefix", "observations-monotone-sequence", "settle-once-single-terminal", "terminal-completed-success", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-nonfatal",
+          "anchor": "hello-already-negotiated-nonfatal",
+          "adapterExitCode": 0,
+          "checks": ["hello-already-negotiated-nonfatal", "unknown-field-path-reported", "input-rejected-schema-2", "session-continues-after-refusal", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-malformed",
+          "anchor": "malformed-frame-fatal-error-frame",
+          "adapterExitCode": 20,
+          "checks": ["malformed-frame-fatal-error-frame", "adapter-exit-20"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-oversize",
+          "anchor": "oversize-frame-fatal-error-frame",
+          "adapterExitCode": 20,
+          "checks": ["oversize-frame-fatal-error-frame", "adapter-exit-20"]
+        },
+        {
+          "manifestName": "refusals",
+          "key": "refusals-duplicate-submit",
+          "anchor": "duplicate-submit-refused",
+          "adapterExitCode": 0,
+          "checks": ["duplicate-submit-refused", "duplicate-submit-root-still-settles", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "observe-dedup",
+          "key": "observe-dedup",
+          "anchor": "accepted-before-observe",
+          "adapterExitCode": 0,
+          "checks": ["accepted-before-observe", "observations-nonempty", "sequences-strictly-increasing", "no-duplicate-frames-after-dedup", "terminal-settles-once", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "tool-task",
+          "key": "tool-task",
+          "anchor": "artifacts-manifest-nonempty",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-success", "artifacts-manifest-nonempty", "artifact-sha256-64hex", "tool-contract-parity", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "extraction-task",
+          "key": "extraction-task",
+          "anchor": "result-artifact-present",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-success", "result-artifact-present", "constrained-output-fact-registered", "adapter-exit-0"]
+        },
+        {
+          "manifestName": "cancel-mid-run",
+          "key": "cancel-mid-run",
+          "anchor": "cancel-ack-accepted",
+          "adapterExitCode": 26,
+          "checks": ["cancel-accepted-before-terminal", "cancel-ack-accepted", "terminal-cancelled-incomplete", "cleanup-complete", "adapter-exit-26"]
+        },
+        {
+          "manifestName": "eof-uncertain",
+          "key": "eof-uncertain",
+          "anchor": "eof-after-dispatch-settles",
+          "adapterExitCode": 26,
+          "checks": ["dispatch-accepted-before-eof", "eof-after-dispatch-settles", "terminal-cancelled-uncertain", "adapter-exit-26"]
+        }
+      ]
+    }
+  }
+}
