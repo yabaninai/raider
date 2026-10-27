@@ -123,22 +123,50 @@ foreign-framework consumer needs, not adapter cost. Setup time: PENDING,
 recorded with the External-consumer status above — no external consumer has
 performed a timed setup, and no self-timed value is substituted for it.
 
-## RAI-202 gap fact and child-card proposal
+## RAI-202 gap fact and RAI-231 closure
 
 The pinned registry exposes only `coder`/`workspace`/`workspace-marker-present`.
 Running the shipped example workflow
 `docs/examples/portable-workflows/extraction-classification/extraction-classification.workflow.json`
 (uses profile `extractor`, toolset `read-only`, check `classification-labels-valid`)
 against the pinned registry is refused with
-`raider RA-INP: untrusted-authority-reference at /steps/0/profile (step 'classify-item')`.
-This blocks only example-workflow acceptance, not the consumer matrix above.
+`raider RA-INP: untrusted-authority-reference at /steps/0/profile (step 'classify-item')`
+(observed exit 21 under `workflow run`). This refusal remains by design for the
+shipped example document; it blocks only example-workflow acceptance, not the
+consumer matrix above.
 
-Proposed child card (coordinator registers): extend the pinned trusted registry
-example authority set (or rescope the example workflow to pinned names) so the
-extraction-classification example resolves under the untrusted-authority
-policy; acceptance = the example workflow runs end-to-end under the portable
-budget route without RA-INP refusals, plus registry/check snapshot evidence.
-No protected verifier or gate-policy change is required.
+RAI-231 closes the acceptance gap by rescoping the example workflow to pinned
+authority names inside the cross-ecosystem corpus. The corpus budget document
+`contracts/acceptance/cross-ecosystem/expected/budget-exhaust.workflow.json`
+was created pinned from birth (commit `a33687d`; `git diff a33687d 531d57c` on
+the file is empty) and preserves the example's step and flow semantics under
+the pinned authorities: step `classify-item` (agent) resolves profile
+`extractor` → `coder` and toolset `read-only` → `workspace`; step `verify`
+(trustedCheck) resolves check `classification-labels-valid` →
+`workspace-marker-present` pinned at snapshot `sha256:0c877972cf59788094e1d7653a1f01f6cd1b6c9108d117d5e069bc6b6bdaba0b`;
+the `fanout`/`run` flow and the budget route (`limits.tokens = 1` → `RA-PBUDGET`,
+exit 23) are carried over unchanged. One semantic deviation is forced by the
+pinned launcher: the `coder` agent always wraps its final payload as
+`{"text": ...}`, so the example's `{id, label, summary}` classification output
+schema is not preservable; the budget document declares the workflow-route
+output schemas (`agentText`/`agentTexts`/`checkVerdict`/`flowVerdict`) and
+carries the classification semantics in the step body instead.
+
+RAI-231 evidence (worktree `wt/rai-231`, base `531d57c`, adapter jar sha256
+`997f29a18e38848c082deaeb825a7f4da40ca76d47444663c656693a16d47fdd`,
+byte-unchanged): `run-budget.sh` exit 0 with inner exit 23 and typed
+`RA-PBUDGET`; `run.json` `Failed`/23 with `docDigest`
+`sha256-f4a3e3a6598a958db74892159089eb0edfe162d0430265a48e1629074d56a10c` and
+zero `RA-INP` hits across the budget evidence tree; `run-all.sh` exit 0 with
+20/20 consumer scenarios and checker `findings=160 failed=0`. The pinned
+registry/check snapshots resolve without refusals on the corpus document, and
+the shipped example document still reproduces the typed refusal above.
+`golden-checks.json` and `contracts/workflow-portable/refusals/manifest.json`
+are byte-unchanged (the latter still
+`fbce7485c4e7917c3a291279ad048cb54b3435384d2c2b9d1950a94e15d06088`). A
+load-sensitive `observe-dedup` race was observed in the consumer matrix and is
+recorded verbatim in `docs/work/records/RAI-231.md`; no threshold or verifier
+was changed.
 
 ## Reproduction
 
