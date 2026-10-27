@@ -1,0 +1,154 @@
+{
+  "format": "raider.portable-workflow",
+  "version": "1.0",
+  "metadata": {
+    "title": "budget-exhaust",
+    "description": "RAI-205 budget fixture: sequential coder fanout over two documents under limits.tokens=1; the first completion reports usage past the ceiling, so the second dispatch is refused typed (RA-PBUDGET)."
+  },
+  "limits": {
+    "deadlineMs": 600000,
+    "attempts": 6,
+    "parallelism": 1,
+    "children": 2,
+    "tokens": 1
+  },
+  "schemas": {
+    "inputs": {
+      "documents": {
+        "type": "array",
+        "maxItems": 2,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "id",
+            "body"
+          ],
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "body": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "outputs": {
+      "agentText": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        }
+      },
+      "agentTexts": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text"
+          ],
+          "properties": {
+            "text": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "checkVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "flowVerdict": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "status",
+          "detail"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "classify-item",
+      "kind": "agent",
+      "profile": "coder",
+      "toolset": "workspace",
+      "input": "#/item",
+      "outputSchema": "agentText",
+      "structuredOutput": true
+    },
+    {
+      "id": "fanout",
+      "kind": "map",
+      "items": "#/inputs/documents",
+      "templateStep": "classify-item",
+      "maxItems": 2,
+      "parallelism": 1,
+      "outputSchema": "agentTexts"
+    },
+    {
+      "id": "verify",
+      "kind": "trustedCheck",
+      "checkId": "workspace-marker-present",
+      "registrySnapshot": "sha256:0c877972cf59788094e1d7653a1f01f6cd1b6c9108d117d5e069bc6b6bdaba0b",
+      "input": "#/steps/fanout/output",
+      "outputSchema": "checkVerdict"
+    },
+    {
+      "id": "run",
+      "kind": "sequence",
+      "steps": [
+        "fanout",
+        "verify"
+      ],
+      "outputSchema": "flowVerdict"
+    }
+  ],
+  "outputs": {
+    "bindings": {
+      "result": "#/steps/run/output"
+    },
+    "verdict": {
+      "from": "#/steps/run/output",
+      "authority": "trustedVerifier"
+    }
+  }
+}
