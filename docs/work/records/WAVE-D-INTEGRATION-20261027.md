@@ -188,3 +188,27 @@ this contention would reproduce the exact conditions the adjudication
 identified and would make any result uninterpretable. Next step: hold until
 the VM workload ends (or the coordinator directs otherwise), verify
 1-min load low and stable with no foreign JVMs/lanes, then execute rerun #1.
+
+### Owner override and rerun #1 launch (2026-10-27 13:22–13:26 local)
+
+**Owner decision (via coordinator, 13:22 local): run rerun #1 NOW despite
+foreign load.** Coordinator executes; this session records the override and
+the tradeoff: evidence obtained under the disclosed foreign contention is
+weaker than a calm-window run for the load-sensitive MJE-03c family, but the
+owner explicitly accepted that cost. Stop conditions unchanged: MJE-03c
+repeat or any other failing suite -> verbatim stop, no push, no flips.
+
+Readings at the override moment, 13:22 local: 1/5/15-min load
+`8.62 / 14.70 / 14.81`; VM pid 41365 (started 10-24 23:45, etime 2d13h) at
+29.9 % in a gap, known to cycle 2–4 min bursts at ~1100–1330 % CPU; foreign
+`go test -json -race -shuffle=on -count=1` (pid 51854, tokenrouter,
+`handlers.test`) at 99.7 % CPU.
+
+Readings immediately before launch, 13:25:39 local: 1/5/15-min load
+`7.85 / 11.02 / 13.18`; VM 41365 at 136.8 % (gap); go test 51854 exited;
+remaining foreign consumer: PyCharm (pid 76541) at ~424 % CPU. No scalaagent
+lane activity; no foreign JVMs under `wt/` or opencode worktrees (sweep clean
+after the 26-pid reap).
+
+Rerun #1 command: `make quality-changed QUALITY_EXECUTE=1` — launched
+13:26 local against tree `dd28d76`. Result section to follow below.
