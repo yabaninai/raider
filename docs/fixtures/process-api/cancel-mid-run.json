@@ -8,7 +8,7 @@
     {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "observation", "requestId": "req-cancel", "sequence": 1, "event": {"kind": "progress", "message": "Running"}}},
     {"direction": "client-to-child", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "cancel", "requestId": "req-cancel"}},
     {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "cancelAck", "requestId": "req-cancel", "status": "accepted"}},
-    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "terminal", "requestId": "req-cancel", "rootId": "root-cancel", "executionStatus": "cancelled", "taskVerdict": "incomplete", "safetyVerdict": "passed", "protocolVerdict": "passed", "accountingStatus": "complete", "cleanupStatus": "complete", "exitCode": 130, "artifacts": []}}
+    {"direction": "child-to-client", "message": {"protocolVersion": {"major": 1, "minor": 0}, "type": "terminal", "requestId": "req-cancel", "rootId": "root-cancel", "executionStatus": "cancelled", "taskVerdict": "incomplete", "safetyVerdict": "passed", "protocolVerdict": "passed", "accountingStatus": "complete", "cleanupStatus": "complete", "exitCode": 26, "artifacts": []}}
   ],
   "requiredBehavior": ["cancelAck accepted means requested, not completed cleanup.", "The owner cancels the root subtree and applies bounded cleanup.", "Exactly one terminal record settles the cancellation race.", "No later ordinary observation follows terminal."]
 }

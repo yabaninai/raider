@@ -11,7 +11,7 @@ implements the contract proposed by [ADR-037](../../adr/ADR-037-local-process-pr
 | Fixture | Scenario | Required behavior |
 | --- | --- | --- |
 | `normal-handshake-run-terminal.json` | Handshake, capability negotiation, single submit, acceptance, observations, terminal with artifacts | Negotiated schema/capabilities are explicit; event sequence is monotonic; artifacts are references with digest/size/provenance; terminal status and process exit agree. |
-| `cancel-mid-run.json` | Cancel during an active root, acknowledgement followed by terminal | Ack `accepted` is not completion; owned cleanup is reported separately; exactly one terminal result settles the race. |
+| `cancel-mid-run.json` | Cancel during an active root, acknowledgement followed by terminal | Ack `accepted` is not completion; owned cleanup is reported separately; exactly one terminal result settles the race. Terminal values are adapter decisions: a REQUESTED cancel settles `executionStatus "cancelled"` with `exitCode 26`; a bare `130`/`143` is a peer-death OS-signal value, never an adapter decision. |
 | `oversize-frame.json` | Submit frame above 1,048,576 payload bytes before LF | Reject before JSON decoding/dispatch; no root/provider/tool effect; emit a bounded error if writable, then nonzero protocol exit. |
 | `fragmented-frames-unicode.json` | UTF-8 frame split across arbitrary byte chunks, with multibyte and wide characters and U+2028/U+2029 data | Incremental framing/decoding reconstructs the exact strings; no replacement, delimiter confusion, or premature dispatch. |
 | `slow-reader.json` | Reader pauses while progress frames accumulate | Queue remains within both limits; progress may be coalesced with explicit sequence gap/count; critical responses and terminal reserve are preserved or the root is cancelled within bounded cleanup. |
@@ -26,3 +26,10 @@ checking in a megabyte of repetitive text. The fragmented fixture lists byte
 chunks as hex so chunk boundaries, including within UTF-8 sequences, are
 unambiguous. EOF has two subcases in one fixture. `terminal` appears at most
 once; death-without-terminal deliberately contains no terminal record.
+
+Errata (RAI-222, 2026-10-27): `cancel-mid-run.json` originally carried
+`executionStatus "cancelled"` with `exitCode 130`. A REQUESTED cancel is an
+adapter decision and settles `exitCode 26` per
+[contracts/process-api/README.md](../../../contracts/process-api/README.md);
+`130`/`143` are peer-death OS-signal values, never an adapter decision. The
+terminal frame's `exitCode` was corrected `130` → `26`; no other field changed.
