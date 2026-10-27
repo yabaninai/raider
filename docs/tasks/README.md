@@ -303,3 +303,6 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-219** [ChatWorkflowExport staging-race mirror: fail-fast without deleting the winner](m1.md); accepted (red-check `24ad1361…`; gates `20261026-081927…`/`083119…`); dependencies: RAI-213; profiles: static, unit, contracts.
 - **RAI-220** [Wire PortableBundleVerifier into PortableRun lowering](m1.md); accepted (TOCTOU closed; gates `20261026-083132…`/`084309…`); dependencies: RAI-214; profiles: static, unit, contracts, runtime, ci.
 - **RAI-221** [bootstrap_ca.py hardening and named-case evidence retention](m1.md); accepted (zero-traceback; gates `20261026-083359…`/`084821…`); dependencies: RAI-218; profiles: fast, static.
+- **RAI-222** [process-api cancel-mid-run fixture errata: cancelled settles 26](m1.md); todo; dependencies: RAI-201; profiles: ci, fast.
+- **RAI-223** [forbidden-apis scanner true line attribution](m1.md); todo; dependencies: none; profiles: fast.
+- **RAI-224** [sbt-test gate budget load calibration at wave-scale lane counts](m1.md); todo; dependencies: RAI-209; profiles: docs.

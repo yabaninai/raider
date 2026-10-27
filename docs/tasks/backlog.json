@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 232,
+  "raider_count": 235,
   "companion_count": 3,
   "cards": [
     {
@@ -6989,6 +6989,78 @@
       },
       "non_goals": "Product code; changing resolution precedence or pinned coordinates; repo commits under artifacts/ (gitignored; retention is lane-local with hashes in the record).",
       "context": "RAI-218 review (2026-10-26): where() sits outside the try (only path violating never-a-traceback); named-case logs lacked retained hashes."
+    },
+    {
+      "id": "RAI-222",
+      "title": "process-api cancel-mid-run fixture errata: cancelled settles 26",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-201"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "docs/fixtures/process-api/**",
+        "modules/cli/src/test/scala/raider/cli/processapi/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "ci",
+        "fast"
+      ],
+      "behavior": "Issue the errata ruling for the frozen cancel-mid-run fixture and apply it: a REQUESTED cancel settles executionStatus cancelled with exitCode 26 per contracts/process-api/README.md, and 130 is documented as a peer-death signal value, never an adapter decision; the fixture, its corpus note, and any pinned digest in the acceptance suite are corrected together so contract, fixture, and adapter agree.",
+      "acceptance": {
+        "normal": "The corrected fixture passes the unchanged acceptance-suite semantics (ack is not completion; exactly one terminal settles the race) with cancelled/26, and the corpus note distinguishes signal values from adapter decisions.",
+        "error": "No other fixture value changes; digest re-anchoring is disclosed in the record with before/after values; the errata ruling is recorded.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Changing exit-code semantics, the contract README tables, or adapter behavior (already correct); editing other fixtures; relaxing the acceptance suite.",
+      "context": "Wave C follow-up 1 (2026-10-26): docs/fixtures/process-api/cancel-mid-run.json carries executionStatus cancelled with exitCode 130, internally inconsistent with contracts/process-api/README.md (a REQUESTED cancel settles 26); the fixture corpus note says 130 is a signal value, not an adapter decision."
+    },
+    {
+      "id": "RAI-223",
+      "title": "forbidden-apis scanner true line attribution",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "todo",
+      "allowed_paths": [
+        "scripts/quality/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "The forbidden-apis scanner reports true source line numbers: the comment-stripping pass no longer collapses the file for attribution, so the violating literal is reported at its original source line (demonstrated on the wave-C sentinel case: :508, not :471); detection rules, thresholds, and policy stay unchanged.",
+      "acceptance": {
+        "normal": "A clean tree passes unchanged and the scanner self-test stays green.",
+        "error": "A planted violation is reported at its true source line in both plain and comment-adjacent positions; no detection is lost or gained.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Changing detection policy, the 15-char placeholder threshold, budget values, or the protected registry; rewriting other scanners.",
+      "context": "Wave C follow-up 3 (2026-10-26): forbidden-apis reported :471 for source :508 (comment-stripper offset) on the wave-C sentinel red — a cosmetic reporting defect for the gate owner; no threshold or policy change requested."
+    },
+    {
+      "id": "RAI-224",
+      "title": "sbt-test gate budget load calibration at wave-scale lane counts",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-209"
+      ],
+      "status": "todo",
+      "allowed_paths": [
+        "docs/research/gate-budget-load-calibration-2026-10-27.md",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs"
+      ],
+      "behavior": "Measure sbt-test wall duration under controlled concurrent-lane load (4, 8, and 12 concurrent sbt builds in isolated copies with capped JVM memory) against the 1800 s budget raised in RAI-209, and record a calibration table plus a raise-or-dedicated-gate-host recommendation; no product or policy change.",
+      "acceptance": {
+        "normal": "The research note reports per-count wall durations, hardware context, and the observed contention curve with exact commands; a recommendation for the next parallel raise or a dedicated gate host is stated.",
+        "error": "A failure or timeout in a measurement tier is recorded as that tier's result, never smoothed; no budget value is changed by this card.",
+        "concurrency": "n/a"
+      },
+      "non_goals": "Changing gate budgets or the protected registry; product code; claiming results beyond the measured tier counts.",
+      "context": "Wave A follow-up 5 (2026-10-26): load >=200 can still exceed the new 1800 s sbt-test budget under 8-lane contention — an owner calibration question for the next raise or a dedicated gate host; the owner requested dozens-of-streams raises, so calibration evidence is needed."
     }
   ]
 }
