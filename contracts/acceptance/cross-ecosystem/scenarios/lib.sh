@@ -18,7 +18,7 @@ STAND_KEY="sk-stand-205"
 # -- pinned compile toolchain (Scala 3.9.0 dotc, same jars as the lane compile)
 DOTC_CP="$M2/org/scala-lang/scala3-compiler_3/3.9.0/scala3-compiler_3-3.9.0.jar:$M2/org/scala-lang/scala-library/3.9.0/scala-library-3.9.0.jar:$M2/org/scala-lang/tasty-core_3/3.9.0/tasty-core_3-3.9.0.jar:$M2/org/scala-lang/scala3-interfaces/3.9.0/scala3-interfaces-3.9.0.jar:$M2/org/scala-lang/modules/scala-asm/9.9.0-scala-1/scala-asm-9.9.0-scala-1.jar:$M2/org/scala-lang/modules/scala-collection-compat_3/2.14.0/scala-collection-compat_3-2.14.0.jar:$M2/org/scala-sbt/compiler-interface/1.12.0/compiler-interface-1.12.0.jar:$M2/org/scala-sbt/util-interface/1.11.5/util-interface-1.11.5.jar"
 
-# -- pinned runtime closures (see artifacts/cross-ecosystem/consumer-deps.json)
+# -- pinned runtime closures (see contracts/acceptance/cross-ecosystem/consumer-deps.json)
 SCALA_LIB="$M2/org/scala-lang/scala-library/3.9.0/scala-library-3.9.0.jar"
 UPICKLE_CP="$M2/com/lihaoyi/upickle_3/4.4.3/upickle_3-4.4.3.jar:$M2/com/lihaoyi/upickle-implicits_3/4.4.3/upickle-implicits_3-4.4.3.jar:$M2/com/lihaoyi/upickle-core_3/4.4.3/upickle-core_3-4.4.3.jar:$M2/com/lihaoyi/ujson_3/4.4.3/ujson_3-4.4.3.jar:$M2/com/lihaoyi/upack_3/4.4.3/upack_3-4.4.3.jar:$M2/com/lihaoyi/geny_3/1.1.1/geny_3-1.1.1.jar"
 LLM4S_CP="$SCALA_LIB:$M2/org/llm4s/llm4s-core_3/0.5.1/llm4s-core_3-0.5.1.jar:$M2/org/llm4s/llm4s-media_3/0.5.1/llm4s-media_3-0.5.1.jar:$M2/com/lihaoyi/cats-core_3/2.13.0/cats-core_3-2.13.0.jar:$M2/com/lihaoyi/cats-kernel_3/2.13.0/cats-kernel_3-2.13.0.jar:$UPICKLE_CP"

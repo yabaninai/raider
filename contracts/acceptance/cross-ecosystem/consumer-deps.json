@@ -1,0 +1,250 @@
+{
+  "com.fasterxml.jackson.core:jackson-annotations:2.22": {
+    "artifact": "jackson-annotations",
+    "group": "com.fasterxml.jackson.core",
+    "path": "artifacts/tools/m2/com/fasterxml/jackson/core/jackson-annotations/2.22/jackson-annotations-2.22.jar",
+    "sha256": "21ddb598807d3a51a876704eb979d9296e1c6a6f47ab1826ff88c6d6a127a2d0",
+    "size": 84211,
+    "version": "2.22"
+  },
+  "com.fasterxml.jackson.core:jackson-core:2.22.1": {
+    "artifact": "jackson-core",
+    "group": "com.fasterxml.jackson.core",
+    "path": "artifacts/tools/m2/com/fasterxml/jackson/core/jackson-core/2.22.1/jackson-core-2.22.1.jar",
+    "sha256": "941ff029bcdb93e83d209ce516c1a7fb8bbac07d0a2fa122f5bf194b2cd7b4f4",
+    "size": 594171,
+    "version": "2.22.1"
+  },
+  "com.fasterxml.jackson.core:jackson-databind:2.22.1": {
+    "artifact": "jackson-databind",
+    "group": "com.fasterxml.jackson.core",
+    "path": "artifacts/tools/m2/com/fasterxml/jackson/core/jackson-databind/2.22.1/jackson-databind-2.22.1.jar",
+    "sha256": "7dcd7e53bec1f56c7ad278bd1ca0840bebcc595d61ce44d6a8439abb75b965b2",
+    "size": 1706404,
+    "version": "2.22.1"
+  },
+  "com.github.pureconfig:pureconfig-core_3:0.17.10": {
+    "artifact": "pureconfig-core_3",
+    "group": "com.github.pureconfig",
+    "path": "artifacts/tools/m2/com/github/pureconfig/pureconfig-core_3/0.17.10/pureconfig-core_3-0.17.10.jar",
+    "sha256": "32e8c98645369d05480aa485487c10d33147e8578760a85b5204db18ba3f535d",
+    "size": 688191,
+    "version": "0.17.10"
+  },
+  "com.knuddels:jtokkit:1.1.0": {
+    "artifact": "jtokkit",
+    "group": "com.knuddels",
+    "path": "artifacts/tools/m2/com/knuddels/jtokkit/1.1.0/jtokkit-1.1.0.jar",
+    "sha256": "1501ce0259ab897c6746ccfafa1d208acd404fb17e1ac62e157172f2678b1183",
+    "size": 3246331,
+    "version": "1.1.0"
+  },
+  "com.lihaoyi:geny_3:1.1.1": {
+    "artifact": "geny_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/geny_3/1.1.1/geny_3-1.1.1.jar",
+    "sha256": "39658649f90b631a4fd63187724f16ba8a045e1b10a513528f34517fb2edf98b",
+    "size": 102389,
+    "version": "1.1.1"
+  },
+  "com.lihaoyi:ujson_3:4.4.3": {
+    "artifact": "ujson_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/ujson_3/4.4.3/ujson_3-4.4.3.jar",
+    "sha256": "2fd8083aabc7fb4252c299909b19b2881326a03502eba8859d39d4b2ceb7a8b2",
+    "size": 267471,
+    "version": "4.4.3"
+  },
+  "com.lihaoyi:upack_3:4.4.3": {
+    "artifact": "upack_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/upack_3/4.4.3/upack_3-4.4.3.jar",
+    "sha256": "40bc531f04388ff1993078effb73fa601ab8f138f45639ce922c652cb4594268",
+    "size": 143490,
+    "version": "4.4.3"
+  },
+  "com.lihaoyi:upickle-core_3:4.4.3": {
+    "artifact": "upickle-core_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/upickle-core_3/4.4.3/upickle-core_3-4.4.3.jar",
+    "sha256": "9b9be4b677ab6fbc6b82fe5486908a39664f51e9344d1903ada1c6766d251ce2",
+    "size": 358070,
+    "version": "4.4.3"
+  },
+  "com.lihaoyi:upickle-implicits_3:4.4.3": {
+    "artifact": "upickle-implicits_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/upickle-implicits_3/4.4.3/upickle-implicits_3-4.4.3.jar",
+    "sha256": "3bde97b7d588f42e8074248160e64a816226c70bfb352ec1d834acfa0a1c73ad",
+    "size": 356516,
+    "version": "4.4.3"
+  },
+  "com.lihaoyi:upickle_3:4.4.3": {
+    "artifact": "upickle_3",
+    "group": "com.lihaoyi",
+    "path": "artifacts/tools/m2/com/lihaoyi/upickle_3/4.4.3/upickle_3-4.4.3.jar",
+    "sha256": "f68012b4cdf64686c101b1c84ff47e79acf892e0ed50bcec51d02c2807082351",
+    "size": 144252,
+    "version": "4.4.3"
+  },
+  "com.typesafe:config:1.4.5": {
+    "artifact": "config",
+    "group": "com.typesafe",
+    "path": "artifacts/tools/m2/com/typesafe/config/1.4.5/config-1.4.5.jar",
+    "sha256": "4a4b0affb22a9572409d3a6bde99ce3f2045c551cadc1ca7fe09690892c526c3",
+    "size": 295134,
+    "version": "1.4.5"
+  },
+  "com.typesafe:config:1.4.9": {
+    "artifact": "config",
+    "group": "com.typesafe",
+    "path": "artifacts/tools/m2/com/typesafe/config/1.4.9/config-1.4.9.jar",
+    "sha256": "47d13e3196c84f2a8ccd014ae563738c3da5b7406b38e03505ec0601a2f4fc37",
+    "size": 297970,
+    "version": "1.4.9"
+  },
+  "dev.langchain4j:langchain4j-core:1.22.0": {
+    "artifact": "langchain4j-core",
+    "group": "dev.langchain4j",
+    "path": "artifacts/tools/m2/dev/langchain4j/langchain4j-core/1.22.0/langchain4j-core-1.22.0.jar",
+    "sha256": "e06b7cdda44070a3c9213a9bd96bd52791d86fdd4b3dfc05a37300d6182d7c8b",
+    "size": 795146,
+    "version": "1.22.0"
+  },
+  "dev.langchain4j:langchain4j:1.22.0": {
+    "artifact": "langchain4j",
+    "group": "dev.langchain4j",
+    "path": "artifacts/tools/m2/dev/langchain4j/langchain4j/1.22.0/langchain4j-1.22.0.jar",
+    "sha256": "e056822cf525cfa4b1669ca918398d728fd2be984ff6e74c315a9a2cf8739c07",
+    "size": 466630,
+    "version": "1.22.0"
+  },
+  "io.smallrye.reactive:mutiny-zero:1.3.1": {
+    "artifact": "mutiny-zero",
+    "group": "io.smallrye.reactive",
+    "path": "artifacts/tools/m2/io/smallrye/reactive/mutiny-zero/1.3.1/mutiny-zero-1.3.1.jar",
+    "sha256": "10455d395ca9e3d8256bb216672684ad9482288d331efc48db4196eba804273b",
+    "size": 59215,
+    "version": "1.3.1"
+  },
+  "org.apache.opennlp:opennlp-tools:2.5.11": {
+    "artifact": "opennlp-tools",
+    "group": "org.apache.opennlp",
+    "path": "artifacts/tools/m2/org/apache/opennlp/opennlp-tools/2.5.11/opennlp-tools-2.5.11.jar",
+    "sha256": "58c0ee5e20d30ba47daf4cd546c6426a7fe762a7b197b2308eb0b89cf5b48c77",
+    "size": 1397282,
+    "version": "2.5.11"
+  },
+  "org.jspecify:jspecify:1.0.1": {
+    "artifact": "jspecify",
+    "group": "org.jspecify",
+    "path": "artifacts/tools/m2/org/jspecify/jspecify/1.0.1/jspecify-1.0.1.jar",
+    "sha256": "070d75f261fe4c5b8202508366715f7f2d4660f88c8ef7e6d3575e48c9683b66",
+    "size": 3064,
+    "version": "1.0.1"
+  },
+  "org.llm4s:llm4s-core_3:0.5.1": {
+    "artifact": "llm4s-core_3",
+    "group": "org.llm4s",
+    "path": "artifacts/tools/m2/org/llm4s/llm4s-core_3/0.5.1/llm4s-core_3-0.5.1.jar",
+    "sha256": "d1f7587a1457197e53463ff4b52916f4f5ff4bb86725549cb23463c34cc3ae5e",
+    "size": 3221828,
+    "version": "0.5.1"
+  },
+  "org.llm4s:llm4s-media_3:0.5.1": {
+    "artifact": "llm4s-media_3",
+    "group": "org.llm4s",
+    "path": "artifacts/tools/m2/org/llm4s/llm4s-media_3/0.5.1/llm4s-media_3-0.5.1.jar",
+    "sha256": "71108bce4ec1756cf5358fde82abf2cd07ca7f70f7a95bd8548e17f89fdd326b",
+    "size": 66625,
+    "version": "0.5.1"
+  },
+  "org.scala-lang:scala-library:2.13.10": {
+    "artifact": "scala-library",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala-library/2.13.10/scala-library-2.13.10.jar",
+    "sha256": "e6ca607c3fce03e8fa38af3374ce1f8bb098e316e8bf6f6d27331360feddb1c1",
+    "size": 5949244,
+    "version": "2.13.10"
+  },
+  "org.scala-lang:scala-library:2.13.14": {
+    "artifact": "scala-library",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala-library/2.13.14/scala-library-2.13.14.jar",
+    "sha256": "43e0ca1583df1966eaf02f0fbddcfb3784b995dd06bfc907209347758ce4b7e3",
+    "size": 5924141,
+    "version": "2.13.14"
+  },
+  "org.scala-lang:scala-library:2.13.16": {
+    "artifact": "scala-library",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala-library/2.13.16/scala-library-2.13.16.jar",
+    "sha256": "1ebb2b6f9e4eb4022497c19b1e1e825019c08514f962aaac197145f88ed730f1",
+    "size": 5926340,
+    "version": "2.13.16"
+  },
+  "org.scala-lang:scala3-library_3:3.3.1": {
+    "artifact": "scala3-library_3",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala3-library_3/3.3.1/scala3-library_3-3.3.1.jar",
+    "sha256": "b64c13c1f3d1ac2323457ec6cc09e9b38d7a9ef6889a1a0063601bf25d545508",
+    "size": 1263932,
+    "version": "3.3.1"
+  },
+  "org.scala-lang:scala3-library_3:3.3.4": {
+    "artifact": "scala3-library_3",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala3-library_3/3.3.4/scala3-library_3-3.3.4.jar",
+    "sha256": "d95184acfcd814da2e051378e4962c653f4b468f4086452ab427af030482bd3c",
+    "size": 1250639,
+    "version": "3.3.4"
+  },
+  "org.scala-lang:scala3-library_3:3.3.7": {
+    "artifact": "scala3-library_3",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala3-library_3/3.3.7/scala3-library_3-3.3.7.jar",
+    "sha256": "a16e046f4a9df9e0d0e0bc54bf6298c94d7d867457f7b3b68291a88c568b92d0",
+    "size": 1251653,
+    "version": "3.3.7"
+  },
+  "org.scala-lang:scala3-library_3:3.7.1": {
+    "artifact": "scala3-library_3",
+    "group": "org.scala-lang",
+    "path": "artifacts/tools/m2/org/scala-lang/scala3-library_3/3.7.1/scala3-library_3-3.7.1.jar",
+    "sha256": "09b95af8163e6a81c8ce9bf0aad9547a982effa15067cc8d71fa763317117233",
+    "size": 1277226,
+    "version": "3.7.1"
+  },
+  "org.slf4j:slf4j-api:2.0.17": {
+    "artifact": "slf4j-api",
+    "group": "org.slf4j",
+    "path": "artifacts/tools/m2/org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar",
+    "sha256": "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832",
+    "size": 69908,
+    "version": "2.0.17"
+  },
+  "org.slf4j:slf4j-api:2.0.18": {
+    "artifact": "slf4j-api",
+    "group": "org.slf4j",
+    "path": "artifacts/tools/m2/org/slf4j/slf4j-api/2.0.18/slf4j-api-2.0.18.jar",
+    "sha256": "44508fd1576500688c790b190acdd16fec4f8c79a3e0b900afd70503cf055f55",
+    "size": 69982,
+    "version": "2.0.18"
+  },
+  "org.typelevel:cats-core_3:2.13.0": {
+    "artifact": "cats-core_3",
+    "group": "org.typelevel",
+    "path": "artifacts/tools/m2/org/typelevel/cats-core_3/2.13.0/cats-core_3-2.13.0.jar",
+    "sha256": "e2abfcdfe041ce08d8407412b09d55eb33eb85655c22c9c8815712d3aad633c6",
+    "size": 7123338,
+    "version": "2.13.0"
+  },
+  "org.typelevel:cats-kernel_3:2.13.0": {
+    "artifact": "cats-kernel_3",
+    "group": "org.typelevel",
+    "path": "artifacts/tools/m2/org/typelevel/cats-kernel_3/2.13.0/cats-kernel_3-2.13.0.jar",
+    "sha256": "a6afaad274e2a0fbbd189bfe3a0e91810bd562745573995011943427ea489040",
+    "size": 1592447,
+    "version": "2.13.0"
+  }
+}

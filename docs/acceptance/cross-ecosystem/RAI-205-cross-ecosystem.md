@@ -36,7 +36,7 @@ plus the offline protocol cases:
 | Case | Ecosystems | Stand | Adapter exit | Named checks (all pass) |
 | --- | --- | --- | --- | --- |
 | handshake-terminal | llm4s, langchain4j | mock | 0 | 8 / 9 checks incl. `langchain4j-message-roundtrip` for ecosystem B |
-| refusals (4 anchors) | llm4s, langchain4j | mock | 0 / 20 / 20 / 0 | refusal anchors matched, no fallback after auth/policy failure |
+| refusals (4 anchors) | llm4s, langchain4j | mock | 0 / 20 / 20 / 0 | refusal anchors matched (input_rejected pre-dispatch, malformed_frame, oversize_frame, duplicate_submit, hello_already_negotiated, unknown_field); policy denial demonstrated via the RA-PBUDGET budget route; auth-failure (401) and unavailable-provider paths are NOT exercised offline yet |
 | observe-dedup | llm4s, langchain4j | mock | 0 | 6 checks |
 | tool-task (repository write via `touch`) | llm4s, langchain4j | A | 0 | 5 checks: terminal completed/success, artifacts set, marker file exists |
 | extraction-task (read-only extraction) | llm4s, langchain4j | A | 0 | 4 checks |
@@ -103,6 +103,25 @@ Result for the recorded run: `ok: true`, 160 findings, 0 failed
 
 Scripted cases never establish model quality or competitor superiority; the
 fixture stand answers are deterministic strings, not model outputs.
+
+## Setup metrics (adapter code and consumer setup counted separately)
+
+Per the framework-comparison requirement (`docs/cross-ecosystem-plan.md` §7,
+"count adapter/setup code and setup time separately"), the offline corpus
+records code volumes; setup time is a separate, still-pending measurement:
+
+| Component | Source | Lines (`wc -l`, committed source) |
+| --- | --- | --- |
+| Adapter-side fixture stand | `contracts/acceptance/cross-ecosystem/stand/Stand.scala` | 148 |
+| Adapter-side independent checker | `contracts/acceptance/cross-ecosystem/checker/IndependentChecker.scala` | 261 |
+| Consumer-side setup, Scala | `contracts/acceptance/cross-ecosystem/llm4s-consumer/XeLlm4sConsumer.scala` | 656 |
+| Consumer-side setup, Java | `contracts/acceptance/cross-ecosystem/langchain4j-consumer/XeLangChain4jConsumer.java` | 760 |
+
+Adapter-side code (stand + checker) and consumer-side setup code are counted
+separately; the consumer-side figures measure the integration effort a
+foreign-framework consumer needs, not adapter cost. Setup time: PENDING,
+recorded with the External-consumer status above — no external consumer has
+performed a timed setup, and no self-timed value is substituted for it.
 
 ## RAI-202 gap fact and child-card proposal
 
