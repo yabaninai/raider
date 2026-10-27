@@ -18,6 +18,12 @@ never silence). Everything outside the allowlist is flagged exactly as before;
 no rule, threshold or pattern is weakened by this mechanism (gate-policy:
 additions-only).
 
+Line attribution (RAI-223): comment stripping blanks comment bytes in place
+and preserves newlines verbatim, so every reported line number is a true
+source line even when the violation follows multi-line block comments
+(wave-C defect: a violation at true :508 was reported :471 because block
+comment newlines were collapsed, shifting everything below them).
+
 Exit codes: 0 = clean, 1 = violations found, 2 = internal/usage error.
 Pass --self-test to run the embedded positive/negative fixtures first
 (the gate must prove it actually detects, not merely that the tree is clean).
@@ -68,7 +74,8 @@ def allowlist_entry(rule_id: str, rel: str) -> str | None:
     return None
 
 # Each rule: (rule id, compiled regex, human explanation). Regexes are applied
-# to comment-stripped source line by line (best-effort comment stripping).
+# to comment-stripped source line by line (best-effort comment stripping that
+# preserves the original line numbering, RAI-223).
 RULES: list[tuple[str, re.Pattern, str]] = [
     (
         "thread-stop",
@@ -114,10 +121,26 @@ RULES: list[tuple[str, re.Pattern, str]] = [
 COMMENT = re.compile(r"//.*$|/\*.*?\*/", re.DOTALL)
 
 
+def _blank_in_place(m: re.Match) -> str:
+    """Blank a comment match in place, preserving its newlines verbatim.
+
+    Every comment byte becomes a space except newlines, which are kept, so
+    the stripped text keeps a 1:1 line correspondence with the original
+    source (and within-line column offsets). Detection rules are unchanged;
+    this only fixes line attribution (RAI-223).
+    """
+    return "\n".join(" " * len(part) for part in m.group(0).split("\n"))
+
+
 def strip_comments(text: str) -> str:
-    # Best-effort: block comments first (possibly multi-line), then line comments.
-    text = re.sub(r"/\*.*?\*/", lambda m: " " * len(m.group(0)), text, flags=re.DOTALL)
-    return re.sub(r"//[^\n]*", "", text)
+    # Best-effort: block comments first (possibly multi-line), then line
+    # comments. Comments are blanked in place — never deleted — and their
+    # newlines survive, so line numbers in hits/skips/notes are true source
+    # lines. Pre-existing best-effort caveats are unchanged (e.g. comment
+    # markers inside string literals are still mis-stripped; no rule,
+    # threshold or policy change, RAI-223 non-goals).
+    text = re.sub(r"/\*.*?\*/", _blank_in_place, text, flags=re.DOTALL)
+    return re.sub(r"//[^\n]*", _blank_in_place, text)
 
 
 # Hit: (rule_id, lineno, match). Allowlist skip: (rule_id, lineno, match, entry).
@@ -212,6 +235,50 @@ def self_test() -> bool:
         ok = False
     if _allowlist_suffix("raider.cli.Main") != "raider/cli/Main.scala":
         print("[forbidden-apis] SELF-TEST FAIL (FA-03): bad allowlist suffix rendering")
+        ok = False
+
+    # RAI-223 true-line attribution fixtures (ATTR-01..04): comment stripping
+    # must keep a 1:1 line correspondence with the original source so every
+    # reported line number is the true source line. Wave-C defect shape: a
+    # violation at true :508 was reported :471 because multi-line block
+    # comments had their newlines collapsed, shifting everything below.
+    attr_secret = 'val s = "sk-proj1234567890abcdef"'
+
+    # ATTR-01: plain position — a violation with no comments nearby.
+    hits, skips = scan_text(other_rel, "val a = 1\n" + attr_secret + "\n")
+    if len(hits) != 1 or hits[0][0] != "secret-literal" or hits[0][1] != 2:
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-01): expected secret-literal at true line 2, got: {hits}")
+        ok = False
+
+    # ATTR-02: wave-C shape — two multi-line block comments precede the
+    # violation; the report must cite the true line (8), not the collapsed
+    # line (4 under the pre-RAI-223 stripper).
+    wavec = (
+        "/** header spanning\n"
+        " *  several lines */\n"
+        "val a = 1\n"
+        "/* mid-file block\n"
+        "   comment\n"
+        "   spanning four\n"
+        "   lines */\n"
+        + attr_secret + "\n"
+    )
+    hits, skips = scan_text(other_rel, wavec)
+    if len(hits) != 1 or hits[0][0] != "secret-literal" or hits[0][1] != 8:
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-02): expected secret-literal at true line 8, got: {hits}")
+        ok = False
+
+    # ATTR-03: comment-adjacent — an inline block comment and a trailing line
+    # comment on the violating line must not shift its reported line number.
+    hits, skips = scan_text(other_rel, "/* inline */ val x = 1\n" + attr_secret + " // trailing note\n")
+    if len(hits) != 1 or hits[0][0] != "secret-literal" or hits[0][1] != 2:
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-03): expected secret-literal at true line 2, got: {hits}")
+        ok = False
+
+    # ATTR-04 (mechanism invariant): stripping never changes the line count.
+    sample = wavec + "// tail line\n/* tail\n   block */\nval z = 1\n"
+    if len(strip_comments(sample).splitlines()) != len(sample.splitlines()):
+        print("[forbidden-apis] SELF-TEST FAIL (ATTR-04): strip_comments changed the line count")
         ok = False
     return ok
 
