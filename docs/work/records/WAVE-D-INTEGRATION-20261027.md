@@ -113,3 +113,78 @@ extending the rerun allowance is an owner call, not a coordinator call), or
 (b) register the MJE-03c load-recurrence as a determinism child card first.
 The corpus re-pin and F-224-1 fixes on `101c1e4` stand independently of this
 decision and are already committed on local `main` (unpushed).
+
+---
+
+## Adjudicated resume, 2026-10-27 12:47–13:07 local
+
+### Coordinator adjudication (verbatim substance, received 2026-10-27)
+
+The stopped gate failure is the standing MJE-03c one-rerun family: exact
+wave-A signature (`childId != "<none>"`, `MultiJobExportSpec.scala:860`),
+`sbt-test` `timed_out=true` at the 1800 s ceiling, RAI-224 lineage names
+`MultiJobExportSpec` load-sensitive, and stale foreign JVMs demonstrably
+contended CPU during the run. The one-rerun allowance (session policy since
+wave A) applies — this supersedes the narrower two-suite wording in the
+original brief. Plan: reap stale JVMs, confirm a calm window, disclose, then
+rerun `make quality-changed QUALITY_EXECUTE=1` (rerun #1). 10/10 -> continue
+the full halted pipeline; a repeat MJE-03c failure or any other failing suite
+-> verbatim stop, no push, no flips.
+
+### Reap results (2026-10-27 ~12:47–12:49 local)
+
+Every pid was re-checked via `ps`/`lsof` (cmdline, etime, cwd) before
+signalling; all predated the 12:38 cutoff given by the coordinator; none was a
+process started after it. All 26 targets exited on SIGTERM; no SIGKILL was
+needed; post-reap sweep found no java/sbt process left under `wt/` or
+`/var/folders/.../opencode/waveB-wt/`.
+
+Day-old wave-B orphans (4):
+
+| pid | started | cwd | identity |
+| --- | --- | --- | --- |
+| 85261 | 10-26 02:44:55 | `T/opencode/waveB-wt/rai-214` | openjdk java, sbt launch (`-Xmx1024m`), etime 1d10h |
+| 35151 | 10-26 02:24:04 | `T/opencode/waveB-wt/rai-212/modules/repl-engine` | openjdk 27 test-agent (`-classpath` ForkMain), etime 1d10h |
+| 61375 | 10-26 03:11:13 | `wt/rai-218/modules/repl` | openjdk 27 sbt (`@sbt-args…`), etime 1d09h |
+| 22989 | 10-26 02:55:15 | `T/opencode/waveB-wt/rai-214/modules/repl` | openjdk 27 sbt (`@sbt-args…`), etime 1d09h |
+
+wt/rai-205 stuck `java -cp` corpus consumers (22 — the six named by the
+coordinator plus 16 more found by the mandated sweep, all the identical leak
+signature: `/usr/bin/java -cp …/wt/rai-205/artifacts/cross-ecosystem/classes…`
+xe consumer/stand invocations; one inspected verbatim is the
+`budget-extract` scenario consumer with `--usage-out 50 --content-file
+…/expected/budget-extract-content.json --marker …/xe-ws/budget/marker.txt`):
+
+| started | pids |
+| --- | --- |
+| 06:09:43–06:26:54 | 42877, 43418, 47964, 49034, 49543, 50511, 51127, 51170, 57139, 57927, 57940, 69217, 69231 |
+| 06:36:22–06:36:23 | 85074, 85087 |
+| 08:09:54–08:12:23 | 93898, 93912, 94692 |
+| 11:49:39–11:52:45 | 96190, 96203, 97659, 97672 |
+
+(Also reaped earlier in this session, before this record section: this
+session's own leaked xe stands 4903/4925/6359 and the sbt orphan 24924 from
+the timed-out gate run — see Limitations above.)
+
+### Load readings and calm-window status
+
+- 12:47 local: 1/5/15-min load `5.63 / 5.40 / 10.04` on 18 logical cores
+  (6 performance); top process a foreign `go test -race` (pid 9965, cwd
+  `tokenrouter-imp-fleet-w24-01`, ~136 % CPU), started 12:50:29.
+- 12:50–12:54: go-test transient peaked 1-min load at `16.77`, finished
+  12:54; residue `go-build` at ~33 %.
+- 12:55 onward: the host's `Virtualization.framework` VM (pid 41365, foreign,
+  not a scalaagent lane, NOT in the adjudicated reap scope) began cycling:
+  3–4 minute bursts at ~1100–1330 % CPU (≈11 of 18 cores) alternating with
+  1–2 minute near-idle gaps (~40 % CPU). Observed minute-by-minute
+  12:56–13:07: 1-min load oscillated `5.89 → 23.30` with 5/15-min at
+  `11.16–15.60 / 10.74–13.56`; VM bursts recurred at 13:00, 13:04, 13:07.
+
+**Calm-window precondition (step 2) is NOT met**: the foreign VM workload is
+outside this session's authority to terminate, its bursts are longer than the
+quiet gaps, and a ~30-minute `sbt-test` run cannot fit between them. Rerun #1
+under the MJE-03c allowance is prepared but NOT started; starting it under
+this contention would reproduce the exact conditions the adjudication
+identified and would make any result uninterpretable. Next step: hold until
+the VM workload ends (or the coordinator directs otherwise), verify
+1-min load low and stable with no foreign JVMs/lanes, then execute rerun #1.
