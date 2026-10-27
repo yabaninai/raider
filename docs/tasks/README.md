@@ -287,7 +287,7 @@ These cards were already present in the local backlog when documentation work be
 
 ## Cross-ecosystem program (2026-10-23)
 
-[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196, RAI-200, RAI-202, and RAI-204 are accepted. RAI-197 is accepted; other cards require their dependencies and explicit activation conditions.
+[Delivery plan](../cross-ecosystem-plan.md); [research](../research/llm4s-langchain4j-2026-10-23.md). RAI-196, RAI-200, RAI-202, RAI-204, and RAI-205 are accepted. RAI-197 is accepted; other cards require their dependencies and explicit activation conditions.
 
 - **RAI-196** [Cross-ecosystem architecture ADR and reuse audit](m1.md); dependencies: none; profiles: docs.
 - **RAI-197** [Portable workflow format and semantics contract](m1.md); dependencies: RAI-196; profiles: docs, contracts.
@@ -298,12 +298,12 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-202** [Provider and structured-output capability audit and contract](m1.md); accepted; dependencies: RAI-196; profiles: docs, contracts.
 - **RAI-203** [Portable chat export and useful recipe pair](m1.md); accepted (portable v1 export with staged atomic publication and closed-schema manifest; `--format scala|portable` with honest CWF-R3 refusal at chat; two mock-mode recipes); dependencies: RAI-198, RAI-160; profiles: static, unit, contracts, runtime, ci, docs, security.
 - **RAI-204** [Installed first-use path and coherent onboarding](m1.md); accepted; dependencies: RAI-193; profiles: docs, release.
-- **RAI-205** [Independent cross-ecosystem comparison and consumer acceptance](m1.md); ready (deps RAI-199, RAI-201, RAI-203, RAI-204, RAI-202 all accepted; unblocked by wave C); dependencies: RAI-199, RAI-201, RAI-203, RAI-204, RAI-202; profiles: docs, contracts, ci, runtime, eval, security.
-- **RAI-206** [Demand-gated Java embedding facade design spike](m1.md); dependencies: RAI-205; profiles: docs.
+- **RAI-205** [Independent cross-ecosystem comparison and consumer acceptance](m1.md); accepted (offline corpus 20/20 + budget refusal 23/RA-PBUDGET on the integrated candidate; adapter re-pin `c9bd8777…`→`997f29a1…`; gates `20261027-132619…`/`20261027-133748…`, first EXECUTE run `20261027-120432…` failed and adjudicated); dependencies: RAI-199, RAI-201, RAI-203, RAI-204, RAI-202; profiles: docs, contracts, ci, runtime, eval, security.
+- **RAI-206** [Demand-gated Java embedding facade design spike](m1.md); ready (dep RAI-205 accepted); dependencies: RAI-205; profiles: docs.
 - **RAI-219** [ChatWorkflowExport staging-race mirror: fail-fast without deleting the winner](m1.md); accepted (red-check `24ad1361…`; gates `20261026-081927…`/`083119…`); dependencies: RAI-213; profiles: static, unit, contracts.
 - **RAI-220** [Wire PortableBundleVerifier into PortableRun lowering](m1.md); accepted (TOCTOU closed; gates `20261026-083132…`/`084309…`); dependencies: RAI-214; profiles: static, unit, contracts, runtime, ci.
 - **RAI-221** [bootstrap_ca.py hardening and named-case evidence retention](m1.md); accepted (zero-traceback; gates `20261026-083359…`/`084821…`); dependencies: RAI-218; profiles: fast, static.
-- **RAI-222** [process-api cancel-mid-run fixture errata: cancelled settles 26](m1.md); todo; dependencies: RAI-201; profiles: ci, fast.
-- **RAI-223** [forbidden-apis scanner true line attribution](m1.md); todo; dependencies: none; profiles: fast.
-- **RAI-224** [sbt-test gate budget load calibration at wave-scale lane counts](m1.md); todo; dependencies: RAI-209; profiles: docs.
-- **RAI-225** [process-api acceptance determinism: duplicate-submit ownership and OutboundSpec coalesce under load](m1.md); todo; dependencies: RAI-201; profiles: ci, fast.
+- **RAI-222** [process-api cancel-mid-run fixture errata: cancelled settles 26](m1.md); accepted (digest re-anchored, load-attempt disclosure; gates `20261027-132619…`/`20261027-133748…`); dependencies: RAI-201; profiles: ci, fast.
+- **RAI-223** [forbidden-apis scanner true line attribution](m1.md); accepted (true-line matrix 12/10/508; gates `20261027-132619…`/`20261027-133748…`); dependencies: none; profiles: fast.
+- **RAI-224** [sbt-test gate budget load calibration at wave-scale lane counts](m1.md); accepted (tiers 4/8/12 measured, F-224-1 summary fixed, load-aware admission recommendation); dependencies: RAI-209; profiles: docs.
+- **RAI-225** [process-api acceptance determinism: duplicate-submit ownership and OutboundSpec coalesce under load](m1.md); accepted (ownership-keyed duplicate_submit; loaded runs disclosed; gates `20261027-132619…`/`20261027-133748…`); dependencies: RAI-201; profiles: ci, fast.

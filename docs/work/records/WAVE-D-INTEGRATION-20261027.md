@@ -212,3 +212,38 @@ after the 26-pid reap).
 
 Rerun #1 command: `make quality-changed QUALITY_EXECUTE=1` — launched
 13:26 local against tree `dd28d76`. Result section to follow below.
+
+### Rerun #1 result: 10/10 PASSED (2026-10-27 13:26–13:36 local)
+
+`make quality-changed QUALITY_EXECUTE=1` exited 0 — all ten fast gates passed;
+`sbt-test` exit 0, `timed_out=false`, duration 559.81 s (vs the failed run's
+1800.08 s ceiling kill). Manifest
+`artifacts/quality/20261027-132619-64417-0001/manifest.json`, sha256
+`b4bda7ff37ec9a4c31dcc95906891dff7483472d3806eed5412365d76d191db4`, status
+passed, window 10:26:19Z–10:36:39Z; `sbt-test.log` sha256
+`808a46a6f9c6b62fe1f1e5d0eabf7ad9ea7fec8063526125368a589a4c189043`; cli
+module summary 604 passed / 0 failed — the MJE-03c assertion
+(`MultiJobExportSpec.scala:860`, red in the 12:04 run) does not appear in the
+rerun log at all.
+
+### Profile union result: 13/13 PASSED (2026-10-27 13:37–13:51 local)
+
+`make quality-profile PROFILES="fast docs contracts ci runtime eval security"`
+exited 0 — gates: sbt-test (641.52 s, exit 0, `timed_out=false`), cli-smoke,
+core-contracts-spec, compile-fixtures, plan-validate, eval-corpus,
+self-registry-check, sbt-compile, scalafmt-check, scalafix-check,
+forbidden-apis, license-audit, security-secrets-scan. Manifest
+`artifacts/quality/20261027-133748-69535-0001/manifest.json`, sha256
+`5fec539c8a05091bc321ac1b1cb625ae1e6e90a08742385414023cfa6d56748d`, status
+passed, window 10:37:48Z–10:51:10Z; sbt-test log sha256 `4d486e778303f387…`
+(truncated prefix as printed by the runner; full value in the manifest).
+
+### Completion of the halted pipeline
+
+With rerun #1 green, the pipeline resumed exactly as briefed: flips
+(RAI-205/222/223/224/225 → accepted; RAI-206 → ready) in `backlog.json`
+(245 cards, `raider_count` 236), `m1.md`, and the `docs/tasks/README.md`
+index; board.md wave-D entry (both gate manifests and the failed run
+disclosed); `python3 scripts/plan/validate.py --out artifacts/plan-review/
+report.json` exit 0, 245 cards; push; worktree/branch cleanup. See the board
+entry for the full evidence set and follow-ups.

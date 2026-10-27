@@ -6517,7 +6517,7 @@
         "RAI-204",
         "RAI-202"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "docs/acceptance/cross-ecosystem/**",
         "contracts/acceptance/cross-ecosystem/**",
@@ -6547,7 +6547,7 @@
       "dependencies": [
         "RAI-205"
       ],
-      "status": "todo",
+      "status": "ready",
       "allowed_paths": [
         "docs/research/java-embedding-spike.md",
         "docs/adr/**",
@@ -6997,7 +6997,7 @@
       "dependencies": [
         "RAI-201"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/fixtures/process-api/**",
         "modules/cli/src/test/scala/raider/cli/processapi/**",
@@ -7021,7 +7021,7 @@
       "title": "forbidden-apis scanner true line attribution",
       "milestone": "M1",
       "dependencies": [],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/**",
         "docs/work/records/**"
@@ -7045,7 +7045,7 @@
       "dependencies": [
         "RAI-209"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "docs/research/gate-budget-load-calibration-2026-10-27.md",
         "docs/work/records/**"
@@ -7069,7 +7069,7 @@
       "dependencies": [
         "RAI-201"
       ],
-      "status": "todo",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/processapi/**",
         "modules/cli/src/main/scala/raider/cli/processapi/**",
