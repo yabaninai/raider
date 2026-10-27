@@ -81,7 +81,7 @@ build's result, never smoothed.
 | Tier | Builds | Full-build wall min / median / max (s) | Within budget | Over budget (>1800 s) | Test-failed within budget | Zinc-poisoned fast-fail | Ambient load (1-min) min / median / max |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | base (1) | 1 | 1064 / 1064 / 1064 | 0/1 | 0 | 1 (c01, `OutboundSpec`) | 0 | 22 / 51 / 175 |
-| 4 | 4 | 1901 / 1921 / 1931 | 0/4 | **4/4** | 2 (c02 `ChatWorkflowVerifierE03Spec`, c05 `OutboundSpec`) | 0 | 41 / 158 / 213 |
+| 4 | 4 | 1901 / 1921 / 1931 | 0/4 | **4/4** (c02, c05 over-budget AND test-failed: `ChatWorkflowVerifierE03Spec`, `OutboundSpec`) | 0 | 0 | 41 / 158 / 213 |
 | 8 | 8 | 1131 / 1146 / 1161 (n=7) | 7/7 | 0 | 3 (c06+c07 `OutboundSpec`, c12 `MultiJobExportSpec`) | 1 (c08, 61 s) | 35 / 62 / 218 |
 | 12 | 12 | 1253 / 1482.5 / 1489 (n=10) | 10/10 | 0 | 3 (c15 `ProcessApiAcceptanceSpec`, c22 `OutboundSpec`, c25 `ProcessApiAcceptanceSpec`+`OutboundSpec`) | 2 (c17 55 s, c19 60 s) | 30 / 81 / 229 |
 

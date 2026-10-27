@@ -1,7 +1,7 @@
 {
   "id": "XE-205-golden-checks",
   "description": "RAI-205 cross-ecosystem acceptance goldens: expected scenario set, adapter exit codes, and exact check-name lists (order preserved) per ecosystem consumer. Verified live against the integrated candidate; the independent checker revalidates every run against this file.",
-  "adapterJarSha256": "c9bd87776660f84c6569506b3b9beb9927abd45f0080afcfe9bc4ec272c7acad",
+  "adapterJarSha256": "997f29a18e38848c082deaeb825a7f4da40ca76d47444663c656693a16d47fdd",
   "standKey": "sk-stand-205",
   "ecosystems": {
     "llm4s": {
