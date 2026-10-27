@@ -323,7 +323,9 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     yield (hub, manager, join)
 
   /** Runs the campaign job with the exact runner collector discipline; the body
-    * runs concurrently (forks/introduces children, releases them).
+    * runs concurrently (forks/introduces children, releases them) and is forked
+    * only after the campaign is registered — see the fixture comment at the
+    * fork site below.
     */
   private def driveCampaign(dir: Path)(
       body: (EventHub, JobManager, Promise[Nothing, Unit]) => ZIO[
@@ -335,7 +337,6 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     for
       (hub, manager, join) <- harness(dir)
       release <- Promise.make[Nothing, Unit]
-      _ <- body(hub, manager, release).forkDaemon
       barrier <- Promise.make[Nothing, JobId]
       job = Task(
         barrier.await.flatMap { jobId =>
@@ -346,7 +347,13 @@ object MultiJobExportSpec extends ZIOSpecDefault:
         }
       )
       handle <- manager.start(rootId, "campaign", job)
+      // Runner discipline: the campaign must be registered BEFORE any child
+      // can exist (children are forked by the campaign's own loop). The body
+      // forks children, so it is forked only after join.campaign commits;
+      // otherwise a child introduction can win the race and connect against
+      // an unregistered campaign.
       _ <- join.campaign(handle.id)
+      _ <- body(hub, manager, release).forkDaemon
       subscribed <- hub.subscribe(handle.id)
       (snapshot, stream) = subscribed
       _ <- ZIO.foreachDiscard(
@@ -419,7 +426,9 @@ object MultiJobExportSpec extends ZIOSpecDefault:
 
   /** The exact runner collector discipline over a run-local harness; unlike
     * [[driveCampaign]] the body also receives the join, so the fixture can
-    * register per-level fork anchors between introductions.
+    * register per-level fork anchors between introductions. As in
+    * [[driveCampaign]], the body is forked only after the campaign is
+    * registered — see the fixture comment at the fork site below.
     */
   private def driveNested(dir: Path)(
       body: (
@@ -432,7 +441,6 @@ object MultiJobExportSpec extends ZIOSpecDefault:
     for
       (hub, manager, join) <- harness(dir)
       release <- Promise.make[Nothing, Unit]
-      _ <- body(hub, manager, join, release).forkDaemon
       barrier <- Promise.make[Nothing, JobId]
       job = Task(
         barrier.await.flatMap { jobId =>
@@ -443,7 +451,13 @@ object MultiJobExportSpec extends ZIOSpecDefault:
         }
       )
       handle <- manager.start(rootId, "campaign", job)
+      // Runner discipline: the campaign must be registered BEFORE any child
+      // can exist (children are forked by the campaign's own loop). The body
+      // forks children, so it is forked only after join.campaign commits;
+      // otherwise a child introduction can win the race and connect against
+      // an unregistered campaign.
       _ <- join.campaign(handle.id)
+      _ <- body(hub, manager, join, release).forkDaemon
       subscribed <- hub.subscribe(handle.id)
       (snapshot, stream) = subscribed
       _ <- ZIO.foreachDiscard(
