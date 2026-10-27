@@ -27,6 +27,13 @@ L4J_CP="$XE/classes-l4j:$L4J_DEPS"
 
 declare -a STAND_PIDS=()
 
+# -- stand stop policy (RAI-229): every registered stand pid gets SIGTERM, a
+# bounded wait, then a bounded SIGKILL escalation. A stand that survives both
+# is an honest FAILURE of stop_stands (nonzero rc + diagnostic), never a
+# masked `|| true`. Bounds are whole seconds, overridable for drills.
+XE_STOP_TERM_TIMEOUT="${XE_STOP_TERM_TIMEOUT:-10}"
+XE_STOP_KILL_TIMEOUT="${XE_STOP_KILL_TIMEOUT:-5}"
+
 log() { printf '[xe-driver] %s\n' "$*" >&2; }
 
 compile_all() {
@@ -45,32 +52,147 @@ compile_all() {
   done
 }
 
-# start_stand <name> <extra args...> ; prints the port, registers the pid
+# start_stand <name> <extra args...> ; prints the port, registers the pid.
+# Registration is DURABLE: the pid is written to $OUT/stand-<name>.pid because
+# start_stand usually runs inside a command substitution subshell, so the
+# in-memory STAND_PIDS array does not reach the driver shell. stop_stands
+# reads the pidfiles; a missing/malformed pidfile is diagnosed, not silently
+# passed (RAI-229).
 start_stand() {
   local name="$1"; shift
   local sout="$OUT/stand-$name.out" serr="$OUT/stand-$name.err" slog="$OUT/stand-$name.log"
+  mkdir -p "$OUT"
   : > "$slog"
   java -cp "$XE/classes:$SCALA_LIB" Stand --key "$STAND_KEY" --log "$slog" "$@" > "$sout" 2> "$serr" &
   local pid=$!
   STAND_PIDS+=("$pid")
+  printf '%s\n' "$pid" > "$OUT/stand-$name.pid"
   local port=""
   for _ in $(seq 1 100); do
     port=$(grep -o 'PORT=[0-9]*' "$sout" 2>/dev/null | head -1 | cut -d= -f2 || true)
     [ -n "$port" ] && break
-    kill -0 "$pid" 2>/dev/null || { log "FATAL: stand $name died"; cat "$serr"; exit 2; }
+    kill -0 "$pid" 2>/dev/null || { stop_stands || true; log "FATAL: stand $name died"; cat "$serr"; exit 2; }
     sleep 0.2
   done
-  [ -n "$port" ] || { log "FATAL: stand $name did not report PORT"; exit 2; }
+  [ -n "$port" ] || { stop_stands || true; log "FATAL: stand $name did not report PORT"; exit 2; }
   log "stand $name pid=$pid port=$port"
   printf '%s' "$port"
 }
 
-stop_stands() {
-  for pid in "${STAND_PIDS[@]:-}"; do
-    [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+# xe_stop_alive <pid> : rc 0 when the pid is a live (non-zombie) process.
+# kill -0 alone also succeeds for zombies (exited children awaiting reap),
+# so the ps state is checked too.
+xe_stop_alive() {
+  local stat
+  kill -0 "$1" 2>/dev/null || return 1
+  stat="$(ps -p "$1" -o stat= 2>/dev/null || true)"
+  case "$stat" in
+    Z*|"") return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# xe_stop_wait_exit <pid> <whole-second-bound> : poll until the pid is gone
+# or the bound is exhausted; rc 0 = exited within the bound.
+xe_stop_wait_exit() {
+  local i=0 max="$(($2 * 10))"
+  while xe_stop_alive "$1"; do
+    [ "$i" -ge "$max" ] && return 1
+    sleep 0.1
+    i=$((i + 1))
   done
-  wait 2>/dev/null || true
+  return 0
+}
+
+# xe_reap <pid> : reap the exited stand if it is a child of this shell
+# (drops the zombie); a non-child pid just yields wait's 127, ignored.
+xe_reap() { wait "$1" 2>/dev/null || true; }
+
+stop_one_stand() { # <pid>
+  local pid="$1" cmd
+  case "$pid" in
+    ''|*[!0-9]*)
+      log "ERROR: stop_stands: invalid stand pid entry '$pid' (stand was not registered correctly)"
+      return 1 ;;
+  esac
+  if ! xe_stop_alive "$pid"; then
+    log "stand pid=$pid already exited"
+    xe_reap "$pid"
+    return 0
+  fi
+  # Identity guard: only signal a process that is actually a registered Stand.
+  # Protects against signaling a recycled pid (e.g. another checkout's process).
+  cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+  case "$cmd" in
+    *Stand*) : ;;
+    *)
+      log "ERROR: stop_stands: pid=$pid is not a Stand process (cmd: '${cmd:-unavailable}'); refusing to signal a foreign process"
+      return 1 ;;
+  esac
+  log "stopping stand pid=$pid (SIGTERM, wait bound ${XE_STOP_TERM_TIMEOUT}s)"
+  kill -TERM "$pid" 2>/dev/null || true
+  if xe_stop_wait_exit "$pid" "$XE_STOP_TERM_TIMEOUT"; then
+    xe_reap "$pid"
+    log "stand pid=$pid exited after SIGTERM"
+    return 0
+  fi
+  log "WARN: stand pid=$pid still alive ${XE_STOP_TERM_TIMEOUT}s after SIGTERM; escalating to SIGKILL (wait bound ${XE_STOP_KILL_TIMEOUT}s)"
+  kill -KILL "$pid" 2>/dev/null || true
+  if xe_stop_wait_exit "$pid" "$XE_STOP_KILL_TIMEOUT"; then
+    xe_reap "$pid"
+    log "stand pid=$pid killed via SIGKILL escalation"
+    return 0
+  fi
+  log "ERROR: stop_stands: stand pid=$pid SURVIVED SIGKILL after ${XE_STOP_KILL_TIMEOUT}s; manual cleanup required"
+  return 1
+}
+
+stop_stands() {
+  local rc=0 pid count=0 pidfile
+  # Authoritative source: pidfiles written by start_stand (durable across the
+  # command-substitution subshell boundary). Pidfile scope is this checkout's
+  # $OUT, so concurrent runs in separate checkouts never cross-kill; the
+  # identity guard in stop_one_stand additionally refuses recycled pids.
+  for pidfile in "$OUT"/stand-*.pid; do
+    [ -e "$pidfile" ] || continue
+    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    case "$pid" in
+      ''|*[!0-9]*)
+        log "ERROR: stop_stands: malformed pidfile $pidfile (content: '${pid:-<empty>}'); diagnosing, not silently passing"
+        rc=1
+        continue ;;
+    esac
+    count=$((count + 1))
+    if stop_one_stand "$pid"; then
+      rm -f "$pidfile"
+    else
+      log "ERROR: stop_stands: pidfile $pidfile retained for post-mortem (stand pid=$pid not cleanly stopped)"
+      rc=1
+    fi
+  done
+  # In-memory entries (direct registration, e.g. drills) are also honored;
+  # stop_one_stand is idempotent for pids already stopped via pidfiles.
+  if [ "${#STAND_PIDS[@]}" -gt 0 ]; then
+    for pid in "${STAND_PIDS[@]}"; do
+      case "$pid" in
+        ''|*[!0-9]*)
+          log "ERROR: stop_stands: invalid stand pid entry '$pid' (stand was not registered correctly)"
+          rc=1
+          continue ;;
+      esac
+      count=$((count + 1))
+      stop_one_stand "$pid" || rc=1
+    done
+  fi
   STAND_PIDS=()
+  if [ "$count" -eq 0 ]; then
+    log "stop_stands: no stand pidfiles or registered pids found (nothing to stop)"
+    return 0
+  fi
+  if [ "$rc" -ne 0 ]; then
+    log "ERROR: stop_stands: processed $count stand pid(s), at least one did not terminate cleanly; failing honestly"
+  fi
+  return "$rc"
 }
 
 run_llm4s() { # <manifest> <scenarios> [stand-port]

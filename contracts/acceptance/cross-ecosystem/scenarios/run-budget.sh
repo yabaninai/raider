@@ -36,7 +36,10 @@ RAIDER_API_KEY="$STAND_KEY" java -jar "$JAR" workflow run \
 EXIT=$?
 set -e
 
-stop_stands
+# RAI-229: capture the stop result so the budget evidence below is still
+# produced and verified, then propagate the failure at exit.
+STOP_RC=0
+stop_stands || STOP_RC=$?
 
 log "budget run exit=$EXIT (expect 23)"
 [ "$EXIT" -eq 23 ] || { log "FATAL: expected exit 23, got $EXIT"; tail -5 "$BUDGET_OUT/stderr.log" || true; exit 1; }
@@ -64,5 +67,10 @@ print("[xe-driver] budget-result:", json.dumps(result))
 if run.get("exitCode") != 23:
     sys.exit("run.json exitCode is not 23")
 EOF
+
+if [ "$STOP_RC" -ne 0 ]; then
+  log "FATAL: stands did not all terminate (stop rc=$STOP_RC); refusing to report success"
+  exit "$STOP_RC"
+fi
 
 log "budget scenario OK"
