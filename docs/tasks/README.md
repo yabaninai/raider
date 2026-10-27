@@ -307,3 +307,9 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-223** [forbidden-apis scanner true line attribution](m1.md); accepted (true-line matrix 12/10/508; gates `20261027-132619…`/`20261027-133748…`); dependencies: none; profiles: fast.
 - **RAI-224** [sbt-test gate budget load calibration at wave-scale lane counts](m1.md); accepted (tiers 4/8/12 measured, F-224-1 summary fixed, load-aware admission recommendation); dependencies: RAI-209; profiles: docs.
 - **RAI-225** [process-api acceptance determinism: duplicate-submit ownership and OutboundSpec coalesce under load](m1.md); accepted (ownership-keyed duplicate_submit; loaded runs disclosed; gates `20261027-132619…`/`20261027-133748…`); dependencies: RAI-201; profiles: ci, fast.
+- **RAI-226** [MultiJobExportSpec MJE-03c load-recurrence determinism](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-227** [Load-flaky suite determinism: AgentLoopPhaseEmissionSpec and ResumeCommandSpec](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-228** [Forbidden-apis scanner target/ directory hygiene](m1.md); ready; dependencies: RAI-223; profiles: fast.
+- **RAI-229** [Cross-ecosystem stand stop: honest SIGTERM propagation](m1.md); ready; dependencies: RAI-205; profiles: docs, contracts.
+- **RAI-230** [OutboundSpec waiter-wakeup sleep removal](m1.md); ready; dependencies: RAI-225; profiles: fast, ci.
+- **RAI-231** [Example-workflow authority rescope to pinned registry names](m1.md); ready; dependencies: RAI-205; profiles: fast, ci, docs, contracts.

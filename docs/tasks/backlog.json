@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 236,
+  "raider_count": 242,
   "companion_count": 3,
   "cards": [
     {
@@ -6547,7 +6547,7 @@
       "dependencies": [
         "RAI-205"
       ],
-      "status": "ready",
+      "status": "blocked",
       "allowed_paths": [
         "docs/research/java-embedding-spike.md",
         "docs/adr/**",
@@ -7087,6 +7087,156 @@
       },
       "non_goals": "Changing the frozen contract vocabulary or exit codes; relaxing quality gates or the 1800 s budget; touching unrelated suites.",
       "context": "Three wave-D lanes on base 1351538 hit the same family: RAI-224 sbt-test red 3x at calm ambient (2x XE-PROC-03 duplicate-submit Phase.Settling race where Session.scala:322 returns input_rejected; 1x OutboundSpec coalesce), RAI-222 three profile attempts failed on timing-sensitive process-api tests under load 95-199, RAI-205 first execute run failed ProcessApiAcceptanceSpec duplicate-submit (input_rejected vs duplicate_submit, green on reruns); the wave-C integrated run passed at 619.5 s — the window is latent, not absent."
+    },
+    {
+      "id": "RAI-226",
+      "title": "MultiJobExportSpec MJE-03c load-recurrence determinism",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/run/MultiJobExportSpec.scala",
+        "modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Root-cause and close the recurring load-sensitive MJE-03c red (childId != \"<none>\", MultiJobExportSpec.scala:860) that failed the wave-D EXECUTE run (manifest 20261027-120432-11235-0001, sbt-test timed out at 1800.08 s) after the MJE-03c one-rerun allowance was consumed. Prior lineage: RAI-157 partial fix (bounded drain() before exportTerminal, 2000 ms budget; intermittent MJE-02/MJE-NESTED reds remained), RAI-185/186, RAI-224 names MultiJobExportSpec among load-sensitive families. First establish the current baseline on 3072f94 (is the drain() change present?), then reproduce the MJE-03c red under concurrent host load red-first, diagnose whether the defect is test-side ordering or a product-side settle/export race, and land the minimal fix without weakening any expectation; the strict MJE-03c expectation Left(MissingTerminal(childId)) stays unchanged.",
+      "acceptance": {
+        "normal": "Red-first loaded reproduction of the MJE-03c failure signature on 3072f94 (verbatim assertion and line recorded) or an honest documented failure to reproduce after a bounded loaded matrix (then the card reports the matrix and does not claim a fix); on a reproduced red: focused fix lands, and the full MultiJobExportSpec suite passes 10 consecutive calm runs plus at least 30 loaded runs with recorded 1/5/15-minute load readings, zero reds, no added sleeps (bounded deterministic waits only).",
+        "error": "A deliberately regressed probe (revert of the fix or sabotage of the settle ordering) still fails MJE-03c with the strict expectation — detection intact; drain/settle budgets stay bounded and disclosed; neighboring cases MJE-02 and MJE-NESTED are not regressed (the full-suite matrix covers them, not just -t MJE-03c).",
+        "concurrency": "Loaded matrix under concurrent host load and at least two concurrent full-suite invocations in one JVM suite run remain green; if the root cause is product-side concurrency (settle/export ordering), ownership and cancellation tests accompany the fix and the product change is disclosed as such."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No gate-policy change and no reset of the consumed MJE-03c one-rerun allowance; no MultiJob wire/public API change; no weakening of MJE-02/MJE-NESTED/MJE-03c expectations."
+    },
+    {
+      "id": "RAI-227",
+      "title": "Load-flaky suite determinism: AgentLoopPhaseEmissionSpec and ResumeCommandSpec",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/**/AgentLoopPhaseEmissionSpec.scala",
+        "modules/**/ResumeCommandSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Root-cause and close the two load-flaky suite failures disclosed by the RAI-225 lane profile run (manifest 4be2f685, overall failed, 1/11): AgentLoopPhaseEmissionSpec.scala:421 (raiderRuntime module) and ResumeCommandSpec.scala:397 (raiderCli module), both outside any lane's changed paths and timing-correlated with concurrent host load. Reproduce each red under concurrent host load red-first (or record an honest bounded failure to reproduce), diagnose test-side nondeterminism vs a product race, and land the minimal determinism fix with no expectation weakening and no added sleeps.",
+      "acceptance": {
+        "normal": "Red-first loaded reproduction of each failure signature on 3072f94 (verbatim assertion text and line recorded) or a documented bounded failure to reproduce (matrix of at least 30 loaded runs per suite reported verbatim); on reproduced reds: focused fixes land and each suite passes 10 consecutive calm full-module runs plus at least 30 loaded runs with recorded load readings, zero reds.",
+        "error": "A deliberately regressed probe (sabotage of the fixed wait/ordering) still fails — detection intact; any bounded wait introduced is disclosed with its bound; no assertion is weakened or deleted.",
+        "concurrency": "Loaded matrix under concurrent host load and at least two concurrent invocations of each affected suite remain green; if the root cause is product-side concurrency, the product change is disclosed, accompanied by ownership/cancellation tests, and flagged for contract reading in review."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No changes outside the two named suites (a product fix, if diagnosed, stays minimal and disclosed); no gate-policy change; no profile threshold change."
+    },
+    {
+      "id": "RAI-228",
+      "title": "Forbidden-apis scanner target/ directory hygiene",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-223"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Close review finding F-223-1 from the RAI-223 review: the forbidden-apis scanner rglob currently descends into target/ build-output directories, so the scan reads stale generated artifacts and reported findings can depend on build state. Exclude target/ directories from the walk while keeping RAI-223's true-line attribution and every rule, threshold and allowlist entry exactly as accepted; detection semantics are frozen.",
+      "acceptance": {
+        "normal": "The walk excludes target/ directories; on a clean tree the planted-matrix detection counts are identical to RAI-223's accepted matrix (same true/total counts, same true lines for out-of-target planted violations); self-tests updated to pin the exclusion.",
+        "error": "A planted violation inside a target/ directory is documented as excluded (not scanned, not reported) and a sibling violation outside target/ is still caught at its true line; a missing or malformed path input still fails honestly (no silent empty pass).",
+        "concurrency": "A scan running while a concurrent build creates/deletes files under target/ completes without crashing (read-only walk tolerates vanishing entries)."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No rule, threshold, allowlist or exit-code semantics change; no scanner rewrite; no other quality tool touched."
+    },
+    {
+      "id": "RAI-229",
+      "title": "Cross-ecosystem stand stop: honest SIGTERM propagation",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-205"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/scenarios/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs",
+        "contracts"
+      ],
+      "behavior": "Close the wave-D integration finding: stop_stands in contracts/acceptance/cross-ecosystem/scenarios/lib.sh masks stand-termination failure with `|| true`, which leaked 22 consumer/stand JVMs during wave-D (reaped post-hoc, board 2026-10-27). Make stop_stands honest: attempt SIGTERM, bounded wait for exit, bounded SIGKILL escalation, and a nonzero script exit with a diagnostic when a stand survives; run-all.sh and run-budget.sh propagate the failure. No stand, checker or consumer behavior change.",
+      "acceptance": {
+        "normal": "stop_stands verifies each stand pid exited (TERM then bounded wait then KILL, all disclosed); a full run-all.sh plus run-budget.sh pass leaves zero stand/consumer JVM processes (post-run sweep check recorded in the work record, e.g. ps proof); the corpus result itself is unchanged (20/20, checker failed=0; budget inner exit 23 typed RA-PBUDGET).",
+        "error": "A stand that ignores SIGTERM (simulated by a planted loop-scoped stand in a scratch check, not committed) terminates via the bounded escalation path and the script reports it honestly; a missing pidfile/port is diagnosed, not silently passed.",
+        "concurrency": "Two concurrent corpus invocations in separate checkouts do not cross-kill each other's stands (pid/port isolation honored by the stop logic)."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No stand/checker/consumer source change; no corpus scenario expectations change; no gate-policy change."
+    },
+    {
+      "id": "RAI-230",
+      "title": "OutboundSpec waiter-wakeup sleep removal",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-225"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/processapi/OutboundSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Close review finding F-225-2 from the RAI-225 review: OutboundSpec.scala:108 retains a pre-existing ZIO.sleep(300.millis) in the waiter-wakeup test. Replace it with a deterministic wait (latch/probe/promise) that preserves or strengthens the assertion; RAI-225 already made the coalesce test deterministic, this removes the last timing sleep from the suite.",
+      "acceptance": {
+        "normal": "The waiter-wakeup test uses a deterministic wait with equivalent or stronger assertions than the sleep-based version; the file contains zero ZIO.sleep/Thread.sleep occurrences (grep-pinned in the work record); at least 30 loaded runs of OutboundSpec green with recorded load readings, plus 10 consecutive calm runs.",
+        "error": "A deliberately broken waiter (sabotage probe on a scratch branch, red-first) still fails the test — detection intact; the deterministic wait is bounded and its bound is disclosed.",
+        "concurrency": "At least two concurrent OutboundSpec invocations in one suite run remain green."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No Outbound.scala product change; no other suite touched; no expectation weakening."
+    },
+    {
+      "id": "RAI-231",
+      "title": "Example-workflow authority rescope to pinned registry names",
+      "milestone": "M1",
+      "dependencies": [
+        "RAI-205"
+      ],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/**",
+        "docs/acceptance/cross-ecosystem/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci",
+        "docs",
+        "contracts"
+      ],
+      "behavior": "Close the RAI-202 example-workflow acceptance gap recorded by RAI-205 (acceptance doc lines 133-141): the extraction-classification example uses authority names (extractor / read-only / classification-labels-valid) that the launcher-pinned trusted registry refuses typed (RA-INP untrusted-authority-reference at /steps/0/profile, step classify-item), so example-workflow acceptance is blocked while the consumer matrix passes. Rescope the example workflow inside the cross-ecosystem budget scenario to the pinned authority names (PortableTrustedRegistry pins: profile coder, toolset workspace, check workspace-marker-present) so the example resolves end-to-end WITHOUT widening the trust surface; the registry, its pins and the workflow-portable refusal manifest stay unchanged.",
+      "acceptance": {
+        "normal": "The rescoped example workflow resolves fully under pinned authorities: run-budget.sh exits 0 with inner exit 23 typed RA-PBUDGET and ZERO RA-INP refusals in the run evidence; the extraction/classification acceptance semantics survive the rescope (steps, structured outputs and budget route preserved — the doc explains the mapping to pinned names); registrySnapshot evidence recorded; run-all.sh stays green (20/20, checker failed=0); adapter jar hash unchanged (no product change — if it changes, stop and report).",
+        "error": "Unregistered authority names are still refused: a negative probe using the OLD names still yields the typed RA-INP untrusted-authority-reference refusal at the same document path, and contracts/workflow-portable/refusals/manifest.json is byte-unchanged; if the rescoped example cannot preserve essential acceptance semantics, STOP without widening anything and report with a proposed separate registry-extension card (which would require its own ADR under the trust-boundary policy).",
+        "concurrency": "The corpus re-run under concurrent host load stays green (loaded run recorded with load readings); fresh-worktree m2 provisioning from the root checkout's artifacts/tools/m2 is a disclosed setup step, not a deliverable."
+      },
+      "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
+      "non_goals": "No PortableTrustedRegistry change, no product code, no gate-policy change, no protected verifier or fixture change."
     }
   ]
 }
