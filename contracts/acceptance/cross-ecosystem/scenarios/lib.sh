@@ -185,9 +185,12 @@ stop_stands() {
     done
   fi
   STAND_PIDS=()
-  if [ "$count" -eq 0 ]; then
+  # Review finding 1 (RAI-229 fixup): the rc of diagnosed-but-unstoppable
+  # registrations (malformed pidfile / invalid pid entry with count==0) must
+  # not be swallowed by the "nothing to stop" early return; return "$rc"
+  # unconditionally and treat the notice as a success-only message.
+  if [ "$rc" -eq 0 ] && [ "$count" -eq 0 ]; then
     log "stop_stands: no stand pidfiles or registered pids found (nothing to stop)"
-    return 0
   fi
   if [ "$rc" -ne 0 ]; then
     log "ERROR: stop_stands: processed $count stand pid(s), at least one did not terminate cleanly; failing honestly"
