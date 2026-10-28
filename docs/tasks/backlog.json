@@ -7093,7 +7093,7 @@
       "title": "MultiJobExportSpec MJE-03c load-recurrence determinism",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/run/MultiJobExportSpec.scala",
         "modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala",
@@ -7117,7 +7117,7 @@
       "title": "Load-flaky suite determinism: AgentLoopPhaseEmissionSpec and ResumeCommandSpec",
       "milestone": "M1",
       "dependencies": [],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/**/AgentLoopPhaseEmissionSpec.scala",
         "modules/**/ResumeCommandSpec.scala",
@@ -7143,7 +7143,7 @@
       "dependencies": [
         "RAI-223"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "scripts/quality/**",
         "docs/work/records/**"
@@ -7167,7 +7167,7 @@
       "dependencies": [
         "RAI-205"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/acceptance/cross-ecosystem/scenarios/**",
         "docs/work/records/**"
@@ -7192,7 +7192,7 @@
       "dependencies": [
         "RAI-225"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "modules/cli/src/test/scala/raider/cli/processapi/OutboundSpec.scala",
         "docs/work/records/**"
@@ -7217,7 +7217,7 @@
       "dependencies": [
         "RAI-205"
       ],
-      "status": "ready",
+      "status": "accepted",
       "allowed_paths": [
         "contracts/acceptance/cross-ecosystem/**",
         "docs/acceptance/cross-ecosystem/**",
