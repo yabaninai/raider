@@ -313,3 +313,17 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-229** [Cross-ecosystem stand stop: honest SIGTERM propagation](m1.md); accepted; dependencies: RAI-205; profiles: docs, contracts.
 - **RAI-230** [OutboundSpec waiter-wakeup sleep removal](m1.md); accepted; dependencies: RAI-225; profiles: fast, ci.
 - **RAI-231** [Example-workflow authority rescope to pinned registry names](m1.md); accepted; dependencies: RAI-205; profiles: fast, ci, docs, contracts.
+- **RAI-232** [Outbound writer-exit receipt draining (product determinism fix)](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-233** [Session observe/live-pump coordination (observe-dedup race)](m1.md); ready; dependencies: none; profiles: fast, contracts.
+- **RAI-234** [AgentLoop phaseStarted arming gap (verification-first)](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-235** [MultiJobExport silent segment registration before guard die](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-236** [Rai216BoundedFinalization load determinism](m1.md); ready; dependencies: none; profiles: fast, ci.
+- **RAI-237** [lib.sh LOW bundle: TOCTOU lstart pinning, $OUT-wiped WARN, stale-pidfile sweep](m1.md); ready; dependencies: none; profiles: docs, contracts.
+- **RAI-238** [Driver EXIT-trap crash-path stand cleanup](m1.md); ready; dependencies: none; profiles: docs, contracts.
+- **RAI-239** [m2 provisioning bootstrap for fresh checkouts](m1.md); ready; dependencies: none; profiles: fast.
+- **RAI-240** [Reproducible adapter jar packaging path](m1.md); ready; dependencies: none; profiles: fast.
+- **RAI-241** [Zinc cold-compile poisoning isolation (evidence card)](m1.md); ready; dependencies: none; profiles: fast.
+- **RAI-242** [llm4s cancel-mid-run corpus scenario (mid-response cancellation)](m1.md); ready; dependencies: none; profiles: docs, contracts.
+- **RAI-243** [RAI-225 record errata (family-claim correction)](m1.md); ready; dependencies: none; profiles: fast.
+- **RAI-244** [slf4j pin-maintenance note for the langchain4j consumer](m1.md); ready; dependencies: none; profiles: fast, docs.
+- **RAI-245** [forbidden-apis true-line offset verification (post-RAI-223)](m1.md); ready; dependencies: none; profiles: fast.

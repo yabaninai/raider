@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "status": "design-backlog-not-executed",
-  "raider_count": 242,
+  "raider_count": 256,
   "companion_count": 3,
   "cards": [
     {
@@ -7237,6 +7237,331 @@
       },
       "context": "Board 2026-10-27 wave-D follow-ups; RAI-205/222/223/224/225 records and reviews. Coordinator narrows concrete files before assignment. Shared files have one owner.",
       "non_goals": "No PortableTrustedRegistry change, no product code, no gate-policy change, no protected verifier or fixture change."
+    },
+    {
+      "id": "RAI-232",
+      "title": "Outbound writer-exit receipt draining (product determinism fix)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/processapi/Outbound.scala",
+        "modules/cli/src/test/scala/raider/cli/processapi/OutboundSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Fix the late-admission strand race documented in the RAI-230 record (Limitations 2): Outbound.scala's writer exits after WriteTerminal without draining receipts already admitted to the waiter list, so a flushGap receipt admitted after the writer's exit strands (its suspend on a full queue is never resumed). Land the minimal product fix — drain/admit ordering so no admitted receipt outlives the writer — without changing wire semantics or the coalesce contract; the RAI-230 hardened tests (promise waiter, 72-write completion) must stay green unmodified.",
+      "context": "RAI-230 record and review (base-coalesce-4.log reproduced the race 4/4 on base 531d57c); wave-E board follow-up 1; base c394273; the test-side sequencing already exposes the race deterministically, this card owns the product side.",
+      "non_goals": "No process-api wire/protocol change; no relaxation of the RAI-230 waiter expectations; no sleep-based waits.",
+      "acceptance": {
+        "normal": "Red-first product-side reproduction (a focused probe that strands the late-admitted receipt against the current Outbound.scala, verbatim failure recorded), then the minimal fix lands and OutboundSpec passes 10 calm plus 20 loaded runs (1/5/15-minute readings recorded) with zero reds.",
+        "error": "A deliberate revert probe re-strands the receipt and fails with the strict expectation — detection intact; bounded deterministic waits only.",
+        "concurrency": "Concurrent suite pair (second run via a byte-identical snapshot copy, sbt BootServerSocket constraint disclosed) stays green; the writer-death cancellation path cannot strand an admitted receipt after the fix."
+      }
+    },
+    {
+      "id": "RAI-233",
+      "title": "Session observe/live-pump coordination (observe-dedup race)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/processapi/Session.scala",
+        "contracts/acceptance/cross-ecosystem/langchain4j-consumer/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "contracts"
+      ],
+      "behavior": "Root-cause and fix the observe-dedup flake disclosed by RAI-231 (2/6 runs): in the langchain4j mock replay path, live frames [2..5] leak ahead of the replay because Session's observe pointer is uncoordinated with the live pump. Coordinate the observe pointer with pump admission so replayed and live frames are observed exactly once, keeping the frozen XE consumer expectations unchanged (corpus stays green).",
+      "context": "RAI-231 record Limitations (langchain4j mock observe-dedup 2/6, live frames leaking ahead of replay); wave-E board follow-up 2; stand replay lives in the cross-ecosystem scenarios.",
+      "non_goals": "No corpus fixture/expected change; no consumer wire change; no gate-policy change.",
+      "acceptance": {
+        "normal": "Red-first reproduction of the double-observe signature in the langchain4j consumer path (verbatim log line recorded, bounded loaded matrix with readings), then the fix lands and run-all.sh is green 20/20 with checker findings intact and failed=0 in at least 6 consecutive loaded runs.",
+        "error": "A sabotage probe (observe-pointer regression) re-triggers the dedup failure and the checker flags it — detection intact.",
+        "concurrency": "The fix's coordination is covered by a cancellation/ownership test: pump cancellation while an observer is mid-batch cannot drop or double frames."
+      }
+    },
+    {
+      "id": "RAI-234",
+      "title": "AgentLoop phaseStarted arming gap (verification-first)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/runtime/src/main/scala/raider/runtime/loop/AgentLoop.scala",
+        "modules/runtime/src/test/scala/raider/runtime/loop/AgentLoopPhaseEmissionSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Verification-first card for the AgentLoopPhaseEmissionSpec load flake (RAI-227 documented no-repro in 35 loaded runs): test the unarmed-gap hypothesis preserved at artifacts/follow-ups/rai-227-agentloop-arming-gap.patch (sha256 30809def3fe29e333a9788505ccc0c5b6fb76d1472ae69831ed41e6d8cd2792d) — phaseStarted emitted before planAttempt arms the waiter. Either reproduce the flake red-first under a bounded loaded matrix and land the minimal arming fix (arm before emit, or emit after arm), or document an honest bounded no-repro and leave the product unchanged.",
+      "context": "RAI-227 record follow-up proposal and review; wave-E board follow-up 3; base c394273; the preserved patch is coordinator-verified byte-identical to the record citation.",
+      "non_goals": "No loop semantic change beyond the arming/order fix; no expectation weakening; no sleeps.",
+      "acceptance": {
+        "normal": "A bounded loaded matrix (at least 30 runs, 1/5/15-minute readings recorded) on the current tree with a verdict either way; if reproduced: the fix lands and the suite is green 10 calm plus 30 loaded; if not reproduced: the matrix and analysis are the deliverable and no product code lands.",
+        "error": "If a fix lands, a revert probe re-triggers the flake signature — detection intact; if no fix lands, the record states plainly that detection was not exercised (no fabricated probes).",
+        "concurrency": "phaseStarted ordering is asserted deterministically (waiter armed before emission) or the gap is proven unreachable; cancellation mid-phase cannot wedge the waiter."
+      }
+    },
+    {
+      "id": "RAI-235",
+      "title": "MultiJobExport silent segment registration before guard die",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/main/scala/raider/cli/run/MultiJobExport.scala",
+        "modules/cli/src/test/scala/raider/cli/run/MultiJobExportSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Address the RAI-226 record's silent-segment observation: connect registers the child segment (MultiJobExport.scala around line 335) before the campaignRef guard dies (lines 340-349), so a child that fails the guard can leave a registered-but-orphaned segment in the export. Decide the minimal correct ordering (register after the guard, or deregister on guard-die) consistent with the strict MJE-03c expectation Left(MissingTerminal(childId)) and the RAI-226 harness fix; land it with ownership tests.",
+      "context": "RAI-226 record disclosure (product-side observation, out of that lane's test-side scope); wave-E board follow-up; MultiJobExportSpec is deterministic since RAI-226 (fork after join.campaign), so a red-first product probe is now feasible.",
+      "non_goals": "No MultiJob wire/public API change; no MJE-02/MJE-NESTED/MJE-03c expectation weakening; no scheduler rework.",
+      "acceptance": {
+        "normal": "Red-first probe showing the orphaned segment (verbatim export/state evidence recorded), then the minimal ordering fix lands and the full MultiJobExportSpec suite stays green 10 calm plus 20 loaded runs.",
+        "error": "A revert probe re-creates the orphaned segment and fails the new ownership assertion — detection intact.",
+        "concurrency": "Concurrent campaign connect/die interleaving is covered by a test; cancellation cannot leak a registered segment after the fix."
+      }
+    },
+    {
+      "id": "RAI-236",
+      "title": "Rai216BoundedFinalization load determinism",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "modules/cli/src/test/scala/raider/cli/run/Rai216BoundedFinalizationSpec.scala",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "ci"
+      ],
+      "behavior": "Root-cause the one-off load red at Rai216BoundedFinalizationSpec.scala:392 observed in RAI-226 run #1 (disclosed there): establish whether the finalization bound is load-sensitive (pipe drain racing the shortened bound) and land the minimal determinism fix in the spec/generated-runner wiring without weakening the bounded-finalization guarantee (finalization must stay prompt under a stalling grandchild).",
+      "context": "RAI-226 record disclosure (co-red in run #1 only); RAI-216 accepted (bounded finalization for the generated check runner); wave-E board follow-up 6; base c394273.",
+      "non_goals": "No unbounding of finalization; no generated-runner contract change; no sleeps.",
+      "acceptance": {
+        "normal": "Red-first loaded reproduction (or an honest bounded no-repro matrix of at least 30 runs with readings recorded), then the minimal fix lands and the suite is green 10 calm plus 20 loaded.",
+        "error": "A stall probe (grandchild holding the pipe open past the bound) still finalizes promptly and fails closed — detection intact.",
+        "concurrency": "Finalization under concurrent suites and cancellation stays prompt and deterministic."
+      }
+    },
+    {
+      "id": "RAI-237",
+      "title": "lib.sh LOW bundle: TOCTOU lstart pinning, $OUT-wiped WARN, stale-pidfile sweep",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/scenarios/lib.sh",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs",
+        "contracts"
+      ],
+      "behavior": "Land the RAI-229 review's LOW findings in one bundle: (1) pin pid identity against TOCTOU recycle (capture lstart at registration, verify before each signal); (2) emit a WARN when a stop finds $OUT already wiped (pidfiles unreadable) instead of silently treating registrations as absent; (3) sweep stale pidfiles before run-all wipes $OUT so a prior crashed run's stands are stopped by pidfile evidence rather than leaking. Keep the honest rc contract (malformed-only registrations exit 1).",
+      "context": "RAI-229 record and review findings 2-4; wave-E board follow-up 4; stop_stands returns the diagnosed rc unconditionally since 12650eb.",
+      "non_goals": "No scenario/expected change; no gate-policy change; no driver edits — run-all.sh and run-budget.sh belong to RAI-238 this wave.",
+      "acceptance": {
+        "normal": "Facet tests for each finding (recycled pid refused on lstart mismatch; wiped-$OUT stop logs WARN and returns 1; pre-wipe sweep stops a planted stale stand) plus corpus run-all green 20/20 with checker failed=0 and run-budget rc=0 with the inner budget exit.",
+        "error": "Adversarial pid-recycle facet: a recycled pid with a different lstart is never signalled; a malformed pidfile still exits 1.",
+        "concurrency": "Two concurrent stops of the same registration cannot double-signal or cross-kill; the sweep is idempotent."
+      }
+    },
+    {
+      "id": "RAI-238",
+      "title": "Driver EXIT-trap crash-path stand cleanup",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/scenarios/run-all.sh",
+        "contracts/acceptance/cross-ecosystem/scenarios/run-budget.sh",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs",
+        "contracts"
+      ],
+      "behavior": "Close the RAI-229 crash-path gap: when a consumer fails under set -e, the driver aborts before stop_stands and stands leak (observed once at load ~313). Install EXIT/INT/TERM traps in run-all.sh and run-budget.sh that always run a best-effort stop_stands, keep budget evidence emission before exit-code propagation, and verify no stand survives a mid-corpus consumer crash.",
+      "context": "RAI-229 record and review; wave-E board follow-up 4; lib.sh provides honest stop_stands plus pidfiles (RAI-237 owns lib.sh internals this wave — do not edit lib.sh).",
+      "non_goals": "No lib.sh edits (RAI-237); no scenario/expected change; no change to exit-code contracts (budget rc/inner semantics stay as pinned).",
+      "acceptance": {
+        "normal": "Red-first crash injection (planted consumer failure mid-corpus) leaks stands on the old drivers, then the traps land and the same injection leaves zero Stand processes; corpus stays green 20/20 and budget rc=0 with the inner budget exit unaffected.",
+        "error": "SIGINT/SIGTERM mid-run also cleans stands; a stop failure inside the trap is diagnosed (WARN) without masking the driver's original exit code.",
+        "concurrency": "Trap and normal-path stop cannot double-kill or deadlock; the drivers remain single-instance-per-checkout and are not made worse."
+      }
+    },
+    {
+      "id": "RAI-239",
+      "title": "m2 provisioning bootstrap for fresh checkouts",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/bootstrap.sh",
+        "scripts/README.md",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Create scripts/bootstrap.sh that provisions the gitignored artifacts/tools/m2 pinned consumer closure on a fresh checkout (copy from a source cache or download), verifying all sha256 values against contracts/acceptance/cross-ecosystem/consumer-deps.json, plus a short usage README; wave-D hit this gap twice (RAI-223 empty-worktree m2 red on compile-fixtures; the wave-D integration first run-all exit 2 in compile_all).",
+      "context": "Wave-D board follow-up 11; consumer-deps.json pins 31 artifacts; the root checkout's artifacts/tools/m2 is the currently populated, verified cache.",
+      "non_goals": "No build or gate-policy change; no sbt/coursier configuration change; no corpus content change.",
+      "acceptance": {
+        "normal": "On a scratch copy of the repo with an empty m2, bootstrap.sh provisions all 31 artifacts, prints a verified sha256 summary, and exits 0; a corpus compile step then proceeds past the m2 error.",
+        "error": "A corrupted cache artifact (one flipped byte) is detected by the sha256 check and bootstrap exits nonzero naming the artifact.",
+        "concurrency": "Two concurrent bootstrap invocations against the same target store do not corrupt it (locking or atomic rename)."
+      }
+    },
+    {
+      "id": "RAI-240",
+      "title": "Reproducible adapter jar packaging path",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Make the cross-ecosystem adapter jar build reproducible: a pinned-entry, fixed-timestamp, sorted-order packaging script whose output is byte-identical across rebuilds of the same tree; document why the current make raider-jar output varies (105/13114 entry CRCs differ against pin 997f29a18e38848c082deaeb825a7f4da40ca76d47444663c656693a16d47fdd, name sets identical — RAI-231 disclosure) and verify two consecutive wrapper builds hash equal.",
+      "context": "RAI-231 record; wave-E board follow-up 5; golden-checks.json adapterJarSha256 was re-pinned at wave-D integration (101c1e4).",
+      "non_goals": "No re-pinning of golden-checks.json; no Makefile edits (the coordinator wires the target after review); no corpus/expected change.",
+      "acceptance": {
+        "normal": "Two consecutive wrapper builds on a clean tree produce an identical sha256 (recorded verbatim), and the wrapper jar is validated against the corpus checker binding path with the validation method disclosed.",
+        "error": "Tampering with one input class changes the output hash (sensitivity check); a missing input fails with a diagnosis, not silently.",
+        "concurrency": "Two concurrent wrapper builds in separate directories do not interfere (no shared temp state)."
+      }
+    },
+    {
+      "id": "RAI-241",
+      "title": "Zinc cold-compile poisoning isolation (evidence card)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/research/**",
+        "scripts/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Isolated investigation of the at-least-8-way concurrent cold-compile zinc poisoning observed by RAI-224 (localized, not root-caused): reproduce it in a controlled experiment (staggered vs concurrent cold compiles in disposable checkouts), identify the contended resource (zinc cache, compiler bridge, ports), and write docs/research/zinc-concurrency-2026-10-28.md with measurements and a recommended mitigation for the parallel runbook. Evidence card: land the research doc plus any safe experiment scripts; no product change.",
+      "context": "RAI-224 record tier data (tiers 4/8/12; the 8-way cold-compile poisoning note); wave-D board follow-up 3; the 14-lane wave F makes this load-bearing.",
+      "non_goals": "No build configuration change; no gate-policy change; no claims beyond measured evidence.",
+      "acceptance": {
+        "normal": "The research doc contains the experiment matrix (load readings, timings, failure signatures verbatim) and a falsifiable root-cause hypothesis supported by a specific run.",
+        "error": "The doc honestly reports non-reproduction if concurrent cold compiles stay healthy in the controlled setup (bounded attempts) instead of claiming poisoning.",
+        "concurrency": "The experiments use disposable directories and bounded burners with cleanup; sibling-lane interference is disclosed via load readings."
+      }
+    },
+    {
+      "id": "RAI-242",
+      "title": "llm4s cancel-mid-run corpus scenario (mid-response cancellation)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/llm4s-consumer/**",
+        "contracts/acceptance/cross-ecosystem/expected/**",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "docs",
+        "contracts"
+      ],
+      "behavior": "Extend the llm4s consumer corpus with a mid-provider-response cancellation scenario (wave-D follow-up 6: current cancel/eof runs cancel before the first provider round-trip; mid-response cancellation is covered only by process-api wire fixtures): a stand that streams slowly, the consumer cancels mid-stream, and the frozen expectation asserts the typed cancel settle plus a closed workspace. Wire it into the run-all scenario list only if the wiring is purely additive; otherwise defer the wiring to RAI-238 and report back.",
+      "context": "Wave-D board follow-up 6; RAI-205 corpus 20/20; the RAI-201 exit-contract errata (472d3f4) settled cancel semantics; run-all.sh/run-budget.sh are owned by RAI-238 this wave, lib.sh by RAI-237.",
+      "non_goals": "No langchain4j consumer edits (RAI-233); no lib.sh/run-all/run-budget edits beyond a purely additive scenario entry (disclosed; prefer deferring wiring); no change to existing frozen expectations.",
+      "acceptance": {
+        "normal": "The new scenario runs green in isolation (stand streamed, cancel lands mid-response, typed settle asserted) and the corpus stays green with the grown scenario count and checker findings with failed=0.",
+        "error": "Cancelling too late (after completion) settles as completed, not cancelled — the fixture distinguishes the two; a missing stand is diagnosed promptly, not hung.",
+        "concurrency": "The scenario is stable under a loaded rerun (at least 6 loaded runs green) and concurrent with the existing cancel scenario."
+      }
+    },
+    {
+      "id": "RAI-243",
+      "title": "RAI-225 record errata (family-claim correction)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "docs/work/records/RAI-225.md",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Fold the RAI-230 review adjudication into docs/work/records/RAI-225.md as an appended errata section: the family-level claim that the OutboundSpec load-flaky family was eliminated is falsified (two pre-existing races existed on base 531d57c; base-coalesce-4.log reproduced 4/4 with gapFrames=Vector()); the saturation fix itself remains valid and retained; link the wave-E board corrective annotation. Record-only; no code.",
+      "context": "RAI-230 review adjudication and record; the wave-E board RAI-225 corrective annotation (c394273); RAI-230's fixup verified the base-coalesce evidence hashes.",
+      "non_goals": "No code change; no board edit (the annotation exists); no evidence fabrication — cite the RAI-230 record's hashes verbatim.",
+      "acceptance": {
+        "normal": "The errata section is appended with verbatim citations (base-coalesce-4.log sha256 5752a5b2…, calm-6.log sha256 7be3361b… as re-verified in the RAI-230 fixup) and lands as a plain commit under the records-exclusion policy, stated in the record.",
+        "error": "Not applicable (record-only card): the errata must not alter the original evidence rows — append-only, and the record says so.",
+        "concurrency": "Not applicable (record-only card): no runtime or concurrency surface is touched."
+      }
+    },
+    {
+      "id": "RAI-244",
+      "title": "slf4j pin-maintenance note for the langchain4j consumer",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "contracts/acceptance/cross-ecosystem/README.md",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast",
+        "docs"
+      ],
+      "behavior": "Document the langchain4j consumer's slf4j-api classpath requirement (pinned in consumer-deps.json) in a new cross-ecosystem README as a pin-maintenance note for consumer upgrades (wave-D follow-up 7): what breaks when the pin drifts and how to re-pin with sha256 verification.",
+      "context": "Wave-D board follow-up 7; consumer-deps.json pins 31 artifacts including slf4j-api; the corpus drivers compile consumers from these pins.",
+      "non_goals": "No dependency change; no consumer code change; no scenario/expected change.",
+      "acceptance": {
+        "normal": "The note lands in contracts/acceptance/cross-ecosystem/README.md and includes a verification snippet over consumer-deps.json that runs clean on the current tree.",
+        "error": "The doc names the concrete failure signature of a drifted pin (verbatim from a controlled drift probe or honestly referenced from prior evidence).",
+        "concurrency": "Not applicable (documentation card): no runtime claims beyond the referenced evidence."
+      }
+    },
+    {
+      "id": "RAI-245",
+      "title": "forbidden-apis true-line offset verification (post-RAI-223)",
+      "milestone": "M1",
+      "dependencies": [],
+      "status": "ready",
+      "allowed_paths": [
+        "scripts/quality/forbidden_apis.py",
+        "docs/work/records/**"
+      ],
+      "profiles": [
+        "fast"
+      ],
+      "behavior": "Verify whether the comment-stripping line offset still misattributes findings (wave-C evidence: the scanner reported :471 for a source line :508) after RAI-223's true-line attribution landed; if the offset persists, fix the attribution so findings cite true source lines. Keep thresholds, allowlist, and exit codes frozen.",
+      "context": "Wave-C board follow-up 3; RAI-223 accepted (true-line attribution, verification matrix 12/10/508); RAI-228's target/ pruning is already merged in the base — preserve it.",
+      "non_goals": "No threshold/allowlist/policy change; no RULES change; no new lint categories.",
+      "acceptance": {
+        "normal": "A planted multi-line comment-plus-violation probe reports the true source line (cross-checked against grep), self-tests are extended, and the scanner self-test matrix is green.",
+        "error": "A violation inside a pruned target/ directory is still ignored (RAI-228 semantics preserved); malformed files are diagnosed, not skipped silently.",
+        "concurrency": "The scanner stays read-only and parallel-safe (concurrent lanes rely on it)."
+      }
     }
   ]
 }
