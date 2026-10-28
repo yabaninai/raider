@@ -24,6 +24,15 @@ source line even when the violation follows multi-line block comments
 (wave-C defect: a violation at true :508 was reported :471 because block
 comment newlines were collapsed, shifting everything below them).
 
+Walk hygiene (RAI-228): any directory named "target" at any depth is pruned
+from the walk (sbt build output under modules/*/target/...), so reported
+findings never depend on build state (review finding F-223-1: the scanner
+used to read stale generated artifacts inside target/ and flag them). This
+matches the quality runner's segment-based fingerprint excludes ("target",
+"project/target"). The walk is read-only and tolerates vanishing entries
+under concurrent builds: a directory that disappears mid-walk becomes a
+WARN line, never a crash.
+
 Exit codes: 0 = clean, 1 = violations found, 2 = internal/usage error.
 Pass --self-test to run the embedded positive/negative fixtures first
 (the gate must prove it actually detects, not merely that the tree is clean).
@@ -31,9 +40,11 @@ Pass --self-test to run the embedded positive/negative fixtures first
 from __future__ import annotations
 
 import argparse
+import os
 import pathlib
 import re
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 SCAN_DIR = ROOT / "modules"
@@ -175,6 +186,36 @@ def scan_file(path: pathlib.Path) -> tuple[list[tuple[str, int, str]], list[tupl
     return scan_text(rel, text)
 
 
+# RAI-228 (F-223-1): any directory named "target" at ANY depth is build
+# output (sbt convention modules/*/target/..., incl. project/target) and is
+# pruned from the walk. This matches the quality runner's segment-based
+# fingerprint excludes ("target"). Directories whose names merely CONTAIN
+# the word (e.g. "mytargets") are sources and stay scanned.
+TARGET_DIRNAME = "target"
+
+
+def _scala_files(scan_dir: pathlib.Path) -> tuple[list[pathlib.Path], list[str]]:
+    """List every *.scala file under scan_dir, excluding target/ directories.
+
+    Prunes each directory named "target" at any depth (RAI-228, review
+    finding F-223-1) so findings never depend on build state, and tolerates
+    vanishing entries: a directory that disappears mid-walk is captured via
+    onerror and surfaced as a WARN by the caller, never a crash (read-only
+    walk under concurrent builds). Output order is deterministic (sorted).
+    Returns (sorted file list, walk warning strings).
+    """
+    files: list[pathlib.Path] = []
+    warnings: list[str] = []
+
+    def on_walk_error(err: OSError) -> None:
+        warnings.append(str(err))
+
+    for dirpath, dirnames, filenames in os.walk(scan_dir, onerror=on_walk_error):
+        dirnames[:] = sorted(d for d in dirnames if d != TARGET_DIRNAME)
+        files.extend(pathlib.Path(dirpath) / n for n in sorted(filenames) if n.endswith(".scala"))
+    return sorted(files), warnings
+
+
 def self_test() -> bool:
     must_flag = {
         "thread-stop": 'val t = Thread.stop()',
@@ -280,6 +321,45 @@ def self_test() -> bool:
     if len(strip_comments(sample).splitlines()) != len(sample.splitlines()):
         print("[forbidden-apis] SELF-TEST FAIL (ATTR-04): strip_comments changed the line count")
         ok = False
+
+    # RAI-228 target/ walk-exclusion fixtures (WALK-01..03, review finding
+    # F-223-1): the walk must prune every directory named "target" at any
+    # depth (build output must never influence findings, RAI-223 semantics
+    # otherwise unchanged) while keeping sibling sources outside target/ and
+    # directories whose names merely contain "target" as a substring.
+    with tempfile.TemporaryDirectory() as td:
+        troot = pathlib.Path(td)
+        src_dir = troot / "modules" / "demo" / "src" / "main" / "scala" / "demo"
+        tgt_dir = troot / "modules" / "demo" / "target" / "scala-3.9.0" / "classes"
+        substring_dir = troot / "modules" / "demo" / "mytargets"  # substring: NOT excluded
+        proj_target_dir = troot / "modules" / "demo" / "project" / "target"  # project/target
+        nested_target_dir = troot / "modules" / "demo" / "src" / "target" / "deep"  # any depth
+        for d in (src_dir, tgt_dir, substring_dir, proj_target_dir, nested_target_dir):
+            d.mkdir(parents=True, exist_ok=True)
+        (src_dir / "Src.scala").write_text("package demo\n", encoding="utf-8")
+        (tgt_dir / "Generated.scala").write_text("val stale = Thread.stop()\n", encoding="utf-8")
+        (substring_dir / "Keep.scala").write_text("package demo\n", encoding="utf-8")
+        (proj_target_dir / "Gen.scala").write_text("val stale = Thread.stop()\n", encoding="utf-8")
+        (nested_target_dir / "Deep.scala").write_text("val stale = Thread.stop()\n", encoding="utf-8")
+
+        # WALK-01: only sources outside target/ are returned; every planted
+        # target/ violation file (top-level, project/target, nested) is
+        # pruned, and the substring-named source directory stays scanned.
+        walked, warns = _scala_files(troot / "modules")
+        if [p.name for p in walked] != ["Keep.scala", "Src.scala"] or warns:
+            print(f"[forbidden-apis] SELF-TEST FAIL (WALK-01): target/ pruning wrong: files={[p.name for p in walked]} warns={warns}")
+            ok = False
+        if any("Thread.stop" in p.read_text(encoding="utf-8") for p in walked):
+            print("[forbidden-apis] SELF-TEST FAIL (WALK-02): a planted target/ violation file was returned by the walk")
+            ok = False
+
+        # WALK-03: a missing/malformed scan path is surfaced honestly by the
+        # walk (WARN collected via onerror, no crash, no silent file list) —
+        # main() then fails with exit 2 (no silent empty pass).
+        missing_files, missing_warns = _scala_files(troot / "modules" / "does-not-exist")
+        if missing_files or not missing_warns:
+            print(f"[forbidden-apis] SELF-TEST FAIL (WALK-03): missing scan dir must WARN and yield no files: files={missing_files} warns={missing_warns}")
+            ok = False
     return ok
 
 
@@ -294,7 +374,9 @@ def main() -> int:
 
     violations: list[str] = []
     notes: list[str] = []
-    files = sorted(SCAN_DIR.rglob("*.scala"))
+    files, walk_warnings = _scala_files(SCAN_DIR)
+    for warning in walk_warnings:
+        print(f"[forbidden-apis] WARN walk: {warning}", file=sys.stderr)
     if not files:
         print("[forbidden-apis] FAIL: no scala sources found under modules/")
         return 2
