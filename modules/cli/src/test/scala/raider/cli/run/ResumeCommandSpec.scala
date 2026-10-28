@@ -105,10 +105,16 @@ object ResumeCommandSpec extends ZIOSpecDefault:
       .filter(_.trim.nonEmpty)
       .flatMap(_.fromJson[EventEnvelope].toOption)
 
-  /** The SIGTERM-path mid-run window (LIN3-A-02 precedent): event lines are
-    * already on disk while run.json — the last artifact — is still absent.
+  /** The RETAINED mid-run marker (RAI-227): journal bytes on disk persist after
+    * the run completes, so awaiting them cannot lose the sample the way the
+    * transient window poll could (a test fiber starved past the whole run under
+    * host load then only ever saw the completed state — the RAI-227 flake:
+    * `observed` false forever). `run.json` is written only when the run settles
+    * — after the journal has streamed — so the first journal byte proves the
+    * run passed through the mid-run window (events on disk, run.json still
+    * absent).
     */
-  private def midRunObserved(out: Path): Boolean =
+  private def eventsOnDisk(out: Path): Boolean =
     if !Files.exists(out) then false
     else
       val stream = Files.list(out)
@@ -119,9 +125,7 @@ object ResumeCommandSpec extends ZIOSpecDefault:
           .filter(Files.isDirectory(_))
           .map(_.resolve("events.jsonl"))
           .find(Files.exists(_))
-          .exists(f =>
-            Files.size(f) > 0L && !Files.exists(f.getParent.resolve("run.json"))
-          )
+          .exists(f => Files.size(f) > 0L)
       finally stream.close()
 
   private def runDirsUnder(out: Path): Vector[Path] =
@@ -346,18 +350,25 @@ object ResumeCommandSpec extends ZIOSpecDefault:
             work <- tempDir("raider-resume-rec03")
             fiber <- HeadlessRunner.run(agentArgs(work)).forkDaemon
             _ <- {
-              val deadline = java.lang.System.currentTimeMillis() + 20000L
-              def awaitObservation: UIO[Unit] =
-                ZIO.attempt(midRunObserved(work)).orDie.flatMap { observed =>
-                  if observed || java.lang.System
+              // RAI-227 determinism: wait on the RETAINED journal state, not
+              // on the transient window sample. The journal bytes persist on
+              // disk, so this await cannot miss; the previous window poll
+              // could be starved past the entire run under host load (the
+              // runner completed first) and false-fail on `observed` forever
+              // after. The bound is 120 s — disclosed, well under the 300 s
+              // suite cap; expiry leaves `observed` false and the test reds
+              // honestly (no silent skips).
+              val deadline = java.lang.System.currentTimeMillis() + 120000L
+              def awaitJournal: UIO[Unit] =
+                ZIO.attempt(eventsOnDisk(work)).orDie.flatMap { onDisk =>
+                  if onDisk || java.lang.System
                       .currentTimeMillis() >= deadline
                   then ZIO.unit
-                  else
-                    ZIO.sleep(zio.Duration.fromMillis(2L)) *> awaitObservation
+                  else ZIO.sleep(zio.Duration.fromMillis(2L)) *> awaitJournal
                 }
-              awaitObservation
+              awaitJournal
             }
-            observed = midRunObserved(work)
+            observed = eventsOnDisk(work)
             _ <- fiber.interrupt // the SIGTERM path (LIN3-A-02)
             runDir <- ZIO.attempt {
               runDirsUnder(work)
