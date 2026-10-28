@@ -36,6 +36,11 @@ run_l4j "$OUT/manifest-l4j-standA.json" "tool-task,extraction-task" "$PORT_A"
 run_llm4s "$OUT/manifest-llm4s-standB.json" "cancel-mid-run,eof-uncertain" "$PORT_B"
 run_l4j "$OUT/manifest-l4j-standB.json" "cancel-mid-run,eof-uncertain" "$PORT_B"
 
-stop_stands
+# RAI-229: a stop failure (a stand that survived SIGTERM+SIGKILL, or an
+# unregistrable pid) is propagated: nonzero driver exit, no checker run.
+if ! stop_stands; then
+  log "FATAL: stands did not all terminate; refusing to report success"
+  exit 1
+fi
 
 run_checker "$OUT/checker-report.json"
