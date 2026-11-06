@@ -174,7 +174,9 @@ object XeLlm4sConsumer:
     "tool-task",
     "extraction-task",
     "cancel-mid-run",
-    "eof-uncertain"
+    "eof-uncertain",
+    "cancel-mid-response",
+    "cancel-late"
   )
 
   private def parseArgs(argv: List[String]): Either[LLMError, Cfg] =
@@ -200,7 +202,8 @@ object XeLlm4sConsumer:
     )
 
   private def isStandScenario(s: String): Boolean =
-    Vector("tool-task", "extraction-task", "cancel-mid-run", "eof-uncertain").contains(s)
+    Vector("tool-task", "extraction-task", "cancel-mid-run", "eof-uncertain",
+      "cancel-mid-response", "cancel-late").contains(s)
 
   private def providerArgs(cfg: Cfg, scenario: String, agent: String): Vector[String] =
     if !isStandScenario(scenario) then Vector("--provider", "mock")
@@ -594,6 +597,97 @@ object XeLlm4sConsumer:
     }
     withExit(res, 26)
 
+  /** RAI-242: cancel AFTER the first provider response was fully consumed and
+    * its scripted tool call executed, while the round-2 provider response is
+    * still being awaited. The stand delays every request by --delay-ms, so the
+    * placement is proven client-side: the proc_run marker file (round-1 SSE
+    * tool_calls -> touch) exists at the workspace when the cancel is issued.
+    * This is the distinction from the frozen `cancel-mid-run`, whose cancel
+    * lands BEFORE the first provider round-trip returns (no provider response
+    * consumed, no tool executed, no marker). Typed REQUESTED cancel settle:
+    * cancelAck "accepted", terminal cancelled/incomplete, cleanup complete
+    * (closed workspace), adapter exit 26.
+    */
+  private def cancelMidResponse(cfg: Cfg): ScenarioResult =
+    val res = withAdapter(cfg, "cancel-mid-response", "coder") { proc =>
+      val checks = mutable.ArrayBuffer.empty[Check]
+      proc.send(ujson.write(hello("cr-hello")))
+      ujson.read(proc.readLine())
+      proc.send(ujson.write(submit("cr-run",
+        "Create the marker file marker.txt in the workspace root using the proc_run tool.")))
+      // scan until accepted (observations may precede it on the stream)
+      val pre = readUntil(proc)(f => frameType(f) == "accepted")
+      checks += chk("dispatch-accepted", pre.exists(frameType(_) == "accepted"),
+        s"frames=${pre.map(frameType(_)).mkString(",")}")
+      // mid-response placement proof: poll client-side (bounded) for the
+      // marker the scripted round-1 tool call creates; only a FULLY consumed
+      // first provider response plus an executed proc_run can produce it
+      val marker = cfg.wsRoot.resolve("cancel-mid-response").resolve("marker.txt")
+      var markerSeen = Files.exists(marker)
+      var waitedMs = 0
+      while !markerSeen && waitedMs < 20000 do
+        Thread.sleep(50L)
+        waitedMs += 50
+        markerSeen = Files.exists(marker)
+      checks += chk("first-response-consumed-marker-exists", markerSeen,
+        s"marker=$marker exists=$markerSeen after ${waitedMs}ms " +
+          "(round-1 provider response consumed and proc_run executed before the cancel)")
+      if markerSeen then proc.send(ujson.write(cancel("cr-run")))
+      // collect everything until the cancelAck has been seen AND the terminal;
+      // stop at the terminal in any case so a missing ack cannot hang the reader
+      val rest = mutable.ArrayBuffer.empty[ujson.Value]
+      var ackSeen = false
+      var done = false
+      while !done do
+        val line = proc.readLine()
+        if line == null then done = true
+        else
+          val v = ujson.read(line)
+          rest += v
+          if frameType(v) == "cancelAck" && Try(v("status").str == "accepted").getOrElse(false) then ackSeen = true
+          if frameType(v) == "terminal" then done = true
+      checks += chk("cancel-ack-accepted",
+        rest.exists(f => frameType(f) == "cancelAck" && Try(f("status").str == "accepted").getOrElse(false)),
+        s"cancelAck in=${rest.filter(frameType(_) == "cancelAck").map(f => Try(f("status").str).getOrElse("?"))}")
+      val t = rest.find(frameType(_) == "terminal")
+      checks += chk("terminal-cancelled-incomplete",
+        t.exists(x => Try(x("executionStatus").str == "cancelled" && x("taskVerdict").str == "incomplete").getOrElse(false)),
+        s"terminal=${term(t)}")
+      checks += chk("cleanup-complete",
+        t.exists(x => Try(x("cleanupStatus").str == "complete").getOrElse(false)),
+        s"cleanupStatus=${t.map(x => Try(x("cleanupStatus").str).getOrElse("?")).getOrElse("?")}")
+      checks.toVector
+    }
+    withExit(res, 26)
+
+  /** RAI-242 late-cancel distinction: the cancel is issued only AFTER the
+    * terminal frame (completed/success) has been consumed. The adapter closes
+    * ordinary input at the terminal (Outbound.terminal), so no reply is owed
+    * and the probe is fire-and-forget (write errors tolerated honestly). The
+    * settle must stay completed: the exit code stays 0 (a REQUESTED cancel
+    * would exit 26) and run.json stays Succeeded — the fixture therefore
+    * distinguishes "cancel too late" from the mid-run typed cancel.
+    */
+  private def cancelLate(cfg: Cfg): ScenarioResult =
+    val res = withAdapter(cfg, "cancel-late", "coder") { proc =>
+      val checks = mutable.ArrayBuffer.empty[Check]
+      proc.send(ujson.write(hello("cl-hello")))
+      ujson.read(proc.readLine())
+      proc.send(ujson.write(submit("cl-run",
+        "Create the marker file marker.txt in the workspace root using the proc_run tool.")))
+      val frames = drainToTerminal(proc)
+      val t = frames.find(frameType(_) == "terminal")
+      checks += chk("terminal-completed-before-cancel",
+        t.exists(x => Try(x("executionStatus").str == "completed" && x("taskVerdict").str == "success").getOrElse(false)),
+        s"terminal=${term(t)} (cancel issued only after this frame)")
+      val writeOk = Try { proc.send(ujson.write(cancel("cl-run"))) }.isSuccess
+      checks += chk("late-cancel-probe-sent", writeOk,
+        "late cancel frame written after the completed terminal; no reply is owed " +
+          "(ordinary input closed at the terminal), so the settle assertion is the exit code")
+      checks.toVector
+    }
+    withExit(res, 0)
+
   // ----- driver -----------------------------------------------------------------
 
   private def runScenarios(cfg: Cfg): Vector[ScenarioResult] =
@@ -609,6 +703,8 @@ object XeLlm4sConsumer:
     if cfg.scenarios.contains("extraction-task") then out += extractionTask(cfg)
     if cfg.scenarios.contains("cancel-mid-run") then out += cancelMidRun(cfg)
     if cfg.scenarios.contains("eof-uncertain") then out += eofUncertain(cfg)
+    if cfg.scenarios.contains("cancel-mid-response") then out += cancelMidResponse(cfg)
+    if cfg.scenarios.contains("cancel-late") then out += cancelLate(cfg)
     out.toVector
 
   private def sha256(path: Path): String =

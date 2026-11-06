@@ -16,7 +16,18 @@ import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
 import raider.runtime.jobs.{JobManager, StatusLedger}
 import zio.json.EncoderOps
 import zio.json.ast.Json
-import zio.{Clock, Duration, IO, Promise, Ref, Scope, UIO, Unsafe, ZIO}
+import zio.{
+  Clock,
+  Duration,
+  IO,
+  Promise,
+  Ref,
+  Scope,
+  Semaphore,
+  UIO,
+  Unsafe,
+  ZIO
+}
 
 import java.io.{FileDescriptor, FileOutputStream, IOException}
 import java.nio.charset.StandardCharsets.UTF_8
@@ -160,6 +171,12 @@ object Session:
       artifactErrorRef <- Ref.make(Option.empty[String])
       stdout <- ZIO.succeed(new FileOutputStream(FileDescriptor.out))
       outbound <- Outbound.make(stdoutSink(stdout), cfg.stallBound)
+      // RAI-233 observe/live-pump coordination: `delivery` is the highest
+      // sequence admitted to the wire by EITHER path (live pump or observe
+      // replay); `deliveryLock` serializes wire admission so the two writers
+      // cannot interleave or double-deliver inside one sequence range.
+      delivery <- Ref.make(0L)
+      deliveryLock <- Semaphore.make(1)
       core = new Core(
         cfg,
         root,
@@ -173,6 +190,8 @@ object Session:
         state,
         exitDone,
         outbound,
+        delivery,
+        deliveryLock,
         artifactErrorRef,
         startedAt
       )
@@ -196,6 +215,8 @@ object Session:
       state: Ref[SessionState],
       exitDone: Promise[Nothing, Int],
       outbound: Outbound,
+      delivery: Ref[Long],
+      deliveryLock: Semaphore,
       artifactErrorRef: Ref[Option[String]],
       startedAt: Instant
   ):
@@ -383,33 +404,57 @@ object Session:
           )
         }
 
+    /** RAI-233 observe/live-pump coordination: a replay batch is admitted under
+      * the same delivery lock the live pump uses. The batch claims everything
+      * retained past the client watermark that the wire pointer has not already
+      * admitted, so a frame can never be both live-delivered and replayed, and
+      * a live admission inside the batch's range cannot interleave with it
+      * (global sequence order on the wire). The enqueue loop is uninterruptible
+      * so a mid-batch interruption (scope close racing settle) cannot split the
+      * batch into an interior gap. When the pointer already covers every
+      * retained frame past the watermark, nothing new is deliverable and the
+      * documented `observe_failed` answer is emitted (the session continues;
+      * live observations keep flowing).
+      */
     private def observe(obs: Protocol.Observe): ZIO[Scope, Nothing, Boolean] =
-      retention.get.flatMap { kept =>
-        val missed = kept.filter(_.seq > obs.afterSequence)
-        if missed.isEmpty then
-          replyError(
-            Protocol.ObserveFailed(
-              s"no observations retained after sequence ${obs.afterSequence}"
-            ),
-            Some(obs.requestId)
-          ).as(true)
-        else
-          ZIO
-            .foreachDiscard(missed) { env =>
-              outbound.receipt(
-                Protocol.observation(
-                  obs.requestId,
-                  Observation(
-                    env.seq,
-                    kindOf(env.payload),
-                    messageOf(env.payload),
-                    None
-                  )
-                )
-              )
-            }
-            .catchAll(_ => ZIO.unit)
-            .as(true)
+      deliveryLock.withPermit {
+        retention.get.flatMap { kept =>
+          delivery.get.flatMap { up =>
+            val missed =
+              kept.filter(e => e.seq > obs.afterSequence && e.seq > up)
+            if missed.isEmpty then
+              replyError(
+                Protocol.ObserveFailed(
+                  s"no undelivered observations after sequence ${obs.afterSequence}"
+                ),
+                Some(obs.requestId)
+              ).as(true)
+            else
+              // Claim the whole batch on the wire pointer first, then enqueue
+              // through receipts (never dropped): concurrent live admissions
+              // for the claimed range are suppressed by the pointer, and the
+              // lock keeps the batch ordered against live admissions.
+              ZIO
+                .uninterruptible {
+                  delivery.set(missed.last.seq) *>
+                    ZIO.foreachDiscard(missed) { env =>
+                      outbound.receipt(
+                        Protocol.observation(
+                          obs.requestId,
+                          Observation(
+                            env.seq,
+                            kindOf(env.payload),
+                            messageOf(env.payload),
+                            None
+                          )
+                        )
+                      )
+                    }
+                }
+                .catchAll(_ => ZIO.unit)
+                .as(true)
+          }
+        }
       }
 
     private def cancel(
@@ -821,6 +866,17 @@ object Session:
     // observation forwarding
     // ------------------------------------------------------------------
 
+    /** RAI-233: live admission is coordinated with observe replay through the
+      * wire pointer (`delivery`) under `deliveryLock`. The uninterruptible
+      * region binds check + enqueue + pointer advance into one step, so a
+      * cancelled pump can never leave a claimed-but-unwritten frame (that would
+      * be a permanent silent drop — replay suppresses claimed sequences and
+      * nothing else would deliver it), and a replay batch can never interleave
+      * a live frame inside its claimed range. Coalescing under backpressure
+      * stays the live path's saturation behavior: the frame is then covered by
+      * the pointer and reported through the `skipped` marker exactly as before
+      * this coordination existed.
+      */
     private def forward(requestId: String): EventEnvelope => UIO[Unit] = env =>
       env.payload match
         case EventPayload.Terminal(_) => ZIO.unit
@@ -828,12 +884,24 @@ object Session:
           retention.update { v =>
             if v.length >= MaxRetention then v.tail :+ env else v :+ env
           } *>
-            outbound.observation(
-              requestId,
-              env.seq,
-              kindOf(env.payload),
-              messageOf(env.payload)
-            )
+            deliveryLock.withPermit {
+              ZIO.uninterruptible {
+                delivery.get.flatMap { up =>
+                  ZIO
+                    .when(env.seq > up) {
+                      outbound
+                        .observation(
+                          requestId,
+                          env.seq,
+                          kindOf(env.payload),
+                          messageOf(env.payload)
+                        )
+                        .zipRight(delivery.set(env.seq))
+                    }
+                    .unit
+                }
+              }
+            }
 
     private def kindOf(payload: EventPayload): String =
       payload match

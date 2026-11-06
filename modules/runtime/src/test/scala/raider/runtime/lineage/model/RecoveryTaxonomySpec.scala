@@ -11,8 +11,14 @@ import zio.test.*
   *     every write-class name (including `fs_patch`, the owner-flagged miss:
   *     captured repairs were classified ReadOnly despite modifying source)
   *     classifies Mutating through [[RecoveryTaxonomy.classify]].
+  *   - RAI-268: the RAI-260 structured mutation tools `fs_patch_multi` and
+  *     `fs_delete` join the write class — lineage reducers, live graphs and the
+  *     CLI isolation guard must not under-report them (the registry stamps are
+  *     Mutating). Classification is stable under repeated evaluation (pure
+  *     lookup, no concurrency surface).
   *   - TAX-03: the ADR default is unchanged — UNKNOWN tool names stay ReadOnly,
-  *     and the static taxonomy never guesses `Idempotent`.
+  *     and the static taxonomy never guesses `Idempotent`. Matching is EXACT:
+  *     case variants and near-misses of KNOWN names stay ReadOnly too.
   *   - TAX-03 (hash policy): the recovery verdict is PART of the [[GraphHash]]
   *     canonical form (`tool_call|...|tool|recovery|...`), so reclassifying a
   *     historical recorded graph (fs_patch/proc_run ReadOnly → Mutating)
@@ -70,15 +76,17 @@ object RecoveryTaxonomySpec extends ZIOSpecDefault:
       )
     },
     test(
-      "TAX-01: every write-class name classifies Mutating (fs_patch included)"
+      "TAX-01: every write-class name classifies Mutating (fs_patch included; RAI-268: fs_patch_multi and fs_delete included)"
     ) {
       val misses = classifiedMutating(RecoveryTaxonomy.WriteTools)
       assertTrue(
         RecoveryTaxonomy.WriteTools == Set(
           "apply_patch",
           "edit",
+          "fs_delete",
           "fs_edit",
           "fs_patch",
+          "fs_patch_multi",
           "fs_write",
           "mkdir",
           "mv",
@@ -93,7 +101,27 @@ object RecoveryTaxonomySpec extends ZIOSpecDefault:
       )
     },
     test(
-      "TAX-03: unknown tools stay ReadOnly-by-default (ADR discipline unchanged)"
+      "RAI-268: fs_patch_multi and fs_delete classify Mutating — classify/isMutating agree, stable under repeated evaluation"
+    ) {
+      val names = Vector("fs_patch_multi", "fs_delete")
+      // pure lookup: repeated evaluation returns the identical verdict every
+      // time (no memoization drift, no concurrency surface to expose)
+      val repeated =
+        names.map(n => (1 to 64).map(_ => RecoveryTaxonomy.classify(n)).toSet)
+      assertTrue(
+        names.forall(RecoveryTaxonomy.classify(_) == RecoveryClass.Mutating),
+        names.forall(RecoveryTaxonomy.isMutating(_)),
+        names.forall(n =>
+          RecoveryTaxonomy.isMutating(n) ==
+            (RecoveryTaxonomy.classify(n) == RecoveryClass.Mutating)
+        ),
+        repeated.forall(_ == Set(RecoveryClass.Mutating)),
+        names
+          .forall(n => RecoveryTaxonomy.classify(n) != RecoveryClass.Idempotent)
+      )
+    },
+    test(
+      "TAX-03: unknown tools stay ReadOnly-by-default (ADR discipline unchanged; RAI-268 case variants included)"
     ) {
       val unknown = Vector(
         "fs_read",
@@ -106,7 +134,21 @@ object RecoveryTaxonomySpec extends ZIOSpecDefault:
         "FS_PATCH",
         "fs_patch ",
         "",
-        "patch-tool"
+        "patch-tool",
+        // RAI-268: exact-name matching — variants/near-misses of the two new
+        // Mutating names never gain Mutating power through the default
+        "FS_DELETE",
+        "FS_PATCH_MULTI",
+        "fs_Delete",
+        "Fs_Patch_Multi",
+        "fs_delete ",
+        " fs_delete",
+        "fs_patch_multi ",
+        "fs_delete_v2",
+        "fs_patch_multi_x",
+        "fs_patch_mulit",
+        "delete",
+        "fs_remove"
       )
       assertTrue(
         unknown

@@ -277,6 +277,13 @@ final class MultiJobExport private (
     * after the anchoring job's Terminal was exported connects as a NATIVE-ONLY
     * segment (nothing joins — an interposed introduction would be
     * `ReduceError.AfterTerminal` or an invented edge).
+    *
+    * RAI-235 ownership ordering: every loud guard of `connect` (the unresolved
+    * per-level anchor, the missing campaign job id) fires BEFORE the segment's
+    * native artifacts are opened and BEFORE the segment is registered, so a
+    * guard-die connect leaves the export exactly as it was — no
+    * registered-but-orphaned segment, no provenance pointer to a silent 0-byte
+    * artifact (RAI-226 record disclosure).
     */
   private def connect(
       jobId: JobId,
@@ -296,7 +303,6 @@ final class MultiJobExport private (
               .resolve("jobs")
               .resolve(jobId.value)
               .toAbsolutePath
-            native <- EventsJsonlWriter.open(dir.resolve("events.jsonl"))
             segComplete <- Ref.make(false)
             rootDone <- rootTerminalExported.get
             campaignJob <- campaignRef.get
@@ -323,25 +329,21 @@ final class MultiJobExport private (
             ownerComplete <- ownerSeg match
               case Some(seg) => seg.isComplete
               case None      => ZIO.succeed(false)
-            seg = MultiJobExport.Segment(
-              jobId,
-              inv,
-              dir,
-              dir.resolve("events.jsonl"),
-              native,
-              joinedToRun = !rootDone && !ownerComplete,
-              segComplete
-            )
-            _ <- segmentsRef.update(_ :+ seg)
+            joinedToRun = !rootDone && !ownerComplete
+            // RAI-235 ownership ordering: the loud guard below fires BEFORE
+            // the segment's native artifacts are opened and BEFORE the
+            // segment is registered, so a guard-die connect owns nothing —
+            // no registered-but-orphaned segment, no provenance pointer to a
+            // silent 0-byte artifact (the RAI-226 record's disclosure).
             joined <-
-              if !seg.joinedToRun then
-                ZIO.succeed(Vector.empty[LineageEnvelope])
+              if !joinedToRun then ZIO.succeed(Vector.empty[LineageEnvelope])
               else
                 ownerSeg.map(_.childJobId).orElse(campaignJob) match
                   case None =>
                     // Unreachable by contract: the runner sets the campaign
                     // job before its loop can fork anything. Loud, never a
-                    // silent wrong-shape export.
+                    // silent wrong-shape export — and it leaves no state
+                    // behind (no file, no registration).
                     ZIO.die(
                       new IllegalStateException(
                         "MultiJobExport: campaign job id not set before a fork connected"
@@ -366,6 +368,17 @@ final class MultiJobExport private (
                     )
                     val copies = held.map(e => joinedCopy(e, inv))
                     ZIO.succeed(forkRec +: copies)
+            native <- EventsJsonlWriter.open(dir.resolve("events.jsonl"))
+            seg = MultiJobExport.Segment(
+              jobId,
+              inv,
+              dir,
+              dir.resolve("events.jsonl"),
+              native,
+              joinedToRun,
+              segComplete
+            )
+            _ <- segmentsRef.update(_ :+ seg)
             _ <- ZIO.foreachDiscard(joined)(runWriter.appendLineage)
             _ <- appendWire(joined)
             // The native segment: verbatim hub envelopes (hub seqs), including

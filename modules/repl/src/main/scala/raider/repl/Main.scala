@@ -412,7 +412,41 @@ object Main:
       case c if c < ' ' => f"\\u${c.toInt}%04x"
       case c            => c.toString
 
+  /** RAI-262: bounded preflight BEFORE engine construction. A distribution jar
+    * (or classpath) without the in-process compiler must fail with a one-line
+    * diagnostic, never a hang. The launcher (packaging/raider-repl) owns the
+    * preflight-invalid exit code 21 via its own jar check; this JVM-side check
+    * refuses any direct invocation with a nonzero exit by throwing (System.exit
+    * stays allowlisted to raider.cli.Main by gate policy; a gate-policy
+    * amendment card can extend the allowlist later).
+    */
+  private def preflightCompilerClasspath(): Unit =
+    val required = Seq(
+      "dotty.tools.repl.ReplDriver",
+      "dotty.tools.dotc.core.Contexts$",
+      "org.jline.terminal.Terminal"
+    )
+    val missing = required.find { name =>
+      try
+        Class.forName(name, false, getClass.getClassLoader)
+        false
+      catch case _: ClassNotFoundException | _: NoClassDefFoundError => true
+    }
+    missing match
+      case None => ()
+      case Some(name) =>
+        System.err.println(
+          "raider-repl: the in-process Scala compiler is missing from the " +
+            "classpath (first absent: " + name + "). Launch the REPL through " +
+            "the installed distribution launcher (raider-repl)."
+        )
+        throw new IllegalStateException(
+          "raider-repl preflight: missing compiler class " + name +
+            " (distribution incomplete?)"
+        )
+
   def main(args: Array[String]): Unit =
+    preflightCompilerClasspath()
     // RAI-108: the product tabs entry sits behind the EXPLICIT --tabs flag;
     // every other argument keeps the historical ignore-behavior, so the legacy
     // path (piped smoke, scripts) is untouched bit-for-bit.

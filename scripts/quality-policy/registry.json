@@ -35,7 +35,8 @@
   "docs": {
    "stage": "component",
    "gates": [
-    "plan-validate"
+    "plan-validate",
+    "changelog-lint"
    ]
   },
   "fast": {
@@ -102,6 +103,12 @@
    "gates": [
     "ux-baseline"
    ]
+  },
+  "vendor": {
+   "stage": "component",
+   "gates": [
+    "vendor-audit"
+   ]
   }
  },
  "gates": {
@@ -111,7 +118,7 @@
     "scripts/quality/quality.py",
     "self-check"
    ],
-   "timeout_s": 120
+   "timeout_s": 180
   },
   "sbt-compile": {
    "argv": [
@@ -142,6 +149,20 @@
     "scripts/plan/validate.py",
     "--out",
     "artifacts/plan-review/report.json"
+   ],
+   "timeout_s": 120
+  },
+  "changelog-lint": {
+   "argv": [
+    "python3",
+    "scripts/quality/changelog_lint.py"
+   ],
+   "timeout_s": 60
+  },
+  "vendor-audit": {
+   "argv": [
+    "python3",
+    "scripts/quality/vendor_audit.py"
    ],
    "timeout_s": 120
   },
@@ -237,7 +258,10 @@
    "self",
    "static"
   ],
-  "^docs/|^README|^README.md|^AGENTS.md": [
+  "^docs/|^README|^README.md|^AGENTS.md|^CHANGELOG.md": [
+   "docs"
+  ],
+  "^.opencode/agents/|^.opencode/commands/": [
    "docs"
   ],
   "^experiments/": [
@@ -253,11 +277,15 @@
   ],
   "^examples/": [
    "docs"
+  ],
+  "^vendor/|^THIRD_PARTY_NOTICES.md": [
+   "vendor"
   ]
  },
  "fingerprint_excludes": [
   ".git",
   "artifacts",
+  "wt",
   "target",
   "project/target",
   ".opencode",

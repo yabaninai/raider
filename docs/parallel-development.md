@@ -92,8 +92,268 @@ not as background processes. The owner opens OpenCode, enters `/raider-wave`
   provider/pool failure kills spawns mid-work (wave-3 and RAI-121 incidents)
   → workers execute sequentially in the primary session, review in parallel
   when the pool recovers, preserving uncommitted lane work; (2) separate
-  explicit owner decision for the night loop. Record the fallback reason in
-  the board. Do not invent API fields (`cwd` on task, etc.).
+  explicit owner decision for the night loop. Record the fallback reason in the
+  board. Do not invent API fields (`cwd` on task, etc.).
+
+## 1c. Lane build hygiene: the zinc cold-compile poison marker (RAI-241)
+
+Measured source: `docs/research/zinc-concurrency-2026-10-28.md` (RAI-241
+experiment; §7 recommended mitigation adopted here as lane hygiene; §6
+falsifiable hypothesis H1). This section changes no gates and no product code;
+it tells a lane what a specific cold-compile failure means and what to do.
+
+**Recognition.** During a cold compile, the signature
+`value id is not a member of raider.core.ToolCall` at `AgentLoop.scala:772:7`
+(a fast-failing `[E008] Not Found Error` in
+`raiderRuntime / Compile / compileIncremental`; all reproductions fail fast,
+7–80 s) is a known copy-local zinc infra-poison marker — not a product error
+and not a broken worktree. Sources and emitted artifacts in the affected copy
+stay byte-identical to healthy copies: the wrong signature lives in what the
+downstream compile consumes from that copy's persisted raiderCore zinc state.
+The poison is copy-local by measurement — it is not in any shared host cache.
+
+**Recovery (verified).** In the affected copy only:
+
+```sh
+sbt --batch raiderCore/clean   # then recompile, e.g. sbt --batch Test/compile
+```
+
+Verified heal in 57 s; full `clean` also works. No global caches need clearing.
+The lane is healthy after the heal reruns its phase; do not re-clone or
+re-create the worktree for this.
+
+**What NOT to do, and why (per the measured evidence).**
+
+- Do not retry blind. The poison is deterministic once induced: retry without
+  cleaning always re-fails (observed 3/3), because a failed runtime compile
+  commits no zinc state, so the retry re-reads the same poisoned analysis. A
+  blind retry never goes green; it only burns a full compile each time.
+- Do not "fix" it by nuking global caches (`~/.sbt` global plugins, boot/ivy,
+  coursier). Induction reproduced with per-copy sbt global/boot/ivy state (I1),
+  so shared global state is not the carrier; clearing global caches is slow,
+  disrupts every other lane on the host, and does not touch the copy-local
+  carrier (the affected copy's raiderCore target).
+
+**Overlapping cold compiles across worktree lanes.** Staggering and state
+isolation did not prevent induction, and host load magnitude is not the
+discriminator: the common factor of every reproduction was overlapping cold
+compiles of the raider tree on one host, from any lanes. Assume any cold
+compile overlapping other lanes' cold compiles carries ~12% per-copy induction
+risk (4 poisons in 33 controlled copy-compiles; single-day, single-host
+sample). Guidance:
+
+- The §1 heavy-lane cap does not make induction impossible. With 8–10 heavy
+  lanes cold-building, treat one copy hitting the marker as expected chance,
+  not as a lane defect or a regression: recognize, heal in place, rerun the
+  phase. Do not open a product-defect card for it and do not report the lane
+  as product-broken.
+- The ~12% figure is exposure-risk, not a per-retry loop budget: after the
+  marker appears, clean and heal; never loop retries while other lanes are
+  still cold-building.
+- If you choose to diagnose before healing, follow the RAI-241 harness order
+  (preserve the poisoned state tar → exit-coded retry → clean → heal); once
+  you `clean`, the evidence state is gone. Otherwise, just clean and move on.
+- A heal can itself be re-poisoned while sibling lanes are still cold-building
+  (observed once, T8s/c08). If the heal re-fails with the same signature, wait
+  out the overlap window and re-apply the heal.
+
+## 1d. Lane build hygiene: JDK/toolchain pin for lanes and gates (RAI-264)
+
+Measured source: RAI-254 lane evidence (work record `docs/work/records/RAI-254.md`;
+gate manifests `20261101-044235-92625-0001` failed and `20261101-044855-95050-0001`
+passed under `wt/rai-254/artifacts/quality/`). This section changes no gates and no
+product code; it tells a lane which JDK to run under and how this cold-compile
+failure is distinct from the §1c zinc poison.
+
+**The pin (required).** Every lane shell and every gate run executes sbt under
+**JDK 21**:
+
+```sh
+export JAVA_HOME=/Library/Java/JavaVirtualMachines/jdk-21.jdk/Contents/Home
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+Set both before the first `sbt`/`make quality-*` call in the worktree. Homebrew
+`openjdk` on this host is currently **JDK 27**, and an unset `JAVA_HOME` lets the
+sbt launcher resolve it even when PATH `java` is 21: the failed RAI-254 gate run
+recorded `toolchain.java` = Oracle `21.0.12.1` in its manifest while the same run's
+sbt banner read `welcome to sbt 1.11.4 (Homebrew Java 27)`. Verify the sbt banner,
+not `java -version` alone.
+
+**Recognition.** A **cold** `raiderCli / Test` compile under JDK 27 fails
+deterministically: dotc 3.9.0 cannot resolve the `java.lang.invoke.VarHandleDoubles`
+inner-class entries while parsing JDK 27's `VarHandle.class` from the JRT (the
+LazyVals phase pulls `java.lang.invoke.VarHandle`). Verbatim from the failed
+manifest's `sbt-test.log`:
+
+```
+[error] ## Exception when compiling 94 sources to /Users/reireirei/PycharmProjects/PythonProject/startup/scalaagent/wt/rai-254/modules/cli/target/scala-3.9.0/test-classes
+[error] java.lang.AssertionError: assertion failed: failure to resolve inner class:
+[error] externalName = java.lang.invoke.VarHandleDoubles$FieldStaticReadOnly,
+[error] outerName = java.lang.invoke.VarHandleDoubles,
+[error] innerName = FieldStaticReadOnly
+[error] owner.fullName = java.lang.invoke.VarHandleDoubles
+[error] while parsing /modules/java.base/java/lang/invoke/VarHandle.class
+```
+
+Frames run `dotty.tools.dotc.core.classfile.ClassfileParser$innerClasses$.classSymbol`
+→ `dotty.tools.dotc.transform.LazyVals`. The same fingerprint passes green when the
+run is repeated under the JDK 21 pin (manifest `20261101-044855-95050-0001`:
+5 checks passed, 1722 tests / 0 failed / 0 ignored, banner `Oracle Corporation
+Java 21.0.12.1`). This is a known-infra marker, not a product error and not a
+broken worktree.
+
+**Distinct from the §1c zinc poison.** Do not conflate the two cold-compile
+markers:
+
+| | §1c zinc E008 poison | JDK 27 dotc crash (this section) |
+| --- | --- | --- |
+| Signature | `[E008] Not Found Error`, `value id is not a member of raider.core.ToolCall` at `AgentLoop.scala:772:7` | `AssertionError: failure to resolve inner class: VarHandleDoubles$FieldStaticReadOnly` |
+| Carrier | copy-local persisted zinc analysis | the JDK the sbt JVM runs under |
+| Does `sbt --batch raiderCore/clean` heal? | **Yes** (regenerate the analysis; recompile green, 57–65 s) | **No** — a clean recompile under JDK 27 re-crashes deterministically |
+| Remedy | clean the affected copy and recompile | pin `JAVA_HOME` to JDK 21 and rerun; no cleaning |
+
+The zinc study's "clean heals, retry never heals" logic
+(`docs/research/zinc-concurrency-2026-10-28.md` §12: plain retry 6/6, incremental
+recompilation does not heal, clean+recompile heal ~65 s) does not transfer here:
+there is no poisoned state to regenerate — sources and zinc state are fine, the
+compiler/JDK pair is not.
+
+**What NOT to do, and why (per the measured evidence).**
+
+- Do not re-run `raiderCore/clean` (or `clean`) and retry the compile under
+  JDK 27. The crash is deterministic on any cold recompile under that JDK;
+  cleaning burns a full compile and returns the same AssertionError. The remedy
+  is the JDK pin, not cleaning.
+- Do not diagnose it as the §1c zinc poison, run §1c's heal for it, or open a
+  zinc/product-defect card: no zinc state is corrupted and the E008 signature is
+  absent. Match the marker first, then apply the matching remedy.
+- Do not read a green warm-zinc JDK 27 run as evidence that JDK 27 is safe:
+  RAI-254's review-fixup run passed under Homebrew Java 27 only because zinc was
+  warm (no cli test sources were recompiled; manifest `20261101-053427-13638-0001`).
+  Only a cold compile under the pin (or a pinned rerun after this crash) is
+  evidence.
+- Do not "fix" it from your lane by upgrading dotc/Scala or hard-pinning
+  `build.sbt`: shared build changes are coordinator-owned and need a separate
+  card; this section is the hygiene rule, not a build change.
+
+**Lanes racing cold compiles under mixed JDKs on one host.** Zinc state is
+copy-local (§1a: each worktree has its own `target/`), so a JDK 27 lane crashes
+only its own copy and does not corrupt sibling lanes. Guidance:
+
+- Pin per shell, per lane, before the first sbt call. A lane that starts unpinned
+  on a host with Homebrew JDK 27 will crash its own cold compile even while
+  sibling lanes run pinned and green; the reverse does not hold (a pinned lane is
+  unaffected by an unpinned sibling's crash).
+- A lane observing this crash in a sibling must not run §1c's `raiderCore/clean`
+  on the sibling's behalf (or on its own copy): §1c's heal belongs to the E008
+  marker only. The crashing lane pins the JDK and reruns its own phase.
+- The pin does not remove the §1c overlap risk: concurrent cold compiles under
+  JDK 21 still carry the ~12% per-copy E008 induction risk. Both hygiene rules
+  coexist: pin the JDK; if the E008 marker appears, clean and heal in place per
+  §1c.
+- Under the §1 heavy-lane cap, treat one lane's dotc crash during a wave as the
+  expected unpinned-start case, not a lane defect or regression: check the sbt
+  banner's Java version first, pin, rerun the phase.
+
+## 1e. Test execution stance: suites run serially inside each module (RAI-266)
+
+Decision (card RAI-266, routing RAI-247 review finding P3-1): `build.sbt` sets
+`Test / parallelExecution := false` in the shared `testSettings`. zio-test suites
+inside one module execute strictly one-after-another; module-level overlap stays
+capped at 2 by the `Global / concurrentRestrictions` `Tags.Test` limit. No gate,
+check, or threshold is relaxed.
+
+Why free suite concurrency is not allowed: suites share module-local fixed paths
+under `target/`. The known pair is `raider.cli.lineage.LineageCompileGateSpec`
+and `raider.cli.lineage.UnifiedProjectionExecutionSpec`, which both reuse
+`modules/cli/target/lineage-compile/` (`esc-hostile.scala`,
+`esc-hostile.dotc.log`, `out-esc-hostile/`), and a suite's `freshDir` deletes
+directory contents on entry — concurrent execution is a latent interference
+source, not an allowed feature. Per-module serialization removes that collision
+class structurally.
+
+Update (card RAI-272): the pinned-dotc suites no longer share fixed working
+dirs. `raider.cli.lineage.LineageCompileGateSpec`,
+`raider.cli.lineage.UnifiedProjectionExecutionSpec`,
+`raider.cli.lineage.LineageProjectionExecutionSpec`,
+`raider.cli.lineage.LineagePlainRunCompileGateSpec` and
+`raider.cli.workflow.ChatWorkflowCompileGateSpec` each write into their own
+`modules/cli/target/suite-work/<Suite>/` through the test-scope helper
+`raider.cli.testkit.SuiteWorkdir` (wiped and recreated per test JVM); the
+shared `lineage-compile/` and single-suite `chat-workflow-compile/` dirs are
+no longer written. The remaining fixed paths are single-writer and safe
+without migration: the per-suite runtime dirs
+(`modules/runtime/target/lineage-replay-w22-r8`, `lineage-replay-spec`,
+`lineage-corpus-spec`, `plan-corpus-spec`), the deliberate
+`modules/cli/target/demo-bundle.jar` export for `scripts/quality/cli_smoke.sh`
+(single writer `HeadlessRunnerSpec`), and every `Files.createTempDirectory`
+user (a fresh unique directory per call). The stance itself stayed `false`
+until RAI-274 re-evaluated it from this clean baseline (see below).
+
+Measured evidence (work record `docs/work/records/RAI-266.md`):
+
+- Probe, default stance: two minimal zio suites exchanged real-time file
+  markers under verified-fresh state; the sibling marker appeared at
+  **+111 ms** (A written at epoch-ms 1793594612407, B at 1793594612518) —
+  suites genuinely run concurrently without the setting.
+- Probe, `Test / parallelExecution := false`: strict A-then-B. A waited for a
+  marker that could only appear after A's own task returned and failed at
+  +20 s; B was written at **+25.2 s** (A at epoch-ms 1793594637580, B at
+  1793594662748), after A's task had completed — sbt executed the framework
+  tasks sequentially.
+- Full `sbt --batch test`: **700 s** (0:11:40) before the change vs **680 s**
+  (0:11:20) after, both green, exit 0 — suite serialization is effectively
+  free because compiler-heavy suites saturate CPU and the `Tags.Test` cap
+  already limits module-level overlap.
+
+Re-evaluation (card RAI-274, work record `docs/work/records/RAI-274.md`):
+**the serial stance stays.** RAI-272 removed the hazard class that motivated
+the pin, but the probe shows the stance is still load-bearing and the flip
+buys nothing measured:
+
+- The stance surface is two mechanisms, not one. `Test / parallelExecution`
+  governs suite concurrency only in **in-process** modules (core, runtime,
+  dsl, testkit, ui, tools, providers). Three modules fork their tests
+  (`Test / fork := true`: raiderCli per RAI-109, raiderRepl,
+  raiderReplEngine); there sbt puts all suites into one `SubProcess` group
+  and runs them sequentially inside the fork (default
+  `Test / testForkedParallel := false`), so flipping `parallelExecution` is
+  inert for them.
+- RAI-266-style marker probe (temporary suites, verified-clean marker state
+  before every run; `Test / parallelExecution := true` applied per module via
+  a session `set`): raiderCore flip → suites genuinely overlap, sibling
+  markers −1 ms apart (A at epoch-ms 1793838203445, B at 1793838203444, both
+  passed); raiderCore pin → strict A-then-B, A failed its 20 s wait (A at
+  1793838357875, B at 1793838378034, +20.02 s). raiderCli flip → still
+  strictly sequential (A at 1793838107358, B at 1793838127488, +20.01 s, A
+  failed its wait as designed); raiderCli pin → same serial signature
+  (1793838328373 → 1793838348510, +20.14 s).
+- Measured full `sbt --batch test` on the same tree (1824 tests, both green,
+  exit 0): serial **595 s** (sbt Total 592 s) vs flipped **637 s** (sbt Total
+  632 s) — flipping adds contention, not throughput, consistent with the
+  RAI-266 measurement above.
+- Under the flip the migrated suite set showed no cross-suite interference
+  (the killed-first flipped attempt ran 938 tests green before an external
+  SIGTERM; the completed flipped run passed 1824/1824 and the suite-work
+  audit afterwards found only per-suite directories under
+  `modules/cli/target/suite-work/`, with `lineage-compile/` and
+  `chat-workflow-compile/` not recreated). Interference-freedom is not the
+  reason to keep serial — the reason is that free suite concurrency buys no
+  runtime and removes a structural protection for future suites.
+
+Lane guidance: do not "fix" slow suites by re-enabling `parallelExecution`;
+make suites independent of module-local fixed paths instead (unique per-suite
+subdirectories under `target/` — landed for the pinned-dotc suites by
+RAI-272; new suites must not reintroduce cross-suite fixed paths: put working
+files in a per-suite `suite-work/<Suite>/` directory or a unique temp
+directory). Re-enabling `parallelExecution` would not even parallelize the
+forked modules (cli/repl/repl-engine); that would additionally require
+`Test / testForkedParallel := true`, which no card has proposed or measured.
+When timing test
+runs, keep the §1d JDK pin in the shell, and expect sibling-lane sbt activity
+to add wall-clock noise (both measurements above were taken with two sibling
+lanes compiling on the same host).
 
 ## 2. Prove isolation first
 

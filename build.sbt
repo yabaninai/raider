@@ -17,7 +17,9 @@ Global / concurrentRestrictions += Tags.limit(Tags.Test, 2)
 
 lazy val commonSettings = Seq(
   scalacOptions ++= Seq(
-    "-deprecation", "-feature", "-unchecked",
+    "-deprecation",
+    "-feature",
+    "-unchecked",
     "-Werror" // owned code compiles warning-free (static gate, RAI-004)
   ),
   Compile / compile / compileOrder := CompileOrder.ScalaThenJava
@@ -41,7 +43,21 @@ val testSettings = Seq(
     "dev.zio" %% "zio-test" % zioVersion % Test,
     "dev.zio" %% "zio-test-sbt" % zioVersion % Test
   ),
-  testFrameworks += new TestFramework("zio.test.ZIOFramework")
+  testFrameworks += new TestFramework("zio.test.ZIOFramework"),
+  // RAI-266 (routing RAI-247 review P3-1), re-evaluated by RAI-274 from the
+  // RAI-272 clean baseline: suites inside one module run strictly serially.
+  // RAI-272 removed the shared fixed-path hazard (per-suite
+  // suite-work/<Suite>/ directories), so serial execution is now defense in
+  // depth, not a workaround. The RAI-274 marker probe measured the flip:
+  // in in-process modules it creates real suite overlap (raiderCore sibling
+  // markers -1 ms apart), while in forked modules (cli/repl/repl-engine,
+  // Test / fork := true) suites stay sequential inside the fork regardless,
+  // so flipping buys nothing. Measured full `sbt --batch test` on the same
+  // tree: 595 s serial vs 637 s flipped (1824 tests, both green) — suite
+  // concurrency adds contention, not throughput. Module-level overlap stays
+  // capped at 2 by the Tags.Test restriction above. No gate, check or
+  // threshold is relaxed.
+  Test / parallelExecution := false
 )
 
 lazy val raiderRuntime = (project in file("modules/runtime"))
@@ -87,6 +103,48 @@ lazy val raiderTools = (project in file("modules/tools"))
 
 // raider-repl-engine: in-process scala3-repl (pinned 3.9.0) behind ReplEngine.
 // Registered by root coordinator (fast-REPL slice); coordinator owns build.sbt.
+lazy val raiderBackendPi = (project in file("modules/backend-pi"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-backend-pi"
+  )
+  .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
+  .dependsOn(raiderCore)
+
+// raider-backend-opencode: OpenCode server HTTP adapter (RAI-035), standalone
+// (zio only, no raiderCore dependency). Registered by root coordinator per
+// the RAI-035 work record; coordinator owns build.sbt.
+lazy val raiderBackendOpencode = (project in file("modules/backend-opencode"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-backend-opencode"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % zioVersion,
+      "dev.zio" %% "zio-json" % zioJsonVersion,
+      "dev.zio" %% "zio-streams" % zioVersion
+    )
+  )
+
+lazy val raiderCompatPi = (project in file("modules/compat-pi"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-compat-pi"
+  )
+  .dependsOn(raiderCore % "compile->compile;test->test")
+
+lazy val raiderCompatOpencode = (project in file("modules/compat-opencode"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-compat-opencode"
+  )
+  .dependsOn(raiderCore % "compile->compile;test->test")
+
 lazy val raiderReplEngine = (project in file("modules/repl-engine"))
   .settings(
     commonSettings,
@@ -108,6 +166,7 @@ lazy val raiderReplEngine = (project in file("modules/repl-engine"))
 // raider.repl per runtime-contracts §3; core never depends on them).
 lazy val raiderRepl = (project in file("modules/repl"))
   .settings(commonSettings, testSettings, name := "raider-repl")
+  .settings(raiderReplAssemblySettings)
   .dependsOn(
     raiderCore % "compile->compile;test->test",
     raiderRuntime,
@@ -148,12 +207,13 @@ lazy val raiderProviderChat = (project in file("modules/provider-chat"))
 // slice): non-streaming + SSE streaming. Reuses SseFramer from
 // raider-provider-chat (provider-protocols §4 sanctions reusable framing);
 // the semantic layer is wire-specific. Registered by root coordinator.
-lazy val raiderProviderAnthropic = (project in file("modules/provider-anthropic"))
-  .settings(commonSettings, testSettings, name := "raider-provider-anthropic")
-  .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
-  .dependsOn(raiderCore, raiderProviderChat)
-  // capstone fixture: AgentLoop over the real HTTP stand (test-only)
-  .dependsOn(raiderRuntime % "test->test", raiderTestkit % Test)
+lazy val raiderProviderAnthropic =
+  (project in file("modules/provider-anthropic"))
+    .settings(commonSettings, testSettings, name := "raider-provider-anthropic")
+    .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
+    .dependsOn(raiderCore, raiderProviderChat)
+    // capstone fixture: AgentLoop over the real HTTP stand (test-only)
+    .dependsOn(raiderRuntime % "test->test", raiderTestkit % Test)
 
 // raider-cli: headless runner (RAI-022 slice) — bundle loading + artifacts +
 // stable exit codes; NO compiler/JLine (headless distribution rule).
@@ -161,8 +221,14 @@ lazy val raiderCli = (project in file("modules/cli"))
   .settings(commonSettings, testSettings, name := "raider-cli")
   .settings(raiderCliAssemblySettings)
   .settings(libraryDependencies += "dev.zio" %% "zio-streams" % zioVersion)
-  .dependsOn(raiderCore, raiderDsl, raiderRuntime, raiderTools,
-             raiderProviderChat, raiderProviderAnthropic)
+  .dependsOn(
+    raiderCore,
+    raiderDsl,
+    raiderRuntime,
+    raiderTools,
+    raiderProviderChat,
+    raiderProviderAnthropic
+  )
   .dependsOn(raiderCliFixtures % Test)
   .settings(
     // RAI-109 (coordinator): process-level acceptance (`raider replay ...`
@@ -180,7 +246,11 @@ lazy val raiderCli = (project in file("modules/cli"))
 
 // compiled fixture bundle workflow for the cli tests (jarred at test time)
 lazy val raiderCliFixtures = (project in file("modules/cli-fixtures"))
-  .settings(commonSettings, name := "raider-cli-fixtures", publish / skip := true)
+  .settings(
+    commonSettings,
+    name := "raider-cli-fixtures",
+    publish / skip := true
+  )
   .dependsOn(raiderCore)
 
 // raiderCli fat-JAR packaging (nightly Phase 5.2): standalone raider-cli.jar —
@@ -193,7 +263,8 @@ lazy val raiderCliAssemblySettings = Seq(
   assembly / test := {},
   assembly / assemblyMergeStrategy := {
     case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-    case PathList("META-INF", xs @ _*) if xs.lastOption.exists(_.endsWith(".SF")) =>
+    case PathList("META-INF", xs @ _*)
+        if xs.lastOption.exists(_.endsWith(".SF")) =>
       MergeStrategy.discard
     case "module-info.class" => MergeStrategy.discard
     case x =>
@@ -202,14 +273,99 @@ lazy val raiderCliAssemblySettings = Seq(
   }
 )
 
+// RAI-262: installed REPL launcher packaging (raider-repl.jar). The REPL fat
+// JAR legitimately ships the in-process scala3-repl compiler and JLine — the
+// headless distribution rule constrains raider-cli.jar, which this card leaves
+// untouched (golden pins bind its bytes). Merge rules mirror
+// raiderCliAssemblySettings; the 3.9.0 library artifacts have disjoint entry
+// sets (scala3-library_3 3.9.0 is a manifest-only stub; the full standard
+// library rides in scala-library), so no duplicate-class conflicts arise.
+lazy val raiderReplAssemblySettings = Seq(
+  assembly / mainClass := Some("raider.repl.Main"),
+  assembly / assemblyJarName := "raider-repl.jar",
+  assembly / test := {},
+  assembly / assemblyMergeStrategy := {
+    case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
+    case PathList("META-INF", xs @ _*)
+        if xs.lastOption.exists(_.endsWith(".SF")) =>
+      MergeStrategy.discard
+    case "module-info.class" => MergeStrategy.discard
+    // version-marker properties file shipped by both scala-collection-compat
+    // and io.get-coursier:interface; runtime-inert, keep the first occurrence
+    case "scala-collection-compat.properties" => MergeStrategy.first
+    case x =>
+      val old = (assembly / assemblyMergeStrategy).value
+      old(x)
+  }
+)
+
+// RAI-262: build the installed distribution — assemble raider-repl.jar and
+// stage the launcher layout + zip via the tested raider.repl.dist library
+// (pure file operations on the REPL runtime classpath; no REPL spawned).
+val raiderReplDist = taskKey[File](
+  "assemble raider-repl.jar and stage the installed REPL distribution (RAI-262)"
+)
+
 lazy val root = (project in file("."))
-  .aggregate(raiderCore, raiderRuntime, raiderDsl, raiderTestkit, raiderTools,
-             raiderReplEngine, raiderRepl, raiderProviderChat,
-             raiderProviderAnthropic, raiderCliFixtures, raiderCli, raiderUi)
-  .dependsOn(raiderCore, raiderRuntime, raiderDsl, raiderTestkit, raiderTools,
-             raiderReplEngine, raiderRepl, raiderProviderChat,
-             raiderProviderAnthropic, raiderCliFixtures, raiderCli, raiderUi)
+  .aggregate(
+    raiderCore,
+    raiderRuntime,
+    raiderDsl,
+    raiderTestkit,
+    raiderTools,
+    raiderReplEngine,
+    raiderRepl,
+    raiderProviderChat,
+    raiderProviderAnthropic,
+    raiderCliFixtures,
+    raiderCli,
+    raiderUi
+  )
+  .dependsOn(
+    raiderCore,
+    raiderRuntime,
+    raiderDsl,
+    raiderTestkit,
+    raiderTools,
+    raiderReplEngine,
+    raiderRepl,
+    raiderProviderChat,
+    raiderProviderAnthropic,
+    raiderCliFixtures,
+    raiderCli,
+    raiderUi
+  )
   .settings(
     name := "raider",
-    publish / skip := true
+    publish / skip := true,
+    raiderReplDist := {
+      val log = streams.value.log
+      val jar = (raiderRepl / assembly).value
+      val replBase = (raiderRepl / baseDirectory).value
+      val outDir = (raiderRepl / target).value / "raider-repl-dist"
+      val cp = (raiderRepl / Runtime / fullClasspath).value.map(_.data)
+      val taskRunner = (raiderRepl / Compile / run / runner).value
+      taskRunner
+        .run(
+          "raider.repl.dist.ReplDistributionMain",
+          cp,
+          Seq(
+            "--jar",
+            jar.getPath,
+            "--launcher",
+            (replBase / "packaging" / "raider-repl").getPath,
+            "--readme",
+            (replBase / "packaging" / "README.txt").getPath,
+            "--version",
+            version.value,
+            "--out",
+            outDir.getPath,
+            "--name",
+            s"raider-repl-${version.value}"
+          ),
+          log
+        )
+        .get
+      outDir
+    }
   )

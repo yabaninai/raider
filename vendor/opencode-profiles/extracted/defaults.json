@@ -1,0 +1,68 @@
+{
+  "note": "Constants extracted from pinned OpenCode TypeScript sources. Sources and hashes are listed under 'derived' in MANIFEST.json. This file is derived at vendoring time and is NOT upstream content.",
+  "defaultAgentId": "build",
+  "modeLiterals": ["subagent", "primary", "all"],
+  "effectLiterals": ["allow", "deny", "ask"],
+  "agentInfoDefaults": {
+    "mode": "primary",
+    "hidden": false,
+    "permissions": [
+      { "action": "*", "resource": "*", "effect": "allow" },
+      { "action": "read", "resource": "*.env", "effect": "ask" },
+      { "action": "read", "resource": "*.env.*", "effect": "ask" },
+      { "action": "read", "resource": "*.env.example", "effect": "allow" }
+    ]
+  },
+  "missingAgentPermissions": [
+    { "action": "*", "resource": "*", "effect": "deny" }
+  ],
+  "evaluate": {
+    "strategy": "lastMatchingRuleWins",
+    "noMatchEffect": "ask",
+    "denyPrecedence": "a deny evaluation on any resource wins before ask evaluation across the merged ruleset",
+    "multiResource": "if any resource resolves to ask the whole request asks, otherwise it allows"
+  },
+  "wildcard": {
+    "normalizeBackslashToSlash": true,
+    "starMatchesAnySequence": true,
+    "questionMarkMatchesSingleChar": true,
+    "trailingSpaceStarMakesSpaceAndSuffixOptional": true,
+    "anchoredBothEnds": true,
+    "dotAll": true
+  },
+  "v1Migration": {
+    "actionRenames": {
+      "write": "edit",
+      "patch": "edit",
+      "apply_patch": "edit",
+      "task": "subagent",
+      "bash": "shell"
+    },
+    "themeColorFallback": "#aaaaaa",
+    "deprecatedStepsAlias": "maxSteps",
+    "unknownAgentKeysGoTo": "request.body",
+    "permissionKeyPrecedence": "tools entries first, then permission entries; a repeated key keeps its first position with the later value"
+  },
+  "markdown": {
+    "agentKeys": [
+      "variant",
+      "model",
+      "request",
+      "system",
+      "description",
+      "mode",
+      "hidden",
+      "color",
+      "steps",
+      "disabled",
+      "permissions"
+    ],
+    "nativeKeys": ["permissions", "request", "system", "disabled"],
+    "legacySources": [
+      { "pattern": "{agent,agents}/**/*.md", "primary": false },
+      { "pattern": "{mode,modes}/*.md", "primary": true }
+    ],
+    "sanitizeRule": "frontmatter values on a key line that contain a colon are retried as YAML block scalars"
+  },
+  "pathActions": ["external_directory", "read", "edit"]
+}

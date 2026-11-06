@@ -8,7 +8,7 @@ COURSIER_CACHE ?= /tmp/cc-master
 
 .PHONY: bootstrap compile build-script spike-suite spike-oai \
         quality-changed quality-changed-execute quality-profile quality-verify \
-        quality-inventory raider-jar raider-chat raider-run quality-full clean
+        quality-inventory raider-jar repro-jar raider-chat raider-run quality-full clean
 
 bootstrap:
 	sh scripts/bootstrap.sh
@@ -57,6 +57,15 @@ quality-inventory:
 # Nightly Phase 5: packaging + full local verification
 raider-jar:
 	COURSIER_CACHE=$(COURSIER_CACHE) sbt --batch raiderCli/assembly
+
+# Canonical deterministic packaging (RAI-240 wrapper, wired by RAI-251).
+# Same sbt assembly as raider-jar, then a canonical repack (sorted entries,
+# fixed 1980 timestamps, deflate-9) so consecutive builds of an unchanged
+# tree are byte-identical. `raider-jar` is intentionally left as the raw
+# build until RAI-253 re-pins the golden adapterJarSha256. Exit-code
+# contract and concurrency constraints: scripts/README.md.
+repro-jar:
+	COURSIER_CACHE=$(COURSIER_CACHE) scripts/repro-jar
 
 raider-chat: raider-jar
 	java -jar modules/cli/target/scala-3.9.0/raider-cli.jar chat --provider openai

@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
 """Exercise install-smoke termination while its Coursier launch is blocked."""
 
+import json
 import os
 import pathlib
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 
 
 def main() -> int:
     root = pathlib.Path(__file__).resolve().parents[2]
-    release = root / "artifacts/release/0.1.1"
+    release = (
+        pathlib.Path(sys.argv[1]).resolve()
+        if len(sys.argv) > 1
+        else root / "artifacts/release/0.1.1"
+    )
+    manifest = json.loads((release / "release.json").read_text(encoding="utf-8"))
+    version = manifest.get("version")
+    if not isinstance(version, str) or not version:
+        raise RuntimeError(f"release metadata has no usable version: {release}")
+    print(f"[signal-install-smoke] release: {release} (version {version})")
     with tempfile.TemporaryDirectory(prefix="raider-sigterm-") as temporary:
         base = pathlib.Path(temporary)
         bin_dir = base / "bin"
@@ -35,7 +46,7 @@ def main() -> int:
                 "sh",
                 str(root / "scripts/release/install-smoke.sh"),
                 str(release / "raider-cli.jar"),
-                "0.1.1",
+                version,
                 str(release / "packaging/raider"),
                 str(release),
             ],

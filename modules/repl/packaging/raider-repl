@@ -1,0 +1,64 @@
+#!/bin/sh
+# RAI-262: installed REPL launcher. The distribution ships one self-contained
+# fat jar (raider-repl.jar, in-process scala3-repl compiler inside) plus this
+# launcher; the headless raider-cli package stays untouched.
+#
+# Preflight failures use the stable preflight-invalid exit code 21
+# (docs/ci-runtime.md §8). The jar content check uses the JDK's own jar tool
+# so no external unzip/zipinfo dependency exists. exec hands the process (and
+# SIGINT/SIGTERM exit codes 130/143) straight to the JVM.
+set -eu
+
+HERE=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+JAR=${RAIDER_REPL_JAR:-"$HERE/raider-repl.jar"}
+VER_FILE="$HERE/version"
+COMPILER_ENTRY=dotty/tools/repl/ReplDriver.class
+
+if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-V" ]; then
+  if [ -r "$VER_FILE" ]; then
+    printf 'raider-repl %s\n' "$(cat "$VER_FILE")"
+    exit 0
+  fi
+  printf '%s\n' 'raider-repl: version metadata is missing' >&2
+  exit 21
+fi
+
+if [ ! -r "$JAR" ]; then
+  printf 'raider-repl: distribution jar not found: %s\n' "$JAR" >&2
+  exit 21
+fi
+
+if [ -n "${JAVA_HOME:-}" ]; then
+  JAVA="$JAVA_HOME/bin/java"
+  JARTOOL="$JAVA_HOME/bin/jar"
+else
+  JAVA=$(command -v java || true)
+  JARTOOL=$(command -v jar || true)
+fi
+if [ -z "$JAVA" ] || [ ! -x "$JAVA" ]; then
+  printf '%s\n' 'raider-repl: Java 21 or newer is required' >&2
+  exit 21
+fi
+JAVA_MAJOR=$("$JAVA" -version 2>&1 | awk -F '[".]' '/version/ { print $2; exit }' || true)
+case "$JAVA_MAJOR" in
+  ''|*[!0-9]*) JAVA_MAJOR=0 ;;
+esac
+if [ "$JAVA_MAJOR" -lt 21 ]; then
+  printf '%s\n' 'raider-repl: Java 21 or newer is required' >&2
+  exit 21
+fi
+
+# Adversarial preflight: a distribution jar without the in-process compiler
+# must fail with a bounded one-line diagnostic, never a hang. A jar tool
+# resolution error is treated as a broken (truncated) distribution.
+if [ -x "$JARTOOL" ]; then
+  if ! "$JARTOOL" tf "$JAR" 2>/dev/null | grep -q "^${COMPILER_ENTRY}$"; then
+    printf 'raider-repl: distribution jar lacks the in-process Scala compiler (%s): %s\n' \
+      "$COMPILER_ENTRY" "$JAR" >&2
+    exit 21
+  fi
+fi
+# Without a jar tool the JVM-side preflight in raider.repl.Main still refuses
+# the broken jar with a bounded diagnostic (nonzero exit).
+
+exec "$JAVA" -jar "$JAR" "$@"

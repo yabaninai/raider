@@ -4,6 +4,7 @@ import zio.{Unsafe, ZIO}
 import zio.test.*
 import zio.test.Assertion.*
 
+import raider.cli.testkit.SuiteWorkdir
 import raider.core.{
   CapabilityStatus,
   ModelBackend,
@@ -234,12 +235,13 @@ object ChatWorkflowCompileGateSpec extends ZIOSpecDefault:
         )
       )
 
+  /** RAI-272: this suite's own working dir under target/ — wiped and recreated
+    * per test JVM by [[SuiteWorkdir]]; the historical fixed
+    * `chat-workflow-compile/` dir is retired (uniform per-suite isolation with
+    * the lineage compile gates).
+    */
   private lazy val compileDir: Path =
-    findAncestor("artifacts", "tools", "m2")
-      .resolve("modules")
-      .resolve("cli")
-      .resolve("target")
-      .resolve("chat-workflow-compile")
+    SuiteWorkdir.forSuite("cli", "ChatWorkflowCompileGateSpec")
 
   private def m2Jar(rel: String): Path =
     val p = findAncestor("artifacts", "tools", "m2")

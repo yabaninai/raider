@@ -54,6 +54,84 @@ object Main:
   private val BoundedStopMillis = 5000L
 
   // ---------------------------------------------------------------------------
+  // `--help` / `help` routing (RAI-261)
+  // ---------------------------------------------------------------------------
+
+  /** The usage hint printed after every argv-parse failure (RAI-261): the
+    * CliArgs diagnostics stay owned by [[raider.cli.run.CliArgs]]; this line is
+    * the entrypoint-level pointer to the command list.
+    */
+  private val ParseHelpHint: String =
+    "raider: run `raider --help` for the command list"
+
+  /** One-line entries for the ACTUAL top-level commands dispatched by [[main]]
+    * (surveyed against this source at RAI-261): plugin, compile, workflow
+    * run/check/explain, process-api, chat, run, replay, resume,
+    * verify-artifacts. Help lists only what exists — no advertised future
+    * commands. The REPL is deliberately NOT listed as a command here: it ships
+    * as a separate distribution (headless rule — no compiler/terminal
+    * dependencies in this package).
+    */
+  private val helpText: String =
+    """raider - headless coding-agent CLI
+      |
+      |usage: raider <command> [options]
+      |
+      |commands:
+      |  run              headless batch run: run (--bundle <jar> --workflow <name> |
+      |                     --agent <scout|worker|coder>) (--input <text> |
+      |                     --input-json <file>) --out <dir> [--mock] [--provider
+      |                     mock|openai|anthropic] [--context <file>] [--deadline <s>]
+      |  chat             interactive chat session: chat [--provider
+      |                     mock|openai|anthropic] [--base-url <url>] [--model <name>]
+      |                     [--workspace <dir>] [--resume <saved-session>]
+      |  process-api      framed JSON session protocol on stdin/stdout for
+      |                     process hosts
+      |  compile          compile a chat-exported workflow source:
+      |                     compile <source>.scala --out <dir>
+      |  workflow run     run a compiled workflow: workflow run --classes <dir>
+      |                     --input <file> --out <dir> [--source <edited.scala>]
+      |                     [--checkpoint <id>:<scope>] -- or a portable document:
+      |                     workflow run --doc <file> --input <file> --out <dir>
+      |                     --workspace <dir>
+      |  workflow check   validate a portable workflow document (local verdict,
+      |                     no dispatch): workflow check --doc <file>
+      |  workflow explain print a portable document's step tree and the trusted
+      |                     references a launcher must pin (local, no dispatch):
+      |                     workflow explain --doc <file>
+      |  plugin           manage plugins: plugin list | install <jar> |
+      |                     remove <name> | enable <name> | disable <name>
+      |  replay           verify a past run from its recorded events:
+      |                     replay <run-dir> [--workspace <dir>] [--data <dir>]
+      |  resume           report recovery of a past run from its journal
+      |                     (read-only): resume <run-dir>
+      |  verify-artifacts re-verify a past run's artifact integrity:
+      |                     verify-artifacts <run-dir>
+      |
+      |The interactive Scala REPL ships as a SEPARATE distribution
+      |(raider.repl.Main); this headless CLI carries no REPL compiler or
+      |terminal dependencies.
+      |
+      |Unknown flags and unknown subcommands exit nonzero (21) with a
+      |diagnostic; run `raider --help` to see this list.
+      |Exit codes (ci-runtime §8): 0 success, 10 task rejected, 20 runtime
+      |failure, 21 configuration, 22 policy denied, 23 budget exhausted,
+      |24 deadline exceeded, 25 needs approval, 26 uncertain, 27 artifact
+      |write failure, 130/143 signals.
+      |""".stripMargin
+
+  /** RAI-261: pure routing seam (same discipline as [[pluginCommand]]) —
+    * returns the help text when argv targets `--help` or `help` as the FIRST
+    * token, None otherwise. Pure: no stdout writes, no `System.exit`, no
+    * provider/runtime initialization — help rendering performs no background
+    * work and parallel invocations are safe (help acceptance).
+    */
+  def helpCommand(argv: Array[String]): Option[String] =
+    if argv.nonEmpty && (argv(0) == "--help" || argv(0) == "help") then
+      Some(helpText)
+    else None
+
+  // ---------------------------------------------------------------------------
   // `plugin` subcommand routing (RAI-083, P4.B completion)
   // ---------------------------------------------------------------------------
 
@@ -123,6 +201,17 @@ object Main:
       case _ => None
 
   def main(argv: Array[String]): Unit =
+    // RAI-261: `--help`/`help` exits 0 with the command list — dispatched
+    // BEFORE every other route (plugin/workflow/process-api/chat/run), so a
+    // help query never initializes provider or runner machinery.
+    helpCommand(argv) match
+      case Some(text) =>
+        System.out.println(text)
+        // System.exit does not flush piped stdout: flush explicitly
+        System.out.flush()
+        System.exit(raider.core.result.ExitCodes.Success)
+      case None => () // fall through to the unchanged dispatch below
+
     // RAI-083: `plugin ...` dispatch happens BEFORE the run/chat parsing.
     pluginCommand(argv, PluginCli.defaultPluginsDir()) match
       case Some((code, line)) =>
@@ -183,6 +272,9 @@ object Main:
       CliArgs.parse(argv.toList) match
         case Left(err) =>
           System.err.println(s"raider: ${err.code}: ${err.detail}")
+          // RAI-261: every argv-parse failure is a usage-class error — the
+          // diagnostic must point at the command list (help acceptance).
+          System.err.println(ParseHelpHint)
           System.exit(HeadlessRunner.exitCodeFor(err))
         case Right(parsed) =>
           Unsafe.unsafe { implicit u =>

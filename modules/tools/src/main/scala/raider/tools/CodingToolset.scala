@@ -5,7 +5,7 @@ import raider.tools.files.read.{ReadResult, ReadTool, Workspace}
 import raider.tools.process.{ExecOutcome, ExecRequest, ProcessTool}
 import raider.runtime.state.{StateStore, StateTools}
 import raider.tools.search.SearchTool
-import zio.{Scope, ZIO}
+import zio.{Scope, Semaphore, ZIO}
 import zio.json.*
 
 /** The coding toolset (RAI-014/015/016 slices wired for self-hosting): REAL
@@ -22,6 +22,20 @@ import zio.json.*
   *     workspace, empty-env + explicit allowlist, timeout with graceful-then-
   *     force kill, bounded output. This is the ONLY mutation path in this slice
   *     (argv is fully visible in every event/log — no hidden writes).
+  *   - `fs_patch_multi` (RAI-260) — `{"diff","expected_sha256"}` — a multi-file
+  *     git-style diff applied ALL-OR-NOTHING (RAI-067 engine): validation runs
+  *     against every file's current sha256 BEFORE anything is written, and the
+  *     whole staged apply runs in ONE uninterruptible region, so a cancelled
+  *     caller is deferred to the tool boundary and the workspace is left either
+  *     pristine or fully applied — never partially patched. The report is the
+  *     honest applied/failed/rolledBack/staged shape. Best-effort restore on a
+  *     commit-phase I/O fault is in-memory only — there is NO journal: a JVM
+  *     crash or `kill -9` mid-commit is not covered and must not be presented
+  *     as durable resume.
+  *   - `fs_delete` (RAI-260) — `{"path","expected_sha256"}` — deletes exactly
+  *     ONE regular file (atomic POSIX unlink); directories are refused as typed
+  *     model-correctable feedback, missing files name the path with nothing
+  *     deleted, stale provenance is a typed denial and the file survives.
   *   - `state_*` (RAI-094, OPT-IN) — the four [[StateTools]] bound to a
   *     caller-supplied [[StateStore]]; appended AFTER the six coding tools. No
   *     store passed → observationally identical to the feature not existing
@@ -32,10 +46,20 @@ import zio.json.*
   *
   * Recovery stamps (RAI-149): each tool carries its frozen `RecoveryClass`,
   * consistent with the canonical `RecoveryTaxonomy` membership — `proc_run`,
-  * `fs_edit`, `fs_patch` are `Mutating` (exec/write classes); `fs_read`,
-  * `fs_search`, `fs_tree` are `ReadOnly`. Plan-mode read-only enforcement
-  * (`PlanMode.of` narrowing + `AgentLoop.enforceReadOnly`) consumes exactly
-  * this field, so a stamp here is policy, not metadata.
+  * `fs_edit`, `fs_patch`, `fs_patch_multi`, `fs_delete` are `Mutating`
+  * (exec/write classes); `fs_read`, `fs_search`, `fs_tree` are `ReadOnly`.
+  * Plan-mode read-only enforcement (`PlanMode.of` narrowing +
+  * `AgentLoop.enforceReadOnly`) consumes exactly this field, so a stamp here is
+  * policy, not metadata.
+  *
+  * RAI-260 serialization: the four structured file mutation tools (`fs_edit`,
+  * `fs_patch`, `fs_patch_multi`, `fs_delete`) serialize on one per-toolset
+  * semaphore — parallel tool calls (including parallel delegated children,
+  * which share this registry instance) cannot interleave their
+  * read-validate-write phases on shared files. A call racing another writer on
+  * the same file fails CLOSED with a typed stale-provenance denial instead of
+  * silently merging (process-local guarantee only; see the uninterruptibility
+  * note on `fs_patch_multi`).
   */
 final class CodingToolset private (
     read: ReadTool,
@@ -44,6 +68,8 @@ final class CodingToolset private (
     edit: raider.tools.files.edit.EditTool,
     patch: raider.tools.files.edit.PatchTool,
     tree: raider.tools.files.TreeTool,
+    delete: raider.tools.files.edit.DeleteTool,
+    mutationLock: Semaphore,
     state: Option[(StateStore, JobId)] = None
 ):
 
@@ -59,8 +85,15 @@ final class CodingToolset private (
   def registry: Either[RaiderError, ToolRegistry] =
     ToolRegistry.build(
       List(fsReadT, fsSearchT, procRunT, fsEditT, fsPatchT, fsTreeT) ++
-        stateTools // appended AFTER the six coding tools (RAI-094 order)
+        mutationTools ++ // RAI-260: structured multi-file edit + single delete
+        stateTools // appended AFTER the coding tools (RAI-094 order)
     )
+
+  /** RAI-260 mutation tools, appended after the six coding tools and before the
+    * opt-in state tools. A `def` (not a `val`): the tool vals are declared
+    * later in the class body, and a val here would capture nulls.
+    */
+  private def mutationTools: List[Tool] = List(fsPatchMultiT, fsDeleteT)
 
   // ---- fs_read ----
   private def fsReadInvoke(
@@ -134,9 +167,11 @@ final class CodingToolset private (
       case Left(err) =>
         ZIO.fail(RaiderError.InputValidation(s"fs_edit args: ${err.take(120)}"))
       case Right(a) =>
-        edit
-          .write(a.path, a.content, a.expected_sha256)
-          .map(raider.tools.CodingToolset.encodeEdit)
+        mutationLock.withPermit {
+          edit
+            .write(a.path, a.content, a.expected_sha256)
+            .map(raider.tools.CodingToolset.encodeEdit)
+        }
 
   private def fsPatchInvoke(
       argumentsJson: String
@@ -147,9 +182,56 @@ final class CodingToolset private (
           RaiderError.InputValidation(s"fs_patch args: ${err.take(120)}")
         )
       case Right(a) =>
-        patch
-          .apply(a.path, a.diff, a.expected_sha256)
-          .map(raider.tools.CodingToolset.encodeEdit)
+        mutationLock.withPermit {
+          patch
+            .apply(a.path, a.diff, a.expected_sha256)
+            .map(raider.tools.CodingToolset.encodeEdit)
+        }
+
+  // ---- fs_patch_multi (RAI-260) ----
+  private def fsPatchMultiInvoke(
+      argumentsJson: String
+  ): ZIO[Scope, RaiderError, String] =
+    argumentsJson.fromJson[CodingToolset.FsPatchMultiArgs] match
+      case Left(err) =>
+        ZIO.fail(
+          RaiderError.InputValidation(
+            s"fs_patch_multi args: ${err.take(120)}"
+          )
+        )
+      case Right(a) =>
+        // RAI-260 cancellation contract: the whole staged apply (validation +
+        // commit) runs as ONE uninterruptible region — a cancelled caller is
+        // deferred to the tool boundary and the workspace is left either
+        // pristine or fully applied, never partially patched. Best-effort
+        // restore is in-memory (no journal); the trust-boundary rule against
+        // claiming exactly-once/durable resume applies.
+        mutationLock.withPermit {
+          ZIO.uninterruptible {
+            patch
+              .applyAll(a.diff, a.expected_sha256)
+              .map(CodingToolset.encodeMultiPatch)
+          }
+        }
+
+  // ---- fs_delete (RAI-260) ----
+  private def fsDeleteInvoke(
+      argumentsJson: String
+  ): ZIO[Scope, RaiderError, String] =
+    argumentsJson.fromJson[CodingToolset.FsDeleteArgs] match
+      case Left(err) =>
+        ZIO.fail(
+          RaiderError.InputValidation(s"fs_delete args: ${err.take(120)}")
+        )
+      case Right(a) =>
+        // Single unlink is atomic; the permit serializes it against the other
+        // structured mutations (stale provenance fails closed — see the
+        // class scaladoc).
+        mutationLock.withPermit {
+          delete
+            .delete(a.path, a.expected_sha256)
+            .map(CodingToolset.encodeDelete)
+        }
 
   private def fsTreeInvoke(
       argumentsJson: String
@@ -210,9 +292,16 @@ final class CodingToolset private (
   // enforcement (PlanMode.of surface narrowing + AgentLoop.enforceReadOnly)
   // consumes exactly this field, so every stamp must match the canonical
   // RecoveryTaxonomy membership (raider.runtime.lineage.model): exec/write
-  // tools (proc_run, fs_edit, fs_patch) are Mutating; pure reads
-  // (fs_read, fs_search, fs_tree) stay ReadOnly. A wrong stamp here lets a
-  // mutating tool through the plan phase (the escalated defect).
+  // tools (proc_run, fs_edit, fs_patch, fs_patch_multi, fs_delete) are
+  // Mutating; pure reads (fs_read, fs_search, fs_tree) stay ReadOnly. A wrong
+  // stamp here lets a mutating tool through the plan phase (the escalated
+  // defect).
+  //
+  // RAI-260 note (disclosed limitation): the canonical `RecoveryTaxonomy`
+  // predates `fs_patch_multi`/`fs_delete` and still classifies unknown names
+  // as ReadOnly until a separate lineage card extends it. The stamps HERE are
+  // the operative policy (AgentLoop consumes this field); the taxonomy gap is
+  // tracked for the follow-up card and recorded in the RAI-260 work record.
   private val fsReadT = toolOf(
     "fs_read",
     "Read a text file inside the workspace (bounded, with sha256).",
@@ -259,6 +348,28 @@ final class CodingToolset private (
     fsPatchInvoke
   )
 
+  private val FsPatchMultiSchemaStr =
+    "{\"type\":\"object\",\"properties\":{\"diff\":{\"type\":\"string\",\"description\":\"multi-file git-style diff ('diff --git' sections) to apply atomically\"},\"expected_sha256\":{\"type\":\"object\",\"additionalProperties\":{\"type\":\"string\"},\"description\":\"map of relative path to current SHA-256 (required for modified and deleted files; fs_read provides it)\"}},\"required\":[\"diff\",\"expected_sha256\"]}"
+
+  private val fsPatchMultiT = toolOf(
+    "fs_patch_multi",
+    "Apply a multi-file git-style diff atomically (all files or none; per-file diagnostics in the report; requires expected_sha256 per modified/deleted file).",
+    FsPatchMultiSchemaStr,
+    RecoveryClass.Mutating,
+    fsPatchMultiInvoke
+  )
+
+  private val FsDeleteSchemaStr =
+    "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"relative path of the file to delete\"},\"expected_sha256\":{\"type\":\"string\",\"description\":\"SHA-256 of current content (fs_read provides it)\"}},\"required\":[\"path\",\"expected_sha256\"]}"
+
+  private val fsDeleteT = toolOf(
+    "fs_delete",
+    "Delete exactly one regular file (atomic; requires expected_sha256 from fs_read; directories are refused).",
+    FsDeleteSchemaStr,
+    RecoveryClass.Mutating,
+    fsDeleteInvoke
+  )
+
   private val FsTreeSchemaStr =
     "{\"type\":\"object\",\"properties\":{\"depth\":{\"type\":\"integer\",\"description\":\"max depth (default 3, max 5)\"},\"glob\":{\"type\":\"string\",\"description\":\"file glob filter e.g. *.scala\"}},\"required\":[]}"
 
@@ -293,8 +404,23 @@ object CodingToolset:
       process = new ProcessTool(ws)
       edit = new raider.tools.files.edit.EditTool(ws)
       patch = new raider.tools.files.edit.PatchTool(ws)
+      delete = new raider.tools.files.edit.DeleteTool(ws)
+      // RAI-260: one permit serializes the four structured file mutation
+      // tools (fs_edit, fs_patch, fs_patch_multi, fs_delete) — see the class
+      // scaladoc for the concurrency contract.
+      mutationLock <- Semaphore.make(1)
       tree = new raider.tools.files.TreeTool(ws)
-    yield new CodingToolset(read, search, process, edit, patch, tree, state)
+    yield new CodingToolset(
+      read,
+      search,
+      process,
+      edit,
+      patch,
+      tree,
+      delete,
+      mutationLock,
+      state
+    )
 
   // ---- args wires ----
   private final case class FsReadArgs(
@@ -332,6 +458,24 @@ object CodingToolset:
 
   private object FsPatchArgs:
     given JsonDecoder[FsPatchArgs] = DeriveJsonDecoder.gen[FsPatchArgs]
+
+  private final case class FsPatchMultiArgs(
+      diff: String,
+      expected_sha256: Map[String, String]
+  )
+
+  private object FsPatchMultiArgs:
+
+    given JsonDecoder[FsPatchMultiArgs] =
+      DeriveJsonDecoder.gen[FsPatchMultiArgs]
+
+  private final case class FsDeleteArgs(
+      path: String,
+      expected_sha256: String
+  )
+
+  private object FsDeleteArgs:
+    given JsonDecoder[FsDeleteArgs] = DeriveJsonDecoder.gen[FsDeleteArgs]
 
   private final case class FsTreeArgs(
       depth: Option[Int] = None,
@@ -376,5 +520,29 @@ object CodingToolset:
         s"""{"path":${e.path.toJson},"bytes":${e.bytes}}"""
       .mkString("[", ",", "]")
     s"""{"entries":$es,"total":${r.total},"truncated":${r.truncated},"depth":${r.depthUsed}}"""
+
+  /** RAI-260: single-line fs_patch_multi report — the honest applied / failed /
+    * rolledBack / staged shape of [[raider.tools.files.edit.MultiPatchResult]]
+    * (per-file failure carries the stable machine `code` for the JSON
+    * contract). Applied edits reuse the fs_edit action shape.
+    */
+  private[tools] def encodeMultiPatch(
+      r: raider.tools.files.edit.MultiPatchResult
+  ): String =
+    val applied = r.applied.map(encodeEdit).mkString("[", ",", "]")
+    val failed = r.failed
+      .map: f =>
+        s"""{"file":${f.file.toJson},"code":${f.code.toJson},"reason":${f.reason.toJson}}"""
+      .mkString("[", ",", "]")
+    val staged = r.staged.map(_.toJson).mkString("[", ",", "]")
+    s"""{"applied":$applied,"failed":$failed,"rolledBack":${r.rolledBack},"staged":$staged}"""
+
+  /** RAI-260: single-line fs_delete report — provenance of what was removed
+    * (the sha256 the deletion was validated against, and the removed bytes).
+    */
+  private[tools] def encodeDelete(
+      r: raider.tools.files.edit.DeleteResult
+  ): String =
+    s"""{"action":"deleted","path":${r.path.toJson},"old_sha256":${r.oldSha256.toJson},"bytes":${r.bytes}}"""
 
 end CodingToolset

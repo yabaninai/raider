@@ -30,7 +30,8 @@ import java.time.Duration as JDuration
   */
 final class OpenAIChatBackend private (
     cfg: OpenAIChatBackend.Config,
-    client: HttpClient
+    client: HttpClient,
+    env: Map[String, String]
 ) extends ModelBackend:
 
   override def capabilities: ModelCapabilities =
@@ -53,7 +54,7 @@ final class OpenAIChatBackend private (
           .header("Content-Type", "application/json")
           .POST(HttpRequest.BodyPublishers.ofString(body, UTF_8))
         req = OpenAIChatBackend
-          .extraHeaders()
+          .extraHeaders(env)
           .foldLeft(baseReq)((b, h) => b.header(h._1, h._2))
           .build()
         resp <- ZIO
@@ -112,8 +113,20 @@ object OpenAIChatBackend:
       else Right(Config(trimmed, apiKey, callTimeoutMs))
 
   /** Build with a fresh JDK client (connect timeout mirrors the call timeout).
+    * Header source: the PROCESS environment (production path, unchanged).
     */
   def make(config: Either[RaiderError, Config]): Task[OpenAIChatBackend] =
+    make(config, sys.env)
+
+  /** Same, with the header environment EXPLICIT (RAI-287 seam): lets tests pin
+    * RAIDER_OPENAI_EXTRA_HEADERS hermetically without mutating the process
+    * environment. Production callers use the single-arg overload; the wire and
+    * error mapping are identical either way.
+    */
+  def make(
+      config: Either[RaiderError, Config],
+      env: Map[String, String]
+  ): Task[OpenAIChatBackend] =
     config match
       case Left(err) => ZIO.fail(err)
       case Right(cfg) =>
@@ -122,15 +135,15 @@ object OpenAIChatBackend:
             .newBuilder()
             .connectTimeout(JDuration.ofMillis(cfg.callTimeoutMs))
             .build()
-          new OpenAIChatBackend(cfg, client)
+          new OpenAIChatBackend(cfg, client, env)
 
   /** Operator opt-in (ADR-026 sibling): per-request extra HTTP headers for
     * gateway attribution, e.g. RAIDER_OPENAI_EXTRA_HEADERS='X-Yabanin-Labels:
     * task=RAI-003,worker=A'. Entries are "Name: value" separated by ';'.
     * Default: none — the wire stays unchanged.
     */
-  private def extraHeaders(): List[(String, String)] =
-    sys.env
+  private def extraHeaders(env: Map[String, String]): List[(String, String)] =
+    env
       .get("RAIDER_OPENAI_EXTRA_HEADERS")
       .map(_.trim)
       .filter(_.nonEmpty)

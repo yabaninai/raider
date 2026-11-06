@@ -14,6 +14,8 @@ import zio.ZIO
 import java.net.{InetAddress, InetSocketAddress}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
+import java.util.concurrent.CopyOnWriteArrayList
+import scala.jdk.CollectionConverters.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 
 /** RAI-154 (WIR-01): the headless CODER agent delegates through the PRODUCT
@@ -64,14 +66,20 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
       .headOption
       .getOrElse("j_missing")
 
-  /** Content-routed delegation policy:
-    *   - child loops (model `scripted:scout`) answer with text;
+  /** Content-routed delegation policy (RAI-257: the child is recognized by its
+    * CONTENT — the single delegated-input message — never by a model-string
+    * prefix; the stand records every request's model id and REQUIRES the
+    * configured model from BOTH the campaign and the delegated child, refusing
+    * any other id with a modeling error):
+    *   - child loops (single-message `find x` request) answer with text;
     *   - the campaign's first turn issues `delegate`;
     *   - after the delegate result it issues `await_agent` for the REAL child
     *     id;
     *   - after the await result it finishes with text quoting the child.
     */
-  private def startStand(): (String, HttpServer) =
+  private def startStand()
+      : (String, HttpServer, CopyOnWriteArrayList[ReqWire]) =
+    val requests = new CopyOnWriteArrayList[ReqWire]()
     val server = HttpServer.create(
       new InetSocketAddress(InetAddress.getLoopbackAddress, 0),
       0
@@ -96,8 +104,19 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
                 case Left(_) =>
                   reply(400, """{"error":{"message":"bad request"}}""")
                 case Right(req) =>
+                  requests.add(req)
                   val results = toolResults(req)
-                  if req.model.startsWith("scripted:") then
+                  val childTurn =
+                    req.messages.size == 1 &&
+                      req.messages.head.content == "find x"
+                  if req.model != "stand-model" then
+                    // RAI-257: the stand requires the configured model from
+                    // every caller — parent AND delegated child
+                    reply(
+                      400,
+                      s"""{"error":{"message":"model ${req.model} not deployed; expected stand-model"}}"""
+                    )
+                  else if childTurn then
                     // the child loop's single turn
                     reply(
                       200,
@@ -144,7 +163,7 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
         finally exchange.close()
     )
     server.start()
-    (s"http://127.0.0.1:${server.getAddress.getPort}/v1", server)
+    (s"http://127.0.0.1:${server.getAddress.getPort}/v1", server, requests)
 
   private def coderArgs(out: Path, ws: Path, baseUrl: String) =
     CliArgs
@@ -188,6 +207,7 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
         ZIO.succeed(h._2.stop(0))
       ) { stand =>
         val baseUrl = stand._1
+        val requests = stand._3
         ZIO.scoped {
           for
             work <- ZIO
@@ -293,50 +313,71 @@ object CoderDelegationRunSpec extends ZIOSpecDefault:
               campaignTerminalIdx,
               wire
             ) = checked
-          yield assertTrue(
-            outcome.exitCode == 0,
-            outcome.result.exists(r =>
-              r.output.exists(_.json.contains("child reported: found x"))
-            ),
-            // the child REALLY ran: correlated v2 envelopes joined
-            childLines.nonEmpty,
-            childLines.forall(_.schemaVersion == 2),
-            childLines.exists(_.payload match {
-              case LineagePayload.Frozen(EventPayload.Terminal(_)) => true
-              case _                                               => false
-            }),
-            // exactly ONE canonical fork record, in the campaign stream,
-            // verbatim agent
-            forkRecords.size == 1,
-            forkRecords.headOption.map(_._1) == Some(campaignId),
-            forkRecords.headOption.map(_._3) == Some("scout"),
-            !childLines.exists(_.payload match {
-              case LineagePayload.Frozen(EventPayload.Delegated(_, _)) => true
-              case _                                                   => false
-            }),
-            // exactly ONE provenance record, immediately before the campaign
-            // Terminal, root run (parentRunId absent — never guessed)
-            provenance.isDefined,
-            provenance.map(_._1.jobId.value) == Some(campaignId),
-            provenance.map(_._2.parentRunId) == Some(None),
-            provenance.map(le => wire.indexOf(le._1)) ==
-              Some(campaignTerminalIdx - 1),
-            // ONE tree, strictly reduced, delegation node anchored in the
-            // campaign stream (single-level anchoring), stable 64-hex hash
-            reduction.isRight,
-            delegationNode.exists(d => d.id.value.startsWith(campaignId)),
-            reduction.map(red => GraphHash(red.graph).length) == Right(64),
-            // the unified lineage-data: SCHEMAVERSION 2 with the provenance
-            data.isRight,
-            data.map(_.schemaVersion) == Right(2),
-            data.map(_.provenance.isDefined) == Right(true),
-            dataRaw.contains("\"provenance\""),
-            Files.isRegularFile(dir.resolve("lineage.scala")),
-            summary.contains("- lineage: graph "),
-            summary.contains(
-              "- lineage artifacts: lineage.scala, lineage-data.json (schemaVersion 2)"
+          yield
+            // RAI-257: the recorded provider requests — the child turn is the
+            // single-message `find x` request (content-based, never a
+            // model-string prefix); the stand REFUSES any non-configured
+            // model id, so the child could only succeed by requesting
+            // `stand-model`
+            val recorded = requests.asScala.toList
+            val childReqs =
+              recorded.filter(r =>
+                r.messages.size == 1 && r.messages.head.content == "find x"
+              )
+            val parentReqs = recorded.filterNot(r =>
+              r.messages.size == 1 && r.messages.head.content == "find x"
             )
-          )
+            assertTrue(
+              outcome.exitCode == 0,
+              outcome.result.exists(r =>
+                r.output.exists(_.json.contains("child reported: found x"))
+              ),
+              // RAI-257: the child reached the live-style stand under the
+              // CONFIGURED model (the `scripted:scout` label never goes on
+              // the wire)
+              childReqs.nonEmpty,
+              childReqs.forall(_.model == "stand-model"),
+              parentReqs.nonEmpty,
+              parentReqs.forall(_.model == "stand-model"),
+              // the child REALLY ran: correlated v2 envelopes joined
+              childLines.nonEmpty,
+              childLines.forall(_.schemaVersion == 2),
+              childLines.exists(_.payload match {
+                case LineagePayload.Frozen(EventPayload.Terminal(_)) => true
+                case _                                               => false
+              }),
+              // exactly ONE canonical fork record, in the campaign stream,
+              // verbatim agent
+              forkRecords.size == 1,
+              forkRecords.headOption.map(_._1) == Some(campaignId),
+              forkRecords.headOption.map(_._3) == Some("scout"),
+              !childLines.exists(_.payload match {
+                case LineagePayload.Frozen(EventPayload.Delegated(_, _)) => true
+                case _ => false
+              }),
+              // exactly ONE provenance record, immediately before the campaign
+              // Terminal, root run (parentRunId absent — never guessed)
+              provenance.isDefined,
+              provenance.map(_._1.jobId.value) == Some(campaignId),
+              provenance.map(_._2.parentRunId) == Some(None),
+              provenance.map(le => wire.indexOf(le._1)) ==
+                Some(campaignTerminalIdx - 1),
+              // ONE tree, strictly reduced, delegation node anchored in the
+              // campaign stream (single-level anchoring), stable 64-hex hash
+              reduction.isRight,
+              delegationNode.exists(d => d.id.value.startsWith(campaignId)),
+              reduction.map(red => GraphHash(red.graph).length) == Right(64),
+              // the unified lineage-data: SCHEMAVERSION 2 with the provenance
+              data.isRight,
+              data.map(_.schemaVersion) == Right(2),
+              data.map(_.provenance.isDefined) == Right(true),
+              dataRaw.contains("\"provenance\""),
+              Files.isRegularFile(dir.resolve("lineage.scala")),
+              summary.contains("- lineage: graph "),
+              summary.contains(
+                "- lineage artifacts: lineage.scala, lineage-data.json (schemaVersion 2)"
+              )
+            )
         }
       }
     }

@@ -13,6 +13,27 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$HERE/lib.sh"
 
+# RAI-238: crash-path stand cleanup (same contract as run-all.sh): the EXIT
+# trap always runs a best-effort stop_stands so an abort under `set -e` or an
+# INT/TERM signal cannot leak a started stand (RAI-229 crash-path gap). A stop
+# failure inside the trap is diagnosed (WARN) and never masks the driver's
+# original exit code; the budget evidence flow below is unchanged and stays
+# before any exit-code propagation. stop_stands is idempotent (no double-kill
+# of stands the normal path already stopped).
+xe_cleanup() {
+  local rc=$?
+  trap - EXIT INT TERM
+  local stop_rc=0
+  stop_stands || stop_rc=$?
+  if [ "$stop_rc" -ne 0 ]; then
+    log "WARN: EXIT-trap stop_stands failed (rc=$stop_rc); preserving original exit code $rc"
+  fi
+  exit "$rc"
+}
+trap xe_cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 BUDGET_OUT="$ROOT/artifacts/xe-budget"
 rm -rf "$BUDGET_OUT"
 mkdir -p "$BUDGET_OUT/ws" "$BUDGET_OUT/run"

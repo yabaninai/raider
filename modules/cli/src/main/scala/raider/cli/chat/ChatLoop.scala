@@ -216,8 +216,11 @@ object ChatLoop:
                   }
             )
         case None => ZIO.unit
-      // single-sourced coder prompt (raider.cli.CoderPrompts, Phase 4.3)
-      sysPrompt = Some(CoderPrompts.CoderSystemPrompt)
+      // single-sourced coder prompt (raider.cli.CoderPrompts, Phase 4.3);
+      // RAI-269: composed at the CONFIGURED workspace root — the same wsPath
+      // handed to the toolset above (write-policy parity), CWD when no
+      // --workspace is given
+      sysPrompt = Some(CoderPrompts.CoderSystemPrompt(Paths.get(wsPath)))
       loop <- ZIO.succeed(
         AgentLoop(
           backend,

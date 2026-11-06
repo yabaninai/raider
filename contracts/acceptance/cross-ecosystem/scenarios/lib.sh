@@ -26,11 +26,17 @@ L4J_DEPS="$M2/dev/langchain4j/langchain4j-core/1.22.0/langchain4j-core-1.22.0.ja
 L4J_CP="$XE/classes-l4j:$L4J_DEPS"
 
 declare -a STAND_PIDS=()
+declare -a STAND_LSTARTS=()
 
 # -- stand stop policy (RAI-229): every registered stand pid gets SIGTERM, a
 # bounded wait, then a bounded SIGKILL escalation. A stand that survives both
 # is an honest FAILURE of stop_stands (nonzero rc + diagnostic), never a
 # masked `|| true`. Bounds are whole seconds, overridable for drills.
+# RAI-237: registrations additionally pin the process start time (lstart) at
+# spawn; every signal is preceded by an identity re-check (command + lstart)
+# so a recycled pid is never signalled. Stale pidfiles left by a prior
+# crashed run are swept when this file is sourced, before a driver wipes
+# $OUT (see sweep_stale_stands at the bottom).
 XE_STOP_TERM_TIMEOUT="${XE_STOP_TERM_TIMEOUT:-10}"
 XE_STOP_KILL_TIMEOUT="${XE_STOP_KILL_TIMEOUT:-5}"
 
@@ -57,16 +63,23 @@ compile_all() {
 # start_stand usually runs inside a command substitution subshell, so the
 # in-memory STAND_PIDS array does not reach the driver shell. stop_stands
 # reads the pidfiles; a missing/malformed pidfile is diagnosed, not silently
-# passed (RAI-229).
+# passed (RAI-229). Pidfile format: "<pid>|<lstart>" — the process start time
+# pinned at spawn, so stops can refuse recycled pids (RAI-237). A bare "<pid>"
+# line (legacy format) parses as an unpinned registration.
 start_stand() {
   local name="$1"; shift
   local sout="$OUT/stand-$name.out" serr="$OUT/stand-$name.err" slog="$OUT/stand-$name.log"
   mkdir -p "$OUT"
   : > "$slog"
   java -cp "$XE/classes:$SCALA_LIB" Stand --key "$STAND_KEY" --log "$slog" "$@" > "$sout" 2> "$serr" &
-  local pid=$!
+  local pid=$! lstart
+  lstart="$(ps -p "$pid" -o lstart= 2>/dev/null || true)"
   STAND_PIDS+=("$pid")
-  printf '%s\n' "$pid" > "$OUT/stand-$name.pid"
+  STAND_LSTARTS+=("$lstart")
+  if [ -z "$lstart" ]; then
+    log "WARN: start_stand: could not pin lstart for pid=$pid; TOCTOU pinning unavailable for this registration (command guard only)"
+  fi
+  printf '%s|%s\n' "$pid" "$lstart" > "$OUT/stand-$name.pid"
   local port=""
   for _ in $(seq 1 100); do
     port=$(grep -o 'PORT=[0-9]*' "$sout" 2>/dev/null | head -1 | cut -d= -f2 || true)
@@ -108,8 +121,21 @@ xe_stop_wait_exit() {
 # (drops the zombie); a non-child pid just yields wait's 127, ignored.
 xe_reap() { wait "$1" 2>/dev/null || true; }
 
-stop_one_stand() { # <pid>
-  local pid="$1" cmd
+# xe_stop_lstart_ok <pid> <pinned-lstart> : rc 0 when the registration is
+# unpinned (no lstart captured) or the pid's current process start time still
+# equals the pinned one. A mismatch means the registered stand exited and the
+# pid was recycled by a different process — that pid must NEVER be signalled
+# (RAI-237 TOCTOU guard; lstart format is locale-dependent, so both reads
+# happen under the same environment within a driver run).
+xe_stop_lstart_ok() {
+  [ -n "$2" ] || return 0
+  local cur
+  cur="$(ps -p "$1" -o lstart= 2>/dev/null || true)"
+  [ "$cur" = "$2" ]
+}
+
+stop_one_stand() { # <pid> [pinned-lstart]
+  local pid="$1" lstart="${2:-}" cmd cur
   case "$pid" in
     ''|*[!0-9]*)
       log "ERROR: stop_stands: invalid stand pid entry '$pid' (stand was not registered correctly)"
@@ -120,8 +146,8 @@ stop_one_stand() { # <pid>
     xe_reap "$pid"
     return 0
   fi
-  # Identity guard: only signal a process that is actually a registered Stand.
-  # Protects against signaling a recycled pid (e.g. another checkout's process).
+  # Identity guard 1 (RAI-229): only signal a process that is actually a
+  # registered Stand. Protects against non-Stand occupants of a pid.
   cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
   case "$cmd" in
     *Stand*) : ;;
@@ -129,6 +155,15 @@ stop_one_stand() { # <pid>
       log "ERROR: stop_stands: pid=$pid is not a Stand process (cmd: '${cmd:-unavailable}'); refusing to signal a foreign process"
       return 1 ;;
   esac
+  # Identity guard 2 (RAI-237, pre-SIGTERM): with a pinned lstart, refuse a
+  # pid whose start time changed — the registered stand is gone and the pid
+  # was recycled (possibly by another checkout's Stand, which guard 1 alone
+  # would not catch).
+  if ! xe_stop_lstart_ok "$pid" "$lstart"; then
+    cur="$(ps -p "$pid" -o lstart= 2>/dev/null || true)"
+    log "ERROR: stop_stands: pid=$pid lstart mismatch (pinned '${lstart}', current '${cur:-gone}'); refusing to signal a recycled pid"
+    return 1
+  fi
   log "stopping stand pid=$pid (SIGTERM, wait bound ${XE_STOP_TERM_TIMEOUT}s)"
   kill -TERM "$pid" 2>/dev/null || true
   if xe_stop_wait_exit "$pid" "$XE_STOP_TERM_TIMEOUT"; then
@@ -137,6 +172,18 @@ stop_one_stand() { # <pid>
     return 0
   fi
   log "WARN: stand pid=$pid still alive ${XE_STOP_TERM_TIMEOUT}s after SIGTERM; escalating to SIGKILL (wait bound ${XE_STOP_KILL_TIMEOUT}s)"
+  # Identity re-verification before SIGKILL (RAI-237: verify before EACH
+  # signal — the TERM wait is a wide TOCTOU window).
+  if ! xe_stop_alive "$pid"; then
+    xe_reap "$pid"
+    log "stand pid=$pid exited after SIGTERM (verified before SIGKILL)"
+    return 0
+  fi
+  if ! xe_stop_lstart_ok "$pid" "$lstart"; then
+    cur="$(ps -p "$pid" -o lstart= 2>/dev/null || true)"
+    log "ERROR: stop_stands: pid=$pid lstart mismatch before SIGKILL (pinned '${lstart}', current '${cur:-gone}'); refusing to signal a recycled pid"
+    return 1
+  fi
   kill -KILL "$pid" 2>/dev/null || true
   if xe_stop_wait_exit "$pid" "$XE_STOP_KILL_TIMEOUT"; then
     xe_reap "$pid"
@@ -148,43 +195,62 @@ stop_one_stand() { # <pid>
 }
 
 stop_stands() {
-  local rc=0 pid count=0 pidfile
+  local rc=0 pid lstart count=0 pidfile line i
+  # RAI-237: a MISSING/unreadable $OUT is not the same as an empty registry.
+  # The pidfile evidence of registered stands may have been wiped (e.g. a
+  # crashed consumer removed the artifacts tree before the stop ran); that is
+  # diagnosed (WARN + rc 1), never silently treated as "nothing to stop".
+  if [ ! -d "$OUT" ] || [ ! -r "$OUT" ]; then
+    log "WARN: stop_stands: \$OUT '$OUT' is missing or unreadable (already wiped?); pidfile registrations cannot be read; failing honestly"
+    rc=1
+  fi
   # Authoritative source: pidfiles written by start_stand (durable across the
   # command-substitution subshell boundary). Pidfile scope is this checkout's
   # $OUT, so concurrent runs in separate checkouts never cross-kill; the
-  # identity guard in stop_one_stand additionally refuses recycled pids.
+  # identity guards in stop_one_stand additionally refuse non-Stand and
+  # recycled (lstart-mismatched) pids.
   for pidfile in "$OUT"/stand-*.pid; do
     [ -e "$pidfile" ] || continue
-    pid="$(cat "$pidfile" 2>/dev/null || true)"
+    line="$(cat "$pidfile" 2>/dev/null || true)"
+    pid="${line%%|*}"
+    lstart=""
+    case "$line" in *"|"?*) lstart="${line#*|}" ;; esac
     case "$pid" in
       ''|*[!0-9]*)
-        log "ERROR: stop_stands: malformed pidfile $pidfile (content: '${pid:-<empty>}'); diagnosing, not silently passing"
+        log "ERROR: stop_stands: malformed pidfile $pidfile (content: '${line:-<empty>}'); diagnosing, not silently passing"
         rc=1
         continue ;;
     esac
     count=$((count + 1))
-    if stop_one_stand "$pid"; then
+    if stop_one_stand "$pid" "$lstart"; then
       rm -f "$pidfile"
     else
       log "ERROR: stop_stands: pidfile $pidfile retained for post-mortem (stand pid=$pid not cleanly stopped)"
       rc=1
     fi
   done
-  # In-memory entries (direct registration, e.g. drills) are also honored;
-  # stop_one_stand is idempotent for pids already stopped via pidfiles.
+  # In-memory entries (direct registration, e.g. drills) are also honored,
+  # paired by index with their pinned lstart (unpinned when a drill registers
+  # a bare pid); stop_one_stand is idempotent for pids already stopped via
+  # pidfiles.
   if [ "${#STAND_PIDS[@]}" -gt 0 ]; then
+    i=0
     for pid in "${STAND_PIDS[@]}"; do
+      lstart="${STAND_LSTARTS[i]:-}"
       case "$pid" in
         ''|*[!0-9]*)
           log "ERROR: stop_stands: invalid stand pid entry '$pid' (stand was not registered correctly)"
           rc=1
+          i=$((i + 1))
           continue ;;
       esac
       count=$((count + 1))
-      stop_one_stand "$pid" || rc=1
+      stop_one_stand "$pid" "$lstart" || rc=1
+      i=$((i + 1))
     done
   fi
   STAND_PIDS=()
+  STAND_LSTARTS=()
   # Review finding 1 (RAI-229 fixup): the rc of diagnosed-but-unstoppable
   # registrations (malformed pidfile / invalid pid entry with count==0) must
   # not be swallowed by the "nothing to stop" early return; return "$rc"
@@ -193,10 +259,81 @@ stop_stands() {
     log "stop_stands: no stand pidfiles or registered pids found (nothing to stop)"
   fi
   if [ "$rc" -ne 0 ]; then
-    log "ERROR: stop_stands: processed $count stand pid(s), at least one did not terminate cleanly; failing honestly"
+    log "ERROR: stop_stands: processed $count stand pid(s), at least one registration did not terminate cleanly (or the registry was unreadable); failing honestly"
   fi
   return "$rc"
 }
+
+# sweep_stale_stands (RAI-237): stop stands left behind by a PRIOR crashed
+# run, using only the pidfile registry in $OUT as evidence. Runs when this
+# file is sourced, BEFORE a driver wipes $OUT (run-all.sh does
+# `rm -rf "$OUT"/*` immediately after sourcing), so the evidence cannot be
+# destroyed while the stale stand leaks. Semantics per entry:
+#   - pid exited            -> stale pidfile removed (converged, idempotent)
+#   - live registered Stand -> stopped (bounded TERM -> KILL), pidfile removed
+#   - recycled/malformed    -> diagnosed WARN, pidfile removed, NEVER signalled
+#   - survived SIGKILL      -> pidfile RETAINED, sweep rc 1 (actionable evidence)
+# The sweep is best-effort and idempotent: a failure is loud but must not
+# block a fresh run; the strict stop contract stays in stop_stands.
+sweep_stale_stands() {
+  local rc=0 pid lstart line pidfile cmd cur keep
+  [ -d "$OUT" ] || return 0
+  if [ ! -r "$OUT" ]; then
+    log "WARN: sweep_stale_stands: \$OUT '$OUT' is unreadable; cannot sweep stale pidfiles"
+    return 1
+  fi
+  for pidfile in "$OUT"/stand-*.pid; do
+    [ -e "$pidfile" ] || continue
+    line="$(cat "$pidfile" 2>/dev/null || true)"
+    pid="${line%%|*}"
+    lstart=""
+    case "$line" in *"|"?*) lstart="${line#*|}" ;; esac
+    case "$pid" in
+      ''|*[!0-9]*)
+        log "WARN: sweep_stale_stands: malformed stale pidfile $pidfile (content: '${line:-<empty>}'); removing unresolvable evidence, nothing signalled"
+        rm -f "$pidfile"
+        continue ;;
+    esac
+    if ! xe_stop_alive "$pid"; then
+      log "sweep_stale_stands: stale pidfile $pidfile (pid=$pid already exited); removing"
+      xe_reap "$pid"
+      rm -f "$pidfile"
+      continue
+    fi
+    if stop_one_stand "$pid" "$lstart"; then
+      rm -f "$pidfile"
+      log "sweep_stale_stands: stopped stale stand pid=$pid (evidence: $pidfile); pidfile removed"
+    else
+      # Classify the refusal: only a STILL-LIVE process that still matches the
+      # registered identity (a Stand that survived SIGKILL) is kept as
+      # retained evidence; any other refusal means the registered stand is
+      # gone and the pidfile is unresolvable — removed, never signalled.
+      keep=0
+      if xe_stop_alive "$pid"; then
+        cmd="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+        case "$cmd" in
+          *Stand*) xe_stop_lstart_ok "$pid" "$lstart" && keep=1 ;;
+        esac
+      fi
+      if [ "$keep" -eq 1 ]; then
+        log "ERROR: sweep_stale_stands: stale stand pid=$pid survived the stop; pidfile $pidfile retained for post-mortem"
+        rc=1
+      else
+        log "WARN: sweep_stale_stands: stale pidfile $pidfile is unresolvable (pid=$pid is not the registered stand); removed without signalling"
+        rm -f "$pidfile"
+      fi
+    fi
+  done
+  return "$rc"
+}
+
+# RAI-237: run the stale-stand sweep when this file is sourced. Failures are
+# loud (WARN with the rc) but never block a fresh run. XE_NO_SOURCE_SWEEP=1
+# opts out for drills that must exercise stop_stands against a pre-planted
+# registry (production drivers never set it).
+if [ -z "${XE_NO_SOURCE_SWEEP:-}" ]; then
+  sweep_stale_stands || log "WARN: sweep_stale_stands: unresolved stale stand evidence remains (rc=$?); continuing best-effort"
+fi
 
 run_llm4s() { # <manifest> <scenarios> [stand-port]
   local manifest="$1" scenarios="$2" port="${3:-}"

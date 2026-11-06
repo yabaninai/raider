@@ -4,14 +4,14 @@ import raider.runtime.loop.AgentLoop
 
 import raider.core.*
 import raider.runtime.admission.Admission
-import raider.runtime.budget.BudgetLimits
+import raider.runtime.budget.{AggregateRunCeiling, BudgetLimits}
 import raider.runtime.jobs.{JobHandle, JobManager, JobStatus}
 import raider.runtime.mailbox.{Ack, Mailbox, MailboxError, Message}
 import zio.{Chunk, Duration, Fiber, IO, Promise, Scope, UIO, ZIO}
 import zio.json.{DecoderOps, EncoderOps}
 
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.jdk.CollectionConverters.*
 
 /** Model-callable delegation tools (runtime-contracts §11, LOOP-01/W09):
@@ -80,6 +80,14 @@ import scala.jdk.CollectionConverters.*
   * invocation, via a scope finalizer, so an orphaned child always settles). The
   * child's own stream is therefore always
   * `… Delegated(seq n) → Terminal(seq n+1)`.
+  *
+  * RAI-257 model propagation: the child's provider request carries the PARENT'S
+  * CONFIGURED MODEL (`defaultChildModel`) unless the delegate args explicitly
+  * override it (`DelegateArgs.model`). The historical `scripted:<agent>` label
+  * is kept EXCLUSIVELY for the scripted backend — recognized by the
+  * `ScriptedModel` sentinel, the same rule as the REPL facade
+  * (`FacadeOps.textAttemptMessages`) — so the scripted corpus stays
+  * byte-compatible and a live backend never dispatches a test model id.
   */
 final class DelegationToolset private (
     jobs: JobManager,
@@ -92,7 +100,14 @@ final class DelegationToolset private (
     defaultChildDeadline: Option[Duration],
     deadlineGrace: Duration,
     delegationEvents: Option[DelegationEvents] = None,
-    mailboxCapacity: Int = DelegationToolset.DefaultMailboxCapacity
+    mailboxCapacity: Int = DelegationToolset.DefaultMailboxCapacity,
+    // RAI-257: the delegating parent's configured model; the sentinel
+    // `ScriptedModel` preserves the historical `scripted:<agent>` child label
+    defaultChildModel: String = DelegationToolset.ScriptedModel,
+    // RAI-258: the run's aggregate ceilings (token/dispatch/deadline), shared
+    // with the root loop; `None` = no aggregate enforcement (historical
+    // behavior, byte-identical wiring)
+    aggregate: Option[AggregateRunCeiling] = None
 ):
 
   /** RAI-059: failure-absorbing child-completion emission (see
@@ -121,6 +136,20 @@ final class DelegationToolset private (
     new ConcurrentHashMap[String, Fiber.Runtime[Nothing, Unit]]()
 
   private val deadlineWatchers =
+    new ConcurrentHashMap[
+      String,
+      Promise[Nothing, DelegationToolset.DeadlineOutcome]
+    ]()
+
+  // RAI-258: the aggregate-ceiling watcher is forked ONCE, at the first
+  // successful spawn; it races the run deadline against `awaitTripped` and
+  // then cancels every live child out-of-band.
+  private val aggregateWatchStarted = new AtomicBoolean(false)
+
+  // RAI-258: honest per-child outcomes of the AGGREGATE-ceiling cancellation
+  // (kept separate from the RAI-063 per-child deadline watchers — the two
+  // cancellation paths must not overwrite each other's outcomes).
+  private val ceilingOutcomes =
     new ConcurrentHashMap[
       String,
       Promise[Nothing, DelegationToolset.DeadlineOutcome]
@@ -166,6 +195,11 @@ final class DelegationToolset private (
           )
         else
           for
+            // RAI-258: the run's aggregate ceilings arm the watcher once (it
+            // cancels live children when a ceiling trips or the deadline
+            // elapses) and wrap this child's backend so its dispatches count
+            // against the SAME ledger as the root loop (label `agent#n`).
+            _ <- startAggregateWatch()
             // RAI-073: the child parks on this gate before its task returns,
             // so its settle (Terminal) cannot outrun the Delegated emission
             // below. Interruptibly — cancel/deadline paths are unchanged.
@@ -178,10 +212,22 @@ final class DelegationToolset private (
             // the task parks on it and cannot drain before registration.
             mailboxReady <- Promise.make[Nothing, Mailbox]
             traceRef <- zio.Ref.make(Vector.empty[raider.core.trace.TraceEvent])
+            // RAI-257: explicit delegate-arg override wins; otherwise the
+            // parent's configured model — EXCEPT the scripted sentinel, which
+            // keeps the historical per-agent `scripted:<agent>` label
+            // byte-compatibly (scripted corpus behavior unchanged).
+            childModel = args.model.getOrElse:
+              if defaultChildModel == DelegationToolset.ScriptedModel then
+                s"scripted:${args.agent}"
+              else defaultChildModel
+            childBackend = aggregate match
+              case Some(agg) =>
+                agg.wired(backend, s"${args.agent}#$n")
+              case None => backend
             childLoop = AgentLoop(
-              backend,
+              childBackend,
               baseRegistry,
-              s"scripted:${args.agent}",
+              childModel,
               admission,
               root,
               raider.runtime.budget.CostEstimate.Unknown,
@@ -323,7 +369,7 @@ final class DelegationToolset private (
 
   private val delegateT = toolOf(
     "delegate",
-    "start a child agent; args {\"agent\",\"input\"}",
+    "start a child agent; args {\"agent\",\"input\"} (optional \"model\" overrides the configured model for this child)",
     delegateInvoke
   )
 
@@ -499,6 +545,129 @@ final class DelegationToolset private (
       case None    => ZIO.unit
       case Some(p) => p.succeed(outcome).unit
 
+  // -- RAI-258: aggregate-ceiling enforcement (children side) ----------------
+
+  /** Arms the aggregate-ceiling watcher exactly once (first successful spawn).
+    * Two arms race: the run deadline — sleeping only the time REMAINING since
+    * the ceiling object was built (admission refuses dispatches past it, so
+    * this arm exists to stop children still mid-dispatch) — and the ceiling's
+    * own trip signal, set by ANY admission in the run (token/dispatch trips).
+    * When either fires, every live child is cancelled out-of-band and settles
+    * within the bounded grace. With no run deadline the first arm never fires
+    * and the watcher waits on the trip signal alone.
+    */
+  private def startAggregateWatch(): UIO[Unit] =
+    aggregate match
+      case None => ZIO.unit
+      case Some(agg) =>
+        ZIO
+          .succeed(aggregateWatchStarted.compareAndSet(false, true))
+          .flatMap:
+            case false => ZIO.unit
+            case true  => ceilingWatcher(agg).forkDaemon.unit
+
+  private def ceilingWatcher(agg: AggregateRunCeiling): UIO[Unit] =
+    val deadlineArm = agg.runConfig.deadline match
+      case Some(d) =>
+        ZIO.sleep(agg.remainingDeadline.getOrElse(Duration.Zero)) *>
+          ZIO.succeed(
+            agg.stop(AggregateRunCeiling.CeilingTrip.Deadline(d))
+          )
+      case None => ZIO.never
+    (deadlineArm race agg.awaitTripped).unit *> cancelChildrenForCeiling
+
+  /** RAI-258 ceiling cancellation: cancels every live child DIRECTLY via
+    * `jobs.cancelAny` (no model admission, no model-tool round) and records the
+    * honest per-child outcome — `Settled` (terminal within the grace),
+    * `Uncertain` (not terminal within the grace — unobservable, never a fake
+    * Cancelled), `AlreadyTerminal` (the ceiling fired after the child had
+    * finished). Children that raced another canceller mid-Cancelling keep no
+    * recorded outcome here (that canceller owns it). This path NEVER touches
+    * the RAI-063 per-child deadline watchers.
+    */
+  private def cancelChildrenForCeiling: UIO[Unit] =
+    ZIO.foreachDiscard(children.values.asScala.toList) { h =>
+      for
+        p <- Promise.make[Nothing, DelegationToolset.DeadlineOutcome]
+        _ <- ZIO.succeed(ceilingOutcomes.put(h.id.value, p))
+        cancelled <- jobs.cancelAny(h).timeout(deadlineGrace)
+        _ <- cancelled match
+          case None =>
+            classifyCeiling(h, DelegationToolset.DeadlineOutcome.Uncertain)
+          case Some(false) =>
+            jobs.snapshotAny(h).flatMap { s =>
+              if JobStatus.terminal(s.status) then
+                classifyCeiling(
+                  h.id.value,
+                  DelegationToolset.DeadlineOutcome.AlreadyTerminal
+                )
+              else
+                // raced another canceller mid-Cancelling: it owns the outcome
+                ZIO.unit
+            }
+          case Some(true) =>
+            jobs.awaitSettled(h).timeout(deadlineGrace).flatMap {
+              case Some(_) =>
+                classifyCeiling(
+                  h.id.value,
+                  DelegationToolset.DeadlineOutcome.Settled
+                )
+              case None =>
+                classifyCeiling(h, DelegationToolset.DeadlineOutcome.Uncertain)
+            }
+      yield ()
+    }
+
+  /** Non-blocking snapshot of one child's aggregate-ceiling cancellation
+    * outcome (`None` = not recorded yet / no cancellation happened).
+    */
+  def ceilingCancellationOutcome(
+      childId: String
+  ): UIO[Option[DelegationToolset.DeadlineOutcome]] =
+    Option(ceilingOutcomes.get(childId)) match
+      case None => ZIO.none
+      case Some(p) =>
+        p.poll.flatMap {
+          case None      => ZIO.none
+          case Some(res) => res.map(Some(_))
+        }
+
+  /** Awaits the honest outcome of EVERY recorded aggregate-ceiling cancellation
+    * (admin/tests). Every recorded child settles its promise on all paths, so
+    * this cannot hang once a ceiling fired.
+    */
+  def ceilingCancellationOutcomes
+      : UIO[Map[String, DelegationToolset.DeadlineOutcome]] =
+    ZIO
+      .foreach(children.keys().asScala.toList) { id =>
+        Option(ceilingOutcomes.get(id)) match
+          case None    => ZIO.none
+          case Some(p) => p.await.map(o => Some(id -> o))
+      }
+      .map(_.flatten.toMap)
+
+  /** Record the ceiling-cancellation outcome unless the child JUST reached a
+    * terminal status between the grace timeout and this check (benign race —
+    * then it settled and Settled is the honest report).
+    */
+  private def classifyCeiling(
+      h: JobHandle[?],
+      onUnobservable: DelegationToolset.DeadlineOutcome
+  ): UIO[Unit] =
+    jobs.snapshotAny(h).flatMap { s =>
+      if JobStatus.terminal(s.status) then
+        classifyCeiling(h.id.value, DelegationToolset.DeadlineOutcome.Settled)
+      else classifyCeiling(h.id.value, onUnobservable)
+    }
+
+  private def classifyCeiling(
+      childId: String,
+      outcome: DelegationToolset.DeadlineOutcome
+  ): UIO[Unit] =
+    Option(ceilingOutcomes.get(childId)) match
+      case None    => ZIO.unit
+      case Some(p) => p.succeed(outcome).unit
+
   // -- RAI-074: steering mailbox wiring (owner channel + turn boundaries) ----
 
   /** The child's steering-aware turn loop — RAI-074 APPLICATION SEMANTICS (the
@@ -624,7 +793,15 @@ final class DelegationToolset private (
 
 object DelegationToolset:
 
-  final case class DelegateArgs(agent: String, input: String)
+  /** RAI-257: `model` is the OPTIONAL explicit per-child override — absent (the
+    * historical args shape, decoded byte-compatibly) the child inherits the
+    * parent's configured model (`defaultChildModel`).
+    */
+  final case class DelegateArgs(
+      agent: String,
+      input: String,
+      model: Option[String] = None
+  )
 
   object DelegateArgs:
     given zio.json.JsonDecoder[DelegateArgs] = zio.json.DeriveJsonDecoder.gen
@@ -639,6 +816,14 @@ object DelegationToolset:
 
   /** RAI-074: default per-child steering-mailbox capacity. */
   val DefaultMailboxCapacity: Int = 32
+
+  /** RAI-257: the model-id sentinel of the scripted backend. A toolset wired
+    * with `defaultChildModel == ScriptedModel` keeps the historical
+    * `scripted:<agent>` child label (byte-compatible with the scripted corpus);
+    * any other value propagates verbatim as the child's provider request model
+    * (unless the delegate args explicitly override it).
+    */
+  val ScriptedModel: String = "scripted"
 
   /** Honest result of a fired child deadline (RAI-063). See
     * [[DelegationToolset.deadlineOutcome]].
@@ -659,6 +844,18 @@ object DelegationToolset:
     * RAI-074: `mailboxCapacity` is the bound of every forked child's steering
     * mailbox; it must be > 0 (typed Configuration refusal — overflow is
     * otherwise the child's runtime [[MailboxError.Full]]).
+    *
+    * RAI-257: `defaultChildModel` is the delegating parent's configured model;
+    * every child's provider request uses it unless the delegate args carry an
+    * explicit `model` override. The `ScriptedModel` sentinel ("scripted")
+    * preserves the historical `scripted:<agent>` label — the scripted-backend
+    * rule, byte-compatible with the scripted corpus; the default keeps every
+    * pre-RAI-257 construction on that historical behavior.
+    *
+    * RAI-258: `aggregate` — when set, every child's backend is wrapped so its
+    * dispatches share the run's token/dispatch/deadline ceilings with the root
+    * loop, and a watcher cancels live children when a ceiling trips. `None`
+    * (the default) keeps pre-RAI-258 wiring byte-identical.
     */
   def make(
       jobs: JobManager,
@@ -671,7 +868,9 @@ object DelegationToolset:
       defaultChildDeadline: Option[Duration] = None,
       deadlineGrace: Duration = Duration.fromSeconds(5),
       delegationEvents: Option[DelegationEvents] = None,
-      mailboxCapacity: Int = DelegationToolset.DefaultMailboxCapacity
+      mailboxCapacity: Int = DelegationToolset.DefaultMailboxCapacity,
+      defaultChildModel: String = DelegationToolset.ScriptedModel,
+      aggregate: Option[AggregateRunCeiling] = None
   ): Either[RaiderError, DelegationToolset] =
     if limits.maxConcurrentTools < 2 then
       Left(
@@ -714,7 +913,9 @@ object DelegationToolset:
             defaultChildDeadline,
             deadlineGrace,
             delegationEvents,
-            mailboxCapacity
+            mailboxCapacity,
+            defaultChildModel,
+            aggregate
           )
         )
 

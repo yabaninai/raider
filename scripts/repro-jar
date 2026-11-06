@@ -1,0 +1,646 @@
+#!/usr/bin/env python3
+"""scripts/repro-jar -- deterministic packaging for the cross-ecosystem adapter jar (RAI-240).
+
+Runs the standard sbt assembly build (same as `make raider-jar`) and then
+repacks the produced fat jar with a fixed canonical packaging policy, so the
+output is byte-identical across consecutive rebuilds of an unchanged tree:
+
+  - entries sorted by name (UTF-8 byte order);
+  - every entry timestamp fixed at 1980-01-01 00:00:00 (ZIP/DOS epoch);
+  - every regular entry re-deflated with zlib level 9 (raw deflate,
+    consistent compressor settings; directory entries stored);
+  - fixed zip metadata (create_system=0, fixed external attrs, no extra
+    fields, no comments, no zip64);
+  - META-INF/MANIFEST.MF bytes passed through unchanged and verified to
+    declare the expected Main-Class.
+
+Why this exists (measured, RAI-231 + RAI-240 forensics): sbt-assembly
+already pins entry order and timestamps (uniform 2010-01-01), but the dotc
+compiler emits order-sensitive content for some units (export forwarders,
+pickled ScalaSignature), so the raw assembly jar is not byte-stable across
+clean recompiles. Packaging-level canonicalization makes every downstream
+byte stable except the content the compiler itself varies; this script
+packages whatever class bytes the build produced, deterministically.
+
+Raw-keep rule (RAI-265): only the default in-tree flow (sbt build + default
+binding-path output) keeps the raw assembly beside the output, at
+`raider-cli-raw.jar`. The default flow writes the canonical jar onto the
+binding path, which is also the raw assembly's path, so the kept copy is
+captured from the true raw bytes BEFORE the canonical jar is written, but
+published only AFTER the canonical jar is published (RAI-252 review P3-4:
+the previous implementation copied after the overwrite, so the kept copy
+duplicated the canonical jar and the raw bytes were lost). A failure at any
+stage leaves no partial raw copy behind.
+
+Structural assertion (RAI-265): before the staged output is published it is
+read back and verified — no duplicate entry paths, and the entry count equals
+the analyzed input entry set.
+
+Usage:
+  scripts/repro-jar                         # sbt build + canonical repack
+  scripts/repro-jar --from-assembly PATH    # canonical repack of an existing raw jar (skips sbt)
+  scripts/repro-jar --out PATH              # override output path
+  scripts/repro-jar --self-test             # embedded hermetic regression tests (no sbt/JVM)
+
+Exit codes: 0 ok; 3 missing input/tool; 4 malformed input; 5 structural
+anomaly (duplicate entries, staged-output assertion failure, raw-keep byte
+mismatch); 6 I/O failure while staging a copy (raw-keep capture); sbt's own
+exit code when the build fails.
+"""
+
+import argparse
+import collections
+import hashlib
+import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import zipfile
+from contextlib import redirect_stderr
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ASSEMBLY_REL = os.path.join("modules", "cli", "target", "scala-3.9.0", "raider-cli.jar")
+RAW_KEEP_REL = os.path.join("modules", "cli", "target", "scala-3.9.0", "raider-cli-raw.jar")
+MANIFEST_NAME = "META-INF/MANIFEST.MF"
+FIXED_DATE = (1980, 1, 1, 0, 0, 0)
+
+
+def die(msg: str, code: int) -> "None":
+    print(f"repro-jar: ERROR: {msg}", file=sys.stderr)
+    sys.exit(code)
+
+
+def run_sbt(root: str) -> str:
+    """Run the standard assembly build; return the raw assembly path."""
+    sbt = shutil.which("sbt")
+    if sbt is None:
+        die(
+            "sbt not found in PATH; the build stage requires sbt "
+            "(same requirement as `make raider-jar`)",
+            3,
+        )
+    env = dict(os.environ)
+    env.setdefault("COURSIER_CACHE", "/tmp/cc-master")  # same default as the Makefile
+    print(f"repro-jar: building raw assembly via sbt (COURSIER_CACHE={env['COURSIER_CACHE']})")
+    rc = subprocess.call(["sbt", "--batch", "raiderCli/assembly"], cwd=root, env=env)
+    if rc != 0:
+        die(f"sbt raiderCli/assembly failed with exit code {rc}; no canonical jar produced", rc)
+    raw = os.path.join(root, ASSEMBLY_REL)
+    if not os.path.isfile(raw):
+        die(
+            f"raw assembly not found at {raw} after a successful sbt run; "
+            "the build did not produce the expected artifact (check assemblyJarName/target dir)",
+            3,
+        )
+    return raw
+
+
+def sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def ensure_input(raw: str) -> None:
+    """The single missing-input gate (exit 3) of the packaging flow."""
+    if not os.path.isfile(raw):
+        die(
+            f"input assembly not found: {raw}; build it first "
+            f"(sbt raiderCli/assembly / make raider-jar) or drop --from-assembly",
+            3,
+        )
+
+
+def ensure_output_dir(out: str) -> None:
+    """The single missing-output-directory gate (exit 3) of the flow."""
+    out_dir = os.path.dirname(os.path.abspath(out)) or "."
+    if not os.path.isdir(out_dir):
+        die(f"output directory does not exist: {out_dir}", 3)
+
+
+def raw_keep_target(args: argparse.Namespace, root: str) -> "str | None":
+    """The raw-keep rule (single implementation, RAI-265): only the default
+    in-tree flow (sbt build + default binding-path output) keeps the raw
+    assembly beside the canonical jar."""
+    if args.from_assembly is None and args.out is None:
+        return os.path.join(root, RAW_KEEP_REL)
+    return None
+
+
+def analyze_raw(raw: str, main_class: str) -> list:
+    """Structurally analyze the raw assembly; return the canonical entry list
+    [(name, data, is_dir), ...] sorted by UTF-8 name bytes.
+
+    Precondition: the input exists (enforced once by ensure_input in the
+    flow). Diagnoses preserved from RAI-240: exit 4 (not a readable zip /
+    zero entries / no manifest / Main-Class mismatch), exit 5 (duplicate
+    entry names)."""
+    try:
+        zin = zipfile.ZipFile(raw)
+    except zipfile.BadZipFile as e:
+        die(f"input is not a readable zip/jar: {raw} ({e})", 4)
+    try:
+        infos = zin.infolist()
+        if not infos:
+            die(f"input jar has zero entries: {raw}", 4)
+        names = [zi.filename for zi in infos]
+        counts = collections.Counter(names)
+        dups = sorted(n for n, c in counts.items() if c > 1)
+        if dups:
+            die(f"input jar has duplicate entry names ({len(dups)}): {dups[:10]}{' ...' if len(dups) > 10 else ''}", 5)
+        try:
+            manifest = zin.read(MANIFEST_NAME)
+        except KeyError:
+            die(f"input jar has no {MANIFEST_NAME}; not an executable fat jar: {raw}", 4)
+        declared = None
+        for line in manifest.decode("utf-8", "replace").splitlines():
+            if line.startswith("Main-Class:"):
+                declared = line.split(":", 1)[1].strip()
+                break
+        if declared != main_class:
+            die(
+                f"manifest Main-Class mismatch: expected '{main_class}', "
+                f"found '{declared if declared is not None else '<absent>'}' in {MANIFEST_NAME}",
+                4,
+            )
+
+        # Canonical entry set: one (name, data, is_dir) per entry, sorted by name.
+        entries = []
+        for zi in infos:
+            data = zin.read(zi.filename)
+            entries.append((zi.filename, data, zi.is_dir()))
+        entries.sort(key=lambda e: e[0].encode("utf-8"))
+        return entries
+    finally:
+        zin.close()
+
+
+def verify_canonical(path: str, expected_count: int) -> None:
+    """Structural assertion on the staged output BEFORE publication (RAI-265):
+    no duplicate entry paths, and the entry count equals the analyzed set."""
+    try:
+        z = zipfile.ZipFile(path)
+    except zipfile.BadZipFile as e:
+        die(f"staged output is not a readable zip/jar: {path} ({e})", 5)
+    try:
+        names = [zi.filename for zi in z.infolist()]
+        counts = collections.Counter(names)
+        dups = sorted(n for n, c in counts.items() if c > 1)
+        if dups:
+            die(
+                f"staged output has duplicate entry paths ({len(dups)}): "
+                f"{dups[:10]}{' ...' if len(dups) > 10 else ''}",
+                5,
+            )
+        if len(names) != expected_count:
+            die(
+                f"staged output entry count {len(names)} != analyzed entry count {expected_count}",
+                5,
+            )
+    finally:
+        z.close()
+
+
+def write_canonical(entries: list, out: str) -> None:
+    """Write the canonical jar for `entries` to `out` atomically and publish.
+
+    The zip-writing policy is byte-for-byte the RAI-240 policy (sorted UTF-8
+    order, fixed 1980 timestamps, deflate level 9, create_system=0, no
+    zip64/extra/comment). Precondition: the output directory exists
+    (enforced once by ensure_output_dir in the flow)."""
+    out_dir = os.path.dirname(os.path.abspath(out)) or "."
+    # mkstemp gives a unique staging name per invocation (O_EXCL), so even
+    # concurrent invocations in one process never share a staging path.
+    fd, tmp = tempfile.mkstemp(prefix=".repro-jar-tmp-", dir=out_dir)
+    os.close(fd)
+    print(f"repro-jar: staging output at {tmp} (per-invocation temp, no shared state)")
+    try:
+        with zipfile.ZipFile(tmp, "w", allowZip64=False) as zout:
+            for name, data, is_dir in entries:
+                item = zipfile.ZipInfo(name, date_time=FIXED_DATE)
+                item.create_system = 0
+                item.internal_attr = 0
+                if is_dir:
+                    item.compress_type = zipfile.ZIP_STORED
+                    item.external_attr = 0x10 << 16  # DOS directory bit
+                    zout.writestr(item, b"")
+                else:
+                    item.compress_type = zipfile.ZIP_DEFLATED
+                    item.external_attr = 0o644 << 16
+                    zout.writestr(item, data, compresslevel=9)
+        verify_canonical(tmp, len(entries))
+        os.replace(tmp, out)
+    finally:
+        # Never leave a partial staged output behind (RAI-265).
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+    n = len(entries)
+    print(
+        f"repro-jar: canonical policy applied: sorted entry order ({n} entries), "
+        f"fixed timestamps {FIXED_DATE}, deflate level 9, create_system=0, no zip64/extra/comment"
+    )
+
+
+def discard_staged(staged: "str | None") -> None:
+    """Remove an unpublished staging file (no partial raw copy on failure)."""
+    if staged is not None and os.path.exists(staged):
+        os.remove(staged)
+
+
+def stage_raw_keep(raw: str, raw_keep: "str | None", raw_sha: str) -> "str | None":
+    """Capture the raw-keep copy from the TRUE raw bytes (RAI-265 fix for
+    RAI-252 review P3-4): the default flow later writes the canonical jar onto
+    the binding path, which is also the raw path, so the copy must be taken
+    before that happens. The staged copy is published only after the canonical
+    jar is published, so a failure never leaves a partial raw copy: an I/O
+    error during the copy (ENOSPC/EIO/...) is caught here and the partial
+    staging file is removed before exiting (exit 6)."""
+    if raw_keep is None:
+        return None
+    keep_dir = os.path.dirname(os.path.abspath(raw_keep)) or "."
+    fd, staged = tempfile.mkstemp(prefix=".repro-jar-raw-tmp-", dir=keep_dir)
+    os.close(fd)
+    print(f"repro-jar: capturing raw-keep copy at {staged} (true raw bytes, before canonicalization)")
+    try:
+        shutil.copyfile(raw, staged)
+    except OSError as e:
+        # RF-1 (RAI-265 review): without this handler the exception would
+        # propagate before package() holds `staged`, leaking a partial
+        # .repro-jar-raw-tmp-* file and contradicting the no-partial-copy rule.
+        discard_staged(staged)
+        die(f"failed to stage the raw-keep copy at {staged}: {e}", 6)
+    if sha256_file(staged) != raw_sha:
+        discard_staged(staged)
+        die("raw-keep copy is not byte-identical to the analyzed raw assembly", 5)
+    return staged
+
+
+def publish_raw_keep(staged: "str | None", raw_keep: "str | None", raw_sha: str) -> None:
+    """Publish the staged raw-keep copy after the canonical jar is published."""
+    if staged is None:
+        return
+    os.replace(staged, raw_keep)
+    kept_sha = sha256_file(raw_keep)
+    if kept_sha != raw_sha:
+        die(
+            f"published raw-keep copy {kept_sha} is not byte-identical to the "
+            f"analyzed raw assembly {raw_sha}",
+            5,
+        )
+    print(f"repro-jar: raw assembly kept at {raw_keep}")
+    print(f"repro-jar: raw-keep sha256: {kept_sha} (byte-identical to the analyzed raw assembly)")
+
+
+def package(raw: str, out: str, raw_keep: "str | None", main_class: str) -> str:
+    """Single implementation of the packaging flow for one (raw, out,
+    raw_keep) triple (RAI-265). Returns the published output sha256.
+
+    Order is part of the contract: input gates run before anything is staged
+    or written; the raw-keep copy is captured from the true raw bytes before
+    the canonical jar replaces the binding path and is published only after
+    the canonical jar is published; a failure or cancellation at any stage
+    leaves no partial raw copy and no partial staged output."""
+    ensure_input(raw)
+    raw_sha = sha256_file(raw)
+    print(f"repro-jar: raw assembly: {raw}")
+    print(f"repro-jar: raw sha256:   {raw_sha}")
+    entries = analyze_raw(raw, main_class)
+    ensure_output_dir(out)
+    staged_keep = stage_raw_keep(raw, raw_keep, raw_sha)
+    try:
+        write_canonical(entries, out)
+    except BaseException:
+        discard_staged(staged_keep)
+        raise
+    out_sha = sha256_file(out)
+    print(f"repro-jar: output jar:   {out}")
+    print(f"repro-jar: output sha256: {out_sha}")
+    publish_raw_keep(staged_keep, raw_keep, raw_sha)
+    return out_sha
+
+
+def main(argv: "list | None" = None) -> None:
+    ap = argparse.ArgumentParser(add_help=True, description="Deterministic adapter jar packaging (RAI-240)")
+    ap.add_argument("--from-assembly", metavar="PATH", default=None,
+                    help="canonicalize this existing raw assembly jar and skip the sbt build")
+    ap.add_argument("--out", metavar="PATH", default=None,
+                    help=f"output path (default: {ASSEMBLY_REL})")
+    ap.add_argument("--main-class", default="raider.cli.Main",
+                    help="expected manifest Main-Class (default: raider.cli.Main)")
+    ap.add_argument("--self-test", action="store_true",
+                    help="run the embedded hermetic regression tests (no sbt/JVM, temp fixtures only)")
+    args = ap.parse_args(argv)
+    if args.self_test:
+        self_test()
+        return
+
+    # Path derivation for one invocation: all three paths in one place (RAI-265).
+    out = args.out or os.path.join(REPO_ROOT, ASSEMBLY_REL)
+    raw = args.from_assembly or run_sbt(REPO_ROOT)
+    raw_keep = raw_keep_target(args, REPO_ROOT)
+    package(raw, out, raw_keep, args.main_class)
+
+
+# ---------------------------------------------------------------------------
+# Embedded regression tests (RAI-265). Hermetic: per-run temp fixtures, the
+# sbt build stage is never invoked, nothing in the repository tree is touched,
+# no network and no JVM required. English case names; multibyte fixture entry
+# names are intentional coverage (wide-character paths), not prose.
+# ---------------------------------------------------------------------------
+
+def _fixture_zip(path: str, members, main_class: str = "raider.cli.Main") -> None:
+    """Write a valid (non-canonical) fat jar: unsorted, STORED, 2024 timestamps."""
+    import warnings
+
+    with warnings.catch_warnings():
+        # The duplicate-entry fixture below intentionally triggers zipfile's
+        # duplicate-name UserWarning; that is the case under test, not noise.
+        warnings.simplefilter("ignore", UserWarning)
+        with zipfile.ZipFile(path, "w") as z:
+            manifest = f"Manifest-Version: 1.0\r\nMain-Class: {main_class}\r\n\r\n".encode()
+            z.writestr(zipfile.ZipInfo(MANIFEST_NAME, date_time=(2024, 5, 6, 7, 8, 9)), manifest)
+            for name, data in members:
+                info = zipfile.ZipInfo(name, date_time=(2024, 5, 6, 7, 8, 9))
+                if name.endswith("/"):
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.external_attr = 0x10 << 16
+                    z.writestr(info, b"")
+                else:
+                    info.compress_type = zipfile.ZIP_STORED
+                    info.external_attr = 0o644 << 16
+                    z.writestr(info, data)
+
+
+def _unicode_members() -> list:
+    """Multibyte / wide-character entry names (fixture data, intact bytes)."""
+    return [
+        ("b/Two.class", b"\x02 two"),
+        ("a/One.class", b"\x01 one"),
+        ("assets/", b""),  # directory entry
+        ("データ/クラス.class", b"cjk wide"),
+        ("中文/资源.bin", b"cjk bytes"),
+        ("한국어/데이터.bin", b"hangul bytes"),
+        ("ελληνικά/κείμενο.txt", b"greek bytes"),
+        ("café/naïve.properties", b"accented latin bytes"),
+        ("🎨/emoji-resource.bin", b"emoji path"),
+    ]
+
+
+def _fail(msg: str) -> None:
+    print(f"self-test: FAIL: {msg}", file=sys.stderr)
+    sys.exit(1)
+
+
+def _expect_exit(code: int, stderr: io.StringIO, fn, *a) -> None:
+    try:
+        fn(*a)
+    except SystemExit as e:
+        if e.code != code:
+            _fail(f"expected exit {code}, got {e.code!r} (stderr: {stderr.getvalue()!r})")
+        return
+    _fail(f"expected SystemExit({code}), got clean return (stderr: {stderr.getvalue()!r})")
+
+
+def _no_leftovers(*dirs: str) -> None:
+    """No partial staging files anywhere (RAI-265 acceptance: no partial raw copy)."""
+    for d in dirs:
+        for entry in os.listdir(d):
+            if entry.startswith(".repro-jar-"):
+                _fail(f"leftover staging file {entry} in {d}")
+
+
+def self_test() -> None:
+    root = tempfile.mkdtemp(prefix="repro-jar-selftest-")
+    passed = 0
+
+    def case(name: str) -> None:
+        nonlocal passed
+        print(f"self-test: {name}: ok")
+        passed += 1
+
+    try:
+        base = os.path.join(root, "case")
+
+        # 1. raw-keep rule: only the default in-tree flow keeps the raw assembly.
+        d1 = os.path.join(base, "rule"); os.makedirs(d1)
+        ns_default = argparse.Namespace(from_assembly=None, out=None)
+        ns_out = argparse.Namespace(from_assembly=None, out="x.jar")
+        ns_from = argparse.Namespace(from_assembly="raw.jar", out=None)
+        if raw_keep_target(ns_default, d1) != os.path.join(d1, RAW_KEEP_REL):
+            _fail("raw-keep rule: default flow must keep the raw assembly")
+        if raw_keep_target(ns_out, d1) is not None:
+            _fail("raw-keep rule: --out flow must not keep a raw copy")
+        if raw_keep_target(ns_from, d1) is not None:
+            _fail("raw-keep rule: --from-assembly flow must not keep a raw copy")
+        case("raw-keep-rule-default-flow-only")
+
+        # 2. THE RAI-252 P3-4 defect guard: default-flow path collision (the
+        #    raw path IS the output path). The kept copy must mirror the
+        #    analyzed raw assembly, not the canonical output.
+        d2 = os.path.join(base, "rawkeep"); t2 = os.path.join(d2, "target")
+        os.makedirs(t2)
+        bind = os.path.join(t2, "raider-cli.jar")
+        _fixture_zip(bind, _unicode_members())
+        raw_sha = sha256_file(bind)
+        kept = os.path.join(t2, "raider-cli-raw.jar")
+        package(bind, bind, kept, "raider.cli.Main")
+        out_sha = sha256_file(bind)
+        if sha256_file(kept) != raw_sha:
+            _fail("kept raw copy is not byte-identical to the analyzed raw assembly")
+        if out_sha == raw_sha:
+            _fail("canonical output equals raw input; canonicalization did not apply")
+        with zipfile.ZipFile(bind) as z:
+            names = z.namelist()
+            if names != sorted(names, key=lambda n: n.encode("utf-8")):
+                _fail("canonical output is not sorted by UTF-8 name bytes")
+            if {zi.date_time for zi in z.infolist()} != {FIXED_DATE}:
+                _fail("canonical output timestamps are not fixed")
+        case("default-flow-raw-keep-mirrors-raw-not-canonical")
+
+        # 3. corrupt intermediate: wrapper diagnosis, no partial raw copy, no output.
+        d3 = os.path.join(base, "corrupt"); t3 = os.path.join(d3, "target"); os.makedirs(t3)
+        bad = os.path.join(t3, "raw.jar")
+        with open(bad, "wb") as f:
+            f.write(b"this is not a zip file, just garbage bytes")
+        err3 = io.StringIO()
+        with redirect_stderr(err3):
+            _expect_exit(4, err3, analyze_raw, bad, "raider.cli.Main")
+        _no_leftovers(t3)
+        case("corrupt-input-exit4-no-partial-raw-copy")
+
+        # 4. empty intermediate (valid zip, zero entries): wrapper diagnosis.
+        d4 = os.path.join(base, "empty"); t4 = os.path.join(d4, "target"); os.makedirs(t4)
+        empty = os.path.join(t4, "raw.jar")
+        with zipfile.ZipFile(empty, "w"):
+            pass
+        err4 = io.StringIO()
+        with redirect_stderr(err4):
+            _expect_exit(4, err4, analyze_raw, empty, "raider.cli.Main")
+        _no_leftovers(t4)
+        case("empty-input-exit4-wrapper-diagnosis")
+
+        # 5. missing input: the single exit-3 gate.
+        err5 = io.StringIO()
+        with redirect_stderr(err5):
+            _expect_exit(3, err5, ensure_input, os.path.join(root, "nope", "missing.jar"))
+        case("missing-input-exit3-single-gate")
+
+        # 6. duplicate input entries: exit 5 with the offending path named.
+        d6 = os.path.join(base, "dups"); os.makedirs(d6)
+        dup = os.path.join(d6, "dup.jar")
+        with zipfile.ZipFile(dup, "w") as z:
+            z.writestr(zipfile.ZipInfo(MANIFEST_NAME, date_time=(2024, 5, 6, 7, 8, 9)),
+                       b"Manifest-Version: 1.0\r\nMain-Class: raider.cli.Main\r\n\r\n")
+            z.writestr(zipfile.ZipInfo("a/Dup.class", date_time=(2024, 5, 6, 7, 8, 9)), b"\x01")
+            z.writestr(zipfile.ZipInfo("a/Dup.class", date_time=(2024, 5, 6, 7, 8, 9)), b"\x02")
+        err6 = io.StringIO()
+        with redirect_stderr(err6):
+            _expect_exit(5, err6, analyze_raw, dup, "raider.cli.Main")
+        if "a/Dup.class" not in err6.getvalue():
+            _fail(f"duplicate diagnosis does not name the path: {err6.getvalue()!r}")
+        case("duplicate-input-entries-exit5")
+
+        # 7. output structural assertion: duplicate paths / count mismatch on a
+        #    staged output are rejected before publication (exit 5).
+        d7 = os.path.join(base, "assert"); os.makedirs(d7)
+        staged_bad = os.path.join(d7, "staged-dup.jar")
+        with zipfile.ZipFile(staged_bad, "w") as z:
+            z.writestr(zipfile.ZipInfo("x/A.class", date_time=FIXED_DATE), b"\x01")
+            z.writestr(zipfile.ZipInfo("x/A.class", date_time=FIXED_DATE), b"\x02")
+        err7 = io.StringIO()
+        with redirect_stderr(err7):
+            _expect_exit(5, err7, verify_canonical, staged_bad, 2)
+        staged_cnt = os.path.join(d7, "staged-count.jar")
+        with zipfile.ZipFile(staged_cnt, "w") as z:
+            z.writestr(zipfile.ZipInfo("x/A.class", date_time=FIXED_DATE), b"\x01")
+        err7b = io.StringIO()
+        with redirect_stderr(err7b):
+            _expect_exit(5, err7b, verify_canonical, staged_cnt, 99)
+        case("staged-output-structural-assertion")
+
+        # 8. unicode entry paths survive the round trip exactly (bytes intact,
+        #    UTF-8 byte order, no duplicates, count sanity vs the analyzed set).
+        d8 = os.path.join(base, "unicode"); t8 = os.path.join(d8, "target"); os.makedirs(t8)
+        raw8 = os.path.join(t8, "raw.jar")
+        members8 = _unicode_members()
+        _fixture_zip(raw8, members8)
+        out8 = os.path.join(t8, "out.jar")
+        entries8 = analyze_raw(raw8, "raider.cli.Main")
+        write_canonical(entries8, out8)
+        expected_names = [MANIFEST_NAME] + [n for n, _ in members8]
+        with zipfile.ZipFile(out8) as z:
+            got = z.namelist()
+            if got != sorted(got, key=lambda n: n.encode("utf-8")):
+                _fail(f"unicode case: output not UTF-8-byte sorted: {got!r}")
+            if sorted(got, key=lambda n: n.encode("utf-8")) != sorted(expected_names, key=lambda n: n.encode("utf-8")):
+                _fail(f"unicode case: entry set mismatch: {got!r}")
+            if len(got) != len(expected_names):
+                _fail(f"unicode case: count {len(got)} != analyzed {len(expected_names)}")
+            for name, data in members8:
+                if z.read(name) != data:
+                    _fail(f"unicode case: content mismatch for {name!r}")
+        case("unicode-entry-paths-roundtrip")
+
+        # 9. unicode output directory path.
+        d9 = os.path.join(base, "uni-out", "出力-🎨", "deep"); os.makedirs(d9)
+        raw9 = os.path.join(root, "raw9.jar")
+        _fixture_zip(raw9, [("a/One.class", b"\x01 one")])
+        out9 = os.path.join(d9, "raider.jar")
+        write_canonical(analyze_raw(raw9, "raider.cli.Main"), out9)
+        if not os.path.isfile(out9):
+            _fail("unicode output directory case: output missing")
+        case("unicode-output-directory")
+
+        # 10. canonical stability + idempotence (README contract): same input
+        #     twice -> identical bytes; canonical input -> identical bytes.
+        d10 = os.path.join(base, "stable"); os.makedirs(d10)
+        raw10 = os.path.join(d10, "raw.jar")
+        _fixture_zip(raw10, _unicode_members())
+        o1 = os.path.join(d10, "o1.jar"); o2 = os.path.join(d10, "o2.jar")
+        write_canonical(analyze_raw(raw10, "raider.cli.Main"), o1)
+        write_canonical(analyze_raw(raw10, "raider.cli.Main"), o2)
+        if sha256_file(o1) != sha256_file(o2):
+            _fail("canonical output not byte-stable across two runs on the same input")
+        o3 = os.path.join(d10, "o3.jar")
+        write_canonical(analyze_raw(o1, "raider.cli.Main"), o3)
+        if sha256_file(o3) != sha256_file(o1):
+            _fail("canonicalizing an already-canonical jar is not idempotent")
+        case("canonical-stability-and-idempotence")
+
+        # 11. concurrent invocations in separate scratch roots: no shared or
+        #     clobbered state; identical outputs.
+        d11 = os.path.join(base, "conc"); os.makedirs(d11)
+        raw11 = os.path.join(d11, "raw.jar")
+        _fixture_zip(raw11, _unicode_members())
+        outs = [os.path.join(d11, f"out-{i}.jar") for i in range(2)]
+        errors = []
+
+        def worker(out_path: str) -> None:
+            try:
+                write_canonical(analyze_raw(raw11, "raider.cli.Main"), out_path)
+            except BaseException as e:  # collected and reported below
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker, args=(o,)) for o in outs]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        if errors:
+            _fail(f"concurrent invocations failed: {errors!r}")
+        if sha256_file(outs[0]) != sha256_file(outs[1]):
+            _fail("concurrent invocations produced different outputs")
+        _no_leftovers(d11)
+        case("concurrency-separate-scratch-roots")
+
+        # 12. manifest Main-Class mismatch: exit 4.
+        d12 = os.path.join(base, "badmain"); os.makedirs(d12)
+        raw12 = os.path.join(d12, "raw.jar")
+        _fixture_zip(raw12, [("a/One.class", b"\x01")], main_class="com.example.NotRaider")
+        err12 = io.StringIO()
+        with redirect_stderr(err12):
+            _expect_exit(4, err12, analyze_raw, raw12, "raider.cli.Main")
+        case("main-class-mismatch-exit4")
+
+        # 13. RF-1 (RAI-265 review): mid-copy I/O failure while staging the
+        #     raw-keep copy (partial write, then ENOSPC) must exit 6 and leave
+        #     no partial .repro-jar-raw-tmp-* file behind.
+        d13 = os.path.join(base, "iofail"); t13 = os.path.join(d13, "target")
+        os.makedirs(t13)
+        raw13 = os.path.join(t13, "raw.jar")
+        _fixture_zip(raw13, [("a/One.class", b"\x01 one")])
+        kept13 = os.path.join(t13, "raider-cli-raw.jar")
+        orig_copyfile = shutil.copyfile
+
+        def failing_copyfile(src: str, dst: str) -> None:
+            with open(dst, "ab") as f:  # simulate bytes flushed before the error
+                f.write(b"partial bytes from a failed copy")
+            raise OSError(28, "No space left on device")
+
+        shutil.copyfile = failing_copyfile
+        try:
+            err13 = io.StringIO()
+            with redirect_stderr(err13):
+                _expect_exit(6, err13, stage_raw_keep, raw13, kept13, sha256_file(raw13))
+            if "No space left on device" not in err13.getvalue():
+                _fail(f"exit-6 diagnosis does not include the OS error: {err13.getvalue()!r}")
+        finally:
+            shutil.copyfile = orig_copyfile
+        if os.path.exists(kept13):
+            _fail("failed staging published a raw-keep copy")
+        _no_leftovers(t13)
+        case("mid-copy-io-failure-exit6-no-partial-raw-copy")
+
+        print(f"self-test: {passed} cases passed")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    main()

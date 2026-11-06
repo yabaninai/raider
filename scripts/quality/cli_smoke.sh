@@ -27,5 +27,19 @@ WORKDIR=$(echo "$OUTTEXT" | sed -n 's/.*"workDir":"\([^"]*\)".*/\1/p')
 [ -f "$WORKDIR/run.json" ] || { echo "[cli-smoke] FAIL: run.json missing"; exit 20; }
 grep -q '"status":"Succeeded"' "$WORKDIR/run.json" || { echo "[cli-smoke] FAIL: not Succeeded"; exit 20; }
 grep -q "fixture/mock" "$WORKDIR/summary.md" || { echo "[cli-smoke] FAIL: fixture marker missing"; exit 20; }
-echo "[cli-smoke] PASS (exit 0, run.json Succeeded, fixture marked)"
+
+# RAI-261: the entrypoint must be self-describing — `--help` exits 0 with
+# non-empty output through the SAME Main + classpath as the run above, and an
+# unknown flag stays nonzero with a diagnostic that points at --help.
+HELPTEXT=$(printf '' | java -cp "$CP" raider.cli.Main --help 2>"$OUT/help-stderr.txt")
+HSTATUS=$?
+[ $HSTATUS -eq 0 ] || { echo "[cli-smoke] FAIL: --help exit=$HSTATUS"; cat "$OUT/help-stderr.txt"; exit 20; }
+[ -n "$HELPTEXT" ] || { echo "[cli-smoke] FAIL: --help output empty"; exit 20; }
+echo "$HELPTEXT" | grep -q 'process-api' || { echo "[cli-smoke] FAIL: --help command list incomplete"; exit 20; }
+printf '' | java -cp "$CP" raider.cli.Main run --definitely-not-a-flag 2>"$OUT/uf-stderr.txt"
+UFSTATUS=$?
+[ $UFSTATUS -ne 0 ] || { echo "[cli-smoke] FAIL: unknown flag exited 0"; exit 20; }
+grep -q -- '--help' "$OUT/uf-stderr.txt" || { echo "[cli-smoke] FAIL: unknown-flag diagnostic lacks --help pointer"; cat "$OUT/uf-stderr.txt"; exit 20; }
+
+echo "[cli-smoke] PASS (exit 0, run.json Succeeded, fixture marked, --help exit 0 non-empty, unknown flag nonzero pointing at --help)"
 exit 0

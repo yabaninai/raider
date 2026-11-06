@@ -1,0 +1,14 @@
+{
+  "backend": "pi-rpc",
+  "cancellationAck": "supported",
+  "nestedAccounting": "unknown",
+  "priceModel": "priceKnown=false: pi reports cost, Raider does not price pi usage",
+  "protocol": "pi-rpc/1 (upstream pin 55a5c6914570e2ae31ca36297654483bbbf46883)",
+  "schemaVersion": 1,
+  "sessionSupport": "unsupported",
+  "steering": "unsupported",
+  "streaming": "supported",
+  "structuredOutput": "unsupported",
+  "toolOwnership": "tools execute inside pi; Raider tool policy is NOT enforced inside pi",
+  "tools": "supported-externally-owned"
+}

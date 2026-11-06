@@ -33,6 +33,15 @@ matches the quality runner's segment-based fingerprint excludes ("target",
 under concurrent builds: a directory that disappears mid-walk becomes a
 WARN line, never a crash.
 
+RAI-245 (post-RAI-223 offset verification): the true-line attribution was
+re-verified on the current tree — a planted violation at true :508 in a
+byte-copy of the 769-line wave-C file is reported :508 (the pre-RAI-223
+scanner still reproduces the incident as :471 on the same fixture), and all
+8 allowlist NOTE lines on the real tree match `grep -n`. ATTR-05 keeps a
+grep-cross-checked wave-C-shaped probe in the self-test matrix; MALFORMED-01
+pins that an unreadable (invalid UTF-8) file is diagnosed on stderr, never
+silently skipped.
+
 Exit codes: 0 = clean, 1 = violations found, 2 = internal/usage error.
 Pass --self-test to run the embedded positive/negative fixtures first
 (the gate must prove it actually detects, not merely that the tree is clean).
@@ -40,6 +49,8 @@ Pass --self-test to run the embedded positive/negative fixtures first
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import os
 import pathlib
 import re
@@ -176,8 +187,12 @@ def scan_text(rel: str, text: str) -> tuple[list[tuple[str, int, str]], list[tup
     return hits, skips
 
 
-def scan_file(path: pathlib.Path) -> tuple[list[tuple[str, int, str]], list[tuple[str, int, str, str]]]:
-    rel = path.relative_to(ROOT).as_posix()
+def scan_file(path: pathlib.Path, rel: str | None = None) -> tuple[list[tuple[str, int, str]], list[tuple[str, int, str, str]]]:
+    # rel defaults to the ROOT-relative path used by main(); the optional
+    # parameter exists so self_test can exercise the unreadable-file path
+    # (MALFORMED-01) on scratch files outside ROOT. Detection is unchanged.
+    if rel is None:
+        rel = path.relative_to(ROOT).as_posix()
     try:
         text = path.read_text(encoding="utf-8")
     except (UnicodeDecodeError, OSError) as exc:
@@ -322,6 +337,37 @@ def self_test() -> bool:
         print("[forbidden-apis] SELF-TEST FAIL (ATTR-04): strip_comments changed the line count")
         ok = False
 
+    # ATTR-05 (RAI-245): planted wave-C-shaped probe with the expectation
+    # CROSS-CHECKED AGAINST GREP — each expected line is derived by a literal
+    # scan of the ORIGINAL (unstripped) probe lines, i.e. exactly what
+    # `grep -n` reports, never hardcoded from the stripped text. The block
+    # comment spans 37 lines, reproducing the incident offset (wave-C: true
+    # 508 = reported 471 = 508−37; the current stripper must report 38, the
+    # grep line, for the first plant).
+    attr_needle = "sk-proj1234567890abcdef"
+    attr_lines = (
+        ["/* wave-C incident shape: one block comment spanning 37 lines"]
+        + [" * filler comment line %d" % i for i in range(2, 37)]
+        + [" */"]
+        + [attr_secret]                       # plant 1 -> line 38
+        + ["// separator line comment between the two plants"]
+        + ["/* another", "   block */"]
+        + [attr_secret]                       # plant 2 -> line 42
+    )
+    attr_probe = "\n".join(attr_lines) + "\n"
+    grep_lines = [i for i, line in enumerate(attr_lines, start=1) if attr_needle in line]
+    if grep_lines != [38, 42]:
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-05): probe shape drifted, grep lines {grep_lines} != [38, 42]")
+        ok = False
+    hits, skips = scan_text(other_rel, attr_probe)
+    reported = [h[1] for h in hits if h[0] == "secret-literal"]
+    if len(hits) != 2 or any(h[0] != "secret-literal" for h in hits):
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-05): unexpected hits on probe: {hits}")
+        ok = False
+    if reported != grep_lines:
+        print(f"[forbidden-apis] SELF-TEST FAIL (ATTR-05): reported lines {reported} != grep true lines {grep_lines}")
+        ok = False
+
     # RAI-228 target/ walk-exclusion fixtures (WALK-01..03, review finding
     # F-223-1): the walk must prune every directory named "target" at any
     # depth (build output must never influence findings, RAI-223 semantics
@@ -342,14 +388,35 @@ def self_test() -> bool:
         (proj_target_dir / "Gen.scala").write_text("val stale = Thread.stop()\n", encoding="utf-8")
         (nested_target_dir / "Deep.scala").write_text("val stale = Thread.stop()\n", encoding="utf-8")
 
+        # RAI-245 MALFORMED-01: an invalid-UTF-8 source is walked (the walk is
+        # content-agnostic) and then DIAGNOSED on stderr by scan_file — never
+        # silently skipped, never a crash; hits/skips stay empty.
+        bad_path = troot / "modules" / "malformed" / "src" / "Bad.scala"
+        bad_path.parent.mkdir(parents=True, exist_ok=True)
+        bad_path.write_bytes(b"object Bad { val x = \xff\xfe broken utf8 }\n")
+        err_cap = io.StringIO()
+        with contextlib.redirect_stderr(err_cap):
+            bad_hits, bad_skips = scan_file(bad_path, rel="modules/malformed/src/Bad.scala")
+        if bad_hits or bad_skips:
+            print(f"[forbidden-apis] SELF-TEST FAIL (MALFORMED-01): malformed file produced findings: {bad_hits} {bad_skips}")
+            ok = False
+        if "WARN unreadable" not in err_cap.getvalue() or "Bad.scala" not in err_cap.getvalue():
+            print(f"[forbidden-apis] SELF-TEST FAIL (MALFORMED-01): no WARN diagnosis for malformed file: {err_cap.getvalue()!r}")
+            ok = False
+
         # WALK-01: only sources outside target/ are returned; every planted
         # target/ violation file (top-level, project/target, nested) is
         # pruned, and the substring-named source directory stays scanned.
+        # The malformed Bad.scala (content-agnostic walk, RAI-245) is
+        # expected in the list; its unreadability is MALFORMED-01's concern.
         walked, warns = _scala_files(troot / "modules")
-        if [p.name for p in walked] != ["Keep.scala", "Src.scala"] or warns:
+        if [p.name for p in walked] != ["Keep.scala", "Src.scala", "Bad.scala"] or warns:
             print(f"[forbidden-apis] SELF-TEST FAIL (WALK-01): target/ pruning wrong: files={[p.name for p in walked]} warns={warns}")
             ok = False
-        if any("Thread.stop" in p.read_text(encoding="utf-8") for p in walked):
+        if any(
+            "Thread.stop" in p.read_text(encoding="utf-8", errors="replace")
+            for p in walked
+        ):
             print("[forbidden-apis] SELF-TEST FAIL (WALK-02): a planted target/ violation file was returned by the walk")
             ok = False
 

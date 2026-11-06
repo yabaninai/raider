@@ -1,7 +1,7 @@
 {
   "id": "XE-205-golden-checks",
-  "description": "RAI-205 cross-ecosystem acceptance goldens: expected scenario set, adapter exit codes, and exact check-name lists (order preserved) per ecosystem consumer. Verified live against the integrated candidate; the independent checker revalidates every run against this file.",
-  "adapterJarSha256": "997f29a18e38848c082deaeb825a7f4da40ca76d47444663c656693a16d47fdd",
+  "description": "RAI-205 cross-ecosystem acceptance goldens: expected scenario set, adapter exit codes, and exact check-name lists (order preserved) per ecosystem consumer. Verified live against the integrated candidate; the independent checker revalidates every run against this file. RAI-254 wired the two RAI-242 cancel scenarios (cancel-mid-response, cancel-late) into the run-all stand B llm4s invocation; their entries are transplanted verbatim from expected/cancel-mid-response-golden.json.",
+  "adapterJarSha256": "ebbd1787b49cc2bd3587e31ef1d60d2fd1d194dec5876c50fa1831fabc0c8c98",
   "standKey": "sk-stand-205",
   "ecosystems": {
     "llm4s": {
@@ -76,6 +76,20 @@
           "anchor": "eof-after-dispatch-settles",
           "adapterExitCode": 26,
           "checks": ["dispatch-accepted-before-eof", "eof-after-dispatch-settles", "terminal-cancelled-uncertain", "adapter-exit-26"]
+        },
+        {
+          "manifestName": "cancel-mid-response",
+          "key": "cancel-mid-response",
+          "anchor": "cancel-ack-accepted",
+          "adapterExitCode": 26,
+          "checks": ["dispatch-accepted", "first-response-consumed-marker-exists", "cancel-ack-accepted", "terminal-cancelled-incomplete", "cleanup-complete", "adapter-exit-26"]
+        },
+        {
+          "manifestName": "cancel-late",
+          "key": "cancel-late",
+          "anchor": "terminal-completed-before-cancel",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-before-cancel", "late-cancel-probe-sent", "adapter-exit-0"]
         }
       ]
     },

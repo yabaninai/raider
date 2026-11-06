@@ -220,16 +220,16 @@ final case class LineageReduction(
   * verdict comes from the CANONICAL
   * [[raider.runtime.lineage.model.RecoveryTaxonomy]] — exec tools (`bash`,
   * `sh`, `process`, `python`, `proc_run`) and write tools (`edit`, `fs_edit`,
-  * `write`, `fs_write`, `apply_patch`, `patch`, `fs_patch`, `mv`, `rm`,
-  * `mkdir`, `touch`) are `Mutating`; everything else is `ReadOnly` (the ADR
-  * default). No private copy of the sets lives here (RAI-148 deduplication —
-  * the reducer was one of three drifted copies that missed `fs_patch` and
-  * `proc_run`). `Idempotent` is deliberately never guessed from
-  * `ToolOutcome`/`RetryScheduled` — a rate-limit retry does not make a mutating
-  * tool safe to re-run; the closed enum stays reserved for a config-driven
-  * extension. PHASE recovery (RAI-143/ADR-032) is explicit on the v2 wire
-  * (`PhaseStarted.recovery`, validated against the closed enum at decode); it
-  * is never inferred here.
+  * `write`, `fs_write`, `apply_patch`, `patch`, `fs_patch`, `fs_patch_multi`,
+  * `fs_delete` (both RAI-268), `mv`, `rm`, `mkdir`, `touch`) are `Mutating`;
+  * everything else is `ReadOnly` (the ADR default). No private copy of the sets
+  * lives here (RAI-148 deduplication — the reducer was one of three drifted
+  * copies that missed `fs_patch` and `proc_run`). `Idempotent` is deliberately
+  * never guessed from `ToolOutcome`/`RetryScheduled` — a rate-limit retry does
+  * not make a mutating tool safe to re-run; the closed enum stays reserved for
+  * a config-driven extension. PHASE recovery (RAI-143/ADR-032) is explicit on
+  * the v2 wire (`PhaseStarted.recovery`, validated against the closed enum at
+  * decode); it is never inferred here.
   *
   * Relationship to the readers: the readers validate schema/seq for file input
   * and report a torn last line as an honest `TruncatedTail`; because the

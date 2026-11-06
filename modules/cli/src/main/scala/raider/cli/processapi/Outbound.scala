@@ -5,6 +5,7 @@ import zio.json.ast.Json
 import zio.{Duration, IO, Promise, Ref, UIO, ZIO}
 
 import java.nio.charset.StandardCharsets.UTF_8
+import java.util.concurrent.atomic.AtomicReference
 
 /** Bounded outbound frame queue for the process adapter (ADR-037 §5; fixtures
   * `slow-reader`, `broken-pipe`, `cancel-mid-run`).
@@ -21,8 +22,10 @@ import java.nio.charset.StandardCharsets.UTF_8
   *     next delivered observation carries `skipped {fromSequence, count}`
   *     covering exactly the coalesced range;
   *   - the terminal frame has a RESERVED slot (separate from the ordinary
-  *     queue) and is written last, after the ordinary queue drains and input is
-  *     closed;
+  *     queue) and is written last, after the ordinary queue drains, input is
+  *     closed, and every admitted receipt admission has landed (RAI-232: the
+  *     writer's empty-point gate holds the terminal until `State.waiters` is
+  *     empty);
   *   - every stdout write is bounded by the stall watchdog: a peer that stops
   *     draining is declared dead after `stallBound` and the session shuts down
   *     truthfully — the writer never loops on a broken pipe and never blocks
@@ -46,7 +49,18 @@ object Outbound:
       terminal: Option[Json],
       inputClosed: Boolean,
       peerDead: Option[String],
-      waiters: Vector[Promise[Nothing, Unit]]
+      // Receipts registered on a full queue. An entry is added when the
+      // admission registers (atomically with the full-queue check) and is
+      // removed only when the admission lands: the frame is enqueued, the
+      // channel dies, or the waiting fiber is interrupted. The writer's
+      // empty-point gate ([[pick]]) requires this vector to be empty before
+      // it picks the terminal or finishes, so no admitted receipt can
+      // outlive the writer (RAI-232).
+      waiters: Vector[Promise[Nothing, Unit]],
+      // The idle writer's parked promise, at most one. Kept apart from
+      // `waiters` so the writer's own wakeup can never hold the terminal
+      // gate closed.
+      writerWait: Option[Promise[Nothing, Unit]]
   )
 
   private object State:
@@ -59,7 +73,8 @@ object Outbound:
       None,
       inputClosed = false,
       peerDead = None,
-      waiters = Vector.empty
+      waiters = Vector.empty,
+      writerWait = None
     )
 
   private sealed trait Pick
@@ -69,6 +84,40 @@ object Outbound:
     final case class WriteTerminal(json: Json) extends Pick
     case object Idle extends Pick
     case object Done extends Pick
+
+  /** RAI-246 test-only interleaving seam. Each hook is an
+    * `AtomicReference[Option[Promise[Nothing, Unit]]]` initialized to `None` (=
+    * disarmed). A disarmed seam site costs one volatile reference read and
+    * short-circuits to a no-op: no scheduling point, no behavior change; a site
+    * allocates or schedules only when a test in this package arms its hook. The
+    * seam exists solely to make the race window between a woken waiter's
+    * landing modify and the writer's inline terminal pick deterministically
+    * enterable (red-first on the pre-RAI-232 base, green under the delivered
+    * empty-point gate); it is not consulted by any production caller.
+    */
+  private[processapi] final class ProbeSeam:
+
+    /** Signaled when the writer reaches the terminal pick (arrival signal). */
+    val writerAtPick: AtomicReference[Option[Promise[Nothing, Unit]]] =
+      new AtomicReference[Option[Promise[Nothing, Unit]]](None)
+
+    /** While `Some`, the writer suspends post-pick/pre-write until this promise
+      * succeeds.
+      */
+    val writerHold: AtomicReference[Option[Promise[Nothing, Unit]]] =
+      new AtomicReference[Option[Promise[Nothing, Unit]]](None)
+
+    /** Signaled when a receipt admission finds the queue full and is about to
+      * park as a waiter (registration signal).
+      */
+    val waiterRegistered: AtomicReference[Option[Promise[Nothing, Unit]]] =
+      new AtomicReference[Option[Promise[Nothing, Unit]]](None)
+
+    /** While `Some`, a woken waiter suspends post-wake/pre-landing until this
+      * promise succeeds.
+      */
+    val waiterHold: AtomicReference[Option[Promise[Nothing, Unit]]] =
+      new AtomicReference[Option[Promise[Nothing, Unit]]](None)
 
   def make(
       writeOne: Json => IO[ChannelDead, Unit],
@@ -101,6 +150,11 @@ final class Outbound private (
 
   import Outbound.*
 
+  // RAI-246 test-only seam state; every hook stays `None` (disarmed) in
+  // production paths (tests in this package arm it per instance via
+  // OutboundSpec).
+  private[processapi] val probeSeam: Outbound.ProbeSeam = new Outbound.ProbeSeam
+
   // ---------------------------------------------------------------------------
   // producers
   // ---------------------------------------------------------------------------
@@ -127,8 +181,11 @@ final class Outbound private (
           else (Left(()), s)
         }
         .flatMap {
-          case Right(())               => wakeWaiters
-          case Left(())                => awaitRoom(entry._2) *> receipt(frame)
+          case Right(()) => wakeChannel
+          case Left(())  =>
+            // RAI-246 test-only seam: signal that this admission found the
+            // queue full and is about to park as a waiter. Inert when disarmed.
+            probeWaiterRegisteredSeam *> admitWaiter(entry)
           case Left(dead: ChannelDead) => ZIO.fail(dead)
         }
     }
@@ -178,7 +235,7 @@ final class Outbound private (
             case Some((from, count)) => Some((from, count + 1L))
             case None                => Some((sequence, 1L))
           ((), s.copy(gap = merged))
-    } *> wakeWaiters
+    } *> wakeChannel
 
   /** Flushes a still-open coalescing gap as one final observation before the
     * terminal frame, so the "next observation reports the skipped range"
@@ -210,11 +267,11 @@ final class Outbound private (
       if s.terminal.isEmpty && s.peerDead.isEmpty then
         ((), s.copy(terminal = Some(frame), inputClosed = true))
       else ((), s)
-    } *> wakeWaiters
+    } *> wakeChannel
 
   /** No further ordinary frames will be enqueued (clean EOF with no run). */
   def closeInput(): UIO[Unit] =
-    state.update(_.copy(inputClosed = true)) *> wakeWaiters
+    state.update(_.copy(inputClosed = true)) *> wakeChannel
 
   // ---------------------------------------------------------------------------
   // consumer
@@ -223,22 +280,27 @@ final class Outbound private (
   /** Drains the queue to stdout until input is closed and the terminal frame
     * (if any) is written, or the channel dies. Run on its own fiber. Every
     * consumed transition wakes the waiters (freed room, closed input, dead
-    * channel).
+    * channel). The empty-point gate in [[pick]] keeps the writer from picking
+    * the terminal (or finishing) while admitted receipts are still pending, so
+    * the terminal is always the last frame on the wire (RAI-232).
     */
   def writer: ZIO[Any, Nothing, Unit] =
     ZIO.suspendSucceed {
       state.modify(pick).flatMap {
         case Pick.Write(json) =>
-          boundedWrite(json).catchAll(markDead) *> wakeWaiters *> writer
+          boundedWrite(json).catchAll(markDead) *> wakeChannel *> writer
         case Pick.WriteTerminal(json) =>
-          boundedWrite(json).catchAll(markDead) *>
+          // RAI-246 test-only seam: signal arrival at the terminal pick and,
+          // when armed, suspend post-pick/pre-write. Inert when disarmed.
+          probeTerminalPickSeam *>
+            boundedWrite(json).catchAll(markDead) *>
             terminalWritten.succeed(()).unit *>
             writerDone.succeed(()).unit *>
-            wakeWaiters
+            wakeChannel
         case Pick.Idle =>
-          awaitUnless(hasWork) *> writer
+          wakeChannel *> awaitWriterWork *> writer
         case Pick.Done =>
-          writerDone.succeed(()).unit *> wakeWaiters
+          writerDone.succeed(()).unit *> wakeChannel
       }
     }
 
@@ -260,7 +322,7 @@ final class Outbound private (
       if s.peerDead.isEmpty then s.copy(peerDead = Some(dead.reason)) else s
     ) *>
       death.succeed(dead).unit *>
-      wakeWaiters
+      wakeChannel
 
   private def pick(s: State): (Pick, State) =
     if s.peerDead.isDefined then (Pick.Done, s)
@@ -270,9 +332,14 @@ final class Outbound private (
         Pick.Write(head._1),
         s.copy(queue = s.queue.tail, queuedBytes = s.queuedBytes - head._2)
       )
-    else if s.inputClosed && s.terminal.isDefined then
+    // Empty-point gate: with input closed, ordinary frames may still be
+    // pending as registered-but-not-landed waiter admissions (RAI-232).
+    // The terminal may only be picked — and the writer may only finish —
+    // once every admission has landed and the queue has drained, so the
+    // terminal frame is always the last one written.
+    else if s.inputClosed && s.waiters.isEmpty && s.terminal.isDefined then
       (Pick.WriteTerminal(s.terminal.get), s.copy(terminal = None))
-    else if s.inputClosed then (Pick.Done, s)
+    else if s.inputClosed && s.waiters.isEmpty then (Pick.Done, s)
     else (Pick.Idle, s)
 
   // ---------------------------------------------------------------------------
@@ -322,36 +389,149 @@ final class Outbound private (
     markDead(ChannelDead(reason))
 
   // ---------------------------------------------------------------------------
-  // wakeup plumbing (waiter list + state-conditional registration: no lost
-  // wakeups — the condition is checked atomically with the registration)
+  // RAI-246 test-only seam sites (inert unless the per-instance hooks are
+  // armed by a test; production callers never touch ProbeSeam)
   // ---------------------------------------------------------------------------
 
-  private def wakeWaiters: UIO[Unit] =
+  /** Signals waiter registration when armed; no-op otherwise. */
+  private def probeWaiterRegisteredSeam: UIO[Unit] =
+    ZIO.suspendSucceed {
+      probeSeam.waiterRegistered.get() match
+        case None       => ZIO.unit
+        case Some(hook) => hook.succeed(()).unit
+    }
+
+  /** Suspends a woken waiter while the hold latch is armed; no-op otherwise. */
+  private def probeWaiterHoldSeam: UIO[Unit] =
+    ZIO.suspendSucceed {
+      probeSeam.waiterHold.get() match
+        case None       => ZIO.unit
+        case Some(hook) => hook.await.unit
+    }
+
+  /** Signals the writer's arrival at the terminal pick and suspends it there
+    * while the hold latch is armed; no-op otherwise. Unlike the waiter-side
+    * landing hold ([[probeWaiterHoldSeam]]), this hold deliberately registers
+    * no `onInterrupt` cleanup: by suspension time the pick has already removed
+    * the terminal from `State` and the writer holds no gate or seam
+    * registration, so an interrupt simply unwinds the writer fiber exactly as
+    * an interrupt inside `boundedWrite` would — nothing can pin the empty-point
+    * gate. The landing hold, by contrast, suspends while the waiter is still
+    * registered in `State.waiters` (pinning that gate) and therefore needs its
+    * interrupt removal.
+    */
+  private def probeTerminalPickSeam: UIO[Unit] =
+    ZIO.suspendSucceed {
+      val arrived = probeSeam.writerAtPick.get()
+      val hold = probeSeam.writerHold.get()
+      (arrived match
+        case None    => ZIO.unit
+        case Some(p) => p.succeed(()).unit
+      ) *>
+        // No onInterrupt cleanup here (see scaladoc): the writer pins nothing.
+        (hold match
+          case None    => ZIO.unit
+          case Some(p) => p.await.unit)
+    }
+
+  // ---------------------------------------------------------------------------
+  // wakeup plumbing (waiter list with landing-tracked removal + state-
+  // conditional registration: no lost wakeups — the condition is checked
+  // atomically with the registration — and a writer-side quiescence gate:
+  // no admitted receipt outlives the writer, RAI-232)
+  // ---------------------------------------------------------------------------
+
+  /** Wakes every registered receipt waiter and the parked idle writer. Waiter
+    * promises stay in `State.waiters` until their admission lands (enqueue,
+    * channel death, or interruption), so the empty-point gate can see pending
+    * admissions; re-succeeding a promise is a no-op. The writer's parked
+    * promise is cleared here and re-registered when it suspends again.
+    */
+  private def wakeChannel: UIO[Unit] =
     state
       .modify { s =>
         val ws = s.waiters
-        (ws, s.copy(waiters = Vector.empty))
+        val w = s.writerWait
+        ((ws, w), s.copy(writerWait = None))
       }
-      .flatMap(ws => ZIO.foreachDiscard(ws)(_.succeed(()).unit))
+      .flatMap { case (ws, w) =>
+        ZIO.foreachDiscard(ws)(_.succeed(()).unit) *>
+          w.fold(ZIO.unit)(_.succeed(()).unit)
+      }
 
-  /** Waits until `cond` holds, atomically with the registration. */
-  private def awaitUnless(cond: Outbound.State => Boolean): UIO[Unit] =
+  /** Admits `entry` on behalf of a receipt that found the queue full. The
+    * waiter promise is appended to `State.waiters` atomically with the
+    * full-queue check and stays there — across stolen-slot re-checks — until
+    * the entry is enqueued, the channel dies, or the waiting fiber is
+    * interrupted (the interrupt finalizer removes it and wakes the writer, so
+    * the terminal gate cannot be held closed by a dead waiter). Each wake
+    * re-runs the admission from scratch: whatever freed the room (writer write,
+    * terminal install, death) has already signalled through [[wakeChannel]].
+    */
+  private def admitWaiter(entry: (Json, Int)): IO[ChannelDead, Unit] =
+    ZIO.uninterruptibleMask { restore =>
+      Promise.make[Nothing, Unit].flatMap { p =>
+        def step: IO[ChannelDead, Unit] =
+          state
+            .modify { s =>
+              val entryBytes = entry._2
+              if s.peerDead.isDefined then (Left(deadOf(s)), removeWaiter(s, p))
+              else if hasRoom(s, entryBytes) then
+                (
+                  Right(()),
+                  removeWaiter(s, p).copy(
+                    queue = s.queue :+ entry,
+                    queuedBytes = s.queuedBytes + entryBytes
+                  )
+                )
+              else (Left(()), parkWaiter(s, p))
+            }
+            .flatMap {
+              case Right(()) => wakeChannel
+              case Left(()) =>
+                restore(p.await).onInterrupt(
+                  state.update(removeWaiter(_, p)) *> wakeChannel
+                ) *>
+                  // RAI-246 test-only seam: hold the woken waiter between its
+                  // wake and its landing modify. The interrupt cleanup mirrors
+                  // the registration removal so an interrupted probe cannot
+                  // pin the empty-point gate closed. Inert when disarmed.
+                  probeWaiterHoldSeam.onInterrupt(
+                    state.update(removeWaiter(_, p)) *> wakeChannel
+                  ) *> step
+              case Left(dead: ChannelDead) => ZIO.fail(dead)
+            }
+        step
+      }
+    }
+
+  /** Parks the idle writer until it has work or the empty-point gate can open
+    * (queue progress, input closed with every admitted receipt landed, or a
+    * dead channel), atomically with the registration in `State.writerWait`.
+    */
+  private def awaitWriterWork: UIO[Unit] =
     for
       p <- Promise.make[Nothing, Unit]
       shouldWait <- state.modify { s =>
-        if cond(s) then (false, s) else (true, s.copy(waiters = s.waiters :+ p))
+        if writerMayProceed(s) then (false, s)
+        else (true, s.copy(writerWait = Some(p)))
       }
       _ <- if shouldWait then p.await else ZIO.unit
     yield ()
 
+  private def writerMayProceed(s: State): Boolean =
+    s.queue.nonEmpty || s.peerDead.isDefined ||
+      (s.inputClosed && s.waiters.isEmpty)
+
+  private def removeWaiter(s: State, p: Promise[Nothing, Unit]): State =
+    s.copy(waiters = s.waiters.filter(_ != p))
+
+  private def parkWaiter(s: State, p: Promise[Nothing, Unit]): State =
+    if s.waiters.contains(p) then s
+    else s.copy(waiters = s.waiters :+ p)
+
   private def hasRoom(s: State, entryBytes: Int): Boolean =
     s.queue.size < MaxOrdinaryFrames && s.queuedBytes + entryBytes <= MaxOrdinaryBytes
-
-  private def hasWork(s: State): Boolean =
-    s.queue.nonEmpty || s.inputClosed || s.peerDead.isDefined
-
-  private def awaitRoom(entryBytes: Int): UIO[Unit] =
-    awaitUnless(s => s.peerDead.isDefined || hasRoom(s, entryBytes))
 
   private def encoded(frame: Json): (Json, Int) =
     val bytes = frame.toJson.getBytes(UTF_8).length

@@ -1,0 +1,27 @@
+{
+  "id": "XE-242-cancel-mid-response",
+  "description": "RAI-242 cancel-mid-run corpus extension goldens (llm4s consumer only): mid-response cancellation and the late-cancel distinction. Validated by the standalone driver contracts/acceptance/cross-ecosystem/llm4s-consumer/run-cancel-mid-response.sh against a slowly-streaming stand (--delay-ms). Kept separate from expected/golden-checks.json because the run-all checker requires every golden to match exactly one manifest entry; wiring into run-all is deferred to RAI-238 (not purely additive: it would require lib.sh run_checker manifest-list edits). Existing frozen expectations are unchanged.",
+  "adapterJarSha256": "ebbd1787b49cc2bd3587e31ef1d60d2fd1d194dec5876c50fa1831fabc0c8c98",
+  "standKey": "sk-stand-205",
+  "ecosystems": {
+    "llm4s": {
+      "framework": "org.llm4s:llm4s-core_3:0.5.1",
+      "scenarios": [
+        {
+          "manifestName": "cancel-mid-response",
+          "key": "cancel-mid-response",
+          "anchor": "cancel-ack-accepted",
+          "adapterExitCode": 26,
+          "checks": ["dispatch-accepted", "first-response-consumed-marker-exists", "cancel-ack-accepted", "terminal-cancelled-incomplete", "cleanup-complete", "adapter-exit-26"]
+        },
+        {
+          "manifestName": "cancel-late",
+          "key": "cancel-late",
+          "anchor": "terminal-completed-before-cancel",
+          "adapterExitCode": 0,
+          "checks": ["terminal-completed-before-cancel", "late-cancel-probe-sent", "adapter-exit-0"]
+        }
+      ]
+    }
+  }
+}

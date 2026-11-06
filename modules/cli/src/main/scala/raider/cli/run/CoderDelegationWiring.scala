@@ -2,7 +2,7 @@ package raider.cli.run
 
 import raider.core.{ModelBackend, RaiderError, RootId, ToolRegistry}
 import raider.runtime.admission.Admission
-import raider.runtime.budget.BudgetLimits
+import raider.runtime.budget.{AggregateRunCeiling, BudgetLimits}
 import raider.runtime.delegate.{DelegationEvents, DelegationToolset}
 import raider.runtime.events.EventHub
 import raider.runtime.jobs.JobManager
@@ -54,6 +54,13 @@ object CoderDelegationWiring:
   /** The coder loop's registry: the base coding registry augmented with the §11
     * delegation tools. `base` must not define delegation tool names (the
     * toolset construction refuses a clash typed).
+    *
+    * RAI-257: `model` is the run's CONFIGURED model (the same id the headless
+    * parent loop dispatches under, `args.model`) — it propagates to every
+    * delegated child's provider request unless the delegate args explicitly
+    * override it. The scripted-backend label rule stays inside the runtime
+    * toolset ([[DelegationToolset]] `ScriptedModel` sentinel), so scripted
+    * corpus behavior is byte-compatible.
     */
   def augment(
       manager: JobManager,
@@ -62,7 +69,9 @@ object CoderDelegationWiring:
       admission: Admission,
       limits: BudgetLimits,
       root: RootId,
-      base: ToolRegistry
+      base: ToolRegistry,
+      model: String,
+      aggregate: Option[AggregateRunCeiling] = None
   ): Either[RaiderError, ToolRegistry] =
     DelegationToolset
       .make(
@@ -73,7 +82,9 @@ object CoderDelegationWiring:
         base,
         AllowedAgents,
         root,
-        delegationEvents = Some(DelegationEvents(hub, root))
+        delegationEvents = Some(DelegationEvents(hub, root)),
+        defaultChildModel = model,
+        aggregate = aggregate
       )
       .flatMap(_.augment(base))
 

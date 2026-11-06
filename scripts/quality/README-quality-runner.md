@@ -82,7 +82,9 @@ pseudo-profile when present). The manifest `mode` field now records
 ## Self-tests (`self-check`)
 
 - registry integrity: every component-profile gate exists;
-- classify: docs file → `["docs"]`; modules/ Scala file →
+- classify: docs file → `["docs"]`; CHANGELOG.md → `["docs"]` (RAI-281);
+  vendor corpus files and `THIRD_PARTY_NOTICES.md` → `["vendor"]` (RAI-288);
+  modules/ Scala file →
   `["contracts", "static", "unit"]`; unknown path → `["__unmapped__"]`;
 - git-mode fingerprint on a **temp git repo** (system temp dir only, never the
   repo tree): clean tree → empty changes; dirty tree → modified/deleted/
@@ -93,7 +95,9 @@ pseudo-profile when present). The manifest `mode` field now records
   symlink re-point → `fingerprint()` yields exactly added/modified/deleted
   kinds for exactly those paths; untouched tree → empty;
 - execute decision (no gate execution): docs-only change selects exactly
-  `["docs"]`; an unmapped file fails the decision;
+  `["docs"]`; CHANGELOG.md-only change selects exactly `["docs"]` (RAI-281);
+  a vendor-corpus change (corpus + notices) selects exactly `["vendor"]`
+  (RAI-288); an unmapped file fails the decision;
 - run-id uniqueness: two immediately successive calls in one process differ
   and match the filesystem-safe charset. This proves in-process uniqueness
   only; cross-process same-second uniqueness rests on distinct PIDs
@@ -105,6 +109,29 @@ pseudo-profile when present). The manifest `mode` field now records
   an over-budget probe run through the production `run_gate` classifies as
   `timed_out` + `failed` (never skip/pass) while a fast control probe passes,
   proving the timeout classification is real, not vacuous;
+- changelog lint (RAI-281): the docs profile carries the `changelog-lint`
+  gate with pinned argv
+  (`python3 scripts/quality/changelog_lint.py`, `timeout_s` 60), and
+  `changelog_lint.py --self-test` proves every failure class — duplicate
+  version, malformed header (bracket-less/separator/spacing drift/stray
+  non-version H2), non-semver (two components, leading zero), invalid date
+  (unpadded, calendar-impossible, prose, near-miss unreleased marker) — is
+  detected with typed diagnostics and true line numbers, and that the
+  repository CHANGELOG.md is lint-clean. Detection is proven on fixtures,
+  not inferred from a clean tree;
+- vendor audit (RAI-288): the vendor profile carries the `vendor-audit`
+  gate with pinned argv
+  (`python3 scripts/quality/vendor_audit.py`, `timeout_s` 120), and
+  `vendor_audit.py --self-test` builds 19 negative and 2 positive fixture
+  corpora of both lane shapes (`MANIFEST.sha256` + `PROVENANCE.md`, and
+  `MANIFEST.json`) in a temp dir and runs them through the same production
+  audit path: corrupt hash, removed provenance/manifest, unlisted file,
+  missing listed file, missing/short-sha upstream ref, missing repo URL,
+  missing license, omitted/absent notices entry, bad JSON, dual manifests,
+  bad sha256sum line, empty file list, corpus-path escape, duplicate path,
+  stray `vendor/` entry, and symlink entries are each detected with typed
+  `VEN-*` diagnostics and exit 1, while valid corpora of both shapes audit
+  clean. Detection is proven on fixtures, not inferred from a clean tree;
 - verify-negative (pre-existing): a fabricated/tampered manifest must be
   rejected.
 

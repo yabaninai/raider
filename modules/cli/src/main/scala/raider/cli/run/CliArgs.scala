@@ -51,7 +51,14 @@ final case class CliArgs(
     context: Option[Path] = None,
     requireProvenance: Option[Path] = None,
     ci: Option[String] = None,
-    deadlineSeconds: Option[Long] = None
+    deadlineSeconds: Option[Long] = None,
+    // RAI-258: aggregate run ceilings for the NATIVE coder path — they bind
+    // the root loop and every delegated child jointly. `--agent` runs only:
+    // combining any of them with `--bundle/--workflow` is a typed refusal
+    // (same discipline as --deadline: never accept a silently ignored flag).
+    maxDispatches: Option[Int] = None,
+    maxTokens: Option[Long] = None,
+    runDeadlineSeconds: Option[Long] = None
 ):
   // RAI-064: NO credential field — the key is resolved from the environment
   // (RAIDER_API_KEY / RAIDER_API_KEY_CMD) at runtime, never carried in args.
@@ -132,7 +139,10 @@ object CliArgs:
       "--context",
       "--require-provenance",
       "--ci",
-      "--deadline"
+      "--deadline",
+      "--max-dispatches",
+      "--max-tokens",
+      "--run-deadline"
     )
 
   /** Parse `run` argv (the subcommand token included). */
@@ -335,6 +345,63 @@ object CliArgs:
             )
           )
         case _ => Right(())
+      // RAI-258: aggregate run ceilings — parse-time validation with the same
+      // discipline as --deadline (typed refusal before any dispatch/spend).
+      // They are an --agent-surface feature (the native coder path's joint
+      // root+child ceilings); on a --bundle/--workflow run they would be
+      // silently ignored, so they are refused instead.
+      maxDispatches <- acc.get("--max-dispatches") match
+        case None => Right(None)
+        case Some(raw) =>
+          raw.trim.toIntOption match
+            case Some(n) if n > 0 =>
+              Right(Some(n))
+            case _ =>
+              Left(
+                RaiderError.Configuration(
+                  s"--max-dispatches must be a positive number of dispatches, got '$raw'"
+                )
+              )
+      maxTokens <- acc.get("--max-tokens") match
+        case None => Right(None)
+        case Some(raw) =>
+          raw.trim.toLongOption match
+            case Some(n) if n > 0 =>
+              Right(Some(n))
+            case _ =>
+              Left(
+                RaiderError.Configuration(
+                  s"--max-tokens must be a positive number of tokens, got '$raw'"
+                )
+              )
+      runDeadlineSeconds <- acc.get("--run-deadline") match
+        case None => Right(None)
+        case Some(raw) =>
+          raw.trim.toLongOption match
+            case Some(n) if n > 0 =>
+              Right(Some(n))
+            case _ =>
+              Left(
+                RaiderError.Configuration(
+                  s"--run-deadline must be a positive number of seconds, got '$raw'"
+                )
+              )
+      _ <- agent match
+        case Some(_) => Right(())
+        case None =>
+          val ceilingFlags = List(
+            ("--max-dispatches", maxDispatches),
+            ("--max-tokens", maxTokens),
+            ("--run-deadline", runDeadlineSeconds)
+          ).collect { case (f, Some(_)) => f }
+          if ceilingFlags.isEmpty then Right(())
+          else
+            Left(
+              RaiderError.Configuration(
+                s"${ceilingFlags.mkString("/")} applies to --agent runs; " +
+                  "it is not a --bundle/--workflow flag"
+              )
+            )
       target <- (agent, bundle, workflow) match
         case (Some(a), None, None) =>
           if BuiltInAgents.contains(a) then Right(Target.Agent(a))
@@ -375,7 +442,10 @@ object CliArgs:
       context,
       requireProvenance,
       ci,
-      deadlineSeconds
+      deadlineSeconds,
+      maxDispatches,
+      maxTokens,
+      runDeadlineSeconds
     )
 
   private def requireString(

@@ -256,20 +256,36 @@ final case class AgentLoop(
           // `raider.core` tool-axis enum. The ordinary `runText` mode emits NO
           // phases: the runtime tracks no further phase semantics (card
           // non-goal — none are invented).
-          ev(
-            _.phaseStarted(
-              AgentLoop.planPhaseName,
-              raider.runtime.lineage.model.RecoveryClass.ReadOnly,
-              None
-            )
-          ) *>
-            planAttempt(
-              messages,
-              ceilings,
-              maxRounds,
-              attemptNo = 1,
-              lastAttemptNo = pm.maxRepairAttempts + 1
-            ).onExit(_ => ev(_.phaseFinished(AgentLoop.planPhaseName)))
+          // RAI-247 defense-in-depth: the emission, the (test-only) seam, and
+          // the onExit arming run as one uninterruptible span, restored right
+          // after arming. An interruption delivered inside the span is held
+          // until the first interruptible checkpoint AFTER arming, so the
+          // started phase always reaches its finished event. The mask does
+          // not swallow the interruption: the pending signal still fails the
+          // run (as the seam spec's revert probe asserts). The probe remains
+          // in place as a revert guard for this invariant.
+          ZIO.uninterruptibleMask { restore =>
+            ev(
+              _.phaseStarted(
+                AgentLoop.planPhaseName,
+                raider.runtime.lineage.model.RecoveryClass.ReadOnly,
+                None
+              )
+            ) *>
+              // RAI-247 test-only seam: at most one suspension effect between
+              // the emission and the onExit arming; `None` (every production
+              // run) is a literal `unit` step here
+              AgentLoop.planWindowSuspension.get().getOrElse(ZIO.unit) *>
+              restore(
+                planAttempt(
+                  messages,
+                  ceilings,
+                  maxRounds,
+                  attemptNo = 1,
+                  lastAttemptNo = pm.maxRepairAttempts + 1
+                )
+              ).onExit(_ => ev(_.phaseFinished(AgentLoop.planPhaseName)))
+          }
 
   /** One bounded plan attempt: the read-only loop up to the final answer, then
     * structural validation; malformed → repair or the typed rejection.
@@ -796,6 +812,28 @@ object AgentLoop:
     * label the plan-phase job carries). `phase_finished` closes it by name.
     */
   val planPhaseName: String = "plan"
+
+  /** RAI-247 test-only injection seam between the plan-phase `phaseStarted`
+    * emission and the `planAttempt(...).onExit(...)` arming — the
+    * late-admission window RAI-234 bounded (source-plausible, never reproduced
+    * in 32 loaded runs). Holds AT MOST one suspension effect that the run
+    * evaluates at that exact point; a test installs one (e.g. a
+    * `Promise.await`) to park the run inside the window deterministically.
+    *
+    * Inert by default: no product code ever writes this reference, so the
+    * default `None` makes the seam a literal `unit` step and trigger-disabled
+    * behavior is unchanged. Tests must arm and disarm around their own fiber
+    * lifecycle and must always release (or accept leaking a parked fiber on a
+    * failure path — nothing else is held). The reference is JVM-global by
+    * design so the seam needs no product API or constructor change; concurrent
+    * unrelated runs during an armed window are merely delayed (the parked
+    * effect completes for every awaiter).
+    */
+  private[runtime] val planWindowSuspension
+      : java.util.concurrent.atomic.AtomicReference[Option[zio.UIO[Unit]]] =
+    new java.util.concurrent.atomic.AtomicReference[Option[zio.UIO[Unit]]](
+      None
+    )
 
   /** Reserved sentinel the loop never injects anywhere; its presence in a final
     * answer is an output-validation defect (marker-free contract).

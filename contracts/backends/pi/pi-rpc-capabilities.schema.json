@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Raider pi backend capability report (RAI-034)",
+  "description": "Capability disclosure for the pi RPC external backend. The canonical rendering of PiRpcCapabilities.defaults must equal the golden fixture byte-for-byte and satisfy this schema.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "backend",
+    "protocol",
+    "streaming",
+    "tools",
+    "structuredOutput",
+    "steering",
+    "cancellationAck",
+    "nestedAccounting",
+    "sessionSupport",
+    "toolOwnership",
+    "priceModel"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "integer",
+      "const": 1
+    },
+    "backend": {
+      "type": "string",
+      "const": "pi-rpc"
+    },
+    "protocol": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Protocol identity including the pinned upstream pi commit."
+    },
+    "streaming": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "tools": {
+      "type": "string",
+      "enum": ["supported", "supported-externally-owned", "unsupported", "unknown"]
+    },
+    "structuredOutput": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "steering": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "cancellationAck": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "nestedAccounting": {
+      "type": "string",
+      "enum": ["known", "unknown"]
+    },
+    "sessionSupport": {
+      "type": "string",
+      "enum": ["supported", "unsupported", "unknown"]
+    },
+    "toolOwnership": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Trust-boundary disclaimer: tools execute inside pi, Raider tool policy is not enforced there."
+    },
+    "priceModel": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Pricing disclosure; Raider does not price pi usage."
+    }
+  }
+}

@@ -25,7 +25,7 @@ for each installation attempt. These commands install the staged artifact into
 a separate prefix and add that directory to this shell's `PATH`:
 
 ```sh
-RELEASE_DIR="/absolute/path/to/artifacts/release/0.1.1"
+RELEASE_DIR="/absolute/path/to/artifacts/release/0.2.0"
 (cd "$RELEASE_DIR" && shasum -a 256 -c SHA256SUMS)
 VERSION=$(jq -r .version "$RELEASE_DIR/release.json")
 INSTALL_DIR="$HOME/.local/raider/$VERSION"
@@ -50,9 +50,10 @@ applicable. The `--out` directory is a parent and each invocation gets its own
 run; do not clear an earlier run to make room. Mock response text is a fixed
 fixture and is not evidence of model quality or actual repository analysis.
 This scout request exercises the installed CLI and creates inspectable result
-artifacts without making workspace changes. The current CLI does not implement
-a general `--help` option: `raider --help` returns an unknown-subcommand error
-with exit 21; use the documented `raider run` invocation.
+artifacts without making workspace changes. `raider --help` exits 0 and lists
+every command with the exit-code legend (RAI-261); unknown flags or subcommands
+exit 21 with a diagnostic. The release also ships the separate installed REPL
+distribution under `repl/` — see the [onboarding guide](../../onboarding.md).
 
 ## Verified sequence
 

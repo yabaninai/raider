@@ -20,7 +20,13 @@ import raider.core.result.{
   RunResult
 }
 import raider.runtime.admission.{Admission, SlotKind}
-import raider.runtime.budget.{BudgetLimits, CostEstimate, MicroUsd, UsageReport}
+import raider.runtime.budget.{
+  AggregateRunCeiling,
+  BudgetLimits,
+  CostEstimate,
+  MicroUsd,
+  UsageReport
+}
 import raider.runtime.events.{EventEnvelope, EventHub, EventPayload}
 import raider.runtime.lineage.model.{GraphHash, SessionGraph}
 import raider.runtime.lineage.reduce.{LineageReducer, ReduceError}
@@ -696,12 +702,50 @@ object HeadlessRunner:
             // live wires ride the same credential preflight resolved above
             // and the same RateLimitRetries wrapper.
             backend <- ProviderBackend.make(args.provider, args.baseUrl, keyOpt)
+            // RAI-258: aggregate run ceilings — parse-level flags
+            // (--max-dispatches/--max-tokens/--run-deadline) build ONE
+            // ceiling object shared by the root loop and every delegated
+            // child. The surface is coder-only (the native delegation path);
+            // any other agent naming a ceiling flag is a typed preflight
+            // refusal. With no flag set, `aggregate` stays None and the
+            // wiring below is byte-identical to pre-RAI-258.
+            aggregate <- (
+              args.maxDispatches,
+              args.maxTokens,
+              args.runDeadlineSeconds
+            ) match
+              case (None, None, None) => ZIO.succeed(None)
+              case (md, mt, rd) if name == "coder" =>
+                ZIO
+                  .fromEither(
+                    AggregateRunCeiling.make(
+                      md,
+                      mt,
+                      rd.map(s => zio.Duration.fromSeconds(s))
+                    )
+                  )
+                  .map(Some(_))
+              case _ =>
+                ZIO.fail(
+                  RaiderError.Configuration(
+                    "--max-dispatches/--max-tokens/--run-deadline apply to " +
+                      "the native coder agent (--agent coder); other " +
+                      "agents do not delegate"
+                  )
+                )
+            // RAI-258: the ROOT loop dispatches under the same ceilings as
+            // every child (actor label "root"); the delegation wiring below
+            // receives the RAW backend and wraps each child itself
+            // (childBackend per delegateInvoke, labels `agent#n`).
+            rootBackend = aggregate.fold(backend)(_.wired(backend, "root"))
             // RAI-154 (WIR-01): the CODER agent's delegation policy surface —
             // the §11 model tools (delegate/await_agent/cancel_agent/
             // list_agents) over the SAME manager/hub, typed and policy-gated
             // ([[CoderDelegationWiring]]); forks join the run's multi-job
             // export through the existing capture. Other agents are unchanged
             // (empty base registry, no delegation tools).
+            // RAI-257: the configured `args.model` propagates to delegated
+            // children — a live backend never dispatches `scripted:<agent>`.
             registry <-
               if name == "coder" then
                 ZIO.fromEither(
@@ -712,7 +756,9 @@ object HeadlessRunner:
                     admission,
                     limits,
                     root,
-                    codingRegistry
+                    codingRegistry,
+                    args.model,
+                    aggregate
                   )
                 )
               else ZIO.succeed(codingRegistry)
@@ -723,11 +769,16 @@ object HeadlessRunner:
             // Ref; written to transcript.json after the run
             traceRef <- zio.Ref.make(Vector.empty[raider.core.trace.TraceEvent])
             // VERBOSE trace: prints tool calls to stderr in real-time
+            // RAI-269: the coder prompt is composed at the CONFIGURED
+            // workspace root — the same wsPath the coding toolset enforces
+            // above — not the process CWD; with no --workspace, wsPath is
+            // the CWD and the RAI-259 behavior is unchanged.
             sysPrompt =
-              if name == "coder" then Some(CoderPrompts.CoderSystemPrompt)
+              if name == "coder" then
+                Some(CoderPrompts.CoderSystemPrompt(wsPath))
               else None
             loop = AgentLoop(
-              backend,
+              rootBackend,
               registry,
               model,
               admission,

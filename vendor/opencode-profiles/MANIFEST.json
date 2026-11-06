@@ -1,0 +1,139 @@
+{
+  "corpus": "opencode-profiles",
+  "manifestVersion": 1,
+  "upstream": {
+    "repo": "https://github.com/anomalyco/opencode",
+    "commit": "d7d85817160120fd59fb27ee6ff354f45d18b994",
+    "pinnedAt": "2026-11-05",
+    "license": "MIT",
+    "licenseFile": "LICENSE"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "625f0f619133f89bbbb2abe37369613dfa1885eba1e50d02170deb62bb42cb6b",
+      "upstreamPath": "LICENSE"
+    },
+    {
+      "path": "extracted/defaults.json",
+      "sha256": "10b7ebc9d881529ce2c77cd4f5c631a606f081a5b8620e3c9dcfc49a9ea789d8"
+    },
+    {
+      "path": "extracted/registry-agents.json",
+      "sha256": "fded086836124674ff8fbce0efed6a8975709e53eef9c2495e404258263ed50b"
+    },
+    {
+      "path": "upstream/core/agent.ts",
+      "sha256": "cae29f26087f32183b9a7bc62b7738daf8f48df36703ec60064c3bd7a0968024",
+      "upstreamPath": "packages/core/src/agent.ts"
+    },
+    {
+      "path": "upstream/core/config-markdown.ts",
+      "sha256": "550df2b30d515ecb9af3ccd51c0a75c0bcf6e049fbdb75e1b9257e0ce6646552",
+      "upstreamPath": "packages/core/src/config/markdown.ts"
+    },
+    {
+      "path": "upstream/core/config-normalize.ts",
+      "sha256": "a4802d074d25d9534afa0535226f0155fc8a2c01bc801a67631f975c199bd395",
+      "upstreamPath": "packages/core/src/config/normalize.ts"
+    },
+    {
+      "path": "upstream/core/config-plugin-agent.ts",
+      "sha256": "00c0592180de2ca0823d42e0e987bdbc915ed01b9ad692437007aa51842a8b66",
+      "upstreamPath": "packages/core/src/config/plugin/agent.ts"
+    },
+    {
+      "path": "upstream/core/permission.ts",
+      "sha256": "fb3c9eb5226761074e9f4f293b215e99a345a232d7fe88a6584667f6a9e48e40",
+      "upstreamPath": "packages/core/src/permission.ts"
+    },
+    {
+      "path": "upstream/core/plugin-builtins.ts",
+      "sha256": "7581c231cf4d9436a348390daa9022b029ad3b5ab231a9c513a704fbd51c253a",
+      "upstreamPath": "packages/core/src/plugin/agent.ts"
+    },
+    {
+      "path": "upstream/core/plugin-plan.ts",
+      "sha256": "11c8cf10c3043286dd3823ba666ff4ab9f584fc2dcd01b525493c82356aec065",
+      "upstreamPath": "packages/core/src/plugin/plan.ts"
+    },
+    {
+      "path": "upstream/core/util/wildcard.ts",
+      "sha256": "8c38258732c7e569febf52a36468181e2c851f2dceea7112b618c0cf43ed3170",
+      "upstreamPath": "packages/core/src/util/wildcard.ts"
+    },
+    {
+      "path": "upstream/core/v1-config-agent.ts",
+      "sha256": "236a990fd2cc70ec20b082a4a775b2c0e3f88e82880497a02aad26f157ebbf6b",
+      "upstreamPath": "packages/core/src/v1/config/agent.ts"
+    },
+    {
+      "path": "upstream/core/v1-config-migrate.ts",
+      "sha256": "fa515429829e654387f12521f461ce29e4add632bb63d1e95f6889bae0e74f9d",
+      "upstreamPath": "packages/core/src/v1/config/migrate.ts"
+    },
+    {
+      "path": "upstream/core/v1-config-permission.ts",
+      "sha256": "f40f7a6f1e6c64154755731fdbc60c88d83e168261b0e8c67abd69ea9d153411",
+      "upstreamPath": "packages/core/src/v1/config/permission.ts"
+    },
+    {
+      "path": "upstream/docs/agents.mdx",
+      "sha256": "11d064f21016faf0017231b9caaeb5c431293ef96466eb210b2e6b4208622d5c",
+      "upstreamPath": "packages/web/src/content/docs/agents.mdx"
+    },
+    {
+      "path": "upstream/docs/permissions.mdx",
+      "sha256": "df4e3560a1c7cb928dd798874004f68c61573ac586447d040742261181b70162",
+      "upstreamPath": "packages/web/src/content/docs/permissions.mdx"
+    },
+    {
+      "path": "upstream/schema/agent.ts",
+      "sha256": "2438abf1f8bbcc8ebad533b81035d739db4117b9df739a906d0113e851c0737e",
+      "upstreamPath": "packages/schema/src/agent.ts"
+    },
+    {
+      "path": "upstream/schema/config-agent.ts",
+      "sha256": "8a06cebb98f92c4054aedecbfb9e1ac3098aaa35155f3cbcdcba55d3d2a46fc2",
+      "upstreamPath": "packages/schema/src/config/agent.ts"
+    },
+    {
+      "path": "upstream/schema/config-policy.ts",
+      "sha256": "72586095738f791dc7cef2c3e134c19be9b85130d66fdaa0dbebb74e9530df52",
+      "upstreamPath": "packages/schema/src/config/policy.ts"
+    },
+    {
+      "path": "upstream/schema/config.ts",
+      "sha256": "807a70bae2c0d83812fe9722a6e1312ae2974a036d27e3b973c415291ecab1a5",
+      "upstreamPath": "packages/schema/src/config.ts"
+    },
+    {
+      "path": "upstream/schema/permission.ts",
+      "sha256": "45b63a6d9f7619d9285663111f26a9a939d64683cac3272881e6dd196409bc1d",
+      "upstreamPath": "packages/schema/src/permission.ts"
+    }
+  ],
+  "derived": [
+    {
+      "path": "extracted/defaults.json",
+      "sources": [
+        "upstream/schema/agent.ts",
+        "upstream/schema/permission.ts",
+        "upstream/core/permission.ts",
+        "upstream/core/util/wildcard.ts",
+        "upstream/core/v1-config-migrate.ts",
+        "upstream/core/config-plugin-agent.ts"
+      ],
+      "note": "Constants extracted from pinned TypeScript sources at vendoring time; importer loads this file instead of executing TypeScript."
+    },
+    {
+      "path": "extracted/registry-agents.json",
+      "sources": [
+        "upstream/core/plugin-builtins.ts",
+        "upstream/core/plugin-plan.ts",
+        "upstream/schema/agent.ts"
+      ],
+      "note": "Built-in agent registry final states (baseline defaults plus plugin pushes in push order) extracted at vendoring time; the plan agent's plan-directory rule is recorded as ~/.opencode/plan/* because upstream joins the runtime home directory."
+    }
+  ]
+}

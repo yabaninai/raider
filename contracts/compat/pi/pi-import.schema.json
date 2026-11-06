@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.dev/contracts/compat/pi/pi-import.schema.json",
+  "title": "Raider pi profile import report v1",
+  "description": "Canonical compatibility report produced by the Raider pi profile importer (modules/compat-pi). The report records what was imported from the vendored pi subagent corpus, what was degraded, what was rejected, and what was ignored - it never approximates an unsupported capability silently. The golden file golden/pi-import-golden.json is pinned by spec PIIMP-01; re-pinning requires review of the full diff.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "snapshotId",
+    "provenance",
+    "profiles",
+    "workflowPrompts",
+    "referenceFiles",
+    "rejectedFiles",
+    "parityGaps",
+    "degraded",
+    "counts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "snapshotId": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "SHA-256 over the UTF-8 lines: commit=<upstreamCommit>\\n followed by file <path> <sha256>\\n for every corpusFiles entry sorted by path. Independent of the report body: any corpus change yields a new snapshotId."
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "upstreamRepo",
+        "upstreamPath",
+        "upstreamCommit",
+        "fetchedOn",
+        "license",
+        "licenseCopyright",
+        "vendoredCorpus",
+        "corpusFiles"
+      ],
+      "properties": {
+        "upstreamRepo": { "type": "string", "minLength": 1 },
+        "upstreamPath": { "type": "string", "minLength": 1 },
+        "upstreamCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "fetchedOn": { "type": "string", "format": "date" },
+        "license": { "const": "MIT" },
+        "licenseCopyright": { "type": "string", "minLength": 1 },
+        "vendoredCorpus": { "type": "string", "minLength": 1 },
+        "corpusFiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["path", "role", "sha256"],
+            "properties": {
+              "path": { "type": "string", "minLength": 1 },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "agentProfile",
+                  "workflowPrompt",
+                  "discoverySemantics",
+                  "corpusDoc",
+                  "license"
+                ]
+              },
+              "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+            }
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "sourcePath",
+          "requestedModel",
+          "systemPrompt",
+          "toolPolicy",
+          "supported",
+          "ignored",
+          "rejected"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "requestedModel": { "type": "string" },
+          "systemPrompt": { "type": "string" },
+          "toolPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "mapped", "unsupported"],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": ["explicit", "piDefault", "rejected"]
+              },
+              "mapped": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["pi", "raider", "degraded", "note"],
+                  "properties": {
+                    "pi": { "type": "string", "minLength": 1 },
+                    "raider": { "type": "string", "minLength": 1 },
+                    "degraded": { "type": "boolean" },
+                    "note": { "type": "string", "minLength": 1 }
+                  }
+                }
+              },
+              "unsupported": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["pi", "reason"],
+                  "properties": {
+                    "pi": { "type": "string", "minLength": 1 },
+                    "reason": { "type": "string", "minLength": 1 }
+                  }
+                }
+              }
+            }
+          },
+          "supported": { "$ref": "#/$defs/fieldEntries" },
+          "ignored": { "$ref": "#/$defs/fieldEntries" },
+          "rejected": { "$ref": "#/$defs/rejectedFields" }
+        }
+      }
+    },
+    "workflowPrompts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "description",
+          "sourcePath",
+          "promptText",
+          "supported",
+          "ignored",
+          "rejected"
+        ],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "sourcePath": { "type": "string", "minLength": 1 },
+          "promptText": { "type": "string" },
+          "supported": { "$ref": "#/$defs/fieldEntries" },
+          "ignored": { "$ref": "#/$defs/fieldEntries" },
+          "rejected": { "$ref": "#/$defs/rejectedFields" }
+        }
+      }
+    },
+    "referenceFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "role", "detail"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "role": {
+            "type": "string",
+            "enum": ["license", "corpusDoc", "discoverySemantics"]
+          },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rejectedFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "parityGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scope", "detail"],
+        "properties": {
+          "scope": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "degraded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scope", "detail"],
+        "properties": {
+          "scope": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["supported", "ignored", "rejected"],
+      "properties": {
+        "supported": { "type": "integer", "minimum": 0 },
+        "ignored": { "type": "integer", "minimum": 0 },
+        "rejected": { "type": "integer", "minimum": 0 }
+      }
+    }
+  },
+  "$defs": {
+    "fieldEntries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "detail"],
+        "properties": {
+          "field": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "rejectedFields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "reason"],
+        "properties": {
+          "field": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,444 @@
+{
+  "counts": {
+    "ignored": 9,
+    "rejected": 1,
+    "supported": 43
+  },
+  "degraded": [
+    {
+      "detail": "pi bash takes a free-form shell command; Raider proc_run executes structured argv with no shell, an empty environment and an explicit allowlist - the mapped capability is strictly narrower",
+      "scope": "tool bash"
+    }
+  ],
+  "parityGaps": [
+    {
+      "detail": "pi's default child toolset grants file-write ('write'); Raider has no single-call file-create tool, so imported default policies lack it (rejected, not approximated)",
+      "scope": "profile worker"
+    },
+    {
+      "detail": "pi's default child toolset also includes extension-provided tools; only pi built-ins with Raider equivalents are imported - imported workers are NOT guaranteed full pi parity",
+      "scope": "piDefault extension tools"
+    }
+  ],
+  "profiles": [
+    {
+      "description": "Creates implementation plans from context and requirements",
+      "ignored": [],
+      "name": "planner",
+      "rejected": [],
+      "requestedModel": "claude-sonnet-4-5",
+      "sourcePath": "agents/planner.md",
+      "supported": [
+        {
+          "detail": "imported as the profile name",
+          "field": "name"
+        },
+        {
+          "detail": "imported as the profile description",
+          "field": "description"
+        },
+        {
+          "detail": "declared: read, grep, find, ls",
+          "field": "tools"
+        },
+        {
+          "detail": "requested upstream model: claude-sonnet-4-5",
+          "field": "model"
+        },
+        {
+          "detail": "markdown body imported verbatim as the profile system prompt",
+          "field": "systemPrompt"
+        }
+      ],
+      "systemPrompt": "You are a planning specialist. You receive context (from a scout) and requirements, then produce a clear implementation plan.\n\nYou must NOT make any changes. Only read, analyze, and plan.\n\nInput format you'll receive:\n- Context/findings from a scout agent\n- Original query or requirements\n\nOutput format:\n\n## Goal\nOne sentence summary of what needs to be done.\n\n## Plan\nNumbered steps, each small and actionable:\n1. Step one - specific file/function to modify\n2. Step two - what to add/change\n3. ...\n\n## Files to Modify\n- `path/to/file.ts` - what changes\n- `path/to/other.ts` - what changes\n\n## New Files (if any)\n- `path/to/new.ts` - purpose\n\n## Risks\nAnything to watch out for.\n\nKeep the plan concrete. The worker agent will execute it verbatim.",
+      "toolPolicy": {
+        "kind": "explicit",
+        "mapped": [
+          {
+            "degraded": false,
+            "note": "bounded workspace tree listing with a file-name glob filter (pi find locates files by pattern)",
+            "pi": "find",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded workspace content search (no external grep process)",
+            "pi": "grep",
+            "raider": "fs_search"
+          },
+          {
+            "degraded": false,
+            "note": "same Raider listing capability as pi ls",
+            "pi": "ls",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded ranged workspace read with sha256 provenance",
+            "pi": "read",
+            "raider": "fs_read"
+          }
+        ],
+        "unsupported": []
+      }
+    },
+    {
+      "description": "Code review specialist for quality and security analysis",
+      "ignored": [],
+      "name": "reviewer",
+      "rejected": [],
+      "requestedModel": "claude-sonnet-4-5",
+      "sourcePath": "agents/reviewer.md",
+      "supported": [
+        {
+          "detail": "imported as the profile name",
+          "field": "name"
+        },
+        {
+          "detail": "imported as the profile description",
+          "field": "description"
+        },
+        {
+          "detail": "declared: read, grep, find, ls, bash",
+          "field": "tools"
+        },
+        {
+          "detail": "requested upstream model: claude-sonnet-4-5",
+          "field": "model"
+        },
+        {
+          "detail": "markdown body imported verbatim as the profile system prompt",
+          "field": "systemPrompt"
+        }
+      ],
+      "systemPrompt": "You are a senior code reviewer. Analyze code for quality, security, and maintainability.\n\nBash is for read-only commands only: `git diff`, `git log`, `git show`. Do NOT modify files or run builds.\nAssume tool permissions are not perfectly enforceable; keep all bash usage strictly read-only.\n\nStrategy:\n1. Run `git diff` to see recent changes (if applicable)\n2. Read the modified files\n3. Check for bugs, security issues, code smells\n\nOutput format:\n\n## Files Reviewed\n- `path/to/file.ts` (lines X-Y)\n\n## Critical (must fix)\n- `file.ts:42` - Issue description\n\n## Warnings (should fix)\n- `file.ts:100` - Issue description\n\n## Suggestions (consider)\n- `file.ts:150` - Improvement idea\n\n## Summary\nOverall assessment in 2-3 sentences.\n\nBe specific with file paths and line numbers.",
+      "toolPolicy": {
+        "kind": "explicit",
+        "mapped": [
+          {
+            "degraded": true,
+            "note": "argv-only, no shell; empty environment + explicit allowlist; pi shell strings are not replayable verbatim",
+            "pi": "bash",
+            "raider": "proc_run"
+          },
+          {
+            "degraded": false,
+            "note": "bounded workspace tree listing with a file-name glob filter (pi find locates files by pattern)",
+            "pi": "find",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded workspace content search (no external grep process)",
+            "pi": "grep",
+            "raider": "fs_search"
+          },
+          {
+            "degraded": false,
+            "note": "same Raider listing capability as pi ls",
+            "pi": "ls",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded ranged workspace read with sha256 provenance",
+            "pi": "read",
+            "raider": "fs_read"
+          }
+        ],
+        "unsupported": []
+      }
+    },
+    {
+      "description": "Fast codebase recon that returns compressed context for handoff to other agents",
+      "ignored": [],
+      "name": "scout",
+      "rejected": [],
+      "requestedModel": "claude-haiku-4-5",
+      "sourcePath": "agents/scout.md",
+      "supported": [
+        {
+          "detail": "imported as the profile name",
+          "field": "name"
+        },
+        {
+          "detail": "imported as the profile description",
+          "field": "description"
+        },
+        {
+          "detail": "declared: read, grep, find, ls, bash",
+          "field": "tools"
+        },
+        {
+          "detail": "requested upstream model: claude-haiku-4-5",
+          "field": "model"
+        },
+        {
+          "detail": "markdown body imported verbatim as the profile system prompt",
+          "field": "systemPrompt"
+        }
+      ],
+      "systemPrompt": "You are a scout. Quickly investigate a codebase and return structured findings that another agent can use without re-reading everything.\n\nYour output will be passed to an agent who has NOT seen the files you explored.\n\nThoroughness (infer from task, default medium):\n- Quick: Targeted lookups, key files only\n- Medium: Follow imports, read critical sections\n- Thorough: Trace all dependencies, check tests/types\n\nStrategy:\n1. grep/find to locate relevant code\n2. Read key sections (not entire files)\n3. Identify types, interfaces, key functions\n4. Note dependencies between files\n\nOutput format:\n\n## Files Retrieved\nList with exact line ranges:\n1. `path/to/file.ts` (lines 10-50) - Description of what's here\n2. `path/to/other.ts` (lines 100-150) - Description\n3. ...\n\n## Key Code\nCritical types, interfaces, or functions:\n\n```typescript\ninterface Example {\n  // actual code from the files\n}\n```\n\n```typescript\nfunction keyFunction() {\n  // actual implementation\n}\n```\n\n## Architecture\nBrief explanation of how the pieces connect.\n\n## Start Here\nWhich file to look at first and why.",
+      "toolPolicy": {
+        "kind": "explicit",
+        "mapped": [
+          {
+            "degraded": true,
+            "note": "argv-only, no shell; empty environment + explicit allowlist; pi shell strings are not replayable verbatim",
+            "pi": "bash",
+            "raider": "proc_run"
+          },
+          {
+            "degraded": false,
+            "note": "bounded workspace tree listing with a file-name glob filter (pi find locates files by pattern)",
+            "pi": "find",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded workspace content search (no external grep process)",
+            "pi": "grep",
+            "raider": "fs_search"
+          },
+          {
+            "degraded": false,
+            "note": "same Raider listing capability as pi ls",
+            "pi": "ls",
+            "raider": "fs_tree"
+          },
+          {
+            "degraded": false,
+            "note": "bounded ranged workspace read with sha256 provenance",
+            "pi": "read",
+            "raider": "fs_read"
+          }
+        ],
+        "unsupported": []
+      }
+    },
+    {
+      "description": "General-purpose subagent with full capabilities, isolated context",
+      "ignored": [],
+      "name": "worker",
+      "rejected": [],
+      "requestedModel": "claude-sonnet-4-5",
+      "sourcePath": "agents/worker.md",
+      "supported": [
+        {
+          "detail": "imported as the profile name",
+          "field": "name"
+        },
+        {
+          "detail": "imported as the profile description",
+          "field": "description"
+        },
+        {
+          "detail": "not declared; pi default built-ins assumed (read, bash, edit, write)",
+          "field": "tools"
+        },
+        {
+          "detail": "requested upstream model: claude-sonnet-4-5",
+          "field": "model"
+        },
+        {
+          "detail": "markdown body imported verbatim as the profile system prompt",
+          "field": "systemPrompt"
+        }
+      ],
+      "systemPrompt": "You are a worker agent with full capabilities. You operate in an isolated context window to handle delegated tasks without polluting the main conversation.\n\nWork autonomously to complete the assigned task. Use all available tools as needed.\n\nOutput format when finished:\n\n## Completed\nWhat was done.\n\n## Files Changed\n- `path/to/file.ts` - what changed\n\n## Notes (if any)\nAnything the main agent should know.\n\nIf handing off to another agent (e.g. reviewer), include:\n- Exact file paths changed\n- Key functions/types touched (short list)",
+      "toolPolicy": {
+        "kind": "piDefault",
+        "mapped": [
+          {
+            "degraded": true,
+            "note": "argv-only, no shell; empty environment + explicit allowlist; pi shell strings are not replayable verbatim",
+            "pi": "bash",
+            "raider": "proc_run"
+          },
+          {
+            "degraded": false,
+            "note": "structured single-file edit gated on expected sha256 provenance",
+            "pi": "edit",
+            "raider": "fs_edit"
+          },
+          {
+            "degraded": false,
+            "note": "bounded ranged workspace read with sha256 provenance",
+            "pi": "read",
+            "raider": "fs_read"
+          }
+        ],
+        "unsupported": [
+          {
+            "pi": "write",
+            "reason": "no Raider single-call file-create tool; the nearest fs_edit/fs_patch_multi require an existing file's sha256 provenance - rejected instead of approximated"
+          }
+        ]
+      }
+    }
+  ],
+  "provenance": {
+    "corpusFiles": [
+      {
+        "path": "LICENSE",
+        "role": "license",
+        "sha256": "0457f5bcec3b3b211605dfb5d1a49042fd638f3686a410fe099c24a25af13c48"
+      },
+      {
+        "path": "README.md",
+        "role": "corpusDoc",
+        "sha256": "f911b3a0d74675f2c6daa44e00ad91d92ae0254ed3053fb82eccc637330e1283"
+      },
+      {
+        "path": "agents.ts",
+        "role": "discoverySemantics",
+        "sha256": "cc85ecd33b89aa575bea3d2a9a9da7654a6305da4de02e5041aa5342a1de29b4"
+      },
+      {
+        "path": "agents/planner.md",
+        "role": "agentProfile",
+        "sha256": "452f21f65957753cec3b0772004209c108071be168e627fffd7191234c0ce64e"
+      },
+      {
+        "path": "agents/reviewer.md",
+        "role": "agentProfile",
+        "sha256": "b5c3f13b67207e8e32de631f8cd52a373d9b956028e2f8c1fd8b737b5f239265"
+      },
+      {
+        "path": "agents/scout.md",
+        "role": "agentProfile",
+        "sha256": "3b84e8e01c6e05c8dfbff1c845c0c6371f4f16350735d4d1dbd02bfa98b1d4e6"
+      },
+      {
+        "path": "agents/worker.md",
+        "role": "agentProfile",
+        "sha256": "ca2b2298fcbd8bfafcfe61977dc8075001a64b9c4d8c289c3b5eaa896efe6238"
+      },
+      {
+        "path": "prompts/implement-and-review.md",
+        "role": "workflowPrompt",
+        "sha256": "019ba4bf42d596ea03fc4564be5b2cc55a06227c95db19a4d5a5bb96697a75f9"
+      },
+      {
+        "path": "prompts/implement.md",
+        "role": "workflowPrompt",
+        "sha256": "65462de33c97ac1372cfed270dad9af164605b05028c069dd4c013ff9792675b"
+      },
+      {
+        "path": "prompts/scout-and-plan.md",
+        "role": "workflowPrompt",
+        "sha256": "9506399391e0d2c71826c45f26cc332175dd964465f99a8bb880e109f8ed89f4"
+      }
+    ],
+    "fetchedOn": "2026-11-05",
+    "license": "MIT",
+    "licenseCopyright": "Copyright (c) 2025 Mario Zechner",
+    "upstreamCommit": "55a5c6914570e2ae31ca36297654483bbbf46883",
+    "upstreamPath": "packages/coding-agent/examples/extensions/subagent",
+    "upstreamRepo": "https://github.com/earendil-works/pi",
+    "vendoredCorpus": "vendor/pi-profiles/upstream"
+  },
+  "referenceFiles": [
+    {
+      "detail": "license compliance copy; notices live in THIRD_PARTY_NOTICES.md",
+      "path": "LICENSE",
+      "role": "license"
+    },
+    {
+      "detail": "corpus documentation; not a profile or prompt",
+      "path": "README.md",
+      "role": "corpusDoc"
+    },
+    {
+      "detail": "pi agent-discovery source; defines the frontmatter parse semantics mirrored by the bounded importer parser",
+      "path": "agents.ts",
+      "role": "discoverySemantics"
+    }
+  ],
+  "rejectedFiles": [],
+  "schemaVersion": 1,
+  "snapshotId": "d2677fc47dfe620db3343c11ae40e1a5ab4eb6a6d283e4f886ea8407b7cf866f",
+  "workflowPrompts": [
+    {
+      "description": "Full implementation workflow - scout gathers context, planner creates plan, worker implements",
+      "ignored": [
+        {
+          "detail": "pi slash-command argument placeholder; the Raider import records the text only",
+          "field": "$@ argument substitution"
+        },
+        {
+          "detail": "pi subagent chain output piping; chain execution is pi-runtime semantics and is not imported",
+          "field": "{previous} chain placeholder"
+        }
+      ],
+      "name": "implement",
+      "promptText": "Use the subagent tool with the chain parameter to execute this workflow:\n\n1. First, use the \"scout\" agent to find all code relevant to: $@\n2. Then, use the \"planner\" agent to create an implementation plan for \"$@\" using the context from the previous step (use {previous} placeholder)\n3. Finally, use the \"worker\" agent to implement the plan from the previous step (use {previous} placeholder)\n\nExecute this as a chain, passing output between steps via {previous}.",
+      "rejected": [],
+      "sourcePath": "prompts/implement.md",
+      "supported": [
+        {
+          "detail": "imported as the workflow description",
+          "field": "description"
+        },
+        {
+          "detail": "markdown body imported verbatim as the prompt template text",
+          "field": "promptText"
+        }
+      ]
+    },
+    {
+      "description": "Worker implements, reviewer reviews, worker applies feedback",
+      "ignored": [
+        {
+          "detail": "pi slash-command argument placeholder; the Raider import records the text only",
+          "field": "$@ argument substitution"
+        },
+        {
+          "detail": "pi subagent chain output piping; chain execution is pi-runtime semantics and is not imported",
+          "field": "{previous} chain placeholder"
+        }
+      ],
+      "name": "implement-and-review",
+      "promptText": "Use the subagent tool with the chain parameter to execute this workflow:\n\n1. First, use the \"worker\" agent to implement: $@\n2. Then, use the \"reviewer\" agent to review the implementation from the previous step (use {previous} placeholder)\n3. Finally, use the \"worker\" agent to apply the feedback from the review (use {previous} placeholder)\n\nExecute this as a chain, passing output between steps via {previous}.",
+      "rejected": [],
+      "sourcePath": "prompts/implement-and-review.md",
+      "supported": [
+        {
+          "detail": "imported as the workflow description",
+          "field": "description"
+        },
+        {
+          "detail": "markdown body imported verbatim as the prompt template text",
+          "field": "promptText"
+        }
+      ]
+    },
+    {
+      "description": "Scout gathers context, planner creates implementation plan (no implementation)",
+      "ignored": [
+        {
+          "detail": "pi slash-command argument placeholder; the Raider import records the text only",
+          "field": "$@ argument substitution"
+        },
+        {
+          "detail": "pi subagent chain output piping; chain execution is pi-runtime semantics and is not imported",
+          "field": "{previous} chain placeholder"
+        }
+      ],
+      "name": "scout-and-plan",
+      "promptText": "Use the subagent tool with the chain parameter to execute this workflow:\n\n1. First, use the \"scout\" agent to find all code relevant to: $@\n2. Then, use the \"planner\" agent to create an implementation plan for \"$@\" using the context from the previous step (use {previous} placeholder)\n\nExecute this as a chain, passing output between steps via {previous}. Do NOT implement - just return the plan.",
+      "rejected": [],
+      "sourcePath": "prompts/scout-and-plan.md",
+      "supported": [
+        {
+          "detail": "imported as the workflow description",
+          "field": "description"
+        },
+        {
+          "detail": "markdown body imported verbatim as the prompt template text",
+          "field": "promptText"
+        }
+      ]
+    }
+  ]
+}

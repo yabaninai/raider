@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/backends/opencode/event-frame.schema.json",
+  "title": "OpenCode global event frame (GlobalEvent envelope)",
+  "description": "Envelope of one frame received on GET /global/event (SSE data payload). Pinned to the OpenCode JS SDK types.gen.ts v1.19.4 corpus snapshot d7d85817160120fd59fb27ee6ff354f45d18b994. The adapter decodes this envelope plus the event-specific properties shapes pinned in expected/pinned-events.json; unknown payload.type values decode to a pass-through Unknown event.",
+  "type": "object",
+  "required": ["payload"],
+  "additionalProperties": false,
+  "properties": {
+    "directory": {
+      "type": ["string", "null"],
+      "description": "Workspace directory the event belongs to. Used together with the session id to scope subscriptions; null/absent frames do not match a directory-configured subscription."
+    },
+    "payload": {
+      "type": "object",
+      "required": ["type", "properties"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Discriminant, e.g. server.connected, session.created, session.status, session.idle, message.updated, message.part.updated, session.error, permission.updated, or any unknown future type (decoded as Unknown)."
+        },
+        "properties": {
+          "type": "object",
+          "description": "Event-specific body. Shapes pinned per type in expected/pinned-events.json; notably session.created carries the session object directly while message.updated wraps it under info."
+        },
+        "delta": {
+          "type": "string",
+          "description": "Optional incremental text for message.part.updated text parts."
+        }
+      }
+    }
+  },
+  "examples": [
+    {
+      "directory": "/fixture/ws",
+      "payload": {
+        "type": "session.idle",
+        "properties": { "sessionID": "ses_01" }
+      }
+    }
+  ]
+}

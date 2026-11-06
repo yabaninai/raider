@@ -12,10 +12,12 @@ Scala workflows for coding agents and CI
 
 Raider provides a headless JVM CLI distribution and source-built Scala
 workflows. The installed CLI can inspect a repository in deterministic mock
-mode or run configured provider tasks. The Scala REPL and tab shell are
-source-checkout interfaces; the headless CLI package does not include their
-compiler and terminal dependencies. Local release artifacts are not hosted
-downloads. See [installed first use](docs/onboarding.md) for the packaged path.
+mode or run configured provider tasks; `raider --help` exits 0 and lists its
+commands. The Scala REPL and tab shell ship as a separate installed REPL
+distribution in the release (`raider-repl`, with the in-process Scala
+compiler); the headless CLI package itself does not include the REPL compiler
+and terminal dependencies. Local release artifacts are not hosted downloads.
+See [installed first use](docs/onboarding.md) for the packaged path.
 
 ## Build the source checkout
 

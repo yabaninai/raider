@@ -49,6 +49,29 @@ object CodingToolsetRecoverySpec extends ZIOSpecDefault:
     "proc_run"
   )
 
+  /** RAI-260: the two structured mutation tools join the default registry.
+    * RAI-268: the canonical RecoveryTaxonomy now covers both names (they are
+    * WriteTools members), so the taxonomy-consistency test below iterates the
+    * full eight-name coding surface.
+    */
+  private val MutationNames = List("fs_delete", "fs_patch_multi")
+
+  /** The full default coding surface (sorted, as ToolRegistry.names reports
+    * it). The taxonomy-consistency test below iterates all eight names — the
+    * RAI-268 lineage extension closed the disclosed RAI-260 taxonomy gap (the
+    * consistency test was frozen to SixNames until that card landed).
+    */
+  private val CodingNames = List(
+    "fs_delete",
+    "fs_edit",
+    "fs_patch",
+    "fs_patch_multi",
+    "fs_read",
+    "fs_search",
+    "fs_tree",
+    "proc_run"
+  )
+
   private val StateNames = List(
     "state_delete",
     "state_get",
@@ -121,7 +144,7 @@ object CodingToolsetRecoverySpec extends ZIOSpecDefault:
   def spec = suite("coding toolset recovery stamps (RAI-149)")(
     suite("TOOLRC-01 per-tool stamps")(
       test(
-        "six coding tools carry their correct frozen RecoveryClass (was: all ReadOnly)"
+        "every coding tool carries its correct frozen RecoveryClass (was: all ReadOnly)"
       ) {
         val work = Files.createTempDirectory("raider-toolrc-01")
         for
@@ -129,17 +152,20 @@ object CodingToolsetRecoverySpec extends ZIOSpecDefault:
           reg = ws.registry.fold(e => throw e, identity)
           rec = (n: String) => reg.lookup(n).map(_.recovery)
         yield assertTrue(
-          reg.names == SixNames,
+          reg.names == CodingNames,
           rec("fs_read") == Some(RecoveryClass.ReadOnly),
           rec("fs_search") == Some(RecoveryClass.ReadOnly),
           rec("fs_tree") == Some(RecoveryClass.ReadOnly),
           rec("proc_run") == Some(RecoveryClass.Mutating),
           rec("fs_edit") == Some(RecoveryClass.Mutating),
-          rec("fs_patch") == Some(RecoveryClass.Mutating)
+          rec("fs_patch") == Some(RecoveryClass.Mutating),
+          // RAI-260: the structured mutation tools are Mutating too
+          rec("fs_patch_multi") == Some(RecoveryClass.Mutating),
+          rec("fs_delete") == Some(RecoveryClass.Mutating)
         )
       },
       test(
-        "coding-tool stamps are consistent with the canonical RecoveryTaxonomy membership (RAI-148)"
+        "coding-tool stamps are consistent with the canonical RecoveryTaxonomy membership (RAI-148; RAI-268 covers the RAI-260 names)"
       ) {
         val work = Files.createTempDirectory("raider-toolrc-01-tax")
         for
@@ -147,17 +173,35 @@ object CodingToolsetRecoverySpec extends ZIOSpecDefault:
           reg = ws.registry.fold(e => throw e, identity)
           // name-string comparison: the lineage taxonomy is keyed by tool
           // NAME (its own frozen graph-model enum), the Tool field is the
-          // core enum — the membership verdicts must agree
-          consistent = SixNames.forall { n =>
+          // core enum — the membership verdicts must agree. RAI-268: the
+          // iteration set grew additively from SixNames to the full coding
+          // surface (fs_patch_multi/fs_delete joined the taxonomy).
+          consistent = (SixNames ++ MutationNames).forall { n =>
             val tool = reg
               .lookup(n)
               .getOrElse(throw new IllegalStateException(s"missing $n"))
             tool.recovery.toString == RecoveryTaxonomy.classify(n).toString
           }
-          mutating = SixNames.filter(RecoveryTaxonomy.isMutating)
+          mutating = (SixNames ++ MutationNames)
+            .filter(RecoveryTaxonomy.isMutating)
+            .sorted
         yield assertTrue(
           consistent,
-          mutating == List("fs_edit", "fs_patch", "proc_run")
+          mutating ==
+            List(
+              "fs_delete",
+              "fs_edit",
+              "fs_patch",
+              "fs_patch_multi",
+              "proc_run"
+            ),
+          // the two RAI-260 names are Mutating in BOTH the stamps and the
+          // taxonomy (name-string comparison: the stamp enum lives in
+          // raider.core, the taxonomy verdict enum in raider.runtime.lineage.model)
+          MutationNames.forall(n =>
+            RecoveryTaxonomy.classify(n).toString ==
+              RecoveryClass.Mutating.toString
+          )
         )
       },
       test(
@@ -173,7 +217,7 @@ object CodingToolsetRecoverySpec extends ZIOSpecDefault:
           reg = ws.registry.fold(e => throw e, identity)
           rec = (n: String) => reg.lookup(n).map(_.recovery)
         yield assertTrue(
-          reg.names == SixNames ++ StateNames,
+          reg.names == CodingNames ++ StateNames,
           rec("state_get") == Some(RecoveryClass.ReadOnly),
           rec("state_keys") == Some(RecoveryClass.ReadOnly),
           rec("state_put") == Some(RecoveryClass.Mutating),

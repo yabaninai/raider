@@ -20,7 +20,11 @@ jq -e --arg version "$VERSION" '
   (.revision | type == "string" and length > 0) and
   .tag == ("v" + $version) and
   .localOnly == true and
-  (.acceptance | type == "object")
+  (.acceptance | type == "object") and
+  (.distributions | type == "object") and
+  (.distributions.headless | type == "string" and length > 0) and
+  (.distributions.repl | type == "string" and length > 0) and
+  (.distributions.replArchive | type == "string" and length > 0)
 ' "$RELEASE/release.json" >/dev/null 2>&1 || {
   printf '%s\n' 'release metadata is malformed or inconsistent' >&2
   exit 21
@@ -39,4 +43,15 @@ else
   printf '%s\n' 'SHA-256 verification utility is required' >&2
   exit 21
 fi
+# RAI-279: the manifest must cover every regular file in the release except
+# itself. Manifest entries are `sha256sum -c` lines (`<hex>  <path>`), so the
+# path starts at column 67. A listed-but-missing or present-but-unlisted file
+# is an integrity failure, not a warning. Only the top-level manifest is
+# exempt; the nested REPL manifest is itself a covered payload file.
+LISTED=$(LC_ALL=C awk '{ print substr($0, 67) }' "$RELEASE/SHA256SUMS" | LC_ALL=C sort)
+ACTUAL=$(cd "$RELEASE" && find . -type f ! -path ./SHA256SUMS | LC_ALL=C sed 's|^\./||' | LC_ALL=C sort)
+[ "$ACTUAL" = "$LISTED" ] || {
+  printf '%s\n' 'checksum manifest does not cover every release file' >&2
+  exit 21
+}
 printf '%s\n' '[release-verify] PASS: metadata and checksums are valid'

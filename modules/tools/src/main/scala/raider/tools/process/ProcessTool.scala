@@ -72,12 +72,26 @@ final class ProcessTool(
             req.envAllowlist.foreach { key =>
               req.envValues.get(key).foreach(value => env.put(key, value))
             }
-
-            val proc = pb.start()
+            (startedAt, pb.start())
+          }
+          .mapError(e =>
+            // Model-correctable spawn failures (ADR-026): missing program /
+            // bad argv is structured feedback; other IO stays fatal.
+            val msg = Option(e.getMessage).getOrElse("")
+            if msg.contains("error=2") || msg.contains("Cannot run program")
+            then
+              RaiderError.InputValidation(
+                s"program not found (check argv[0]): ${msg.take(120)}"
+              )
+            else RaiderError.ToolFailed(s"process exec failed: $msg")
+          )
+          .flatMap { case (startedAt, proc) =>
             var truncated = false
 
-            def drain(stream: java.io.InputStream, into: StringBuilder)
-                : Thread =
+            def drain(
+                stream: java.io.InputStream,
+                into: StringBuilder
+            ): Thread =
               new Thread(() =>
                 try
                   val buf = new Array[Byte](4096)
@@ -102,50 +116,91 @@ final class ProcessTool(
             val stderr = new StringBuilder
             val outT = drain(proc.getInputStream, stdout)
             val errT = drain(proc.getErrorStream, stderr)
-            outT.start(); errT.start()
+            // daemon: on the cancellation path the owning fiber never reaches
+            // the drain joins, so the readers must not outlive the JVM work
+            outT.setDaemon(true)
+            errT.setDaemon(true)
+            outT.start()
+            errT.start()
 
-            val finished =
-              proc.waitFor(req.timeout.toMillis, TimeUnit.MILLISECONDS)
-            var timedOut = false
-            if !finished then
-              timedOut = true
-              proc.destroy() // graceful first (SIGTERM semantics)
-              if !proc.waitFor(2, TimeUnit.SECONDS) then
-                proc.destroyForcibly()
-                if !proc.waitFor(2, TimeUnit.SECONDS) then
-                  // still alive: we do NOT claim a confirmed kill
-                  stderr.append(
-                    "\n[process-tool] child unkillable within grace"
-                  )
-            outT.join(2000); errT.join(2000)
-
-            val exitCode =
-              if proc.isAlive then None
-              else Some(proc.exitValue())
-            val durationMs = (System.nanoTime() - startedAt) / 1_000_000
-
-            ExecOutcome(
-              exitCode = exitCode,
-              stdout = stdout.result(),
-              stderr = stderr.result(),
-              truncated = truncated,
-              timedOut = timedOut,
-              durationMs = durationMs,
-              cleanup =
-                CleanupGuarantee.DirectChildOnly // honest: gap from RAI-001
-            )
-          }
-          .mapError(e =>
-            // Model-correctable spawn failures (ADR-026): missing program /
-            // bad argv is structured feedback; other IO stays fatal.
-            val msg = Option(e.getMessage).getOrElse("")
-            if msg.contains("error=2") || msg.contains("Cannot run program")
-            then
-              RaiderError.InputValidation(
-                s"program not found (check argv[0]): ${msg.take(120)}"
+            // RAI-283 (cancellation leg): the WAIT is interruptible — one
+            // short waitFor slice per attemptBlocking step. When a fiber
+            // interruption lands mid-slice, the blocking section completes at
+            // the slice end (≤200ms) and the fiber then terminates as
+            // interrupted, running the finalizer that OWNS the process
+            // destroy. A single long proc.waitFor(timeout) would swallow the
+            // thread interrupt: the cancelled job would linger until the OS
+            // process exits naturally. Timeout semantics are unchanged
+            // (deadline checked per slice; kill grace below).
+            val sliceMs = 200L
+            val deadline = System.nanoTime() + req.timeout.toNanos
+            def awaitExit: ZIO[Any, Nothing, Boolean] =
+              ZIO
+                .attemptBlocking(proc.waitFor(sliceMs, TimeUnit.MILLISECONDS))
+                .catchAll(_ => ZIO.succeed(false))
+                .flatMap {
+                  case true => ZIO.succeed(true)
+                  case false =>
+                    if System.nanoTime() < deadline then awaitExit
+                    else ZIO.succeed(false)
+                }
+            awaitExit
+              .onInterrupt(
+                // Ownership on cancel: terminate the direct child promptly.
+                // (Grandchildren/process-group remains the declared RAI-001
+                // gap; CleanupGuarantee.DirectChildOnly is unchanged.)
+                ZIO.attempt {
+                  proc.destroy()
+                  if !proc.waitFor(2, TimeUnit.SECONDS) then
+                    proc.destroyForcibly()
+                }.ignore
               )
-            else RaiderError.ToolFailed(s"process exec failed: $msg")
-          )
+              .flatMap { finished =>
+                ZIO
+                  .attempt {
+                    var timedOut = false
+                    if !finished then
+                      timedOut = true
+                      proc.destroy() // graceful first (SIGTERM semantics)
+                      if !proc.waitFor(2, TimeUnit.SECONDS) then
+                        proc.destroyForcibly()
+                        if !proc.waitFor(2, TimeUnit.SECONDS) then
+                          // still alive: we do NOT claim a confirmed kill
+                          stderr.append(
+                            "\n[process-tool] child unkillable within grace"
+                          )
+                    outT.join(2000)
+                    errT.join(2000)
+
+                    val exitCode =
+                      if proc.isAlive then None
+                      else Some(proc.exitValue())
+                    val durationMs =
+                      (System.nanoTime() - startedAt) / 1_000_000
+
+                    ExecOutcome(
+                      exitCode = exitCode,
+                      stdout = stdout.result(),
+                      stderr = stderr.result(),
+                      truncated = truncated,
+                      timedOut = timedOut,
+                      durationMs = durationMs,
+                      cleanup =
+                        CleanupGuarantee.DirectChildOnly // honest: gap from RAI-001
+                    )
+                  }
+                  .mapError(e =>
+                    val msg = Option(e.getMessage).getOrElse("")
+                    if msg.contains("error=2") ||
+                      msg.contains("Cannot run program")
+                    then
+                      RaiderError.InputValidation(
+                        s"program not found (check argv[0]): ${msg.take(120)}"
+                      )
+                    else RaiderError.ToolFailed(s"process exec failed: $msg")
+                  )
+              }
+          }
       }
 
   private def validate(req: ExecRequest): ZIO[Any, RaiderError, Unit] =

@@ -50,6 +50,18 @@ import scala.jdk.CollectionConverters.*
   *     under the bounded join — green run, trusted-checks-passed, exit 0.
   *   - RAI-216-S: SIGTERM DURING the bounded drain wait keeps the exit-143
   *     semantics intact with truthful interruption evidence (never green).
+  *   - RAI-236 load determinism: the promptness ceilings are anchored to the
+  *     fixtures' structural delays, not to calm-machine wall times — case A
+  *     ceiling 18s (holder 20s, strictly below the release point), case B
+  *     ceiling 28s (child natural end 30s; holder holds 60s). Trigger: the
+  *     one-off RAI-226 run #1 co-red of the old flat case-A 15s ceiling
+  *     (verdict false at Rai216BoundedFinalizationSpec.scala:392, mechanism
+  *     assertions not implicated, absent from that record's 5 later full-module
+  *     runs). RAI-236 evidence: a 40-run focused-suite matrix on the old
+  *     ceilings (true 1-min load 1.08-11.92) stayed green with every case
+  *     passing on the first attempt — no drain-vs-bound red was reproducible
+  *     below the wave-burst loads, so the ceilings are pinned to fixture
+  *     geometry instead of wall-clock observations.
   *
   * Process-tree reaping of the surviving holder is explicitly a non-goal of
   * RAI-216: the launcher's obligation is to stop waiting, not to reap the
@@ -371,7 +383,13 @@ object Rai216BoundedFinalizationSpec extends ZIOSpecDefault:
             finished,
             // The grandchild holds the write end for 20s: an unbounded join
             // would have returned only after it released the pipe (green).
-            elapsed < 15000L,
+            // RAI-236: the ceiling must stay strictly BELOW the holder's
+            // 20s hold (2s margin) so return-before-release stays provable,
+            // while tolerating host-load jitter of the real child launch:
+            // the old flat 15s constant reded once under RAI-226 run #1
+            // wave load with the mechanism assertions green, so it measured
+            // machine noise, not finalization promptness.
+            elapsed < 18000L,
             dirs.nonEmpty,
             exit == 10,
             result.contains("\"taskVerdict\":\"task-failed\""),
@@ -399,13 +417,18 @@ object Rai216BoundedFinalizationSpec extends ZIOSpecDefault:
         val caseScript = Files.createTempFile("rai216-case-b", ".sh")
         // The check must be in its ordinary wall overrun (destroyed at ~2s)
         // while the holder keeps the inherited write end alive past the
-        // finalization. Platform note: on JDK 21 macOS the destroy closes the
+        // finalization. RAI-236: the holder now holds 60s so the stall
+        // outlives every plausibly loaded finalization — the no-hang proof
+        // is anchored to the child's own 30s sleep (ceiling 28s, 2s margin),
+        // and the holder's 60s release sits far beyond the ceiling, so a
+        // hang-until-release would still blow past it. Platform
+        // note: on JDK 21 macOS the destroy closes the
         // capture stream itself (ProcessImpl.destroy), so the destroyed-path
         // cutoff note — correct on other platforms and retained in the
         // generated code — cannot be observed here; see the class Scaladoc.
         Files.writeString(
           caseScript,
-          casePipeHolder(20L) + "sh -c \"sleep 30\"\nexit 3\n"
+          casePipeHolder(60L) + "sh -c \"sleep 30\"\nexit 3\n"
         )
         val maxAttempts = 3
         var attempt = 0
@@ -430,7 +453,13 @@ object Rai216BoundedFinalizationSpec extends ZIOSpecDefault:
             finished,
             // The destroyed overrun must finalize promptly even with the
             // holder alive: an unbounded wait would hang the launcher here.
-            elapsed < 15000L,
+            // RAI-236: the anchors are the child's 30s natural end (a
+            // ceiling >= 30s would no longer prove destroy won) and the
+            // 60s holder release; the 28s ceiling keeps a 2s margin below
+            // the child while tolerating loaded-host jitter of the real
+            // child launch and destroy — the old flat 15s constant was a
+            // calm-machine wall time, not a structural anchor.
+            elapsed < 28000L,
             dirs.nonEmpty,
             exit == 10,
             result.contains("\"taskVerdict\":\"task-failed\""),

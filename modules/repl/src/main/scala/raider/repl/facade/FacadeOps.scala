@@ -15,16 +15,17 @@ import raider.runtime.loop.AgentLoop
 import raider.runtime.events.EventCodecs.given
 import raider.runtime.mailbox.{Mailbox, MailboxError, Message}
 import raider.runtime.tools.approval.ToolApproval
-import zio.{Chunk, Exit, Promise, Unsafe, ZIO}
+import zio.{Chunk, Exit, Fiber, Promise, Unsafe, ZIO}
 import zio.json.EncoderOps
 
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
 import scala.annotation.targetName
 import scala.jdk.CollectionConverters.*
 
 /** REPL facade ops (runtime-contracts §3): public `ask/start/await/send/
-  * cancel/watch` are extension methods in `raider.repl`, never core members.
+  * cancel/watch/close` are extension methods in `raider.repl`, never core
+  * members.
   *
   * These ops are the blocking facade boundary — for the REPL thread only, never
   * from workflow fibers (which use the async runtime API directly). Every op
@@ -39,7 +40,9 @@ import scala.jdk.CollectionConverters.*
   *     through the ONE `raider.dsl.composition` interpreter (tuple, fail-fast);
   *   - `batch(inputs, parallelism)(f)` composes through `composition.batch`;
   *   - `openSession(worker)` returns a `Chat` that keeps conversation history
-  *     (multi-turn continuity through the same AgentLoop).
+  *     (multi-turn continuity through the same AgentLoop) with a close
+  *     lifecycle (RAI-263, ADR-040): `close()` settles the in-flight turn and
+  *     seals the chat; later asks are refused typed (RA-INP).
   */
 final case class AgentRef(name: String):
   override def toString: String = s"Agent(${name})"
@@ -604,25 +607,107 @@ final class BatchAsk[R] private[facade] (
 /** `openSession(worker)` — a conversation with history: every `ask` appends the
   * user turn and the assistant reply, so the NEXT ask sees the whole
   * conversation (multi-turn continuity, working-product §4).
+  *
+  * RAI-263 close lifecycle (ADR-040; working-product §4 golden scenario
+  * `chat.close()`; product-repl §8/§10 session lifecycle):
+  *
+  *   - `close()` interrupts the in-flight turn (product-repl §10: closing
+  *     cancels session-owned work at MVP), is idempotent and safe from any
+  *     thread, then seals the chat. A later `ask` is refused typed with
+  *     `RaiderError.InputValidation` (RA-INP) — the existing error family; no
+  *     core member was added.
+  *   - Completion vs interruption is decided once, at the turn boundary the
+  *     loop already provides: a turn that finished before the interrupt landed
+  *     keeps its reply in the history (and `ask` returns it — completion wins);
+  *     a turn the interrupt reached surfaces typed `RaiderError.Cancelled` with
+  *     no fabricated reply (product-repl §8: cancelling a turn does not erase
+  *     earlier history).
+  *   - The lifecycle is chat-scoped: session jobs (their steering mailboxes,
+  *     receipts, cancellation) are untouched.
   */
 final class Chat private[facade] (agent: AgentRef, session: ReplSession):
 
   private val history =
     java.util.concurrent.CopyOnWriteArrayList[RequestMessage]()
 
-  def ask(prompt: String): String =
+  // RAI-263 lifecycle: 0 = open, 1 = closing (settling the in-flight turn),
+  // 2 = closed (sealed). All transitions happen under `closeMonitor`; the
+  // fiber set is only read/mutated under `turnLock`.
+  private val lifecycle = AtomicInteger(0)
+  private val closeMonitor = new Object
+  private val turnLock = new Object
+
+  private val inFlight =
+    ConcurrentHashMap.newKeySet[Fiber.Runtime[RaiderError, String]]()
+
+  /** One turn: history snapshot + prompt through the ONE execution point; the
+    * reply pair is appended to the history ON the turn fiber itself, before any
+    * observer of the turn Exit — so a close that races the turn can never lose
+    * a settled reply.
+    */
+  private def turn(prompt: String): ZIO[Any, RaiderError, String] =
     val snapshot: List[RequestMessage] =
       history.synchronized(history.asScala.toList)
-    val reply = FacadeOps.unsafeRun:
-      FacadeOps.textAttemptMessages(
+    FacadeOps
+      .textAttemptMessages(
         session,
         agent,
         snapshot :+ RequestMessage("user", prompt)
       )
-    history.synchronized:
-      history.add(RequestMessage("user", prompt))
-      history.add(RequestMessage("assistant", reply))
-    reply
+      .flatMap { reply =>
+        ZIO.succeed:
+          history.synchronized:
+            history.add(RequestMessage("user", prompt))
+            history.add(RequestMessage("assistant", reply))
+          reply
+      }
+
+  private def closedRefusal: RaiderError =
+    RaiderError.InputValidation(
+      "chat is closed: close() was already called; open a new chat with openSession(...)"
+    )
+
+  /** Foreground ask (blocks the calling thread): the turn runs on a tracked
+    * daemon fiber so `close()` can reach it, and the caller awaits its Exit.
+    * Interrupt-only failures surface as typed `RaiderError.Cancelled`; any
+    * other failure keeps its original cause. A chat that is closing or closed
+    * refuses new asks typed before any dispatch.
+    */
+  def ask(prompt: String): String =
+    val fiber = turnLock.synchronized:
+      if lifecycle.get != 0 then throw closedRefusal
+      val f = FacadeOps.unsafeRun(turn(prompt).forkDaemon)
+      inFlight.add(f)
+      f
+    try
+      FacadeOps.unsafeRun(fiber.await) match
+        case Exit.Success(reply) => reply
+        case Exit.Failure(cause) if cause.isInterruptedOnly =>
+          throw RaiderError.Cancelled(
+            "chat turn cancelled: close() interrupted the turn before it settled"
+          )
+        case Exit.Failure(cause) => throw cause.squash
+    finally turnLock.synchronized(inFlight.remove(fiber))
+
+  /** RAI-263: close the chat — idempotent, safe from any thread. Settles the
+    * in-flight turn (interrupt wins if it had not finished; a settled reply
+    * keeps its history entry), then seals the chat against further asks.
+    * Session jobs and their steering channels are NOT touched (chat-scoped
+    * lifecycle).
+    */
+  def close(): Unit = closeMonitor.synchronized:
+    if lifecycle.compareAndSet(0, 1) then
+      val running = turnLock.synchronized:
+        val current = inFlight.asScala.toList
+        inFlight.clear()
+        current
+      // Interrupt OUTSIDE turnLock (still under closeMonitor): closers that
+      // raced ahead of us wait on the monitor and see the sealed state.
+      running.foreach(f => FacadeOps.unsafeRun(f.interrupt.unit))
+      lifecycle.set(2)
+    // else: a concurrent closer holds the monitor and is sealing this chat,
+    // or it is already sealed — the Java monitor makes the second closer wait
+    // for the first to finish, so this returns only when settled. Idempotent.
 
   /** Conversation so far (for introspection/tests). */
   def messages: List[RequestMessage] =

@@ -133,7 +133,18 @@ Credentials are resolved from environment variables or a configured helper refer
 
 ## 6. Workspace tools and self-hosting
 
-The built-in coder uses the workspace toolset: file read, search, edit, patch, tree, and process execution. Tools operate with the process permissions and workspace configuration supplied to them. The REPL and Scala plugins run trusted Scala code with the process's permissions; tool policy does not sandbox arbitrary Scala.
+The built-in coder uses the eight-tool workspace registry wired by `CodingToolset.make(workspaceRoot)`:
+
+- `fs_read` — bounded ranged read returning content and a SHA-256.
+- `fs_search` — literal search with explicit truncation.
+- `fs_edit` — atomic whole-file replacement keyed on an expected SHA-256.
+- `fs_patch` — context-checked unified diff applied atomically to one file.
+- `fs_patch_multi` — multi-file git-style diff; all-or-nothing validation against per-file SHA-256 provenance.
+- `fs_delete` — irreversible deletion of exactly one regular file, guarded by the current SHA-256.
+- `fs_tree` — bounded workspace tree listing.
+- `proc_run` — shell-free structured argv process execution with bounded output.
+
+Per-tool argument and result semantics are owned by the "Workspace tools" section of [`api.md`](api.md); these summaries are not exhaustive. Tools operate with the process permissions and workspace configuration supplied to them. The REPL and Scala plugins run trusted Scala code with the process's permissions; tool policy does not sandbox arbitrary Scala.
 
 The coder prompt describes a read, understand, change, compile, fix, test, summarize workflow. That prompt is guidance for the agent; the runtime does not guarantee that every model follows those steps. Process output is bounded and includes parsed summaries for known compile and test commands. The quality gate policy is documented in [`quality-gates.md`](quality-gates.md). See [`CoderPrompts.scala`](../modules/cli/src/main/scala/raider/cli/CoderPrompts.scala), [`CodingToolset.scala`](../modules/tools/src/main/scala/raider/tools/CodingToolset.scala), and [`ProcessTool.scala`](../modules/tools/src/main/scala/raider/tools/process/ProcessTool.scala).
 

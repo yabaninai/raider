@@ -79,7 +79,7 @@ Markdown contains the full contract; JSON is canonical for ID/title/dependency/p
 - **RAI-032** [Pi profile importer with provenance](m1.md); dependencies: RAI-029, RAI-031; profiles: static, unit, contracts, docs, compatibility, security, eval.
 - **RAI-033** [OpenCode profile importer](m1.md); dependencies: RAI-029, RAI-031; profiles: static, unit, contracts, docs, compatibility, security, eval.
 - **RAI-034** [Pi RPC external backend](m1.md); dependencies: RAI-027, RAI-031, RAI-032; profiles: static, unit, contracts, runtime, tools, transport, compatibility, security.
-- **RAI-035** [OpenCode HTTP external backend](m1.md); dependencies: RAI-027, RAI-031, RAI-033; profiles: static, unit, contracts, runtime, transport, compatibility, security.
+- **RAI-035** [OpenCode HTTP external backend](m1.md); accepted (OCBACK-01..03 via in-process contract stand, 74/74 sbt tests, battery 20261106-172701-30247-0001); dependencies: RAI-027, RAI-031, RAI-033; profiles: static, unit, contracts, runtime, transport, compatibility, security.
 - **RAI-036** [Conversation sessions with serialized turns](m1.md); dependencies: RAI-027, RAI-030; profiles: static, unit, contracts, runtime, repl, security.
 - **RAI-037** [Optional Yabanin profile, labels, and wrapper env](m1.md); dependencies: RAI-011, RAI-012, RAI-023, RAI-027; profiles: static, unit, contracts, transport, ci, security.
 - **RAI-038** [Yabanin root session keys and finish](m1.md); dependencies: RAI-037, RAI-009; profiles: static, unit, contracts, transport, runtime, ci, security.
@@ -313,17 +313,60 @@ These cards were already present in the local backlog when documentation work be
 - **RAI-229** [Cross-ecosystem stand stop: honest SIGTERM propagation](m1.md); accepted; dependencies: RAI-205; profiles: docs, contracts.
 - **RAI-230** [OutboundSpec waiter-wakeup sleep removal](m1.md); accepted; dependencies: RAI-225; profiles: fast, ci.
 - **RAI-231** [Example-workflow authority rescope to pinned registry names](m1.md); accepted; dependencies: RAI-205; profiles: fast, ci, docs, contracts.
-- **RAI-232** [Outbound writer-exit receipt draining (product determinism fix)](m1.md); ready; dependencies: none; profiles: fast, ci.
-- **RAI-233** [Session observe/live-pump coordination (observe-dedup race)](m1.md); ready; dependencies: none; profiles: fast, contracts.
-- **RAI-234** [AgentLoop phaseStarted arming gap (verification-first)](m1.md); ready; dependencies: none; profiles: fast, ci.
-- **RAI-235** [MultiJobExport silent segment registration before guard die](m1.md); ready; dependencies: none; profiles: fast, ci.
-- **RAI-236** [Rai216BoundedFinalization load determinism](m1.md); ready; dependencies: none; profiles: fast, ci.
-- **RAI-237** [lib.sh LOW bundle: TOCTOU lstart pinning, $OUT-wiped WARN, stale-pidfile sweep](m1.md); ready; dependencies: none; profiles: docs, contracts.
-- **RAI-238** [Driver EXIT-trap crash-path stand cleanup](m1.md); ready; dependencies: none; profiles: docs, contracts.
-- **RAI-239** [m2 provisioning bootstrap for fresh checkouts](m1.md); ready; dependencies: none; profiles: fast.
-- **RAI-240** [Reproducible adapter jar packaging path](m1.md); ready; dependencies: none; profiles: fast.
-- **RAI-241** [Zinc cold-compile poisoning isolation (evidence card)](m1.md); ready; dependencies: none; profiles: fast.
-- **RAI-242** [llm4s cancel-mid-run corpus scenario (mid-response cancellation)](m1.md); ready; dependencies: none; profiles: docs, contracts.
-- **RAI-243** [RAI-225 record errata (family-claim correction)](m1.md); ready; dependencies: none; profiles: fast.
-- **RAI-244** [slf4j pin-maintenance note for the langchain4j consumer](m1.md); ready; dependencies: none; profiles: fast, docs.
-- **RAI-245** [forbidden-apis true-line offset verification (post-RAI-223)](m1.md); ready; dependencies: none; profiles: fast.
+- **RAI-232** [Outbound writer-exit receipt draining (product determinism fix)](m1.md); accepted; dependencies: none; profiles: fast, ci.
+- **RAI-233** [Session observe/live-pump coordination (observe-dedup race)](m1.md); accepted; dependencies: none; profiles: fast, contracts.
+- **RAI-234** [AgentLoop phaseStarted arming gap (verification-first)](m1.md); accepted; dependencies: none; profiles: fast, ci.
+- **RAI-235** [MultiJobExport silent segment registration before guard die](m1.md); accepted; dependencies: none; profiles: fast, ci.
+- **RAI-236** [Rai216BoundedFinalization load determinism](m1.md); accepted; dependencies: none; profiles: fast, ci.
+- **RAI-237** [lib.sh LOW bundle: TOCTOU lstart pinning, $OUT-wiped WARN, stale-pidfile sweep](m1.md); accepted; dependencies: none; profiles: docs, contracts.
+- **RAI-238** [Driver EXIT-trap crash-path stand cleanup](m1.md); accepted; dependencies: none; profiles: docs, contracts.
+- **RAI-239** [m2 provisioning bootstrap for fresh checkouts](m1.md); accepted; dependencies: none; profiles: fast.
+- **RAI-240** [Reproducible adapter jar packaging path](m1.md); accepted; dependencies: none; profiles: fast.
+- **RAI-241** [Zinc cold-compile poisoning isolation (evidence card)](m1.md); accepted; dependencies: none; profiles: fast.
+- **RAI-242** [llm4s cancel-mid-run corpus scenario (mid-response cancellation)](m1.md); accepted; dependencies: none; profiles: docs, contracts.
+- **RAI-243** [RAI-225 record errata (family-claim correction)](m1.md); accepted; dependencies: none; profiles: fast.
+- **RAI-244** [slf4j pin-maintenance note for the langchain4j consumer](m1.md); accepted; dependencies: none; profiles: fast, docs.
+- **RAI-245** [forbidden-apis true-line offset verification (post-RAI-223)](m1.md); accepted; dependencies: none; profiles: fast.
+- **RAI-246** [Deterministic writer-suspension probe for the Outbound terminal-pick window (RAI-232 follow-up)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-232; profiles: fast, ci.
+- **RAI-247** [Deterministic-trigger seam for the AgentLoop phaseStarted→onExit window (RAI-234 follow-up)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-234; profiles: fast, ci.
+- **RAI-248** [Observe-semantics ADR and cross-ecosystem README contract section (RAI-233 follow-up)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-233; profiles: fast, docs.
+- **RAI-249** [Instrumented zinc localization of the induction site (RAI-241 follow-up a)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-241; profiles: fast.
+- **RAI-250** [Parallel-runbook hygiene for the zinc E008 poison marker (RAI-241 follow-up b)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-241; profiles: fast, docs.
+- **RAI-251** [Wire scripts/repro-jar into the build flow (RAI-240 follow-up a)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-240; profiles: fast.
+- **RAI-252** [Eliminate the ids$package forwarder permutation (RAI-240 follow-up b, product)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-240; profiles: fast, ci.
+- **RAI-253** [Re-pin adapterJarSha256 for the integrated candidate (RAI-240/RAI-233 follow-up)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-240, RAI-251, RAI-252; profiles: fast, contracts.
+- **RAI-254** [Wire cancel-mid-response/cancel-late into run-all and grow the corpus golden (RAI-242 follow-up)](m1.md); accepted (wave G, 2026-11-01); dependencies: RAI-242, RAI-237, RAI-238, RAI-253; profiles: fast, contracts.
+- **RAI-255** [Evidence-verifier completeness for quality manifests (audit follow-up, protected runner)](m1.md); accepted (wave H integration, 2026-11-01); dependencies: none; profiles: fast, self.
+- **RAI-256** [Source-inventory isolation for fingerprints (audit follow-up, protected policy)](m1.md); accepted (wave I integration, 2026-11-02); dependencies: none; profiles: fast, self.
+- **RAI-257** [Configured model propagation into delegated children (audit follow-up)](m1.md); accepted (wave H integration, 2026-11-01); dependencies: none; profiles: fast, runtime.
+- **RAI-258** [Aggregate native-coder limits across root and delegated children](m1.md); accepted (wave I integration, 2026-11-02); dependencies: none; profiles: fast, runtime.
+- **RAI-259** [Protected-path and project-instruction policy for the native coder](m1.md); accepted (wave J integration, 2026-11-02); dependencies: none; profiles: fast, tools.
+- **RAI-260** [Structured multi-file and delete mutation tools for the native coder](m1.md); accepted (wave I integration, 2026-11-02); dependencies: none; profiles: fast, tools.
+- **RAI-261** [Installed CLI helpful entrypoint: --help exit 0](m1.md); accepted (wave H integration, 2026-11-01); dependencies: none; profiles: fast, ci.
+- **RAI-262** [Installed REPL launcher distribution](m1.md); accepted (wave J integration, 2026-11-02); dependencies: none; profiles: fast, repl, ci.
+- **RAI-263** [Reconcile chat.close() W11 golden with the REPL facade lifecycle](m1.md); ready; dependencies: none; profiles: fast, repl, contracts.
+- **RAI-264** [JDK/toolchain pin hygiene for lanes and gates (runbook)](m1.md); accepted (wave H integration, 2026-11-01); dependencies: none; profiles: fast, docs.
+- **RAI-265** [repro-jar raw-copy path duplication defect (RAI-252 P3-4 routing)](m1.md); accepted (wave I integration, 2026-11-02); dependencies: RAI-252; profiles: fast.
+- **RAI-266** [sbt Test/parallelExecution decision (RAI-247 P3-1 routing)](m1.md); ready; dependencies: RAI-247; profiles: fast.
+- **RAI-267** [Re-pin adapterJarSha256 for the integrated candidate (post wave-I)](m1.md); accepted (wave J integration, 2026-11-02); dependencies: RAI-253, RAI-265; profiles: fast, contracts.
+- **RAI-268** [RecoveryTaxonomy extension for fs_patch_multi and fs_delete (RAI-260 follow-up)](m1.md); accepted (wave J integration, 2026-11-02); dependencies: RAI-260; profiles: fast, runtime.
+- **RAI-269** [Workspace-root threading for coder project instructions](m1.md); accepted (wave K integration, 2026-11-02); dependencies: RAI-259; profiles: fast, ci.
+- **RAI-270** [Coder base-prompt refresh for the extended tool surface](m1.md); accepted (wave L integration, 2026-11-02); dependencies: RAI-259, RAI-260; profiles: fast, ci.
+- **RAI-271** [Re-pin adapterJarSha256 for the integrated candidate (post wave-K)](m1.md); accepted (wave L integration, 2026-11-02); dependencies: RAI-267; profiles: fast, contracts.
+- **RAI-272** [Per-suite unique working subdirectories under target/ (RAI-247/266 follow-up)](m1.md); accepted (wave L integration, 2026-11-02); dependencies: RAI-266; profiles: fast.
+- **RAI-273** [docs/api.md coder tool-surface refresh](m1.md); accepted (wave M integration, 2026-11-02); dependencies: RAI-270; profiles: docs.
+- **RAI-274** [Test/parallelExecution stance re-evaluation from the RAI-272 clean baseline](m1.md); accepted (wave P integration, 2026-11-05); dependencies: RAI-272; profiles: fast.
+- **RAI-275** [Evidence-based re-freeze of the self-registry-check budget (gate policy)](m1.md); accepted (owner-ratified 2026-11-05); dependencies: RAI-209; profiles: self, fast.
+- **RAI-276** [fs_delete explicit regular-file guard hardening](m1.md); accepted (wave P integration, 2026-11-05); dependencies: RAI-259; profiles: fast, tools.
+- **RAI-277** [docs/architecture.md coder tool-surface refresh](m1.md); accepted (wave N integration, 2026-11-02); dependencies: RAI-273; profiles: docs.
+- **RAI-278** [Repo-wide docs tool-enumeration consistency sweep](m1.md); accepted (wave N integration, 2026-11-03); dependencies: RAI-277; profiles: docs.
+- **RAI-279** [Release 0.2.0 candidate assembly: REPL distribution staging and honest changelog](m1.md); accepted (wave P integration, 2026-11-05); dependencies: RAI-262; profiles: fast, docs.
+- **RAI-280** [Onboarding and README refresh for the installed 0.2.0 path](m1.md); accepted (wave P integration, 2026-11-05); dependencies: RAI-261, RAI-262; profiles: docs.
+- **RAI-281** [Quality classifier coverage for CHANGELOG.md (docs profile)](m1.md); accepted (owner-ratified 2026-11-05); dependencies: RAI-279; profiles: docs, self.
+- **RAI-282** [W01-W17 engineering acceptance matrix over the frozen 0.2.0 candidate](m2-p2.md); accepted; dependencies: RAI-279; profiles: docs.
+- **RAI-283** [Native coding-loop acceptance scenario on the installed path (read, edit, failing check, correct, persist passing; delegated child; cancel and limits)](m1.md); accepted; dependencies: RAI-279, RAI-257, RAI-270; profiles: fast.
+- **RAI-284** [Backlog reconciliation: map the 55 original M0/M1/M2 todo cards to delivered evidence or genuine gaps](m2-p2.md); accepted; dependencies: none; profiles: docs.
+- **RAI-285** [Live-wire verification: scoped execution-card texts for direct-chat, direct-anthropic, and gateway (owner-gated values as env references)](m1.md); accepted; dependencies: RAI-171; profiles: docs.
+- **RAI-286** [W16 close-out: eval-corpus profile executed on the integrated candidate](m1.md); accepted; dependencies: RAI-282; profiles: eval, docs.
+- **RAI-287** [W17 close-out: local gateway contract fixture, gateway checks, explicit no-hidden-fallback acceptance](m1.md); accepted; dependencies: RAI-282; profiles: fast.
+- **RAI-288** [Quality classifier coverage for vendored corpora with a vendor-audit gate](m1.md); accepted (owner-ratified 2026-11-05); dependencies: RAI-281; profiles: docs, self.

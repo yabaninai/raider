@@ -5,6 +5,7 @@ import zio.stream.ZStream
 import zio.test.*
 import zio.{Exit, Scope, ZIO}
 
+import raider.cli.testkit.SuiteWorkdir
 import raider.core.{
   CapabilityStatus,
   JobId,
@@ -593,12 +594,12 @@ object LineageProjectionExecutionSpec extends ZIOSpecDefault:
 
   private val CompileTimeoutSeconds = 120L
 
+  /** RAI-272: this suite's own working dir under target/ — wiped and recreated
+    * per test JVM by [[SuiteWorkdir]]; the historical shared `lineage-compile/`
+    * dir is retired (no cross-suite fixed-path coupling).
+    */
   private lazy val compileDir: Path =
-    findAncestor("artifacts", "tools", "m2")
-      .resolve("modules")
-      .resolve("cli")
-      .resolve("target")
-      .resolve("lineage-compile")
+    SuiteWorkdir.forSuite("cli", "LineageProjectionExecutionSpec")
 
   private def m2Jar(rel: String): Path =
     val p = findAncestor("artifacts", "tools", "m2")

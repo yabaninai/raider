@@ -28,7 +28,7 @@ the REPL interpreter. Both paths reach the same runtime execution machinery.
 | `raiderCore` | `raider.core` | Model and tool contracts, errors, tasks, programs, bundles, IDs, codecs |
 | `raiderRuntime` | `raider.runtime` | Agent loop, admission and budgets, jobs, delegation, events |
 | `raiderUi` | `raider.ui` | Event-backed session registry and tab shell |
-| `raiderTools` | `raider.tools` | Workspace tools: `fs_read`, `fs_search`, `fs_edit`, `fs_patch`, `fs_tree`, `proc_run` |
+| `raiderTools` | `raider.tools` | Workspace tools: `fs_read`, `fs_search`, `fs_edit`, `fs_patch`, `fs_patch_multi`, `fs_delete`, `fs_tree`, `proc_run` |
 | `raiderProviderChat` | `raider.provider.chat` | OpenAI-compatible Chat transport, including SSE |
 | `raiderProviderAnthropic` | `raider.provider.anthropic` | Anthropic Messages transport |
 | `raiderDsl` | `raider.dsl` | Lazy composition helpers such as `all` and `batch` |
@@ -329,8 +329,14 @@ registry.
 
 ## Workspace tools
 
-`CodingToolset.make(workspaceRoot)` wires six tools. Paths are constrained to
-the workspace by realpath checks; denials return structured tool errors.
+`CodingToolset.make(workspaceRoot)` wires the eight coding tools (`fs_read`,
+`fs_search`, `proc_run`, `fs_edit`, `fs_patch`, `fs_tree`, `fs_patch_multi`,
+`fs_delete`); the optional `state_*` tools (RAI-094) are appended only when a
+`StateStore` is supplied. Paths are constrained to the workspace by realpath
+checks; denials return structured tool errors. The four structured file
+mutation tools (`fs_edit`, `fs_patch`, `fs_patch_multi`, `fs_delete`)
+serialize on one per-toolset lock: a writer racing another writer on the same
+file fails closed with a stale-provenance denial instead of silently merging.
 
 | Tool | Main arguments | Behavior |
 | --- | --- | --- |
@@ -338,6 +344,8 @@ the workspace by realpath checks; denials return structured tool errors.
 | `fs_search` | `query`, optional `glob`, `max_matches` | Literal search with explicit truncation |
 | `fs_edit` | `path`, `content`, `expected_sha256` | Atomic replacement; empty expected hash means create |
 | `fs_patch` | `path`, `diff`, `expected_sha256` | Context-checked unified diff and atomic replacement |
+| `fs_patch_multi` | `diff`, `expected_sha256` (map of path to current SHA-256) | Multi-file git-style diff (new, modified, and deleted file sections); all-or-nothing: every listed file is validated against its current SHA-256 before anything is written, and any failed check applies nothing |
+| `fs_delete` | `path`, `expected_sha256` | Deletes exactly one regular file; directories are refused; irreversible — there is no undo; a stale hash is a typed denial and nothing is deleted |
 | `fs_tree` | optional `depth`, `glob` | Bounded tree; default depth 3, maximum depth 5 and 500 entries |
 | `proc_run` | `argv`, optional `cwd`, environment allowlist/values, `timeout_s` | Structured argv without a shell; bounded process output |
 

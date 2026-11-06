@@ -129,6 +129,38 @@ object ProcessToolSpec extends ZIOSpecDefault:
       }
     },
     test(
+      "PROC-CANCEL (RAI-283): fiber interruption mid-exec settles the exec promptly and destroys the direct child — never waiting for the OS process to exit naturally"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            tool <- Workspace
+              .make(tempWorkspace().toString)
+              .map(new ProcessTool(_))
+            fib <- tool
+              .exec(
+                ExecRequest(
+                  argv = List("/bin/sleep", "30"),
+                  timeout = ZDuration.fromSeconds(30)
+                )
+              )
+              .fork
+            _ <- live(ZIO.sleep(ZDuration.fromMillis(400)))
+            startedAt = System.nanoTime()
+            exit <- fib.interrupt
+            waitMs = (System.nanoTime() - startedAt) / 1_000_000
+          yield assertTrue(
+            // interruption-only exit: no typed RaiderError leaked
+            codeOf(exit).isEmpty,
+            // prompt: pre-fix the fiber parked in one long waitFor and the
+            // join took ~30s; with the interruptible slice loop it settles
+            // within the destroy grace
+            waitMs < 5_000
+          )
+        }
+      }
+    },
+    test(
       "PROC-02: typed negatives (argv / cwd escape / env policy / sandbox deny)"
     ) {
       live {

@@ -1,0 +1,96 @@
+{
+  "comment": "Pinned wire evidence for the OpenCode backend adapter (RAI-035). Each entry is a raw GET /global/event frame (GlobalEvent shape) exactly as published by the OpenCode server docs and mirrored by the JS SDK types.gen.ts at tag v1.19.4 (corpus snapshot d7d85817160120fd59fb27ee6ff354f45d18b994). The wire spec decodes every entry and asserts the mapped adapter event and session correlation. expectSession is the expected OcBusEvent.sessionID value (null means absent).",
+  "sdkReference": "types.gen.ts v1.19.4",
+  "events": [
+    {
+      "name": "server.connected",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"server.connected\",\"properties\":{\"address\":\"127.0.0.1:4096\"}}}",
+      "expectType": "ServerConnected",
+      "expectSession": null
+    },
+    {
+      "name": "session.created",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"session.created\",\"properties\":{\"id\":\"ses_01\",\"projectID\":\"proj\",\"directory\":\"/fixture/ws\",\"title\":\"New Session\",\"version\":\"1.19.4\",\"time\":{\"created\":1760000000000,\"updated\":1760000000000}}}}",
+      "expectType": "SessionCreated",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "session.status busy",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"session.status\",\"properties\":{\"sessionID\":\"ses_01\",\"status\":{\"type\":\"busy\"}}}}",
+      "expectType": "SessionStatus",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "message.updated user",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.updated\",\"properties\":{\"info\":{\"id\":\"msg_u1\",\"sessionID\":\"ses_01\",\"role\":\"user\",\"time\":{\"created\":1760000000000},\"agent\":\"build\",\"model\":{\"providerID\":\"fixture\",\"modelID\":\"test-model\"}}}}}",
+      "expectType": "MessageUpdatedUser",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "message.updated assistant running",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.updated\",\"properties\":{\"info\":{\"id\":\"msg_a1\",\"sessionID\":\"ses_01\",\"role\":\"assistant\",\"time\":{\"created\":1760000000001},\"parentID\":\"msg_u1\",\"modelID\":\"test-model\",\"providerID\":\"fixture\",\"mode\":\"build\",\"path\":{\"cwd\":\"/fixture/ws\",\"root\":\"/fixture/ws\"},\"cost\":0,\"tokens\":{\"input\":0,\"output\":0,\"reasoning\":0,\"cache\":{\"read\":0,\"write\":0}}}}}}",
+      "expectType": "MessageUpdatedAssistant",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "message.part.updated step-start",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_ss\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"step-start\"}}}}",
+      "expectType": "PartOther",
+      "expectSession": null
+    },
+    {
+      "name": "tool part pending",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_tool\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"tool\",\"callID\":\"call_1\",\"tool\":\"bash\",\"state\":{\"status\":\"pending\",\"input\":{\"command\":\"echo hi\"},\"raw\":\"{}\"}}}}}",
+      "expectType": "ToolPending",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "tool part running",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_tool\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"tool\",\"callID\":\"call_1\",\"tool\":\"bash\",\"state\":{\"status\":\"running\",\"input\":{\"command\":\"echo hi\"},\"title\":\"echo hi\",\"time\":{\"start\":1760000000002}}}}}}",
+      "expectType": "ToolRunning",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "tool part completed",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_tool\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"tool\",\"callID\":\"call_1\",\"tool\":\"bash\",\"state\":{\"status\":\"completed\",\"input\":{\"command\":\"echo hi\"},\"output\":\"hi\\n\",\"title\":\"echo hi\",\"metadata\":{},\"time\":{\"start\":1760000000002,\"end\":1760000000007}}}}}}",
+      "expectType": "ToolCompleted",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "text part delta",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_text\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"text\",\"text\":\"\"},\"delta\":\"Hello \"}}}",
+      "expectType": "TextDelta",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "step-finish part",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"message.part.updated\",\"properties\":{\"part\":{\"id\":\"part_sf\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"type\":\"step-finish\",\"reason\":\"stop\"}}}}",
+      "expectType": "PartOther",
+      "expectSession": null
+    },
+    {
+      "name": "session.idle",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"session.idle\",\"properties\":{\"sessionID\":\"ses_01\"}}}",
+      "expectType": "SessionIdle",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "session.error aborted",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"session.error\",\"properties\":{\"sessionID\":\"ses_01\",\"error\":{\"name\":\"MessageAbortedError\",\"data\":{\"message\":\"The user aborted the message.\"}}}}}",
+      "expectType": "SessionErrorAborted",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "permission.updated",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"permission.updated\",\"properties\":{\"id\":\"perm_1\",\"type\":\"bash\",\"sessionID\":\"ses_01\",\"messageID\":\"msg_a1\",\"callID\":\"call_1\",\"title\":\"run echo hi\"}}}",
+      "expectType": "PermissionUpdated",
+      "expectSession": "ses_01"
+    },
+    {
+      "name": "unknown event type",
+      "raw": "{\"directory\":\"/fixture/ws\",\"payload\":{\"type\":\"custom.future.thing\",\"properties\":{\"note\":\"added in a later server version\"}}}",
+      "expectType": "Unknown",
+      "expectSession": null
+    }
+  ]
+}

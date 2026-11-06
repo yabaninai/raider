@@ -2,6 +2,7 @@ package raider.cli.lineage
 
 import zio.test.*
 
+import raider.cli.testkit.SuiteWorkdir
 import raider.dsl.lineage.proj.{
   LineageRenderer,
   LineageView,
@@ -82,7 +83,8 @@ object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
 
   // ----- pinned-dotc compile gate (plumbing verbatim in behavior from the
   // frozen LineageCompileGateSpec; self-contained because that spec's members
-  // are private) -------------------------------------------------------------
+  // are private — except the working dir, shared via SuiteWorkdir since
+  // RAI-272) -------------------------------------------------------------
 
   private val CompileTimeoutSeconds = 120L
 
@@ -99,12 +101,12 @@ object LineagePlainRunCompileGateSpec extends ZIOSpecDefault:
         )
       )
 
+  /** RAI-272: this suite's own working dir under target/ — wiped and recreated
+    * per test JVM by [[SuiteWorkdir]]; the historical shared `lineage-compile/`
+    * dir is retired (no cross-suite fixed-path coupling).
+    */
   private lazy val compileDir: Path =
-    findAncestor("artifacts", "tools", "m2")
-      .resolve("modules")
-      .resolve("cli")
-      .resolve("target")
-      .resolve("lineage-compile")
+    SuiteWorkdir.forSuite("cli", "LineagePlainRunCompileGateSpec")
 
   private def m2Jar(rel: String): Path =
     val p = findAncestor("artifacts", "tools", "m2")

@@ -3,6 +3,7 @@ package raider.cli.lineage
 import zio.json.*
 import zio.test.*
 
+import raider.cli.testkit.SuiteWorkdir
 import raider.core.{JobId, Program, RootId, SessionId, Task}
 import raider.dsl.lineage.proj.runtime.StepReport
 import raider.dsl.lineage.proj.{
@@ -34,9 +35,12 @@ import java.util.concurrent.TimeUnit
   *
   * Pipeline per golden graph: lineage-data.json + session-graph.json →
   * SessionGraph → view (GraphToView mapping, RAI-141 shape) → LineageRenderer →
-  * .scala file under `modules/cli/target/lineage-compile/` → subprocess `java
-  * -cp <pinned dotc jars> dotty.tools.dotc.Main -classpath <test classpath> -d
-  * <fresh out dir> <source>`, bounded at 120s per file.
+  * .scala file under the suite's own working dir
+  * `modules/cli/target/suite-work/LineageCompileGateSpec/` (RAI-272: per-suite
+  * unique subdirectory — the historical shared `lineage-compile/` fixed dir is
+  * retired) → subprocess `java -cp <pinned dotc jars> dotty.tools.dotc.Main
+  * -classpath <test classpath> -d <fresh out dir> <source>`, bounded at 120s
+  * per file.
   *
   * Acceptance: LIN2-01-A both golden projections compile (exit 0) as EXECUTABLE
   * Programs (real `LineageStep` composition — RAI-141/REN-01) with NO
@@ -447,12 +451,12 @@ object LineageCompileGateSpec extends ZIOSpecDefault:
 
   private val CompileTimeoutSeconds = 120L
 
+  /** RAI-272: this suite's own working dir under target/ — wiped and recreated
+    * per test JVM by [[SuiteWorkdir]], so no other suite can touch these files
+    * even if execution stances change later (RAI-266 §1e context).
+    */
   private lazy val compileDir: Path =
-    findAncestor("artifacts", "tools", "m2")
-      .resolve("modules")
-      .resolve("cli")
-      .resolve("target")
-      .resolve("lineage-compile")
+    SuiteWorkdir.forSuite("cli", "LineageCompileGateSpec")
 
   private def m2Jar(rel: String): Path =
     val p = findAncestor("artifacts", "tools", "m2")

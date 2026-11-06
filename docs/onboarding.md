@@ -1,22 +1,26 @@
 # Start using Raider
 
-This guide starts with the installed headless CLI and a deterministic mock run.
+This guide starts with the installed JVM distribution: the headless `raider`
+CLI, a deterministic mock run, and the installed `raider-repl` Scala REPL.
 It requires Java 21 or newer, but does not require sbt, Python, a source checkout,
 or provider credentials. The local release is not a hosted download: obtain its
 directory from the release maintainer. No public download URL is currently
-available. For source-built Scala REPL and tab-shell instructions, see
+available; this guide describes the 0.2.0 release layout. For building the same
+interfaces from a source checkout, see
 [source checkout setup](#source-checkout-setup).
 
 ## 1. Install the local JVM distribution
 
-The release directory contains `raider-cli.jar`, `packaging/raider`,
-`release.json`, and `SHA256SUMS`. Verify the supplied release before copying
-files, then create a private install directory. This example uses `jq` to read
-the version from the verified metadata. Replace the example path with the path
-on your system:
+The release directory contains the headless CLI package (`raider-cli.jar`,
+`packaging/raider`, `packaging/homebrew/raider.rb`, `packaging/scoop/raider.json`,
+`release.json`, `SHA256SUMS`) and the installed REPL distribution as a nested
+`raider-repl-<version>/` directory with its own `SHA256SUMS`. Verify the
+supplied release before copying files, then create a private install directory.
+This example uses `jq` to read the version from the verified metadata. Replace
+the example path with the path on your system:
 
 ```sh
-RELEASE_DIR="/path/to/release/0.1.1"
+RELEASE_DIR="/path/to/release/0.2.0"
 (cd "$RELEASE_DIR" && shasum -a 256 -c SHA256SUMS)
 VERSION=$(jq -r .version "$RELEASE_DIR/release.json")
 INSTALL_DIR="$HOME/.local/raider/$VERSION"
@@ -30,13 +34,24 @@ java -version
 raider --version
 ```
 
-`java -version` must report Java 21 or newer. `raider --version` should print
-`raider $VERSION`. The current CLI has no general `--help` command; the observed
-`raider --help` response is an unknown-subcommand configuration error (exit 21).
+`java -version` must report Java 21 or newer; the launcher refuses older Javas.
+`raider --version` should print `raider $VERSION`. `raider --help` (or
+`raider help`) exits 0 and prints the command list to stdout: a usage line, the
+eleven commands `run`, `chat`, `process-api`, `compile`, `workflow run`,
+`workflow check`, `workflow explain`, `plugin`, `replay`, `resume`, and
+`verify-artifacts` with their real flags, a note that the interactive Scala
+REPL ships as a separate distribution (`raider.repl.Main`), and the exit-code
+legend (0 success, 10 task rejected, 20 runtime failure, 21 configuration,
+22 policy denied, 23 budget exhausted, 24 deadline exceeded, 25 needs approval,
+26 uncertain, 27 artifact write failure, 130/143 signals). Unknown flags and
+unknown subcommands exit 21 with a diagnostic that points at `raider --help`.
 Start with the documented `raider run` form below. The launcher uses Coursier
-when `cs` is on `PATH`; otherwise it runs the adjacent JAR with Java. This
-headless JAR does not include the Scala compiler or JLine, so it does not provide
-`raider repl` or the tab shell. `packaging/homebrew/raider.rb` and
+when `cs` is on `PATH` (set `RAIDER_USE_COURSIER=0` to force the Java
+fallback); otherwise it runs the adjacent JAR with Java. The headless CLI
+package excludes the Scala compiler and terminal stack; the interactive REPL
+and tab shell come from the release's installed REPL distribution
+([Section 3](#installed-repl)) or from a source checkout
+([below](#source-checkout-setup)). `packaging/homebrew/raider.rb` and
 `packaging/scoop/raider.json` are local formula templates, not evidence of
 Homebrew/Scoop installation or hosted artifacts.
 
@@ -65,13 +80,51 @@ creation, not model quality or a live answer. The executable offline
 first-use example and its recorded command results are in
 [`examples/first-use/`](examples/first-use/).
 
-## 3. Choose a source-built interactive interface
+<a id="installed-repl"></a>
 
-The REPL and tab shell are source-checkout interfaces, separate from the
-headless installed package. They require JDK 21, sbt, and Python 3 for the
-example build and use the checkout's classpath. In the tab shell, typed task
-text is a draft; it is not submitted to an agent. Continue with the
-[source-checkout setup](#source-checkout-setup) below.
+## 3. First steps with the installed REPL distribution
+
+The release also ships the interactive Scala REPL as a separate installed
+distribution, independent of a source checkout: the staged
+`raider-repl-<version>/` directory (or its `.zip` form) contains the
+`raider-repl` launcher script and the self-contained `raider-repl.jar`
+(main class `raider.repl.Main`, with the in-process Scala 3.9.0 compiler and
+JLine inside), plus `README.txt`, a `version` file, and `SHA256SUMS`. It
+requires Java 21 or newer — no sbt, no Python, no source checkout:
+
+```sh
+cd raider-repl-<version>  # Replace <version> with the staged directory name.
+shasum -a 256 -c SHA256SUMS
+chmod +x raider-repl
+./raider-repl --version
+```
+
+`./raider-repl --version` prints `raider-repl <version>` and exits 0 without
+starting the JVM. The launcher refuses with exit 21 and a one-line diagnostic
+when the distribution jar is missing or unreadable, when the jar lacks the
+in-process Scala compiler, or when no usable Java 21 is found
+(`raider-repl: Java 21 or newer is required`); a refusal never hangs.
+
+Start the offline scripted session:
+
+```sh
+RAIDER_PROVIDER=mock ./raider-repl
+```
+
+`RAIDER_PROVIDER=mock` selects the offline scripted fixture: no provider
+request is made, responses are fixed script text, and the banner marks the
+scripted backend. The responses demonstrate the interface, not model quality.
+At the
+`raider>` prompt, evaluate ordinary Scala and use the REPL commands: `:help`
+lists them (`:help`, `:jobs`, `:cancel <id>`, `:reset`, `:quit`), and `:quit`
+exits. Without arguments this is the line REPL; `--tabs` starts the product
+tab shell and `--chat` starts the chat layout over the scripted/live backend.
+In the tab shell, typed task text is a draft; it is not submitted to an agent.
+SIGINT/SIGTERM terminate the REPL with exit codes 130/143. Live providers
+follow the same environment contract as the raider CLI; see
+[configure a live model](#connect-a-model). To build and run the same
+interfaces from a source checkout instead, continue with the
+[source-checkout setup](#source-checkout-setup).
 
 <a id="source-checkout-setup"></a>
 

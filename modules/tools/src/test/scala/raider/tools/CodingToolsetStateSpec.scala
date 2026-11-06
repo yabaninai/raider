@@ -60,9 +60,14 @@ object CodingToolsetStateSpec extends ZIOSpecDefault:
   private def contentOf(req: ModelRequest): String =
     req.messages.map(_.content).mkString("\n")
 
-  private val SixNames = List(
+  /** RAI-260: the full default coding surface (sorted, as ToolRegistry.names
+    * reports it) — the two structured mutation tools joined the registry.
+    */
+  private val CodingNames = List(
+    "fs_delete",
     "fs_edit",
     "fs_patch",
+    "fs_patch_multi",
     "fs_read",
     "fs_search",
     "fs_tree",
@@ -78,7 +83,7 @@ object CodingToolsetStateSpec extends ZIOSpecDefault:
 
   def spec = suite("coding toolset state wiring (RAI-094, STW-01..03)")(
     test(
-      "STW-01: with a store the registry appends the four state tools after the six coding tools"
+      "STW-01: with a store the registry appends the four state tools after the coding tools"
     ) {
       val work = Files.createTempDirectory("raider-stw-reg")
       for
@@ -86,8 +91,8 @@ object CodingToolsetStateSpec extends ZIOSpecDefault:
         ws <- CodingToolset.make(work.toString, Some((store, JobId("stw-01"))))
         reg = ws.registry.fold(e => throw e, identity)
       yield assertTrue(
-        reg.size == 10,
-        reg.names == SixNames ++ StateNames
+        reg.size == 12,
+        reg.names == CodingNames ++ StateNames
       )
     },
     test(
@@ -159,15 +164,15 @@ object CodingToolsetStateSpec extends ZIOSpecDefault:
       )
     },
     test(
-      "STW-03: without a store the registry is exactly the six coding tools — no state tools, unchanged behavior"
+      "STW-03: without a store the registry is exactly the coding tools — no state tools, unchanged behavior"
     ) {
       val work = Files.createTempDirectory("raider-stw-none")
       for
         ws <- CodingToolset.make(work.toString) // default: no store
         reg = ws.registry.fold(e => throw e, identity)
       yield assertTrue(
-        reg.size == 6,
-        reg.names == SixNames,
+        reg.size == 8,
+        reg.names == CodingNames,
         !reg.names.exists(_.startsWith("state_"))
       )
     }

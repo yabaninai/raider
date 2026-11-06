@@ -10,8 +10,17 @@ import java.security.MessageDigest
 
 /** Safe file mutation (RAI-015): expected-SHA preconditions, atomic replace
   * (temp+rename), workspace containment (realpath, no escapes).
+  *
+  * RAI-259: containment is delegated to the immutable deny-by-default
+  * [[WritePathPolicy]] — including the not-yet-existing-target-under-symlinked-
+  * directory case (create through a symlinked directory pointing outside the
+  * workspace is denied, nothing written). Every mutation tool of this package
+  * (edit/patch/patch_multi/delete) resolves through [[resolveSafe]], so the
+  * policy covers all of them at one enforcement point.
   */
 final class EditTool(workspace: Workspace):
+
+  private val policy = WritePathPolicy(workspace.root)
 
   def write(
       relativePath: String,
@@ -95,19 +104,11 @@ final class EditTool(workspace: Workspace):
   private[edit] def resolveSafe(
       relativePath: String
   ): ZIO[Any, RaiderError, Path] =
-    attemptR {
-      val raw = workspace.root.resolve(relativePath).normalize()
-      if !raw.startsWith(workspace.root) then
-        Left(RaiderError.ToolDenied(s"path escapes workspace: $relativePath"))
-      else
-        val real =
-          if Files.exists(raw) then raw.toRealPath() else raw.normalize()
-        if !real.startsWith(workspace.root) then
-          Left(
-            RaiderError.ToolDenied(s"symlink escapes workspace: $relativePath")
-          )
-        else Right(real)
-    }.flatMap(_.fold(ZIO.fail, ZIO.succeed))
+    // RAI-259: deny-by-default policy (traversal, absolute targets, symlinked
+    // ancestors for existing AND not-yet-existing targets). Unexpected
+    // filesystem I/O during resolution maps to RA-TOOLFAIL, as before.
+    attemptR(policy.resolveForWrite(relativePath))
+      .flatMap(_.fold(ZIO.fail, ZIO.succeed))
 
   private[edit] def atomicWrite(target: Path, bytes: Array[Byte]): Unit =
     val tmp = target.resolveSibling(

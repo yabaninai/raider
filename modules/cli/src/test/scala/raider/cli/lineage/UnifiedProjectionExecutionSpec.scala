@@ -32,6 +32,7 @@ import raider.dsl.lineage.proj.{
 }
 import raider.dsl.lineage.proj.runtime.StepReport
 import raider.cli.run.{EventExport, EventsJsonlWriter, MultiJobExport}
+import raider.cli.testkit.SuiteWorkdir
 import raider.runtime.events.{
   EventEnvelope,
   EventHub,
@@ -900,12 +901,12 @@ object UnifiedProjectionExecutionSpec extends ZIOSpecDefault:
 
   private val CompileTimeoutSeconds = 120L
 
+  /** RAI-272: this suite's own working dir under target/ — wiped and recreated
+    * per test JVM by [[SuiteWorkdir]]; the historical shared `lineage-compile/`
+    * dir (the esc-hostile pair coupling of RAI-266 §1e) is retired.
+    */
   private lazy val compileDir: Path =
-    findAncestor("artifacts", "tools", "m2")
-      .resolve("modules")
-      .resolve("cli")
-      .resolve("target")
-      .resolve("lineage-compile")
+    SuiteWorkdir.forSuite("cli", "UnifiedProjectionExecutionSpec")
 
   private def m2Jar(rel: String): Path =
     val p = findAncestor("artifacts", "tools", "m2")

@@ -512,6 +512,13 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             dir <- ZIO.attempt(tempDir("rai-157-sw01")).orDie
             (hub, manager, join) <- harness(dir)
             release <- Promise.make[Nothing, Unit]
+            // RAI-235 ownership ordering: the fixture follows the runner
+            // discipline (the campaign job is registered before any child can
+            // fork). Without it the introduction's connect dies at the loud
+            // campaign guard and owns NO segment — the guard-die ownership is
+            // RAI-235's own subject below; this test's subject is the drain
+            // watermark settle, exercised on a connect that succeeds.
+            _ <- join.campaign(JobId("j_sw01-campaign"))
             child <- forkChild(hub, manager, release)(_ => ZIO.unit)
             // Publish only after the child capture was installed by the
             // Running transition. The hub watermark is authoritative even
@@ -1076,6 +1083,163 @@ object MultiJobExportSpec extends ZIOSpecDefault:
             ),
             graphHash.map(_.length) == Right(64),
             densePerJobSeq(envs)
+          )
+        }
+      }
+    },
+    // -- RAI-235: segment ownership across the connect guard die --------------
+    test(
+      "RAI-235: a fork connecting before the campaign job exists dies at the guard and owns NO segment — no registered orphan, no joined lines, no native artifacts"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            dir <- ZIO.attempt(tempDir("rai-235-orphan")).orDie
+            (hub, manager, join) <- harness(dir)
+            release <- Promise.make[Nothing, Unit]
+            child <- forkChild(hub, manager, release)(_ => ZIO.unit)
+            // The contract violation under test: an introduction CONNECTS
+            // while the campaign job is still unregistered. The runner
+            // discipline can never produce this (children are forked by the
+            // campaign's own loop after `join.campaign` commits), but
+            // `connect` must still die loud AND keep no state (RAI-235: no
+            // registered-but-orphaned segment; RAI-226 record disclosure).
+            _ <- publishIntroduction(hub, child.id)
+            // Deterministic settle (SW-01 discipline): the introduction is
+            // committed to the child's hub stream, then the capture consumer
+            // gets its bounded best-effort chance to deliver it — the guard
+            // die happens inside that delivery.
+            _ <- pollUntil(
+              hub.snapshot(child.id).map(_.exists(_.lastSeq >= 2L)),
+              5000L
+            )
+            _ <- join.drain()
+            segments <- join.segmentsView
+            wire <- join.exportedWire
+            childDir = dir.resolve("jobs").resolve(child.id.value)
+            childDirExists <- ZIO.succeed(Files.exists(childDir))
+            _ <- release.succeed(()).unit
+            _ <- manager.awaitSettled(child)
+          yield assertTrue(
+            // THE OWNERSHIP PIN: the guard die leaves no segment behind...
+            segments.isEmpty,
+            // ...nothing of the dead child entered the joined stream...
+            wire.isEmpty,
+            // ...and connect's native artifacts were never created (the
+            // guard fires BEFORE any artifact or registration state exists).
+            !childDirExists
+          )
+        }
+      }
+    },
+    test(
+      "RAI-235: concurrent guard-die connects interleaved with a live connect and a campaign Terminal export own only what connected; close settles"
+    ) {
+      live {
+        ZIO.scoped {
+          for
+            dir <- ZIO.attempt(tempDir("rai-235-conc")).orDie
+            (hub, manager, join) <- harness(dir)
+            release <- Promise.make[Nothing, Unit]
+            // Two introductions race each other into connect against an
+            // UNREGISTERED campaign: both connects must die at the guard and
+            // neither may keep a segment (concurrent die/die interleaving
+            // over one export lock).
+            dyingA <- forkChild(hub, manager, release)(_ => ZIO.unit)
+            dyingB <- forkChild(hub, manager, release)(_ => ZIO.unit)
+            _ <- publishIntroduction(hub, dyingA.id)
+            _ <- publishIntroduction(hub, dyingB.id)
+            _ <- pollUntil(
+              hub.snapshot(dyingA.id).map(_.exists(_.lastSeq >= 2L)),
+              5000L
+            )
+            _ <- pollUntil(
+              hub.snapshot(dyingB.id).map(_.exists(_.lastSeq >= 2L)),
+              5000L
+            )
+            _ <- join.drain()
+            // Only NOW does the campaign appear (the dying connects are
+            // settled); a live child then connects for real while a campaign
+            // Terminal export races it. Both lock orders are valid; the
+            // assertions below are stated for either outcome.
+            campId = JobId("j_rai235-camp")
+            _ <- join.campaign(campId)
+            liveChild <- forkChild(hub, manager, release)(_ => ZIO.unit)
+            terminalEnv = EventEnvelope(
+              1,
+              1L,
+              campId,
+              rootId,
+              sessionId,
+              System.currentTimeMillis(),
+              EventPayload.Terminal(JobStatus.Succeeded)
+            )
+            termExport <- join.exportParent(terminalEnv).forkDaemon
+            _ <- publishIntroduction(hub, liveChild.id)
+            _ <- termExport.join.unit
+            _ <- pollUntil(
+              join.segmentsView.map(_.exists(_.childJobId == liveChild.id)),
+              5000L
+            )
+            segments <- join.segmentsView
+            wire <- join.exportedWire
+            // The wire shape decides which lock order won: a canonical fork
+            // record naming liveChild means it JOINED (then the parked-child
+            // stream must strict-refuse typed, exactly the MJE-03c shape);
+            // without one it connected NATIVE-ONLY (post-terminal honesty)
+            // and the campaign-only stream strict-reduces.
+            liveJoined = canonicalForkRecords(wire)
+              .exists(_._2 == liveChild.id)
+            provenance = wire.collect {
+              case le @ LineageEnvelope(
+                    2,
+                    _,
+                    _,
+                    _,
+                    _,
+                    _,
+                    rp: LineagePayload.RunProvenance,
+                    _
+                  ) =>
+                (le, rp)
+            }
+            strict = LineageReducer.reduceWire(wire)
+            strictShape =
+              if liveJoined then
+                strict == Left(
+                  ReduceError.MissingTerminal(liveChild.id.value)
+                )
+              else strict.isRight
+            _ <- release.succeed(()).unit
+            _ <- manager.awaitSettled(dyingA)
+            _ <- manager.awaitSettled(dyingB)
+            _ <- manager.awaitSettled(liveChild)
+            _ <- join.close
+            segmentsAfterClose <- join.segmentsView
+          yield assertTrue(
+            // Ownership under interleaving: exactly the LIVE connect owns a
+            // segment; the two guard-die connects own nothing.
+            segments.map(_.childJobId) == Vector(liveChild.id),
+            !wire.exists(_.jobId == dyingA.id),
+            !wire.exists(_.jobId == dyingB.id),
+            canonicalForkRecords(wire)
+              .forall(rec => rec._2 != dyingA.id && rec._2 != dyingB.id),
+            // Every provenance pointer (when the connect won the race) names
+            // exactly the REGISTERED segment's real, existing artifacts.
+            provenance.forall { case (_, rp) =>
+              rp.artifacts.map(_.path).toSet ==
+                segments
+                  .flatMap(s => Vector(s.dir.toString, s.nativePath.toString))
+                  .toSet
+            },
+            provenance
+              .flatMap(_._2.artifacts.map(_.path))
+              .forall(p => Files.exists(Path.of(p))),
+            strictShape,
+            densePerJobSeq(wire),
+            // Close settles with the dead capture fibers present and keeps
+            // the same ownership — close leaks no orphan either.
+            segmentsAfterClose.map(_.childJobId) == Vector(liveChild.id)
           )
         }
       }

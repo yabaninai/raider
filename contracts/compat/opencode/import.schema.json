@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.dev/contracts/compat/opencode/import.schema.json",
+  "title": "Raider OpenCode profile import document v1",
+  "description": "Deterministic mirror of OpenCode built-in agent/permission state plus user-defined agent sources (markdown profiles and JSON config), imported by modules/compat-opencode. Permission rule order is semantic: evaluation is last-matching-rule-wins, so arrays must be compared in order. Unsupported constructs produce diagnostics and are never silently dropped.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "corpus", "defaultAgentId", "profiles", "diagnostics"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "corpus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "commit", "license", "manifestSha256"],
+      "properties": {
+        "repo": { "type": "string", "minLength": 1 },
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "license": { "type": "string", "minLength": 1 },
+        "manifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "defaultAgentId": { "type": "string", "minLength": 1 },
+    "profiles": {
+      "type": "array",
+      "uniqueItems": false,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "mode", "hidden", "permissions", "source", "origin"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "description": { "type": "string" },
+          "mode": { "enum": ["subagent", "primary", "all"] },
+          "hidden": { "type": "boolean" },
+          "color": { "type": "string", "pattern": "^#[0-9a-fA-F]{6}$" },
+          "steps": { "type": "integer", "minimum": 1 },
+          "model": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["providerID", "model"],
+            "properties": {
+              "providerID": { "type": "string", "minLength": 1 },
+              "model": { "type": "string", "minLength": 1 },
+              "variant": { "type": "string", "minLength": 1 }
+            }
+          },
+          "request": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "headers": { "type": "object", "additionalProperties": { "type": "string" } },
+              "body": { "type": "object" }
+            }
+          },
+          "system": { "type": "string" },
+          "permissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["action", "resource", "effect"],
+              "properties": {
+                "action": { "type": "string", "minLength": 1 },
+                "resource": { "type": "string", "minLength": 1 },
+                "effect": { "enum": ["allow", "deny", "ask"] }
+              }
+            }
+          },
+          "source": { "enum": ["registry", "markdown", "json-config"] },
+          "origin": { "enum": ["registry", "native-v2", "legacy-v1"] },
+          "sourcePath": { "type": "string" },
+          "unsupportedFields": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "diagnostics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "path", "message"],
+        "properties": {
+          "kind": { "enum": ["conflict", "invalid", "unsupported"] },
+          "path": { "type": "array", "items": { "type": "string" } },
+          "message": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "x-raider-notes": {
+    "permissionOrder": "Rules evaluate last-match-wins over wildcard-matched (action, resource); deny on any resource wins first; otherwise any ask yields ask; otherwise allow. Arrays are ordered, consumers must not sort them.",
+    "resolution": "defaultAgentId resolves the configured or default agent; hidden or subagent-only ids fall back to the registry default (build) and then the first non-hidden, non-subagent profile.",
+    "unknownAgents": "A referenced agent id with no profile is not auto-created; runtimes must apply the registry missing-agent permissions (deny all) from the corpus extraction instead.",
+    "unrepresented": "Not represented here: sessions, tools outside the permission model, ConfigPolicy integrations, providers, commands, MCP servers. The importer mirrors agent and permission semantics only."
+  }
+}

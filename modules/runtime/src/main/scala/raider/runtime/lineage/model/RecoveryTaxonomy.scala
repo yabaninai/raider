@@ -16,10 +16,16 @@ package raider.runtime.lineage.model
   *   - '''ExecTools''' — running them executes code and can mutate the world:
   *     `bash`, `sh`, `process`, `python`, `proc_run`.
   *   - '''WriteTools''' — running them writes/patches/moves/removes files:
-  *     `apply_patch`, `edit`, `fs_edit`, `fs_patch`, `fs_write`, `mkdir`, `mv`,
-  *     `patch`, `rm`, `touch`, `write`.
+  *     `apply_patch`, `edit`, `fs_delete`, `fs_edit`, `fs_patch`,
+  *     `fs_patch_multi`, `fs_write`, `mkdir`, `mv`, `patch`, `rm`, `touch`,
+  *     `write` (`fs_delete`/`fs_patch_multi` joined by the sanctioned RAI-268
+  *     extension — the RAI-260 registry stamps are Mutating and the lineage
+  *     verdicts must not under-report them).
   *   - everything else is [[RecoveryClass.ReadOnly]] — the ADR default, so an
   *     UNKNOWN tool name never gains Mutating power by accident (TAX-03).
+  *     Matching is EXACT name equality: case variants and near-misses
+  *     (`FS_DELETE`, `fs_delete ` with trailing space, `fs_patch_multi_v2`)
+  *     stay ReadOnly.
   *
   * [[RecoveryClass.Idempotent]] is deliberately NEVER returned: a rate-limit
   * retry does not make a mutating tool safe to re-run; the value stays reserved
@@ -37,13 +43,18 @@ object RecoveryTaxonomy:
   val ExecTools: Set[String] =
     Set("bash", "process", "proc_run", "python", "sh")
 
-  /** Write-class tool names (ADR-027 §6.2): they modify the workspace.
+  /** Write-class tool names (ADR-027 §6.2): they modify the workspace. RAI-268
+    * added the RAI-260 structured mutation tools `fs_patch_multi` and
+    * `fs_delete` — the taxonomy is still the single static set, no new class
+    * and no config indirection.
     */
   val WriteTools: Set[String] = Set(
     "apply_patch",
     "edit",
+    "fs_delete",
     "fs_edit",
     "fs_patch",
+    "fs_patch_multi",
     "fs_write",
     "mkdir",
     "mv",
