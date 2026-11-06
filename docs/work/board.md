@@ -1,5 +1,11 @@
 # Raider Execution Board
 
+## 2026-11-06 — Owner session: history squashed and pushed; R-3 started; 0.2.1 still pending
+
+- **Push (owner instruction):** 205 local commits squashed into `1245fb0f` (tree-identical to the pre-squash state, verified empty diff against local `backup/main-pre-squash-20261106`); pushed to `origin/main` (github.com/yabaninai/raider). Per-card history remains locally in the backup branch. First shared push of the repository.
+- **R-3 started (owner instruction "continue development"):** dependency-ordered queue from the proposal below — lanes dispatched for the three independent heads: RAI-037 (Yabanin optional profile/labels/wrapper env), RAI-036 (conversation sessions, serialized turns), RAI-040 (agent-eval contract export). RAI-038 (deps 037) and RAI-039 (deps 037/038) follow after RAI-037 integration.
+- **0.2.1:** NOT cut — the owner's message addressed the push and continued development; the release pick stays an explicit owner decision.
+
 ## 2026-11-06 — R-3 PROPOSED (owner decision pending): M1 close-out queue; RAI-035 retry cadence
 
 - **Context:** wave R is one card from done (RAI-035 queued on subagent-channel failures); 0.2.1 waits for it per the approved fold. No new heavy lane is started overnight without an owner pick.
