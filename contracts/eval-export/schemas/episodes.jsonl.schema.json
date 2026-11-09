@@ -1,0 +1,211 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/eval-export/schemas/episodes.jsonl",
+  "title": "Agent-eval export episodes section (schemaVersion 1)",
+  "description": "Schema of ONE episode record; the file episodes.jsonl carries exactly one record per line (UTF-8, LF-terminated; an empty section is a zero-byte file). Every exported episode carries all four outcomes in the canonical order execution, task, safety, protocol (pinned via prefixItems); outcomes without evidence export status 'missing' with an explicit reason — coverage is reported, never silently skipped. Honesty rules pinned here: a partial (cancelled/interrupted/uncertain) episode keeps its explicit terminal state and reason forever and is never rewritten into a completion; the verifier state distinguishes produced (an actual verdict exists) from pending (declared verifier produced nothing) and absent (no verifier declared), with canonical reasons verifierExpectedButMissing / noVerifierDeclared. attemptId and jobId must resolve against the manifest lineage (see manifest.json.schema.json); execution evidence is 1:1 with attempts — an attempt without an episode record is a producer bug, not an omission.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "episodeId",
+    "attemptId",
+    "jobId",
+    "completion",
+    "verifier",
+    "outcomes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "episodeId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "completion": { "$ref": "#/$defs/completion" },
+    "verifier": { "$ref": "#/$defs/verifierState" },
+    "outcomes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "prefixItems": [
+        { "$ref": "#/$defs/outcomeExecution" },
+        { "$ref": "#/$defs/outcomeTask" },
+        { "$ref": "#/$defs/outcomeSafety" },
+        { "$ref": "#/$defs/outcomeProtocol" }
+      ],
+      "items": false,
+      "description": "Exactly four outcomes in canonical order; kind is pinned per position so a re-ordered or dropped outcome is a schema violation, not a silent gap."
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "outcome", "terminal", "reason", "atMs"],
+      "properties": {
+        "kind": { "enum": ["completed", "partial"] },
+        "outcome": { "type": ["string", "null"], "enum": ["succeeded", "failed", null] },
+        "terminal": { "type": ["string", "null"], "enum": ["cancelled", "interrupted", "uncertain", null] },
+        "reason": { "type": ["string", "null"] },
+        "atMs": { "type": "integer", "minimum": 0 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "completed" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "outcome": { "enum": ["succeeded", "failed"] },
+              "terminal": { "type": "null" },
+              "reason": { "type": "null" }
+            },
+            "required": ["outcome"]
+          }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "partial" } }, "required": ["kind"] },
+          "then": {
+            "properties": {
+              "outcome": { "type": "null" },
+              "terminal": { "enum": ["cancelled", "interrupted", "uncertain"] },
+              "reason": { "type": "string", "minLength": 1 }
+            },
+            "required": ["terminal", "reason"]
+          }
+        }
+      ]
+    },
+    "verifierState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "verifierId", "reason"],
+      "properties": {
+        "state": { "enum": ["produced", "pending", "absent"] },
+        "verifierId": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "produced" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "verifierId": { "type": "string", "minLength": 1 },
+              "reason": { "type": "null" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "pending" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "verifierId": { "type": "string", "minLength": 1 },
+              "reason": { "const": "verifierExpectedButMissing" }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "absent" } }, "required": ["state"] },
+          "then": {
+            "properties": {
+              "verifierId": { "type": "null" },
+              "reason": { "const": "noVerifierDeclared" }
+            }
+          }
+        }
+      ]
+    },
+    "outcomeExecution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status", "reason", "evidenceSha256"],
+      "properties": {
+        "kind": { "const": "execution" },
+        "status": { "enum": ["pass", "fail", "cancelled", "interrupted", "uncertain"] },
+        "reason": { "type": ["string", "null"] },
+        "evidenceSha256": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["pass", "fail"] } }, "required": ["status"] },
+          "then": { "properties": { "reason": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["cancelled", "interrupted", "uncertain"] } }, "required": ["status"] },
+          "then": {
+            "properties": { "reason": { "type": "string", "minLength": 1 } },
+            "required": ["reason"]
+          }
+        }
+      ]
+    },
+    "outcomeTask": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status", "reason", "evidenceSha256"],
+      "properties": {
+        "kind": { "const": "task" },
+        "status": { "enum": ["pass", "fail", "error", "missing"] },
+        "reason": { "type": ["string", "null"], "description": "For a produced verdict this mirrors the verifier note; for missing it is the canonical absence reason." },
+        "evidenceSha256": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "missing" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "reason": { "enum": ["verifierExpectedButMissing", "noVerifierDeclared"] },
+              "evidenceSha256": { "type": "null" }
+            },
+            "required": ["reason"]
+          }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["pass", "fail", "error"] } }, "required": ["status"] },
+          "then": {
+            "properties": { "evidenceSha256": { "$ref": "#/$defs/sha256" } },
+            "required": ["evidenceSha256"],
+            "description": "A produced task verdict always pins the sha256 of its verifier evidence artifact; there is no verdict without evidence."
+          }
+        }
+      ]
+    },
+    "outcomeSafetyProtocol": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "status", "reason", "evidenceSha256"],
+      "properties": {
+        "kind": { "enum": ["safety", "protocol"] },
+        "status": { "enum": ["pass", "fail", "error", "missing"] },
+        "reason": { "type": ["string", "null"] },
+        "evidenceSha256": { "type": ["string", "null"] }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "missing" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "reason": { "const": "noEvidenceRecorded" },
+              "evidenceSha256": { "type": "null" }
+            },
+            "required": ["reason"]
+          }
+        }
+      ]
+    },
+    "outcomeSafety": {
+      "allOf": [
+        { "$ref": "#/$defs/outcomeSafetyProtocol" },
+        { "properties": { "kind": { "const": "safety" } }, "required": ["kind"] }
+      ]
+    },
+    "outcomeProtocol": {
+      "allOf": [
+        { "$ref": "#/$defs/outcomeSafetyProtocol" },
+        { "properties": { "kind": { "const": "protocol" } }, "required": ["kind"] }
+      ]
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/eval-export/schemas/verdicts.jsonl",
+  "title": "Agent-eval export verdicts section (schemaVersion 1)",
+  "description": "Schema of ONE verifier verdict record; the file verdicts.jsonl carries exactly one record per line (UTF-8, LF-terminated; an empty section is a zero-byte file). Honesty rules pinned here: a verdict exists ONLY as the result of an actual verifier run — the export never synthesizes one; every verdict pins the sha256 of its evidence artifact (there is no verdict without evidence) and resolves to exactly one episode of episodes.jsonl, whose verifier state must then be produced. verdictIds are deterministic (v-1..v-n in input order) so a re-export is byte-stable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "verdictId",
+    "episodeId",
+    "attemptId",
+    "jobId",
+    "verifierId",
+    "verdict",
+    "atMs",
+    "evidenceSha256",
+    "evidenceKind",
+    "note"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "verdictId": { "type": "string", "pattern": "^v-[0-9]+$" },
+    "episodeId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "verifierId": { "type": "string", "minLength": 1 },
+    "verdict": { "enum": ["pass", "fail", "error"] },
+    "atMs": { "type": "integer", "minimum": 0 },
+    "evidenceSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceKind": { "type": "string", "minLength": 1, "description": "Kind of the evidence artifact, e.g. verify.sh:stdout." },
+    "note": { "type": ["string", "null"] }
+  }
+}

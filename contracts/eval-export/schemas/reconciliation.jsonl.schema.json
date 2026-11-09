@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/eval-export/schemas/reconciliation.jsonl",
+  "title": "Agent-eval export late-usage reconciliation section (schemaVersion 1)",
+  "description": "Schema of ONE late-usage reconciliation record; the file reconciliation.jsonl is APPEND-ONLY and carries exactly one record per line (UTF-8, LF-terminated; a run without corrections keeps the file zero-byte). Honesty rules pinned here: late evidence NEVER mutates an already-exported document — the manifest and section digests stay byte-identical, and the original usage numbers remain visible as previousUsage of every record. The chain is self-anchoring and tamper-evident: records are numbered rc-1..rc-n in file order; per callId, reconciliationVersion runs strictly 1..n; previousUsageSha256 pins the canonical compact JSON of the usage being corrected (the call's exported usage for version 1, the previous record's correctedUsage afterwards); prevFileSha256 pins the sha256 of the whole reconciliation file content BEFORE the append (the sha256 of the empty byte string, e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855, anchors the first record). callId must resolve against calls.jsonl; unknown prices obey the same null discipline as calls.jsonl.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "reconciliationId",
+    "runId",
+    "callId",
+    "attemptId",
+    "jobId",
+    "reconciliationVersion",
+    "previousUsage",
+    "previousUsageSha256",
+    "correctedUsage",
+    "source",
+    "atMs",
+    "prevFileSha256"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "reconciliationId": { "type": "string", "pattern": "^rc-[0-9]+$", "description": "rc-<line number>, in file order." },
+    "runId": { "type": "string", "minLength": 1 },
+    "callId": { "type": "string", "minLength": 1, "description": "An exported model call; corrections attach to calls, never float free." },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "reconciliationVersion": { "type": "integer", "minimum": 1, "description": "Per-call correction version, strictly increasing 1..n without gaps." },
+    "previousUsage": { "$ref": "#/$defs/usage" },
+    "previousUsageSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 over the canonical compact JSON of previousUsage." },
+    "correctedUsage": { "$ref": "#/$defs/usage" },
+    "source": { "type": "string", "minLength": 1, "description": "Where the late evidence came from, e.g. provider usage report." },
+    "atMs": { "type": "integer", "minimum": 0 },
+    "prevFileSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "sha256 of the reconciliation file content BEFORE this append (empty-file hash anchors record rc-1)." }
+  },
+  "$defs": {
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reservedMicroUsd", "observedMicroUsd", "unknown"],
+      "properties": {
+        "reservedMicroUsd": { "type": ["integer", "null"] },
+        "observedMicroUsd": { "type": ["integer", "null"] },
+        "unknown": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "unknown": { "const": true } }, "required": ["unknown"] },
+          "then": { "properties": { "observedMicroUsd": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "unknown": { "const": false } }, "required": ["unknown"] },
+          "then": {
+            "properties": { "observedMicroUsd": { "type": "integer" } },
+            "required": ["observedMicroUsd"]
+          }
+        }
+      ]
+    }
+  }
+}

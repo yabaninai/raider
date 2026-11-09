@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/eval-export/schemas/tools.jsonl",
+  "title": "Agent-eval export tool calls section (schemaVersion 1)",
+  "description": "Schema of ONE tool-call record; the file tools.jsonl carries exactly one record per line (UTF-8, LF-terminated; an empty section is a zero-byte file). Honesty rules pinned here: raw tool arguments NEVER travel — only their sha256 digest (argsDigest; null only for a call that carried no argument text at all); argument text appears verbatim ONLY as argsRedactedSafe when the producer explicitly pinned it redacted-safe. Environment references are NAME-shaped (no '=' values — a name=value pair is a schema violation); artifacts are hashes plus size, never content. denied calls carry denyReason (never plain reason); failed/uncertain calls carry a non-empty reason; succeeded/cancelled/timeout calls carry neither.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "toolCallId",
+    "attemptId",
+    "jobId",
+    "tool",
+    "callId",
+    "atMs",
+    "outcome",
+    "reason",
+    "denyReason",
+    "argsDigest",
+    "argsRedactedSafe",
+    "envRefs",
+    "artifacts"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "toolCallId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "tool": { "type": "string", "minLength": 1 },
+    "callId": { "type": ["string", "null"], "minLength": 1, "description": "The model call (calls.jsonl callId) that issued this tool call, or null when not attributable." },
+    "atMs": { "type": "integer", "minimum": 0 },
+    "outcome": { "enum": ["succeeded", "failed", "denied", "cancelled", "timeout", "uncertain"] },
+    "reason": { "type": ["string", "null"] },
+    "denyReason": { "type": ["string", "null"] },
+    "argsDigest": { "type": ["string", "null"], "$comment": "Pattern enforced below via allOf so the null case stays expressible.", "description": "sha256 over the raw UTF-8 argument text as received from the model; the raw text itself never appears in any export document." },
+    "argsRedactedSafe": { "type": ["object", "null"], "description": "Verbatim argument object ONLY when the producer explicitly pinned it redacted-safe (a deliberate, fixture-reviewable act); null otherwise. The digest above is computed over the pinned text so both views agree." },
+    "envRefs": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+      "description": "Environment variable NAME references only. A name=value pair here is a contract violation: values never travel."
+    },
+    "artifacts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/artifact" }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "denied" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "denyReason": { "type": "string", "minLength": 1 },
+          "reason": { "type": "null" }
+        },
+        "required": ["denyReason"]
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "enum": ["failed", "uncertain"] } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "reason": { "type": "string", "minLength": 1 },
+          "denyReason": { "type": "null" }
+        },
+        "required": ["reason"]
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "enum": ["succeeded", "cancelled", "timeout"] } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "reason": { "type": "null" },
+          "denyReason": { "type": "null" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "argsDigest": { "type": "string" } }, "required": ["argsDigest"] },
+      "then": { "properties": { "argsDigest": { "pattern": "^[0-9a-f]{64}$" } } }
+    }
+  ],
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactId", "sha256", "mediaType", "sizeBytes"],
+      "properties": {
+        "artifactId": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "mediaType": { "type": "string", "minLength": 1 },
+        "sizeBytes": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

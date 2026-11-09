@@ -1,0 +1,3 @@
+{"schemaVersion":1,"runId":"run-20261106-normal","callId":"call-1","attemptId":"att-1","jobId":"job-root","round":1,"model":"mock-coder","atMs":1200,"usage":{"reservedMicroUsd":15,"observedMicroUsd":1800,"unknown":false}}
+{"schemaVersion":1,"runId":"run-20261106-normal","callId":"call-2","attemptId":"att-1","jobId":"job-root","round":2,"model":"mock-coder","atMs":2400,"usage":{"reservedMicroUsd":15,"observedMicroUsd":2100,"unknown":false}}
+{"schemaVersion":1,"runId":"run-20261106-normal","callId":"call-3","attemptId":"att-2","jobId":"job-child","round":1,"model":"mock-coder","atMs":3200,"usage":{"reservedMicroUsd":null,"observedMicroUsd":900,"unknown":false}}
