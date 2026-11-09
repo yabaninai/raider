@@ -1,0 +1,374 @@
+{
+  "schema": "raider.contracts.yabanin.labels/1",
+  "limits": {
+    "max_per_source": 20,
+    "max_effective": 32,
+    "max_value_length_bytes": 128,
+    "reserved_key_prefix": "yabanin.",
+    "client_key_max_length": 64
+  },
+  "limits_rule": "Value length is measured in UTF-8 bytes (matching Go len() on the wire), not characters. Keys are sorted lexicographically in the rendered header. Per-source caps apply per provenance (wrapper and client each admit up to max_per_source); the merged header admits up to max_effective pairs, dropping client labels in insertion order once full.",
+  "render_cases": [
+    {
+      "name": "canonical-sorted",
+      "client_labels": [
+        { "key": "task", "value": "RAI-021" },
+        { "key": "harness", "value": "raider" },
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "git.repo", "value": "yabaninai/raider" },
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "raider.job", "value": "j-7" }
+      ],
+      "expected_header": "git.repo=yabaninai%2Fraider,harness=raider,raider.attempt=a-1,raider.job=j-7,raider.root=r-1,task=RAI-021",
+      "expected_accepted": [
+        { "key": "git.repo", "value": "yabaninai/raider" },
+        { "key": "harness", "value": "raider" },
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "raider.job", "value": "j-7" },
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "task", "value": "RAI-021" }
+      ],
+      "expected_dropped": []
+    },
+    {
+      "name": "escape-values",
+      "client_labels": [
+        { "key": "raider.workflow", "value": "audit workflow" },
+        { "key": "git.ref", "value": "feature/✓" },
+        { "key": "raider.note", "value": "a+b,c/d" }
+      ],
+      "expected_header": "git.ref=feature%2F%E2%9C%93,raider.note=a+b%2Cc%2Fd,raider.workflow=audit%20workflow",
+      "expected_accepted": [
+        { "key": "git.ref", "value": "feature/✓" },
+        { "key": "raider.note", "value": "a+b,c/d" },
+        { "key": "raider.workflow", "value": "audit workflow" }
+      ],
+      "expected_dropped": []
+    },
+    {
+      "name": "per-source-overflow",
+      "client_labels": [
+        { "key": "harness", "value": "raider" },
+        { "key": "task", "value": "RAI-021" },
+        { "key": "k01", "value": "v01" },
+        { "key": "k02", "value": "v02" },
+        { "key": "k03", "value": "v03" },
+        { "key": "k04", "value": "v04" },
+        { "key": "k05", "value": "v05" },
+        { "key": "k06", "value": "v06" },
+        { "key": "k07", "value": "v07" },
+        { "key": "k08", "value": "v08" },
+        { "key": "k09", "value": "v09" },
+        { "key": "k10", "value": "v10" },
+        { "key": "k11", "value": "v11" },
+        { "key": "k12", "value": "v12" },
+        { "key": "k13", "value": "v13" },
+        { "key": "k14", "value": "v14" },
+        { "key": "k15", "value": "v15" },
+        { "key": "k16", "value": "v16" },
+        { "key": "k17", "value": "v17" },
+        { "key": "k18", "value": "v18" },
+        { "key": "k19", "value": "v19" }
+      ],
+      "expected_header": "harness=raider,k01=v01,k02=v02,k03=v03,k04=v04,k05=v05,k06=v06,k07=v07,k08=v08,k09=v09,k10=v10,k11=v11,k12=v12,k13=v13,k14=v14,k15=v15,k16=v16,k17=v17,k18=v18,task=RAI-021",
+      "expected_accepted": [
+        { "key": "harness", "value": "raider" },
+        { "key": "k01", "value": "v01" },
+        { "key": "k02", "value": "v02" },
+        { "key": "k03", "value": "v03" },
+        { "key": "k04", "value": "v04" },
+        { "key": "k05", "value": "v05" },
+        { "key": "k06", "value": "v06" },
+        { "key": "k07", "value": "v07" },
+        { "key": "k08", "value": "v08" },
+        { "key": "k09", "value": "v09" },
+        { "key": "k10", "value": "v10" },
+        { "key": "k11", "value": "v11" },
+        { "key": "k12", "value": "v12" },
+        { "key": "k13", "value": "v13" },
+        { "key": "k14", "value": "v14" },
+        { "key": "k15", "value": "v15" },
+        { "key": "k16", "value": "v16" },
+        { "key": "k17", "value": "v17" },
+        { "key": "k18", "value": "v18" },
+        { "key": "task", "value": "RAI-021" }
+      ],
+      "expected_dropped": [
+        { "key": "k19", "reason": "per_source_overflow" }
+      ]
+    },
+    {
+      "name": "value-too-long",
+      "client_labels": [
+        { "key": "ok128", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { "key": "too-long", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      "expected_header": "ok128=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected_accepted": [
+        { "key": "ok128", "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      "expected_dropped": [
+        { "key": "too-long", "reason": "value_too_long" }
+      ]
+    },
+    {
+      "name": "value-bytes-not-chars",
+      "client_labels": [
+        { "key": "wide-long", "value": "日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日" },
+        { "key": "wide-ok", "value": "日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日" }
+      ],
+      "expected_header": "wide-ok=%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5%E6%97%A5",
+      "expected_accepted": [
+        { "key": "wide-ok", "value": "日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日日" }
+      ],
+      "expected_dropped": [
+        { "key": "wide-long", "reason": "value_too_long" }
+      ]
+    },
+    {
+      "name": "reserved-prefix",
+      "client_labels": [
+        { "key": "task", "value": "RAI-021" },
+        { "key": "yabanin.locked", "value": "forbidden" }
+      ],
+      "expected_header": "task=RAI-021",
+      "expected_accepted": [
+        { "key": "task", "value": "RAI-021" }
+      ],
+      "expected_dropped": [
+        { "key": "yabanin.locked", "reason": "reserved_key_prefix" }
+      ]
+    },
+    {
+      "name": "malformed-key",
+      "client_labels": [
+        { "key": "task", "value": "RAI-021" },
+        { "key": "has space", "value": "x" },
+        { "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "value": "65-a-chars-is-over-the-client-key-limit" }
+      ],
+      "expected_header": "task=RAI-021",
+      "expected_accepted": [
+        { "key": "task", "value": "RAI-021" }
+      ],
+      "expected_dropped": [
+        { "key": "has space", "reason": "malformed_key" },
+        { "key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "reason": "malformed_key" }
+      ]
+    },
+    {
+      "name": "duplicate-key",
+      "client_labels": [
+        { "key": "task", "value": "FIRST" },
+        { "key": "task", "value": "SECOND" }
+      ],
+      "expected_header": "task=FIRST",
+      "expected_accepted": [
+        { "key": "task", "value": "FIRST" }
+      ],
+      "expected_dropped": [
+        { "key": "task", "reason": "duplicate_key" }
+      ]
+    },
+    {
+      "name": "matrix-r1-a1",
+      "client_labels": [
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_header": "raider.attempt=a-1,raider.root=r-1,task=RAI-037",
+      "expected_accepted": [
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_dropped": []
+    },
+    {
+      "name": "matrix-r1-a2",
+      "client_labels": [
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "raider.attempt", "value": "a-2" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_header": "raider.attempt=a-2,raider.root=r-1,task=RAI-037",
+      "expected_accepted": [
+        { "key": "raider.attempt", "value": "a-2" },
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_dropped": []
+    },
+    {
+      "name": "matrix-r2-a1",
+      "client_labels": [
+        { "key": "raider.root", "value": "r-2" },
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_header": "raider.attempt=a-1,raider.root=r-2,task=RAI-037",
+      "expected_accepted": [
+        { "key": "raider.attempt", "value": "a-1" },
+        { "key": "raider.root", "value": "r-2" },
+        { "key": "task", "value": "RAI-037" }
+      ],
+      "expected_dropped": []
+    }
+  ],
+  "merge_cases": [
+    {
+      "name": "merge-protected",
+      "wrapper_labels": [
+        { "key": "task", "value": "CI-4311" },
+        { "key": "pipeline", "value": "nightly" },
+        { "key": "git.sha", "value": "a5bcf53e" }
+      ],
+      "client_labels": [
+        { "key": "task", "value": "CLIENT-ATTEMPT" },
+        { "key": "raider.root", "value": "r-1" },
+        { "key": "harness", "value": "raider" }
+      ],
+      "expected_header": "git.sha=a5bcf53e,harness=raider,pipeline=nightly,raider.root=r-1,task=CI-4311",
+      "expected_accepted": [
+        { "key": "git.sha", "value": "a5bcf53e", "provenance": "wrapper" },
+        { "key": "harness", "value": "raider", "provenance": "client" },
+        { "key": "pipeline", "value": "nightly", "provenance": "wrapper" },
+        { "key": "raider.root", "value": "r-1", "provenance": "client" },
+        { "key": "task", "value": "CI-4311", "provenance": "wrapper" }
+      ],
+      "expected_dropped": [
+        { "key": "task", "reason": "protected_wrapper_key" }
+      ]
+    },
+    {
+      "name": "merge-effective-cap",
+      "wrapper_labels": [
+        { "key": "w01", "value": "v01" },
+        { "key": "w02", "value": "v02" },
+        { "key": "w03", "value": "v03" },
+        { "key": "w04", "value": "v04" },
+        { "key": "w05", "value": "v05" },
+        { "key": "w06", "value": "v06" },
+        { "key": "w07", "value": "v07" },
+        { "key": "w08", "value": "v08" },
+        { "key": "w09", "value": "v09" },
+        { "key": "w10", "value": "v10" },
+        { "key": "w11", "value": "v11" },
+        { "key": "w12", "value": "v12" },
+        { "key": "w13", "value": "v13" },
+        { "key": "w14", "value": "v14" },
+        { "key": "w15", "value": "v15" },
+        { "key": "w16", "value": "v16" },
+        { "key": "w17", "value": "v17" },
+        { "key": "w18", "value": "v18" },
+        { "key": "w19", "value": "v19" },
+        { "key": "w20", "value": "v20" }
+      ],
+      "client_labels": [
+        { "key": "c01", "value": "v01" },
+        { "key": "c02", "value": "v02" },
+        { "key": "c03", "value": "v03" },
+        { "key": "c04", "value": "v04" },
+        { "key": "c05", "value": "v05" },
+        { "key": "c06", "value": "v06" },
+        { "key": "c07", "value": "v07" },
+        { "key": "c08", "value": "v08" },
+        { "key": "c09", "value": "v09" },
+        { "key": "c10", "value": "v10" },
+        { "key": "c11", "value": "v11" },
+        { "key": "c12", "value": "v12" },
+        { "key": "c13", "value": "v13" },
+        { "key": "c14", "value": "v14" },
+        { "key": "c15", "value": "v15" },
+        { "key": "c16", "value": "v16" },
+        { "key": "c17", "value": "v17" },
+        { "key": "c18", "value": "v18" },
+        { "key": "c19", "value": "v19" },
+        { "key": "c20", "value": "v20" }
+      ],
+      "expected_header": "c01=v01,c02=v02,c03=v03,c04=v04,c05=v05,c06=v06,c07=v07,c08=v08,c09=v09,c10=v10,c11=v11,c12=v12,w01=v01,w02=v02,w03=v03,w04=v04,w05=v05,w06=v06,w07=v07,w08=v08,w09=v09,w10=v10,w11=v11,w12=v12,w13=v13,w14=v14,w15=v15,w16=v16,w17=v17,w18=v18,w19=v19,w20=v20",
+      "expected_accepted": [
+        { "key": "c01", "value": "v01", "provenance": "client" },
+        { "key": "c02", "value": "v02", "provenance": "client" },
+        { "key": "c03", "value": "v03", "provenance": "client" },
+        { "key": "c04", "value": "v04", "provenance": "client" },
+        { "key": "c05", "value": "v05", "provenance": "client" },
+        { "key": "c06", "value": "v06", "provenance": "client" },
+        { "key": "c07", "value": "v07", "provenance": "client" },
+        { "key": "c08", "value": "v08", "provenance": "client" },
+        { "key": "c09", "value": "v09", "provenance": "client" },
+        { "key": "c10", "value": "v10", "provenance": "client" },
+        { "key": "c11", "value": "v11", "provenance": "client" },
+        { "key": "c12", "value": "v12", "provenance": "client" },
+        { "key": "w01", "value": "v01", "provenance": "wrapper" },
+        { "key": "w02", "value": "v02", "provenance": "wrapper" },
+        { "key": "w03", "value": "v03", "provenance": "wrapper" },
+        { "key": "w04", "value": "v04", "provenance": "wrapper" },
+        { "key": "w05", "value": "v05", "provenance": "wrapper" },
+        { "key": "w06", "value": "v06", "provenance": "wrapper" },
+        { "key": "w07", "value": "v07", "provenance": "wrapper" },
+        { "key": "w08", "value": "v08", "provenance": "wrapper" },
+        { "key": "w09", "value": "v09", "provenance": "wrapper" },
+        { "key": "w10", "value": "v10", "provenance": "wrapper" },
+        { "key": "w11", "value": "v11", "provenance": "wrapper" },
+        { "key": "w12", "value": "v12", "provenance": "wrapper" },
+        { "key": "w13", "value": "v13", "provenance": "wrapper" },
+        { "key": "w14", "value": "v14", "provenance": "wrapper" },
+        { "key": "w15", "value": "v15", "provenance": "wrapper" },
+        { "key": "w16", "value": "v16", "provenance": "wrapper" },
+        { "key": "w17", "value": "v17", "provenance": "wrapper" },
+        { "key": "w18", "value": "v18", "provenance": "wrapper" },
+        { "key": "w19", "value": "v19", "provenance": "wrapper" },
+        { "key": "w20", "value": "v20", "provenance": "wrapper" }
+      ],
+      "expected_dropped": [
+        { "key": "c13", "reason": "effective_cap_overflow" },
+        { "key": "c14", "reason": "effective_cap_overflow" },
+        { "key": "c15", "reason": "effective_cap_overflow" },
+        { "key": "c16", "reason": "effective_cap_overflow" },
+        { "key": "c17", "reason": "effective_cap_overflow" },
+        { "key": "c18", "reason": "effective_cap_overflow" },
+        { "key": "c19", "reason": "effective_cap_overflow" },
+        { "key": "c20", "reason": "effective_cap_overflow" }
+      ]
+    }
+  ],
+  "parse_cases": [
+    {
+      "name": "percent-encoded",
+      "raw": "task=CI%204311,raider.root=r%2F1",
+      "expected_pairs": [
+        { "key": "raider.root", "value": "r/1" },
+        { "key": "task", "value": "CI 4311" }
+      ]
+    },
+    {
+      "name": "escaped-comma",
+      "raw": "note=a%2Cb,task=T",
+      "expected_pairs": [
+        { "key": "note", "value": "a,b" },
+        { "key": "task", "value": "T" }
+      ]
+    },
+    {
+      "name": "empty",
+      "raw": "",
+      "expected_pairs": []
+    },
+    {
+      "name": "missing-separator",
+      "raw": "task",
+      "expected_error_reason": "missing_separator"
+    },
+    {
+      "name": "invalid-escape",
+      "raw": "task=%ZZ",
+      "expected_error_reason": "invalid_escape"
+    },
+    {
+      "name": "bad-key-shape",
+      "raw": "bad key=v",
+      "expected_error_reason": "malformed_key"
+    }
+  ]
+}

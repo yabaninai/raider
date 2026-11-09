@@ -1,0 +1,139 @@
+{
+  "schema": "raider.contracts.yabanin.doctor/1",
+  "pin": {
+    "expected_models_docs_version": "2026-11-01",
+    "labels_fixture_raw": "task=RAI-037,harness=raider",
+    "expected_labels_header": "harness=raider,task=RAI-037"
+  },
+  "pin_rule": "expected_models_docs_version is the models-catalog docs_version this contract snapshot was verified against. When the gateway advances its docs version, this pin is updated in a separate contract card together with the goldens — never inside a product implementation card.",
+  "decision_header": "X-Yabanin-Decision",
+  "scenario_names_rule": "Each scenario name maps 1:1 to a YabaninContractStand scenario. The doctor always calls GET {base}/models first and GET {base}/yabanin/session-keys second; the first gateway decision header observed (models, then session keys) is recorded verbatim. fallback_attempted is structurally false: the doctor probes, it never routes.",
+  "scenarios": [
+    {
+      "name": "doctor-ok",
+      "expected": {
+        "models": {
+          "classification": "ok",
+          "http_status": 200,
+          "model_ids": ["yb-flash", "yb-worker"],
+          "docs_version": "2026-11-01"
+        },
+        "session_keys": {
+          "classification": "ok",
+          "http_status": 200
+        },
+        "decision": {
+          "value": "route=yb-flash policy=default",
+          "observed_on": "/gw/v1/models"
+        },
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-auth-denied",
+      "expected": {
+        "models": {
+          "classification": "auth_denied",
+          "http_status": 401
+        },
+        "session_keys": {
+          "classification": "auth_denied",
+          "http_status": 401
+        },
+        "decision": null,
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-forbidden",
+      "expected": {
+        "models": {
+          "classification": "forbidden",
+          "http_status": 403
+        },
+        "session_keys": {
+          "classification": "forbidden",
+          "http_status": 403
+        },
+        "decision": null,
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-models-unsupported",
+      "expected": {
+        "models": {
+          "classification": "capability_unsupported",
+          "http_status": 501
+        },
+        "session_keys": {
+          "classification": "ok",
+          "http_status": 200
+        },
+        "decision": {
+          "value": "route=sk-echo policy=default",
+          "observed_on": "/gw/v1/yabanin/session-keys"
+        },
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-session-keys-unsupported",
+      "expected": {
+        "models": {
+          "classification": "ok",
+          "http_status": 200,
+          "model_ids": ["yb-flash", "yb-worker"],
+          "docs_version": "2026-11-01"
+        },
+        "session_keys": {
+          "classification": "capability_unsupported",
+          "http_status": 501
+        },
+        "decision": {
+          "value": "route=yb-flash policy=default",
+          "observed_on": "/gw/v1/models"
+        },
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-stale-docs",
+      "expected": {
+        "models": {
+          "classification": "stale_models_docs",
+          "http_status": 200,
+          "model_ids": ["yb-flash", "yb-worker"],
+          "docs_version": "2025-01-01"
+        },
+        "session_keys": {
+          "classification": "ok",
+          "http_status": 200
+        },
+        "decision": {
+          "value": "route=yb-flash policy=default",
+          "observed_on": "/gw/v1/models"
+        },
+        "fallback_attempted": false
+      }
+    },
+    {
+      "name": "doctor-label-overflow",
+      "expected": {
+        "models": {
+          "classification": "label_overflow",
+          "http_status": 400
+        },
+        "session_keys": {
+          "classification": "ok",
+          "http_status": 200
+        },
+        "decision": {
+          "value": "route=sk-echo policy=default",
+          "observed_on": "/gw/v1/yabanin/session-keys"
+        },
+        "fallback_attempted": false
+      }
+    }
+  ]
+}

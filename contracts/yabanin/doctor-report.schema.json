@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/yabaninai/raider/main/contracts/yabanin/doctor-report.schema.json",
+  "title": "Raider Yabanin capability doctor report",
+  "description": "Structured result of a Yabanin gateway capability probe. The doctor issues GET {base}/models and then GET {base}/yabanin/session-keys against the configured base URL, classifies each endpoint, records the first gateway decision header verbatim, and records the label header it sent. It never spends tokens, never mints a session key, and never falls back to a direct provider route.",
+  "type": "object",
+  "required": ["base_url", "labels", "models", "session_keys", "decision", "fallback_attempted"],
+  "additionalProperties": false,
+  "properties": {
+    "base_url": {
+      "type": "string",
+      "description": "The base URL the doctor probed, verbatim except trailing slashes trimmed.",
+      "pattern": "^https?://"
+    },
+    "labels": {
+      "description": "The label set the doctor attached to its requests (same canonical form as the labels contract).",
+      "$ref": "labels.schema.json"
+    },
+    "models": {
+      "type": "object",
+      "required": ["classification", "http_status", "model_ids", "docs_version", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": ["ok", "auth_denied", "forbidden", "capability_unsupported", "stale_models_docs", "label_overflow", "transport_failure"]
+        },
+        "http_status": { "type": ["integer", "null"], "description": "Observed HTTP status, or null when the call failed below HTTP." },
+        "model_ids": { "type": "array", "items": { "type": "string" }, "description": "Model ids from the catalog body when one was parseable; otherwise empty." },
+        "docs_version": { "type": ["string", "null"], "description": "docs_version reported by the catalog when present." },
+        "detail": { "type": "string", "description": "Short explanation; must never contain credential values." }
+      }
+    },
+    "session_keys": {
+      "type": "object",
+      "required": ["classification", "http_status", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "classification": {
+          "enum": ["ok", "auth_denied", "forbidden", "capability_unsupported", "stale_models_docs", "label_overflow", "transport_failure"]
+        },
+        "http_status": { "type": ["integer", "null"] },
+        "detail": { "type": "string", "description": "Short explanation; must never contain credential values. The probe never completes a mint." }
+      }
+    },
+    "decision": {
+      "type": ["object", "null"],
+      "description": "First gateway decision header observed (models, then session keys), stored verbatim as routing evidence. The doctor does not interpret or act on it.",
+      "required": ["header", "value", "observed_on"],
+      "additionalProperties": false,
+      "properties": {
+        "header": { "const": "X-Yabanin-Decision" },
+        "value": { "type": "string" },
+        "observed_on": { "type": "string", "description": "URL path of the response the header was observed on." }
+      }
+    },
+    "fallback_attempted": {
+      "const": false,
+      "description": "Structurally false: an auth or policy refusal is a terminal capability fact. There is no hidden direct fallback to any other provider route."
+    }
+  }
+}

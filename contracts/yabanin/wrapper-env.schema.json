@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/yabaninai/raider/main/contracts/yabanin/wrapper-env.schema.json",
+  "title": "Raider Yabanin effective context (wrapper environment profile)",
+  "description": "Canonical record of the Yabanin wrapper environment recognition: which wrapper variables were recognized (YABANIN_GATEWAY_URL, YABANIN_API_KEY, YABANIN_LABELS), the effective base URL and label header, the lifecycle owner, and visible problems. The credential itself never appears in this document — only the environment variable NAME reference and whether a value is present.",
+  "type": "object",
+  "required": ["gateway_url", "credential", "labels", "owner", "problems"],
+  "additionalProperties": false,
+  "properties": {
+    "gateway_url": {
+      "type": ["string", "null"],
+      "description": "Effective gateway base URL (explicit configuration wins over the wrapper variable; trailing slashes trimmed), or null when no usable base URL was resolved.",
+      "pattern": "^https?://"
+    },
+    "credential": {
+      "type": "object",
+      "required": ["kind", "reference", "value_present"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": { "const": "env-name" },
+        "reference": { "type": "string", "description": "Environment variable NAME holding the gateway credential (e.g. YABANIN_API_KEY). The value is never recorded here." },
+        "value_present": { "type": "boolean", "description": "True when the parent environment carries a non-blank value for the referenced variable." }
+      }
+    },
+    "labels": { "$ref": "labels.schema.json" },
+    "owner": { "enum": ["wrapper", "standalone"] },
+    "problems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "detail"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": ["invalid_gateway_url", "blank_api_key_ref", "wrapper_labels_unparsable", "no_base_url"]
+          },
+          "detail": { "type": "string", "description": "Human-readable explanation; must not echo raw credential values or raw rejected URL values." }
+        }
+      }
+    },
+    "child_env": {
+      "type": "object",
+      "description": "Optional record of the child-only environment produced for the child provider call. Keys are environment variable names, values are the values passed to the child process. Credential values appear here ONLY when passed through under an explicitly allowlisted environment name.",
+      "additionalProperties": { "type": "string" }
+    }
+  }
+}
