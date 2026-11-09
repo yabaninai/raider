@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.dev/contracts/sessions/session-archive.schema.json",
+  "title": "Raider conversation session archive (schemaVersion 1)",
+  "description": "Durable prompt/reply transcript of one conversation session (card RAI-036). Writer: ConversationArchive.encodeDocument. The codec ignores unknown extra fields (documented divergence); this schema is the strict reviewer-facing spec.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "sessionId", "rootId", "model", "archivedAtMs", "turns"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sessionId": {
+      "type": "string",
+      "description": "Strict single path segment; enforced at the store boundary.",
+      "pattern": "^[A-Za-z0-9._-]+$",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "rootId": {
+      "type": "string",
+      "description": "Conversation root that owned the archived turns; never reused after reopen.",
+      "minLength": 1
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "label": { "type": "string", "minLength": 1 },
+    "archivedAtMs": { "type": "integer", "minimum": 0 },
+    "turns": {
+      "type": "array",
+      "description": "Strict prompt/reply pairs; pairing is the schema, there is no per-turn role field.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["prompt", "reply"],
+        "properties": {
+          "prompt": { "type": "string" },
+          "reply": { "type": "string" }
+        }
+      }
+    }
+  }
+}
