@@ -147,6 +147,24 @@ lazy val raiderEvalExport = (project in file("modules/eval-export"))
     )
   )
 
+// raider-yabanin: optional Yabanin profile lane (RAI-037) against the
+// contracts/yabanin schemas + pinned goldens. Standalone (zio + zio-json
+// only, no raiderCore/testkit edge). Lane test entry: TestMain via
+// modules/yabanin/run-tests.sh; the same zio-test suites are
+// sbt-discoverable. Registered by root coordinator (coordinator-owned file).
+lazy val raiderYabanin = (project in file("modules/yabanin"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-yabanin"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % zioVersion,
+      "dev.zio" %% "zio-json" % zioJsonVersion
+    )
+  )
+
 lazy val raiderCompatPi = (project in file("modules/compat-pi"))
   .settings(
     commonSettings,
@@ -338,7 +356,8 @@ lazy val root = (project in file("."))
     raiderCliFixtures,
     raiderCli,
     raiderUi,
-    raiderEvalExport
+    raiderEvalExport,
+    raiderYabanin
   )
   .dependsOn(
     raiderCore,
@@ -353,7 +372,8 @@ lazy val root = (project in file("."))
     raiderCliFixtures,
     raiderCli,
     raiderUi,
-    raiderEvalExport
+    raiderEvalExport,
+    raiderYabanin
   )
   .settings(
     name := "raider",
