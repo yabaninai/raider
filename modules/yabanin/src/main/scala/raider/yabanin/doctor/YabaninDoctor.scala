@@ -66,14 +66,22 @@ object YabaninDoctor:
     val base   = input.baseUrl.reverse.dropWhile(_ == '/').reverse
     val client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build()
     try
-      val models      = classifyModels(call(client, base, "/models", input), input.expectedDocsVersion)
-      val sessionKeys = classifySessionKeys(call(client, base, "/yabanin/session-keys", input))
+      val (modelsProbe, modelsDecision)          = classifyModels(call(client, base, "/models", input), input.expectedDocsVersion)
+      val (sessionKeysProbe, sessionKeysDecision) = classifySessionKeys(call(client, base, "/yabanin/session-keys", input))
       // First observation wins: models first, then session keys.
-      val decision = models.observedDecision.orElse(sessionKeys.observedDecision).map { case (value, path) =>
+      val decision = modelsDecision.orElse(sessionKeysDecision).map { case (value, path) =>
         DecisionObservation(DecisionHeader, value, path)
       }
-      DoctorReport(base, input.labels, models.probe, sessionKeys.probe, decision)
+      DoctorReport(base, input.labels, modelsProbe, sessionKeysProbe, decision)
     finally client.close()
+
+  /** Same-module classification hook for contract tests: classifies a
+    * synthetic models response so status/body combinations the fixed
+    * two-call surface cannot produce (e.g. a plain 400 without the
+    * `label_overflow` code) stay verifiable against the contract table.
+    */
+  private[doctor] def testExposeClassifyModels(status: Int, body: String, expectedDocsVersion: String): Capability =
+    classifyModels(CallOutcome(Some(RawResponse(status, body, None, "/test")), None), expectedDocsVersion)._1.classification
 
   // -------------------------------------------------------------------
   // One HTTP call
@@ -144,9 +152,9 @@ object YabaninDoctor:
               ModelsProbe(Capability.TransportFailure, Some(s), Vector.empty, None,
                 s"unexpected models response (HTTP $s); classified as transport_failure")
         (probe, outcome.decision)
-      case CallOutcome(None, Some(what)) =>
+      case CallOutcome(None, failure) =>
         (ModelsProbe(Capability.TransportFailure, None, Vector.empty, None,
-          s"the models call failed below HTTP ($what); classified as transport_failure"), None)
+          s"the models call failed below HTTP (${failure.getOrElse("no outcome recorded")}); classified as transport_failure"), None)
 
   private def classifySessionKeys(outcome: CallOutcome): (SessionKeysProbe, Option[(String, String)]) =
     outcome match
@@ -172,9 +180,9 @@ object YabaninDoctor:
               SessionKeysProbe(Capability.TransportFailure, Some(s),
                 s"unexpected session-keys response (HTTP $s); classified as transport_failure")
         (probe, outcome.decision)
-      case CallOutcome(None, Some(what)) =>
+      case CallOutcome(None, failure) =>
         (SessionKeysProbe(Capability.TransportFailure, None,
-          s"the session-keys call failed below HTTP ($what); classified as transport_failure"), None)
+          s"the session-keys call failed below HTTP (${failure.getOrElse("no outcome recorded")}); classified as transport_failure"), None)
 
   // -------------------------------------------------------------------
   // Body parsing (tolerant: an unparseable body is still classified)

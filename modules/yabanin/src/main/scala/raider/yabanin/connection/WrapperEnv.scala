@@ -173,7 +173,7 @@ object WrapperEnv:
     val wrapperSet: LabelSet = env.get(WrapperEnvNames.Labels) match
       case Some(raw) =>
         LabelHeader.parseRaw(raw, limits) match
-          case Right(pairs) => LabelHeader.fromWrapper(pairs, limits)
+          case Right(pairs) => LabelHeader.fromWrapper(pairs.map(l => (l.key, l.value)), limits)
           case Left(err) =>
             problems += ContextProblem(
               ContextProblemName.WrapperLabelsUnparsable,

@@ -139,13 +139,17 @@ final case class EscapeProblem(problem: PathEscape.DecodeError) extends ParseErr
   */
 object LabelHeader:
 
+  import DropReason.*
+
   val HeaderName: String = "X-Yabanin-Labels"
 
   /** Canonicalizes one source's pairs in insertion order with the contract
     * check order: key shape (`malformed_key`), reserved prefix for client
     * labels (`reserved_key_prefix`), value byte length (`value_too_long`),
     * duplicate key from the same source with first value winning
-    * (`duplicate_key`), per-source cap (`per_source_overflow`).
+    * (`duplicate_key`), per-source cap (`per_source_overflow`). The
+    * canonical result sorts `accepted` by key (render order); `insertionOrder`
+    * preserves admission order for [[LabelHeader$.merge]].
     *
     * The reserved-prefix check is provenance-conditional: the `yabanin.`
     * namespace belongs to wrapper-provided labels (contract §1.2, "wrapper
@@ -177,7 +181,10 @@ object LabelHeader:
         seen += key
         count += 1
     }
-    LabelSet(accepted.result(), dropped.result(), order.result())
+    // The LabelSet render-order invariant: `accepted` is sorted by key so
+    // `renderHeader` emits the canonical sorted header; `insertionOrder`
+    // keeps the admission order for the merge cap semantics.
+    LabelSet(accepted.result().sortBy(_.key), dropped.result(), order.result())
 
   /** Canonicalizes Raider-side (client) labels. */
   def fromClient(pairs: Vector[(String, String)], limits: LabelLimits): LabelSet =
@@ -193,12 +200,16 @@ object LabelHeader:
     * and are protected: a client label whose key collides with a wrapper key
     * is dropped with `protected_wrapper_key`. Client labels are then appended
     * in insertion order until the effective cap; the excess is dropped with
-    * `effective_cap_overflow`.
+    * `effective_cap_overflow`. The merged `dropped` vector is the full union
+    * in processing order — wrapper canonicalization drops, client
+    * canonicalization drops, then merge-time drops — so no rejection is ever
+    * silently discarded.
     */
   def merge(wrapper: LabelSet, client: LabelSet, limits: LabelLimits): LabelSet =
     val protectedKeys = wrapper.accepted.map(_.key).toSet
     val dropped       = Vector.newBuilder[DroppedLabel]
     dropped ++= wrapper.dropped
+    dropped ++= client.dropped
     val admitted = Vector.newBuilder[Label]
     val order    = Vector.newBuilder[String]
     var total    = wrapper.accepted.length
