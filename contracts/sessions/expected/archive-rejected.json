@@ -1,0 +1,66 @@
+[
+  {
+    "name": "schema-version-missing",
+    "reasonPrefix": "archive field 'schemaVersion' is missing",
+    "document": {
+      "sessionId": "conv-x",
+      "rootId": "conversation_1",
+      "model": "scripted",
+      "archivedAtMs": 0,
+      "turns": []
+    }
+  },
+  {
+    "name": "schema-version-future",
+    "reasonPrefix": "archive schemaVersion 2 is newer",
+    "document": {
+      "schemaVersion": 2,
+      "sessionId": "conv-x",
+      "rootId": "conversation_1",
+      "model": "scripted",
+      "archivedAtMs": 0,
+      "turns": []
+    }
+  },
+  {
+    "name": "schema-version-not-integer",
+    "reasonPrefix": "archive schemaVersion must be the integer 1",
+    "document": {
+      "schemaVersion": "one",
+      "sessionId": "conv-x",
+      "rootId": "conversation_1",
+      "model": "scripted",
+      "archivedAtMs": 0,
+      "turns": []
+    }
+  },
+  {
+    "name": "document-not-object",
+    "reasonPrefix": "session archive document is not a JSON object",
+    "document": [1, 2, 3]
+  },
+  {
+    "name": "turn-missing-reply",
+    "reasonPrefix": "archive field 'reply' is missing",
+    "document": {
+      "schemaVersion": 1,
+      "sessionId": "conv-x",
+      "rootId": "conversation_1",
+      "model": "scripted",
+      "archivedAtMs": 0,
+      "turns": [{ "prompt": "only a prompt" }]
+    }
+  },
+  {
+    "name": "turns-not-array",
+    "reasonPrefix": "archive field 'turns' must be an array",
+    "document": {
+      "schemaVersion": 1,
+      "sessionId": "conv-x",
+      "rootId": "conversation_1",
+      "model": "scripted",
+      "archivedAtMs": 0,
+      "turns": { "prompt": "p", "reply": "r" }
+    }
+  }
+]
