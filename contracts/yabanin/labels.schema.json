@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/yabaninai/raider/main/contracts/yabanin/labels.schema.json",
+  "title": "Raider Yabanin label set (canonical form)",
+  "description": "The canonical form of a Raider label set prepared for the Yabanin gateway. Values are stored unescaped; the rendered header escapes values byte-wise exactly as Go net/url PathEscape does (see expected/pathescape-golden.json). Limits are pinned in expected/labels-golden.json and must match the implementation defaults.",
+  "type": "object",
+  "required": ["accepted", "dropped", "header", "limits"],
+  "additionalProperties": false,
+  "properties": {
+    "accepted": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "value", "provenance"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Label key; client-side guard is 1..64 characters of [A-Za-z0-9._-]. The yabanin. prefix is reserved for wrapper-provided labels.",
+            "pattern": "^[A-Za-z0-9._-]+$",
+            "maxLength": 64
+          },
+          "value": { "type": "string", "description": "Raw value; UTF-8 byte length at most 128." },
+          "provenance": { "enum": ["wrapper", "client"] }
+        }
+      }
+    },
+    "dropped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "key": { "type": "string" },
+          "reason": {
+            "enum": [
+              "reserved_key_prefix",
+              "value_too_long",
+              "malformed_key",
+              "per_source_overflow",
+              "effective_cap_overflow",
+              "protected_wrapper_key",
+              "duplicate_key"
+            ]
+          },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "header": {
+      "type": "string",
+      "description": "Rendered comma-separated key=escaped-value pairs with keys sorted lexicographically; values are PathEscape-escaped byte-wise (see expected/pathescape-golden.json); empty string when accepted is empty."
+    },
+    "limits": {
+      "type": "object",
+      "required": ["max_per_source", "max_effective", "max_value_length_bytes", "reserved_key_prefix", "client_key_max_length"],
+      "additionalProperties": false,
+      "properties": {
+        "max_per_source": { "type": "integer", "minimum": 0 },
+        "max_effective": { "type": "integer", "minimum": 0 },
+        "max_value_length_bytes": { "type": "integer", "minimum": 0 },
+        "reserved_key_prefix": { "type": "string" },
+        "client_key_max_length": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}
