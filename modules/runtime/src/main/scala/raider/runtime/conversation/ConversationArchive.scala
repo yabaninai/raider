@@ -53,9 +53,9 @@ object ConversationArchive:
   /** Builds the archive from a conversation snapshot (the (user, assistant)
     * message list of [[Conversation.snapshot]]). The history must be a strict
     * prompt/reply sequence — the dispatcher guarantees this; a violating
-    * snapshot is a typed refusal (RA-INP), never a guessed transcript.
-    * Pure: the caller supplies the snapshot and the timestamp, so the archive
-    * layer has no clock and no concurrency of its own.
+    * snapshot is a typed refusal (RA-INP), never a guessed transcript. Pure:
+    * the caller supplies the snapshot and the timestamp, so the archive layer
+    * has no clock and no concurrency of its own.
     */
   def fromSnapshot(
       sessionId: SessionId,
@@ -77,9 +77,9 @@ object ConversationArchive:
       )
     }
 
-  /** The strict (user, assistant) pairing check: an uneven tail or a wrong
-    * role order is a typed refusal — the archive never invents a reply for a
-    * prompt or a prompt for a reply.
+  /** The strict (user, assistant) pairing check: an uneven tail or a wrong role
+    * order is a typed refusal — the archive never invents a reply for a prompt
+    * or a prompt for a reply.
     */
   private def pairTurns(
       history: List[RequestMessage]
@@ -102,8 +102,8 @@ object ConversationArchive:
           )
     loop(history, Nil)
 
-  /** The archive's turns as an explicit request-history seed (reopen):
-    * pairing is inherent to the archive schema, so this is total.
+  /** The archive's turns as an explicit request-history seed (reopen): pairing
+    * is inherent to the archive schema, so this is total.
     */
   def toSeed(archive: ConversationArchive): List[RequestMessage] =
     archive.turns.flatMap { t =>
@@ -143,14 +143,16 @@ object ConversationArchive:
         "model" -> Json.Str(archive.model)
       ) ++ labelField ++ Chunk(
         "archivedAtMs" -> Json.Num(BigDecimal(archive.archivedAtMs)),
-        "turns" -> Json.Arr(Chunk.fromIterable(
-          archive.turns.map { t =>
-            Json.Obj(
-              "prompt" -> Json.Str(t.prompt),
-              "reply" -> Json.Str(t.reply)
-            )
-          }
-        ))
+        "turns" -> Json.Arr(
+          Chunk.fromIterable(
+            archive.turns.map { t =>
+              Json.Obj(
+                "prompt" -> Json.Str(t.prompt),
+                "reply" -> Json.Str(t.reply)
+              )
+            }
+          )
+        )
       )
     )
     doc.toJson
@@ -171,7 +173,7 @@ object ConversationArchive:
       ast <- text.fromJson[Json]
       _ <- ast match
         case _: Json.Obj => Right(())
-        case _           => Left("session archive document is not a JSON object")
+        case _ => Left("session archive document is not a JSON object")
       versionRaw <- requiredField(ast, "schemaVersion")
       version <- versionRaw.as[Int].left.map { _ =>
         s"archive schemaVersion must be the integer 1, got: " +
@@ -218,9 +220,11 @@ object ConversationArchive:
   private def requiredField(ast: Json, name: String): Either[String, Json] =
     ast match
       case Json.Obj(fields) =>
-        fields.collectFirst { case (`name`, v) => v }.toRight(
-          s"archive field '$name' is missing (schemaVersion 1 requires it explicitly)"
-        )
+        fields
+          .collectFirst { case (`name`, v) => v }
+          .toRight(
+            s"archive field '$name' is missing (schemaVersion 1 requires it explicitly)"
+          )
       case _ => Left("archive document is not a JSON object")
 
   /** The `turns` array: each element a strict prompt/reply object, reported
@@ -267,7 +271,7 @@ object ConversationArchive:
     ast match
       case Json.Obj(fields) =>
         fields.collectFirst { case (`name`, v) => v } match
-          case None         => Right(None)
+          case None              => Right(None)
           case Some(Json.Str(s)) => Right(Some(s))
           case Some(other) =>
             Left(

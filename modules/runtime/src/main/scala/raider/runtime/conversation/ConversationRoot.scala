@@ -3,16 +3,16 @@ package raider.runtime.conversation
 import raider.core.{RaiderError, RequestMessage, RootId}
 import zio.{IO, Ref, Semaphore, UIO, ZIO}
 
-/** Conversation root: the OWNERSHIP anchor for a group of conversation
-  * sessions (SESSION-03, runtime-contracts §5). Opening registers the child
-  * under the root in a narrow uninterruptible section; closing the root seals
-  * it and closes EVERY child in registration order — a root close never
-  * orphans a conversation (no daemon dispatcher left running, no unsettled
-  * receipts), and a sealed root refuses new opens typed (RA-INP).
+/** Conversation root: the OWNERSHIP anchor for a group of conversation sessions
+  * (SESSION-03, runtime-contracts §5). Opening registers the child under the
+  * root in a narrow uninterruptible section; closing the root seals it and
+  * closes EVERY child in registration order — a root close never orphans a
+  * conversation (no daemon dispatcher left running, no unsettled receipts), and
+  * a sealed root refuses new opens typed (RA-INP).
   *
   * Lifecycle locking mirrors [[Conversation]]: one lifecycle semaphore
-  * serializes open-registration against close, so there is no interval in
-  * which a child exists unregistered or a close misses a registering child.
+  * serializes open-registration against close, so there is no interval in which
+  * a child exists unregistered or a close misses a registering child.
   */
 final class ConversationRoot private[conversation] (
     val id: RootId,
@@ -83,6 +83,11 @@ object ConversationRoot:
       children <- Ref.make(List.empty[Conversation])
       sealedRef <- Ref.make(false)
       lock <- Semaphore.make(1L)
-    yield new ConversationRoot(Conversation.newRoot(), children, sealedRef, lock)
+    yield new ConversationRoot(
+      Conversation.newRoot(),
+      children,
+      sealedRef,
+      lock
+    )
 
 end ConversationRoot

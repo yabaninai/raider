@@ -12,14 +12,14 @@ import java.nio.file.{Files, Path}
 import scala.util.Try
 
 /** REPL bridge tests for conversation sessions (RAI-036, SESSION-01/02/03):
-  * `ConversationRef`/`SessionArchive` must ride the ONE facade agent path
-  * (same AgentLoop as ask/openSession — no second runtime), keep multi-turn
+  * `ConversationRef`/`SessionArchive` must ride the ONE facade agent path (same
+  * AgentLoop as ask/openSession — no second runtime), keep multi-turn
   * continuity, and honor the archive honesty rules (reopen executes nothing,
   * oversized transcripts refuse typed before any turn).
   *
   * Deterministic: ScriptedSequenceBackend (fixtureMode), temp dirs, blocking
-  * calls are safe because the scripted wire settles instantly (same
-  * discipline as FacadeOpsSpec).
+  * calls are safe because the scripted wire settles instantly (same discipline
+  * as FacadeOpsSpec).
   */
 object SessionArchiveSpec extends ZIOSpecDefault:
 
@@ -39,31 +39,35 @@ object SessionArchiveSpec extends ZIOSpecDefault:
       session <- ReplSession.make(backend, BudgetLimits.make())
     yield (backend, session)
 
-  private def withTempDir[A](f: Path => ZIO[Any, Throwable, A]): ZIO[Any, Throwable, A] =
+  private def withTempDir[A](
+      f: Path => ZIO[Any, Throwable, A]
+  ): ZIO[Any, Throwable, A] =
     ZIO.acquireReleaseWith(
       ZIO.attempt(Files.createTempDirectory("raider-repl-sess"))
     )(p =>
-      ZIO
-        .attempt {
-          import scala.jdk.CollectionConverters.*
-          Files
-            .walk(p)
-            .sorted(java.util.Comparator.reverseOrder[Path]())
-            .iterator()
-            .asScala
-            .foreach(Files.delete(_))
-        }
-        .orDie
+      ZIO.attempt {
+        import scala.jdk.CollectionConverters.*
+        Files
+          .walk(p)
+          .sorted(java.util.Comparator.reverseOrder[Path]())
+          .iterator()
+          .asScala
+          .foreach(Files.delete(_))
+      }.orDie
     )(f)
 
   private val user = Conversation.UserRole
   private val assistant = Conversation.AssistantRole
 
   def spec = suite("ConversationRef and SessionArchive (RAI-036 REPL bridge)")(
-
-    test("open dispatches nothing; turns ride the one facade path with continuity") {
+    test(
+      "open dispatches nothing; turns ride the one facade path with continuity"
+    ) {
       for
-        (backend, session) <- rig(turn("a1", "first reply"), turn("a2", "second reply"))
+        (backend, session) <- rig(
+          turn("a1", "first reply"),
+          turn("a2", "second reply")
+        )
         ref = ConversationRef.open(AgentRef("demo"))(using session)
         reqs0 <- backend.requests
         reply1 = ref.ask("question one")
@@ -93,7 +97,6 @@ object SessionArchiveSpec extends ZIOSpecDefault:
         )
       )
     },
-
     test("start returns a receipt immediately; await blocks for the reply") {
       for
         (backend, session) <- rig(turn("b1", "background reply"))
@@ -107,8 +110,9 @@ object SessionArchiveSpec extends ZIOSpecDefault:
         !unknownCancel
       )
     },
-
-    test("archive persists the transcript; reopen seeds history without executing") {
+    test(
+      "archive persists the transcript; reopen seeds history without executing"
+    ) {
       withTempDir { base =>
         for
           (backend, session) <- rig(
@@ -116,7 +120,9 @@ object SessionArchiveSpec extends ZIOSpecDefault:
             turn("c2", "beta"),
             turn("c3", "gamma")
           )
-          ref = ConversationRef.open(AgentRef("demo"), label = Some("study"))(using session)
+          ref = ConversationRef.open(AgentRef("demo"), label = Some("study"))(
+            using session
+          )
           _ = ref.ask("one")
           _ = ref.ask("two")
           path = ref.archive(base)
@@ -158,13 +164,16 @@ object SessionArchiveSpec extends ZIOSpecDefault:
         )
       }
     },
-
-    test("reopen with tight bounds refuses the oversized seed typed (RA-LBUDGET)") {
+    test(
+      "reopen with tight bounds refuses the oversized seed typed (RA-LBUDGET)"
+    ) {
       withTempDir { base =>
         for
           (backend, session) <- rig(turn("d1", "a reply long enough to matter"))
           ref = ConversationRef.open(AgentRef("demo"))(using session)
-          _ = ref.ask("a reasonably long prompt that will exceed the tiny bound")
+          _ = ref.ask(
+            "a reasonably long prompt that will exceed the tiny bound"
+          )
           _ = ref.archive(base)
           tight = ConversationBounds
             .make(maxTurns = 1, maxHistoryChars = 8, queueCapacity = 1)
@@ -187,8 +196,9 @@ object SessionArchiveSpec extends ZIOSpecDefault:
         )
       }
     },
-
-    test("close seals the conversation; later asks are refused typed (RA-INP)") {
+    test(
+      "close seals the conversation; later asks are refused typed (RA-INP)"
+    ) {
       for
         (backend, session) <- rig(turn("e1", "only reply"))
         ref = ConversationRef.open(AgentRef("demo"))(using session)

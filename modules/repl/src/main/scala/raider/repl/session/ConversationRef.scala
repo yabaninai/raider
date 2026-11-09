@@ -1,6 +1,13 @@
 package raider.repl.session
 
-import raider.core.{Program, RaiderError, RequestMessage, RootId, SessionId, Task}
+import raider.core.{
+  Program,
+  RaiderError,
+  RequestMessage,
+  RootId,
+  SessionId,
+  Task
+}
 import raider.repl.facade.{AgentRef, FacadeOps, ReplSession}
 import raider.runtime.conversation.{
   Conversation,
@@ -21,23 +28,24 @@ import java.nio.file.Path
   * foreground, `start` is background).
   *
   *   - `await()` blocks the REPL thread until the turn settles and returns the
-  *     reply; failures surface as typed `RaiderError` throws
-  *     (RunFailed-style, contracts §3). Idempotent: any number of awaits.
+  *     reply; failures surface as typed `RaiderError` throws (RunFailed-style,
+  *     contracts §3). Idempotent: any number of awaits.
   *   - `cancel()` requests cancellation (queued turns are skipped at dispatch,
   *     in-flight turns are interrupted). It returns whether the request was
   *     DELIVERED — the receipt still decides the final outcome (completion
-  *     wins), so a turn that finished before the request landed keeps its
-  *     reply and `await()` returns it. `false` = unknown turn id.
+  *     wins), so a turn that finished before the request landed keeps its reply
+  *     and `await()` returns it. `false` = unknown turn id.
   */
 final class ConversationTurn(
     val id: TurnId,
     receipt: TurnReceipt,
     ref: ConversationRef
 ):
+
   def await(): String =
     FacadeOps.unsafeRun(receipt.settled.await) match
-      case TurnOutcome.Done(reply)    => reply
-      case TurnOutcome.Failed(error)  => throw error
+      case TurnOutcome.Done(reply)   => reply
+      case TurnOutcome.Failed(error) => throw error
       case TurnOutcome.Cancelled =>
         throw RaiderError.Cancelled(
           s"conversation ${ref.conversation.sessionId.value}: turn ${id.value} " +
@@ -107,9 +115,9 @@ final class ConversationRef private[session] (
   def messages: List[RequestMessage] =
     FacadeOps.unsafeRun(conversation.snapshot)
 
-  /** Persist the transcript as a schemaVersion-1 archive document. The
-    * recorded `model` is the session model; the session id and the root that
-    * OWNED the turns are preserved verbatim.
+  /** Persist the transcript as a schemaVersion-1 archive document. The recorded
+    * `model` is the session model; the session id and the root that OWNED the
+    * turns are preserved verbatim.
     */
   def archive(base: Path = ConversationStore.defaultBase): Path =
     val archivedAtMs = System.currentTimeMillis()
@@ -150,21 +158,23 @@ object ConversationRef:
       session
     )
 
-  /** The per-turn execution point: the facade's ONE agent path over an
-    * explicit message list (same loop as openSession/ask — no second runtime).
+  /** The per-turn execution point: the facade's ONE agent path over an explicit
+    * message list (same loop as openSession/ask — no second runtime).
     */
   private[session] def turnRunner(
       session: ReplSession,
       agent: AgentRef
   ): TurnRunner =
-    TurnRunner(messages => FacadeOps.textAttemptMessages(session, agent, messages))
+    TurnRunner(messages =>
+      FacadeOps.textAttemptMessages(session, agent, messages)
+    )
 
 end ConversationRef
 
 /** Archive/restore surface for conversation sessions (RAI-036, SESSION-01/02):
   * the durable counterpart of [[ConversationRef]]. Storage discipline mirrors
-  * the CLI session store — strict id sanitizing, atomic writes, typed
-  * refusals — via [[ConversationStore]].
+  * the CLI session store — strict id sanitizing, atomic writes, typed refusals
+  * — via [[ConversationStore]].
   */
 object SessionArchive:
 
@@ -186,14 +196,14 @@ object SessionArchive:
 
   /** Reopen an archived conversation as a LIVE conversation with `agent`
     * (SESSION-01). Honesty rules:
-    *   - the archived transcript becomes the EXPLICIT seed — reopening
-    *     executes NOTHING until the next explicit `ask`/`start` (no implicit
-    *     agent restart, SESSION-02);
+    *   - the archived transcript becomes the EXPLICIT seed — reopening executes
+    *     NOTHING until the next explicit `ask`/`start` (no implicit agent
+    *     restart, SESSION-02);
     *   - the archived session id is PRESERVED (same durable identity), while
     *     the conversation gets a FRESH root: the archived root belonged to the
     *     dead session and is never reused (runtime-contracts §5 ownership);
-    *   - the archive must fit the target bounds — an oversized transcript is
-    *     a typed RA-LBUDGET refusal BEFORE any turn runs (no compaction).
+    *   - the archive must fit the target bounds — an oversized transcript is a
+    *     typed RA-LBUDGET refusal BEFORE any turn runs (no compaction).
     */
   def reopen(
       id: String,

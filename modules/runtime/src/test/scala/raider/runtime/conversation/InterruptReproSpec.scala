@@ -7,13 +7,15 @@ import zio.test.*
 /** Pinned ZIO 2.1.26 semantics guard for the conversation dispatcher (RAI-036).
   *
   * A fiber forked from inside `ZIO.uninterruptible` inherits the
-  * uninterruptible mask and CANNOT be interrupted while parked: `Fiber.interrupt`
-  * from another fiber never completes. The dispatcher registers turn fibers
-  * WITHOUT an uninterruptible wrapper (atomicity comes from `dispatchLock`)
-  * precisely so close/cancelTurn can interrupt a parked runner turn; these
-  * tests pin both halves of that reasoning so the wrapper is never reintroduced.
+  * uninterruptible mask and CANNOT be interrupted while parked:
+  * `Fiber.interrupt` from another fiber never completes. The dispatcher
+  * registers turn fibers WITHOUT an uninterruptible wrapper (atomicity comes
+  * from `dispatchLock`) precisely so close/cancelTurn can interrupt a parked
+  * runner turn; these tests pin both halves of that reasoning so the wrapper is
+  * never reintroduced.
   */
 object InterruptReproSpec extends ZIOSpecDefault:
+
   override def spec =
     suite("InterruptSemanticsPin")(
       test("plain fork + interrupt of a promise-parked child completes") {
@@ -25,7 +27,9 @@ object InterruptReproSpec extends ZIOSpecDefault:
           res <- live(f.interrupt.timeout(zio.Duration.fromSeconds(3)))
         yield assertTrue(res.isDefined)
       },
-      test("fork inside uninterruptible parks forever: interrupt cannot complete") {
+      test(
+        "fork inside uninterruptible parks forever: interrupt cannot complete"
+      ) {
         for
           gate <- Promise.make[Nothing, Unit]
           parked <- Promise.make[Nothing, Unit]
@@ -33,7 +37,9 @@ object InterruptReproSpec extends ZIOSpecDefault:
           fHolder <- zio.Ref.make(Option.empty[zio.Fiber[Any, Unit]])
           _ <- lock.withPermit {
             ZIO.uninterruptible {
-              (parked.succeed(()) *> gate.await).forkDaemon.flatMap(f => fHolder.set(Some(f)))
+              (parked.succeed(()) *> gate.await).forkDaemon.flatMap(f =>
+                fHolder.set(Some(f))
+              )
             }
           }
           _ <- parked.await

@@ -1,6 +1,13 @@
 package raider.runtime.conversation
 
-import raider.core.{Program, RaiderError, RequestMessage, RootId, SessionId, Task}
+import raider.core.{
+  Program,
+  RaiderError,
+  RequestMessage,
+  RootId,
+  SessionId,
+  Task
+}
 import zio.{Fiber, IO, Promise, Queue, Ref, Semaphore, UIO, ZIO}
 
 import java.util.concurrent.ConcurrentHashMap
@@ -30,7 +37,11 @@ object ConversationBounds:
     * queue of 64 pending turns (explicit backpressure — runtime-contracts §6).
     */
   val default: ConversationBounds =
-    ConversationBounds(maxTurns = 256, maxHistoryChars = 131072, queueCapacity = 64)
+    ConversationBounds(
+      maxTurns = 256,
+      maxHistoryChars = 131072,
+      queueCapacity = 64
+    )
 
   /** Validated construction; every bound must be positive (RA-CFG). */
   def make(
@@ -55,9 +66,9 @@ object ConversationBounds:
   def requestChars(messages: List[RequestMessage]): Int =
     messages.foldLeft(0)((acc, m) => acc + m.role.length + m.content.length + 1)
 
-/** One serialized turn of a conversation: exactly one prompt and, when the
-  * turn completes, one reply. Prompt/reply pairs are the durable unit of the
-  * session archive (schemaVersion 1).
+/** One serialized turn of a conversation: exactly one prompt and, when the turn
+  * completes, one reply. Prompt/reply pairs are the durable unit of the session
+  * archive (schemaVersion 1).
   */
 final case class ArchivedTurn(prompt: String, reply: String)
 
@@ -95,26 +106,27 @@ final case class TurnReceipt(
   /** Await the turn outcome (idempotent; any number of waiters). */
   def await: UIO[TurnOutcome] = settled.await
 
-/** The per-turn execution function a conversation is built with (RAI-036):
-  * the conversation owns NO provider logic — it owns ORDER. The runner is the
-  * single execution point per turn (in the REPL wiring this is the facade's
-  * one text path over [[raider.runtime.loop.AgentLoop]]; in runtime fixtures
-  * it is a scripted runner). Because the dispatcher runs at most one runner
-  * call at a time, a conversation holds at most ONE provider turn in flight,
-  * regardless of the session's admission limits.
+/** The per-turn execution function a conversation is built with (RAI-036): the
+  * conversation owns NO provider logic — it owns ORDER. The runner is the
+  * single execution point per turn (in the REPL wiring this is the facade's one
+  * text path over [[raider.runtime.loop.AgentLoop]]; in runtime fixtures it is
+  * a scripted runner). Because the dispatcher runs at most one runner call at a
+  * time, a conversation holds at most ONE provider turn in flight, regardless
+  * of the session's admission limits.
   */
 trait TurnRunner:
   def run(messages: List[RequestMessage]): ZIO[Any, RaiderError, String]
 
 object TurnRunner:
+
   def apply(
       f: List[RequestMessage] => ZIO[Any, RaiderError, String]
   ): TurnRunner =
     new TurnRunner:
       def run(messages: List[RequestMessage]) = f(messages)
 
-/** Conversation: a durable, serialized multi-turn session implementing the
-  * ONE execution contract [[Program]] (runtime-contracts §3; card RAI-036;
+/** Conversation: a durable, serialized multi-turn session implementing the ONE
+  * execution contract [[Program]] (runtime-contracts §3; card RAI-036;
   * dsl-experience §8 — ask/start are the same verbs, turns are serialized).
   *
   * Ordering and lifecycle semantics:
@@ -123,18 +135,18 @@ object TurnRunner:
   *     conversation is sealed, the queue is full or the history would exceed
   *     the bounds — RA-INP / RA-LBUDGET) and settles when the turn settles.
   *   - Turns are executed STRICTLY one at a time in acceptance order by a
-  *     single dispatcher fiber: turn N+1 starts only after turn N settled —
-  *     one provider turn at a time, independent of admission limits (SESSION-01).
+  *     single dispatcher fiber: turn N+1 starts only after turn N settled — one
+  *     provider turn at a time, independent of admission limits (SESSION-01).
   *   - `close` seals the conversation (idempotent, safe from any fiber) and
   *     settles EVERY accepted turn: an in-flight turn resolves by the
   *     completion-wins race (a turn that finished before its interrupt lands
   *     keeps its reply in the history; otherwise typed `Cancelled`), and every
   *     queued turn resolves `Cancelled`. No accepted receipt is ever dropped
-  *     (SESSION-03). The dispatcher is retired with a shutdown sentinel — it
-  *     is never interrupted, so it cannot die holding an unsettled receipt.
+  *     (SESSION-03). The dispatcher is retired with a shutdown sentinel — it is
+  *     never interrupted, so it cannot die holding an unsettled receipt.
   *   - `cancelTurn` requests cancellation of a known turn: a queued turn is
-  *     skipped at dispatch, an in-flight turn is interrupted; the receipt
-  *     still decides the final outcome (completion wins), so `true` means
+  *     skipped at dispatch, an in-flight turn is interrupted; the receipt still
+  *     decides the final outcome (completion wins), so `true` means
   *     "cancellation delivered", never "reply erased".
   *   - There is NO implicit compaction and NO implicit restart: history grows
   *     until a bound refuses it, and reopening an archived session executes
@@ -241,8 +253,8 @@ final class Conversation private[conversation] (
 
   /** Requests cancellation of a known turn (SESSION-03). `true` = the request
     * was delivered to a turn of this conversation (queued or in-flight); the
-    * receipt still decides the final outcome — a turn that completed before
-    * the request landed keeps its reply (completion wins). `false` = the id is
+    * receipt still decides the final outcome — a turn that completed before the
+    * request landed keeps its reply (completion wins). `false` = the id is
     * unknown to this conversation. Idempotent.
     */
   def cancelTurn(id: TurnId): UIO[Boolean] =
@@ -262,10 +274,10 @@ final class Conversation private[conversation] (
       }
 
   /** Seals the conversation: idempotent, safe from any fiber. Every accepted
-    * turn settles — the in-flight one by the completion-wins race, every
-    * queued one as `Cancelled`. Waits for the interrupted turn fibers (bounded
-    * close), then retires the dispatcher via a shutdown sentinel (never an
-    * interrupt). Later submits refuse typed (RA-INP).
+    * turn settles — the in-flight one by the completion-wins race, every queued
+    * one as `Cancelled`. Waits for the interrupted turn fibers (bounded close),
+    * then retires the dispatcher via a shutdown sentinel (never an interrupt).
+    * Later submits refuse typed (RA-INP).
     */
   def close: UIO[Unit] =
     lifecycleLock.withPermit {
@@ -326,25 +338,27 @@ final class Conversation private[conversation] (
     queue.take.flatMap {
       case DispatcherMsg.Shutdown => ZIO.unit
       case DispatcherMsg.Enqueue(turn) =>
-        dispatchLock.withPermit {
-          if cancelledFlags.containsKey(turn.id) then
-            turn.settled.succeed(TurnOutcome.Cancelled).as(None)
-          else
-            // Registration atomicity comes from dispatchLock alone: close and
-            // cancelTurn scan inFlight under the SAME lock, so a turn fiber is
-            // always visible to them once the permit is released. The fork MUST
-            // NOT sit inside ZIO.uninterruptible: in ZIO 2.1.26 a child forked
-            // from an uninterruptible region inherits the mask and becomes
-            // UNINTERRUPTIBLE while parked, so Fiber.interrupt from close never
-            // completes (pinned by InterruptReproSpec).
-            turnBody(turn).forkDaemon.flatMap { f =>
-              inFlight.update(_.updated(turn.id, f)).as(Some(f))
-            }
-        }.flatMap {
-          case None => dispatchLoop
-          case Some(f) =>
-            f.await.unit *> inFlight.update(_ - turn.id) *> dispatchLoop
-        }
+        dispatchLock
+          .withPermit {
+            if cancelledFlags.containsKey(turn.id) then
+              turn.settled.succeed(TurnOutcome.Cancelled).as(None)
+            else
+              // Registration atomicity comes from dispatchLock alone: close and
+              // cancelTurn scan inFlight under the SAME lock, so a turn fiber is
+              // always visible to them once the permit is released. The fork MUST
+              // NOT sit inside ZIO.uninterruptible: in ZIO 2.1.26 a child forked
+              // from an uninterruptible region inherits the mask and becomes
+              // UNINTERRUPTIBLE while parked, so Fiber.interrupt from close never
+              // completes (pinned by InterruptReproSpec).
+              turnBody(turn).forkDaemon.flatMap { f =>
+                inFlight.update(_.updated(turn.id, f)).as(Some(f))
+              }
+          }
+          .flatMap {
+            case None => dispatchLoop
+            case Some(f) =>
+              f.await.unit *> inFlight.update(_ - turn.id) *> dispatchLoop
+          }
     }
 
   /** One turn body: the ONE runner call, history append, receipt settle. The
@@ -391,7 +405,9 @@ final class Conversation private[conversation] (
       )
     else
       val projected =
-        ConversationBounds.requestChars(current) + prompt.length + UserRole.length + 1
+        ConversationBounds.requestChars(
+          current
+        ) + prompt.length + UserRole.length + 1
       if projected > bounds.maxHistoryChars then
         Left(
           RaiderError.LocalBudgetExceeded(

@@ -5,9 +5,9 @@ import zio.test.*
 import zio.{Duration, Promise, Ref, ZIO}
 
 /** RAI-036 runtime acceptance (m1.md SESSION-01/02/03) over the conversation
-  * core: context continuity and strict serialization (SESSION-01), honest
-  * typed bounds and refusals with no compaction (SESSION-02), receipt
-  * conservation, cancellation and root ownership (SESSION-03).
+  * core: context continuity and strict serialization (SESSION-01), honest typed
+  * bounds and refusals with no compaction (SESSION-02), receipt conservation,
+  * cancellation and root ownership (SESSION-03).
   *
   * Determinism rules: park-on-promise runners pin the dispatcher state before
   * every assertion; no sleeps; every await resolves by construction.
@@ -16,7 +16,8 @@ object ConversationSpec extends ZIOSpecDefault:
 
   private def makeConv(
       bounds: ConversationBounds = ConversationBounds.default,
-      runner: TurnRunner = TurnRunner(msgs => ZIO.succeed(s"reply-${msgs.size}")),
+      runner: TurnRunner =
+        TurnRunner(msgs => ZIO.succeed(s"reply-${msgs.size}")),
       seed: List[RequestMessage] = Nil,
       label: Option[String] = None,
       sessionId: SessionId = Conversation.newSessionId()
@@ -102,7 +103,9 @@ object ConversationSpec extends ZIOSpecDefault:
           n <- entered.get
         yield assertTrue(n == 0)
       },
-      test("turns are strictly serialized in acceptance order (one in flight)") {
+      test(
+        "turns are strictly serialized in acceptance order (one in flight)"
+      ) {
         for
           inFlight <- Ref.make(0)
           maxInFlight <- Ref.make(0)
@@ -173,7 +176,9 @@ object ConversationSpec extends ZIOSpecDefault:
         val wrongOrder = List(assistant("a"), user("b"))
         val valid = List(user("a"), assistant("b"))
         val oversized =
-          List.fill(3)((user("x"), assistant("y"))).flatMap((a, b) => List(a, b))
+          List
+            .fill(3)((user("x"), assistant("y")))
+            .flatMap((a, b) => List(a, b))
         val tight = ConversationBounds.make(maxTurns = 2).toOption.get
         def classify(e: Either[RaiderError, Unit]): String = e match
           case Left(ee) if isInputValidation(ee) => "input"
@@ -181,7 +186,9 @@ object ConversationSpec extends ZIOSpecDefault:
           case Left(_)                           => "other"
           case Right(_)                          => "ok"
         assertTrue(
-          classify(Conversation.validateSeed(odd, ConversationBounds.default)) == "input",
+          classify(
+            Conversation.validateSeed(odd, ConversationBounds.default)
+          ) == "input",
           classify(
             Conversation.validateSeed(wrongOrder, ConversationBounds.default)
           ) == "input",
@@ -197,7 +204,9 @@ object ConversationSpec extends ZIOSpecDefault:
       },
       test("oversized history is refused typed, never compacted") {
         for
-          bounds <- ZIO.fromEither(ConversationBounds.make(maxHistoryChars = 10))
+          bounds <- ZIO.fromEither(
+            ConversationBounds.make(maxHistoryChars = 10)
+          )
           conv <- makeConv(bounds = bounds)
           err <- conv.submit("123456").flip
           snap <- conv.snapshot
@@ -223,7 +232,8 @@ object ConversationSpec extends ZIOSpecDefault:
           _ <- parked.await // dispatcher took "a" and is parked in the runner
           _ <- conv.submit("b") // queued (capacity 1)
           err <- conv.submit("c").flip // queue full
-          _ <- conv.close // hygiene: retire the parked dispatcher deterministically
+          _ <-
+            conv.close // hygiene: retire the parked dispatcher deterministically
         yield assertTrue(isLocalBudget(err))
       } @@ TestAspect.timeout(Duration.fromSeconds(10)),
       test("submit after close is refused typed (RA-INP)") {
@@ -239,7 +249,9 @@ object ConversationSpec extends ZIOSpecDefault:
           err <- conv.submit("   ").flip
         yield assertTrue(isInputValidation(err))
       },
-      test("bounds are validated at construction (RA-CFG) with declared defaults") {
+      test(
+        "bounds are validated at construction (RA-CFG) with declared defaults"
+      ) {
         assertTrue(
           ConversationBounds
             .make(maxTurns = 0)
@@ -247,7 +259,8 @@ object ConversationSpec extends ZIOSpecDefault:
           ConversationBounds
             .make(queueCapacity = 0)
             .fold(isConfiguration, _ => false),
-          ConversationBounds.make(maxHistoryChars = 0)
+          ConversationBounds
+            .make(maxHistoryChars = 0)
             .fold(isConfiguration, _ => false),
           ConversationBounds.make().isRight,
           ConversationBounds.default == ConversationBounds(256, 131072, 64)
@@ -348,7 +361,9 @@ object ConversationSpec extends ZIOSpecDefault:
           isDone(o3)
         )
       },
-      test("fromSnapshot refuses histories that are not strict prompt/reply pairs") {
+      test(
+        "fromSnapshot refuses histories that are not strict prompt/reply pairs"
+      ) {
         val uneven = List(user("a"), assistant("b"), user("c"))
         val wrongOrder = List(assistant("a"), user("b"))
         val e1 = ConversationArchive.fromSnapshot(
@@ -372,7 +387,9 @@ object ConversationSpec extends ZIOSpecDefault:
           e2.fold(isInputValidation, _ => false)
         )
       },
-      test("root opens children and close seals them all (SESSION-03 ownership)") {
+      test(
+        "root opens children and close seals them all (SESSION-03 ownership)"
+      ) {
         for
           root <- ConversationRoot.make()
           c1 <- root.open(
@@ -406,4 +423,5 @@ object ConversationSpec extends ZIOSpecDefault:
         )
       }
     )
+
 end ConversationSpec

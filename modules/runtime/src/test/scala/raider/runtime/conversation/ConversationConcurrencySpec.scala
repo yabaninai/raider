@@ -17,7 +17,8 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
 
   private def makeConv(
       bounds: ConversationBounds = ConversationBounds.default,
-      runner: TurnRunner = TurnRunner(msgs => ZIO.succeed(s"reply-${msgs.size}"))
+      runner: TurnRunner =
+        TurnRunner(msgs => ZIO.succeed(s"reply-${msgs.size}"))
   ): ZIO[Any, RaiderError, Conversation] =
     Conversation.make(Conversation.newRoot(), bounds, runner)
 
@@ -82,7 +83,9 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
           seen.sorted == List(1, 3, 5, 7, 9, 11, 13, 15)
         )
       },
-      test("close storm (32 fibers): every accepted receipt settles, none dropped") {
+      test(
+        "close storm (32 fibers): every accepted receipt settles, none dropped"
+      ) {
         for
           gate <- Promise.make[Nothing, Unit]
           parked <- Promise.make[Nothing, Unit]
@@ -93,7 +96,9 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
           _ <- parked.await // turn 1 parked in the runner
           queued <- ZIO.foreach((1 to 4).toList)(i => conv.submit(s"q$i"))
           _ <- ZIO.foreachPar((1 to 32).toList)(_ => conv.close)
-          _ <- gate.succeed(()) // release nothing: the parked fiber is already gone
+          _ <- gate.succeed(
+            ()
+          ) // release nothing: the parked fiber is already gone
           o1 <- r1.settled.await
           oq <- ZIO.foreach(queued)(_.settled.await)
           sealedNow <- conv.isSealed
@@ -103,7 +108,9 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
           sealedNow
         )
       } @@ TestAspect.timeout(Duration.fromSeconds(10)),
-      test("cancel in-flight: receipt cancels, dispatcher survives, next turn Done") {
+      test(
+        "cancel in-flight: receipt cancels, dispatcher survives, next turn Done"
+      ) {
         for
           gate <- Promise.make[Nothing, Unit]
           p1 <- Promise.make[Nothing, Unit]
@@ -169,7 +176,9 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
           r1 <- conv.submit("in-flight")
           _ <- parked.await // dispatcher parked: queue drained to 0
           queued <- ZIO.foreach((1 to 4).toList)(i => conv.submit(s"q$i"))
-          refusals <- ZIO.foreach((1 to 6).toList)(i => conv.submit(s"over$i").either)
+          refusals <- ZIO.foreach((1 to 6).toList)(i =>
+            conv.submit(s"over$i").either
+          )
           _ <- gate.succeed(())
           _ <- r1.settled.await
           oq <- ZIO.foreach(queued)(_.settled.await)
@@ -215,4 +224,5 @@ object ConversationConcurrencySpec extends ZIOSpecDefault:
         yield assertTrue(r1 == (), r2 == ())
       }
     )
+
 end ConversationConcurrencySpec
