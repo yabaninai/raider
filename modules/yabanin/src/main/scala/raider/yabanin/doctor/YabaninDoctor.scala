@@ -139,7 +139,7 @@ object YabaninDoctor:
         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
       )
       val decision =
-        resp.headers().firstValue(DecisionHeader).toOption.filter(_.nonEmpty)
+        resp.headers().firstValue(DecisionHeader).toScala.filter(_.nonEmpty)
       CallOutcome(
         Some(
           RawResponse(resp.statusCode(), resp.body(), decision, uri.getPath)
