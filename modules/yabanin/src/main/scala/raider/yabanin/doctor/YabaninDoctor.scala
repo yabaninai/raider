@@ -11,6 +11,7 @@ import java.net.http.HttpRequest
 import java.net.http.HttpResponse
 import java.nio.charset.StandardCharsets
 import java.time.Duration
+import scala.jdk.OptionConverters.*
 import scala.util.control.NonFatal
 
 /** The Yabanin capability doctor (contract §3, `contracts/yabanin/README.md`).
@@ -137,9 +138,8 @@ object YabaninDoctor:
         builder.build(),
         HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
       )
-      val decision = Option(
-        resp.headers().firstValue(DecisionHeader).orElse(null)
-      ).filter(_.nonEmpty)
+      val decision =
+        resp.headers().firstValue(DecisionHeader).toOption.filter(_.nonEmpty)
       CallOutcome(
         Some(
           RawResponse(resp.statusCode(), resp.body(), decision, uri.getPath)

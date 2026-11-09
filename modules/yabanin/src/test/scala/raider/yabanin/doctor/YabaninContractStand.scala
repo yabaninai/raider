@@ -122,7 +122,7 @@ final class YabaninContractStand private (
         ex.getRequestURI.getPath,
         Option(ex.getRequestHeaders.getFirst(LabelHeader.HeaderName))
           .filter(_.nonEmpty),
-        ex.getRequestHeaders.getFirst("Authorization") ne null
+        Option(ex.getRequestHeaders.getFirst("Authorization")).isDefined
       )
     )
     scenario match
@@ -144,7 +144,7 @@ final class YabaninContractStand private (
         ex.getRequestURI.getPath,
         Option(ex.getRequestHeaders.getFirst(LabelHeader.HeaderName))
           .filter(_.nonEmpty),
-        ex.getRequestHeaders.getFirst("Authorization") ne null
+        Option(ex.getRequestHeaders.getFirst("Authorization")).isDefined
       )
     )
     scenario match

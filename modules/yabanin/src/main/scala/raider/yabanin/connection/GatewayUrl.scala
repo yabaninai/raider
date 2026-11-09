@@ -36,11 +36,11 @@ object GatewayUrl:
       then Left(GatewayUrlError("gateway URL scheme must be http or https"))
       else if Option(uri.getHost).forall(_.isEmpty) then
         Left(GatewayUrlError("gateway URL must include a host"))
-      else if uri.getRawQuery ne null then
+      else if Option(uri.getRawQuery).isDefined then
         Left(GatewayUrlError("gateway URL must not include query parameters"))
-      else if uri.getRawFragment ne null then
+      else if Option(uri.getRawFragment).isDefined then
         Left(GatewayUrlError("gateway URL must not include a fragment"))
-      else if (uri.getUserInfo ne null) then
+      else if Option(uri.getUserInfo).isDefined then
         Left(GatewayUrlError("gateway URL must not include user info"))
       else
         val path = Option(uri.getRawPath).getOrElse("")
