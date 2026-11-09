@@ -314,10 +314,11 @@ final class Conversation private[conversation] (
   // ------------------------------------------------------------------
 
   /** Strict FIFO dispatcher: one turn at a time (SESSION-01). The
-    * dispatch-critical section — cancelled-flag check plus the
-    * cancellation-safe fiber registration (runtime-contracts §5) — runs under
-    * `dispatchLock` inside a narrow uninterruptible span; the turn itself runs
+    * dispatch-critical section — cancelled-flag check plus fiber registration
+    * (runtime-contracts §5) — runs under `dispatchLock`; the turn itself runs
     * OUTSIDE the lock so close/cancel never wait for a running provider turn.
+    * Registration is fork-then-update INSIDE the permit: close/cancelTurn scan
+    * `inFlight` under the same lock, so they can never miss a registered turn.
     * The loop ends only on the shutdown sentinel: close never interrupts this
     * fiber, so it can never die holding an unsettled receipt.
     */
@@ -329,10 +330,15 @@ final class Conversation private[conversation] (
           if cancelledFlags.containsKey(turn.id) then
             turn.settled.succeed(TurnOutcome.Cancelled).as(None)
           else
-            ZIO.uninterruptible {
-              turnBody(turn).forkDaemon.flatMap { f =>
-                inFlight.update(_.updated(turn.id, f)).as(Some(f))
-              }
+            // Registration atomicity comes from dispatchLock alone: close and
+            // cancelTurn scan inFlight under the SAME lock, so a turn fiber is
+            // always visible to them once the permit is released. The fork MUST
+            // NOT sit inside ZIO.uninterruptible: in ZIO 2.1.26 a child forked
+            // from an uninterruptible region inherits the mask and becomes
+            // UNINTERRUPTIBLE while parked, so Fiber.interrupt from close never
+            // completes (pinned by InterruptReproSpec).
+            turnBody(turn).forkDaemon.flatMap { f =>
+              inFlight.update(_.updated(turn.id, f)).as(Some(f))
             }
         }.flatMap {
           case None => dispatchLoop
