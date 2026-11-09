@@ -30,11 +30,10 @@ object DoctorReportDocument:
           Json.Obj(
             "header" -> Json.Str(d.header),
             "value" -> Json.Str(d.value),
-            "observed_on" -> Json.Str(d.observedOn),
+            "observed_on" -> Json.Str(d.observedOn)
           )
-        case None => Json.Null
-      ),
-      "fallback_attempted" -> Json.Bool(false),
+        case None => Json.Null),
+      "fallback_attempted" -> Json.Bool(false)
     )
 
   given JsonEncoder[DoctorReport] = JsonEncoder[Json].contramap(toAst)
@@ -43,16 +42,18 @@ object DoctorReportDocument:
     Json.Obj(
       "classification" -> Json.Str(p.classification.encode),
       "http_status" -> intOrNull(p.httpStatus),
-      "model_ids" -> Json.Arr(Chunk.fromIterable(p.modelIds.map(id => Json.Str(id)))),
+      "model_ids" -> Json.Arr(
+        Chunk.fromIterable(p.modelIds.map(id => Json.Str(id)))
+      ),
       "docs_version" -> strOrNull(p.docsVersion),
-      "detail" -> Json.Str(p.detail),
+      "detail" -> Json.Str(p.detail)
     )
 
   private def sessionKeysAst(p: SessionKeysProbe): Json =
     Json.Obj(
       "classification" -> Json.Str(p.classification.encode),
       "http_status" -> intOrNull(p.httpStatus),
-      "detail" -> Json.Str(p.detail),
+      "detail" -> Json.Str(p.detail)
     )
 
   private def intOrNull(v: Option[Int]): Json = v match

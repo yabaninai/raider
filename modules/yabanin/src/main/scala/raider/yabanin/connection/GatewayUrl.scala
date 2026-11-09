@@ -26,23 +26,38 @@ object GatewayUrl:
   def validate(raw: String): Either[GatewayUrlError, String] =
     try
       val uri = URI.create(raw)
-      if !uri.isAbsolute then Left(GatewayUrlError("gateway URL must be absolute (scheme://host)"))
-      else if !AllowedSchemes.contains(Option(uri.getScheme).map(s => s.toLowerCase(Locale.ROOT)).getOrElse("")) then
-        Left(GatewayUrlError("gateway URL scheme must be http or https"))
-      else if Option(uri.getHost).forall(_.isEmpty) then Left(GatewayUrlError("gateway URL must include a host"))
-      else if uri.getRawQuery ne null then Left(GatewayUrlError("gateway URL must not include query parameters"))
-      else if uri.getRawFragment ne null then Left(GatewayUrlError("gateway URL must not include a fragment"))
-      else if (uri.getUserInfo ne null) then Left(GatewayUrlError("gateway URL must not include user info"))
+      if !uri.isAbsolute then
+        Left(GatewayUrlError("gateway URL must be absolute (scheme://host)"))
+      else if !AllowedSchemes.contains(
+          Option(uri.getScheme)
+            .map(s => s.toLowerCase(Locale.ROOT))
+            .getOrElse("")
+        )
+      then Left(GatewayUrlError("gateway URL scheme must be http or https"))
+      else if Option(uri.getHost).forall(_.isEmpty) then
+        Left(GatewayUrlError("gateway URL must include a host"))
+      else if uri.getRawQuery ne null then
+        Left(GatewayUrlError("gateway URL must not include query parameters"))
+      else if uri.getRawFragment ne null then
+        Left(GatewayUrlError("gateway URL must not include a fragment"))
+      else if (uri.getUserInfo ne null) then
+        Left(GatewayUrlError("gateway URL must not include user info"))
       else
         val path = Option(uri.getRawPath).getOrElse("")
         val trimmed = path.reverse.dropWhile(_ == '/').reverse
-        val port = Option(uri.getPort).filter(_ != -1).map(p => s":$p").getOrElse("")
-        Right(s"${uri.getScheme.toLowerCase(Locale.ROOT)}://${uri.getHost}$port$trimmed")
+        val port =
+          Option(uri.getPort).filter(_ != -1).map(p => s":$p").getOrElse("")
+        Right(
+          s"${uri.getScheme.toLowerCase(Locale.ROOT)}://${uri.getHost}$port$trimmed"
+        )
     catch
       case _: IllegalArgumentException =>
-        Left(GatewayUrlError("gateway URL is not a usable RFC 3986 URI reference"))
+        Left(
+          GatewayUrlError("gateway URL is not a usable RFC 3986 URI reference")
+        )
 
-  /** The URL path of `baseUrl` (may be empty), used to record
-    * `observed_on` decision-header evidence without echoing credentials.
+  /** The URL path of `baseUrl` (may be empty), used to record `observed_on`
+    * decision-header evidence without echoing credentials.
     */
-  def pathOf(baseUrl: String): String = Option(URI.create(baseUrl).getPath).getOrElse("")
+  def pathOf(baseUrl: String): String =
+    Option(URI.create(baseUrl).getPath).getOrElse("")

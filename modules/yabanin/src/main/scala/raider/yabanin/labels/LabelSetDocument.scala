@@ -9,8 +9,8 @@ import zio.json.ast.Json
   *
   * The encoder is hand-written over the zio-json AST so the emitted field set
   * and order match the schema exactly: required `null`s stay explicit and
-  * optional fields are omitted (never `null`) — zio-json derived encoders
-  * drop `None`, which is why [[toAst]] controls every field.
+  * optional fields are omitted (never `null`) — zio-json derived encoders drop
+  * `None`, which is why [[toAst]] controls every field.
   */
 object LabelSetDocument:
 
@@ -27,22 +27,23 @@ object LabelSetDocument:
       "accepted" -> Json.Arr(Chunk.fromIterable(set.accepted.map(acceptedAst))),
       "dropped" -> Json.Arr(Chunk.fromIterable(set.dropped.map(droppedAst))),
       "header" -> Json.Str(set.renderHeader),
-      "limits" -> limitsAst(limits),
+      "limits" -> limitsAst(limits)
     )
 
-  given JsonEncoder[Document] = JsonEncoder[Json].contramap(d => toAst(d.set, d.limits))
+  given JsonEncoder[Document] =
+    JsonEncoder[Json].contramap(d => toAst(d.set, d.limits))
 
   private def acceptedAst(label: Label): Json =
     Json.Obj(
       "key" -> Json.Str(label.key),
       "value" -> Json.Str(label.value),
-      "provenance" -> Json.Str(label.provenance.encode),
+      "provenance" -> Json.Str(label.provenance.encode)
     )
 
   private def droppedAst(dropped: DroppedLabel): Json =
     val fields = Chunk(
       "key" -> Json.Str(dropped.key),
-      "reason" -> Json.Str(dropped.reason.encode),
+      "reason" -> Json.Str(dropped.reason.encode)
     )
     // `detail` is schema-optional: present when defined, omitted otherwise.
     val withDetail = dropped.detail match
@@ -54,7 +55,9 @@ object LabelSetDocument:
     Json.Obj(
       "max_per_source" -> Json.Num(BigDecimal(limits.maxPerSource)),
       "max_effective" -> Json.Num(BigDecimal(limits.maxEffective)),
-      "max_value_length_bytes" -> Json.Num(BigDecimal(limits.maxValueLengthBytes)),
+      "max_value_length_bytes" -> Json.Num(
+        BigDecimal(limits.maxValueLengthBytes)
+      ),
       "reserved_key_prefix" -> Json.Str(limits.reservedKeyPrefix),
-      "client_key_max_length" -> Json.Num(BigDecimal(limits.clientKeyMaxLength)),
+      "client_key_max_length" -> Json.Num(BigDecimal(limits.clientKeyMaxLength))
     )

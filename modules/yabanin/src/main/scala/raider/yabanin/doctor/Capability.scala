@@ -23,4 +23,6 @@ enum Capability:
     case TransportFailure      => "transport_failure"
 
 object Capability:
-  def decode(s: String): Option[Capability] = Capability.values.find(_.encode == s)
+
+  def decode(s: String): Option[Capability] =
+    Capability.values.find(_.encode == s)
