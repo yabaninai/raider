@@ -8,20 +8,20 @@ import raider.evalexport.model.*
 /** Deterministic fixtures for the eval-export tests (RAI-040).
   *
   * Every evidence digest is computed at fixture-build time over a pinned
-  * descriptive string, so the fixtures are stable without binary blobs and
-  * the exported goldens stay reproducible. The goldens themselves live under
+  * descriptive string, so the fixtures are stable without binary blobs and the
+  * exported goldens stay reproducible. The goldens themselves live under
   * `contracts/eval-export/expected/<name>/` and are (re)pinned only via
   * `run-tests.sh --update-goldens` (a deliberate, reviewable act).
   *
   * Fixtures:
-  *   - [[Normal]] — a complete two-episode run with verdicts, three model
-  *     calls (one with a null reserved price), four tool calls covering
+  *   - [[Normal]] — a complete two-episode run with verdicts, three model calls
+  *     (one with a null reserved price), four tool calls covering
   *     succeeded/failed/denied results, raw args, explicitly pinned
   *     redacted-safe args, env NAME references, and one artifact hash.
-  *   - [[Cancelled]] — a partial run: one completed episode with a verdict,
-  *     one cancelled episode whose declared verifier produced nothing
-  *     (pending), and one interrupted episode without a declared verifier
-  *     (absent). No finishedAtMs. This is the base of the late-usage golden.
+  *   - [[Cancelled]] — a partial run: one completed episode with a verdict, one
+  *     cancelled episode whose declared verifier produced nothing (pending),
+  *     and one interrupted episode without a declared verifier (absent). No
+  *     finishedAtMs. This is the base of the late-usage golden.
   *   - [[UnknownPrice]] — a run whose usage prices are honestly unknown
   *     (explicit nulls plus `unknown=true`).
   *   - [[Late1]] / [[Late2]] — two late-usage corrections applied to
@@ -37,6 +37,7 @@ object Fixtures:
   // -- normal run ---------------------------------------------------------------
 
   object Normal:
+
     val input: model.EvalRunInput = model.EvalRunInput(
       run = model.RunInfo(
         runId = "run-20261106-normal",
@@ -47,7 +48,8 @@ object Fixtures:
       ),
       jobs = Vector(
         model.JobRecord("job-root", None, "root agent loop"),
-        model.JobRecord("job-child", Some("job-root"), "subtask: refactor module")
+        model
+          .JobRecord("job-child", Some("job-root"), "subtask: refactor module")
       ),
       attempts = Vector(
         model.AttemptRecord("att-1", "job-root", 1100L, Some(3000L)),
@@ -57,7 +59,8 @@ object Fixtures:
         model.EpisodeInput(
           episodeId = "ep-1",
           attemptId = "att-1",
-          completion = model.Completion.Completed(model.ExecutionStatus.Succeeded, 3000L),
+          completion =
+            model.Completion.Completed(model.ExecutionStatus.Succeeded, 3000L),
           verifierExpected = true,
           verifierId = Some("verify.sh"),
           safety = Some(
@@ -72,7 +75,8 @@ object Fixtures:
         model.EpisodeInput(
           episodeId = "ep-2",
           attemptId = "att-2",
-          completion = model.Completion.Completed(model.ExecutionStatus.Failed, 5000L),
+          completion =
+            model.Completion.Completed(model.ExecutionStatus.Failed, 5000L),
           verifierExpected = true,
           verifierId = Some("verify.sh"),
           safety = None,
@@ -80,9 +84,30 @@ object Fixtures:
         )
       ),
       calls = Vector(
-        model.ModelCallInput("call-1", "att-1", 1, "mock-coder", 1200L, model.Usage(Some(15L), Some(1800L), false)),
-        model.ModelCallInput("call-2", "att-1", 2, "mock-coder", 2400L, model.Usage(Some(15L), Some(2100L), false)),
-        model.ModelCallInput("call-3", "att-2", 1, "mock-coder", 3200L, model.Usage(None, Some(900L), false))
+        model.ModelCallInput(
+          "call-1",
+          "att-1",
+          1,
+          "mock-coder",
+          1200L,
+          model.Usage(Some(15L), Some(1800L), false)
+        ),
+        model.ModelCallInput(
+          "call-2",
+          "att-1",
+          2,
+          "mock-coder",
+          2400L,
+          model.Usage(Some(15L), Some(2100L), false)
+        ),
+        model.ModelCallInput(
+          "call-3",
+          "att-2",
+          1,
+          "mock-coder",
+          3200L,
+          model.Usage(None, Some(900L), false)
+        )
       ),
       tools = Vector(
         model.ToolCallInput(
@@ -129,7 +154,8 @@ object Fixtures:
           atMs = 3400L,
           result = model.ToolResult.Succeeded,
           argsJsonText = None,
-          argsRedactedSafe = Some("""{"path":"examples/demo.scala","mode":"read"}"""),
+          argsRedactedSafe =
+            Some("""{"path":"examples/demo.scala","mode":"read"}"""),
           envRefs = Vector.empty,
           artifacts = Vector(
             model.ArtifactRef(
@@ -156,7 +182,8 @@ object Fixtures:
           verifierId = "verify.sh",
           verdict = model.VerdictValue.Fail,
           atMs = 5100L,
-          evidenceSha256 = sha("verify.sh stdout for ep-2: regression r2 failed"),
+          evidenceSha256 =
+            sha("verify.sh stdout for ep-2: regression r2 failed"),
           evidenceKind = "verify.sh:stdout",
           note = Some("hidden regression r2 failed")
         )
@@ -166,8 +193,10 @@ object Fixtures:
   // -- cancelled run ---------------------------------------------------------------
 
   object Cancelled:
+
     val input: model.EvalRunInput = model.EvalRunInput(
-      run = model.RunInfo("run-20261106-cancelled", generator, "mock-coder", 100L, None),
+      run = model
+        .RunInfo("run-20261106-cancelled", generator, "mock-coder", 100L, None),
       jobs = Vector(model.JobRecord("job-root", None, "cancelled agent loop")),
       attempts = Vector(
         model.AttemptRecord("att-1", "job-root", 100L, Some(2000L)),
@@ -178,7 +207,8 @@ object Fixtures:
         model.EpisodeInput(
           episodeId = "ep-1",
           attemptId = "att-1",
-          completion = model.Completion.Completed(model.ExecutionStatus.Succeeded, 2000L),
+          completion =
+            model.Completion.Completed(model.ExecutionStatus.Succeeded, 2000L),
           verifierExpected = true,
           verifierId = Some("verify.sh"),
           safety = None,
@@ -187,7 +217,11 @@ object Fixtures:
         model.EpisodeInput(
           episodeId = "ep-2",
           attemptId = "att-2",
-          completion = model.Completion.Partial(model.TerminalState.Cancelled, "user requested cancellation", 6000L),
+          completion = model.Completion.Partial(
+            model.TerminalState.Cancelled,
+            "user requested cancellation",
+            6000L
+          ),
           verifierExpected = true,
           verifierId = Some("verify.sh"),
           safety = None,
@@ -196,7 +230,11 @@ object Fixtures:
         model.EpisodeInput(
           episodeId = "ep-3",
           attemptId = "att-3",
-          completion = model.Completion.Partial(model.TerminalState.Interrupted, "runner SIGTERM before terminal evidence", 6500L),
+          completion = model.Completion.Partial(
+            model.TerminalState.Interrupted,
+            "runner SIGTERM before terminal evidence",
+            6500L
+          ),
           verifierExpected = false,
           verifierId = None,
           safety = None,
@@ -204,7 +242,14 @@ object Fixtures:
         )
       ),
       calls = Vector(
-        model.ModelCallInput("call-1", "att-1", 1, "mock-coder", 500L, model.Usage(Some(10L), Some(500L), false))
+        model.ModelCallInput(
+          "call-1",
+          "att-1",
+          1,
+          "mock-coder",
+          500L,
+          model.Usage(Some(10L), Some(500L), false)
+        )
       ),
       tools = Vector.empty,
       verdicts = Vector(
@@ -213,7 +258,8 @@ object Fixtures:
           verifierId = "verify.sh",
           verdict = model.VerdictValue.Pass,
           atMs = 1500L,
-          evidenceSha256 = sha("verify.sh stdout for cancelled ep-1: 7 checks ok"),
+          evidenceSha256 =
+            sha("verify.sh stdout for cancelled ep-1: 7 checks ok"),
           evidenceKind = "verify.sh:stdout",
           note = None
         )
@@ -223,15 +269,24 @@ object Fixtures:
   // -- unknown-price run ---------------------------------------------------------------
 
   object UnknownPrice:
+
     val input: model.EvalRunInput = model.EvalRunInput(
-      run = model.RunInfo("run-20261106-unknown-price", generator, "mock-coder", 500L, Some(2500L)),
+      run = model.RunInfo(
+        "run-20261106-unknown-price",
+        generator,
+        "mock-coder",
+        500L,
+        Some(2500L)
+      ),
       jobs = Vector(model.JobRecord("job-root", None, "priceless agent loop")),
-      attempts = Vector(model.AttemptRecord("att-1", "job-root", 600L, Some(2000L))),
+      attempts =
+        Vector(model.AttemptRecord("att-1", "job-root", 600L, Some(2000L))),
       episodes = Vector(
         model.EpisodeInput(
           episodeId = "ep-1",
           attemptId = "att-1",
-          completion = model.Completion.Completed(model.ExecutionStatus.Succeeded, 2000L),
+          completion =
+            model.Completion.Completed(model.ExecutionStatus.Succeeded, 2000L),
           verifierExpected = false,
           verifierId = None,
           safety = None,
@@ -239,8 +294,22 @@ object Fixtures:
         )
       ),
       calls = Vector(
-        model.ModelCallInput("call-1", "att-1", 1, "mock-coder", 700L, model.Usage(None, None, true)),
-        model.ModelCallInput("call-2", "att-1", 2, "mock-coder", 1800L, model.Usage(None, Some(1200L), false))
+        model.ModelCallInput(
+          "call-1",
+          "att-1",
+          1,
+          "mock-coder",
+          700L,
+          model.Usage(None, None, true)
+        ),
+        model.ModelCallInput(
+          "call-2",
+          "att-1",
+          2,
+          "mock-coder",
+          1800L,
+          model.Usage(None, Some(1200L), false)
+        )
       ),
       tools = Vector.empty,
       verdicts = Vector.empty
@@ -249,10 +318,20 @@ object Fixtures:
   // -- late usage ------------------------------------------------------------------
 
   val Late1: model.LateUsage =
-    model.LateUsage("call-1", model.Usage(Some(10L), Some(1800L), false), "provider usage report", 9000L)
+    model.LateUsage(
+      "call-1",
+      model.Usage(Some(10L), Some(1800L), false),
+      "provider usage report",
+      9000L
+    )
 
   val Late2: model.LateUsage =
-    model.LateUsage("call-1", model.Usage(Some(10L), Some(1900L), false), "provider usage correction", 9500L)
+    model.LateUsage(
+      "call-1",
+      model.Usage(Some(10L), Some(1900L), false),
+      "provider usage correction",
+      9500L
+    )
 
   /** [[Cancelled]] after both late-usage appends (the late-usage golden). */
   lazy val lateUsageBundle: ExportBundle =
@@ -271,10 +350,13 @@ object Fixtures:
   def exported(input: model.EvalRunInput): ExportBundle =
     Exporter.exportRun(input) match
       case Right(bundle) => bundle
-      case Left(e)       => throw new IllegalStateException("fixture export failed: " + e.message)
+      case Left(e) =>
+        throw new IllegalStateException("fixture export failed: " + e.message)
 
   /** Export an input without unwrapping, for typed-failure tests. */
-  def exportOf(input: model.EvalRunInput): Either[model.ExportError, ExportBundle] =
+  def exportOf(
+      input: model.EvalRunInput
+  ): Either[model.ExportError, ExportBundle] =
     Exporter.exportRun(input)
 
   def episodesOf(bundle: ExportBundle): Vector[wire.EpisodeWire] =
@@ -293,11 +375,16 @@ object Fixtures:
     unwrap(bundle.parseJson[wire.ManifestWire](ExportBundle.ManifestName))
 
   def reconciliationOf(bundle: ExportBundle): Vector[wire.ReconciliationWire] =
-    unwrap(bundle.parseJsonl[wire.ReconciliationWire](ExportBundle.ReconciliationName))
+    unwrap(
+      bundle.parseJsonl[wire.ReconciliationWire](
+        ExportBundle.ReconciliationName
+      )
+    )
 
   private def unwrap[A](e: Either[model.ExportError, A]): A = e match
     case Right(a) => a
-    case Left(e)  => throw new IllegalStateException("decode failed: " + e.message)
+    case Left(e) =>
+      throw new IllegalStateException("decode failed: " + e.message)
 
   // -- golden helpers ----------------------------------------------------------------
 
@@ -321,11 +408,19 @@ object Fixtures:
       acc.orElse {
         val path = dir.resolve(file)
         if !Files.exists(path) then
-          Some(s"golden file missing: $path (run modules/eval-export/run-tests.sh --update-goldens)")
+          Some(
+            s"golden file missing: $path (run modules/eval-export/run-tests.sh --update-goldens)"
+          )
         else
-          val pinned  = new String(Files.readAllBytes(path), UTF_8)
-          val actual  = bundle.file(file).map(_.content).getOrElse("<file absent from bundle>")
+          val pinned = new String(Files.readAllBytes(path), UTF_8)
+          val actual = bundle
+            .file(file)
+            .map(_.content)
+            .getOrElse("<file absent from bundle>")
           if actual == pinned then None
-          else Some(s"golden mismatch for $name/$file\n--- pinned ---\n$pinned--- actual ---\n$actual")
+          else
+            Some(
+              s"golden mismatch for $name/$file\n--- pinned ---\n$pinned--- actual ---\n$actual"
+            )
       }
     }

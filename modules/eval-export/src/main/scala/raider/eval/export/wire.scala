@@ -7,18 +7,17 @@ import zio.json.ast.Json
   * shape pinned by the six schema files under contracts/eval-export/schemas.
   *
   * Rules (all enforced by these codecs, not just by prose):
-  *   - `schemaVersion` is 1 on every record; other versions are decode
-    *     failures (a reader never guesses at an unknown revision).
+  *   - `schemaVersion` is 1 on every record; other versions are decode failures
+  *     (a reader never guesses at an unknown revision).
   *   - Option fields are written as EXPLICIT null (custom nullable encoders
-    *   below; zio-json derivation would otherwise omit the fields). This is
-    *   the honesty rule "unknown price is null, never 0": the AST of every
-    *   exported document shows the difference between "no evidence" and
-    *   "value zero".
+  *     below; zio-json derivation would otherwise omit the fields). This is the
+  *     honesty rule "unknown price is null, never 0": the AST of every exported
+  *     document shows the difference between "no evidence" and "value zero".
   *   - ids are plain strings; enum-valued strings are closed sets; sha256
-  *   -   fields are lowercase 64-hex; env references are NAME-shaped.
+  *   - fields are lowercase 64-hex; env references are NAME-shaped.
   *   - decoders validate the same invariants as the exporter (round-trip
-  *   -   check): a tampered or malformed document fails to decode, it does
-  *       not silently survive.
+  *   - check): a tampered or malformed document fails to decode, it does not
+  *     silently survive.
   *
   * Known limitation (documented in contracts/eval-export/README.md): zio-json
   * decoders ignore unknown fields; additionalProperties=false is enforced by
@@ -28,29 +27,42 @@ object wire:
 
   // -- explicit-null encoders ------------------------------------------------
 
-  private def nullableEncoder[A](using enc: JsonEncoder[A]): JsonEncoder[Option[A]] =
+  private def nullableEncoder[A](using
+      enc: JsonEncoder[A]
+  ): JsonEncoder[Option[A]] =
     new JsonEncoder[Option[A]]:
-      def unsafeEncode(o: Option[A], indent: Option[Int], out: zio.json.internal.Write): Unit =
+      def unsafeEncode(
+          o: Option[A],
+          indent: Option[Int],
+          out: zio.json.internal.Write
+      ): Unit =
         o match
           case Some(a) => enc.unsafeEncode(a, indent, out)
           case None    => out.write("null")
 
   given nullableStringEncoder: JsonEncoder[Option[String]] = nullableEncoder
-  given nullableLongEncoder: JsonEncoder[Option[Long]]     = nullableEncoder
-  given nullableJsonEncoder: JsonEncoder[Option[Json]]     = nullableEncoder
+  given nullableLongEncoder: JsonEncoder[Option[Long]] = nullableEncoder
+  given nullableJsonEncoder: JsonEncoder[Option[Json]] = nullableEncoder
 
   // -- shared validators ------------------------------------------------------
 
   private def versionOk(v: Int): Either[String, Unit] =
     if v == model.schemaVersion then Right(())
-    else Left(model.ExportError.UnsupportedSchemaVersion(v, model.schemaVersion).message)
+    else
+      Left(
+        model.ExportError
+          .UnsupportedSchemaVersion(v, model.schemaVersion)
+          .message
+      )
 
   private def nonEmpty(field: String, v: String): Either[String, Unit] =
-    if v.isEmpty then Left(model.ExportError.EmptyField(field, field).message) else Right(())
+    if v.isEmpty then Left(model.ExportError.EmptyField(field, field).message)
+    else Right(())
 
-  private def shaOk(field: String, v: Option[String]): Either[String, Unit] = v match
-    case Some(h) => shaOk(field, h)
-    case None    => Right(())
+  private def shaOk(field: String, v: Option[String]): Either[String, Unit] =
+    v match
+      case Some(h) => shaOk(field, h)
+      case None    => Right(())
 
   private def shaOk(field: String, v: String): Either[String, Unit] =
     if Digests.isSha256Hex(v) then Right(())
@@ -71,10 +83,12 @@ object wire:
   )
 
   object UsageWire:
+
     def fromUsage(u: model.Usage): UsageWire =
       UsageWire(u.reservedMicroUsd, u.observedMicroUsd, u.unknown)
 
     given encoder: JsonEncoder[UsageWire] = DeriveJsonEncoder.gen[UsageWire]
+
     given decoder: JsonDecoder[UsageWire] =
       DeriveJsonDecoder.gen[UsageWire].mapOrFail(validate)
 
@@ -87,21 +101,26 @@ object wire:
       if u.unknown && u.observedMicroUsd.isDefined then
         Left("unknown=true requires a null observedMicroUsd")
       else if !u.unknown && u.observedMicroUsd.isEmpty then
-        Left("unknown=false requires a non-null observedMicroUsd (never fabricate)")
+        Left(
+          "unknown=false requires a non-null observedMicroUsd (never fabricate)"
+        )
       else Right(u)
 
   // -- completion / verifier / outcome records of an episode ------------------
 
   final case class CompletionWire(
       kind: String, // completed | partial
-      outcome: Option[String],  // succeeded | failed
+      outcome: Option[String], // succeeded | failed
       terminal: Option[String], // cancelled | interrupted | uncertain
       reason: Option[String],
       atMs: Long
   )
 
   object CompletionWire:
-    given encoder: JsonEncoder[CompletionWire] = DeriveJsonEncoder.gen[CompletionWire]
+
+    given encoder: JsonEncoder[CompletionWire] =
+      DeriveJsonEncoder.gen[CompletionWire]
+
     given decoder: JsonDecoder[CompletionWire] =
       DeriveJsonDecoder.gen[CompletionWire].mapOrFail(validate)
 
@@ -112,16 +131,24 @@ object wire:
             case (None, None) =>
               c.outcome match
                 case Some("succeeded" | "failed") => Right(c)
-                case other => Left(s"completed episode requires outcome succeeded|failed, got $other")
+                case other =>
+                  Left(
+                    s"completed episode requires outcome succeeded|failed, got $other"
+                  )
             case _ => Left("completed episode must not carry terminal/reason")
         case "partial" =>
           (c.outcome, c.terminal, c.reason) match
-            case (None, Some(t), Some(r)) if t == "cancelled" || t == "interrupted" || t == "uncertain" =>
-              if r.isEmpty then Left("partial episode requires a non-empty reason")
+            case (None, Some(t), Some(r))
+                if t == "cancelled" || t == "interrupted" || t == "uncertain" =>
+              if r.isEmpty then
+                Left("partial episode requires a non-empty reason")
               else Right(c)
             case _ =>
-              Left("partial episode requires terminal cancelled|interrupted|uncertain, a reason, and no outcome")
-        case other => Left(s"completion kind must be completed|partial, got '$other'")
+              Left(
+                "partial episode requires terminal cancelled|interrupted|uncertain, a reason, and no outcome"
+              )
+        case other =>
+          Left(s"completion kind must be completed|partial, got '$other'")
 
   final case class VerifierWire(
       state: String, // produced | pending | absent
@@ -130,7 +157,10 @@ object wire:
   )
 
   object VerifierWire:
-    given encoder: JsonEncoder[VerifierWire] = DeriveJsonEncoder.gen[VerifierWire]
+
+    given encoder: JsonEncoder[VerifierWire] =
+      DeriveJsonEncoder.gen[VerifierWire]
+
     given decoder: JsonDecoder[VerifierWire] =
       DeriveJsonDecoder.gen[VerifierWire].mapOrFail(validate)
 
@@ -139,16 +169,27 @@ object wire:
         case "produced" =>
           (v.verifierId, v.reason) match
             case (Some(id), None) if id.nonEmpty => Right(v)
-            case _ => Left("produced verifier state requires verifierId and no reason")
+            case _ =>
+              Left("produced verifier state requires verifierId and no reason")
         case "pending" =>
           (v.verifierId, v.reason) match
-            case (Some(id), Some(r)) if id.nonEmpty && r == modelExport.verifierExpectedButMissing => Right(v)
-            case _ => Left("pending verifier state requires verifierId and the explicit expected-but-missing reason")
+            case (Some(id), Some(r))
+                if id.nonEmpty && r == modelExport.verifierExpectedButMissing =>
+              Right(v)
+            case _ =>
+              Left(
+                "pending verifier state requires verifierId and the explicit expected-but-missing reason"
+              )
         case "absent" =>
           (v.verifierId, v.reason) match
-            case (None, Some(r)) if r == modelExport.noVerifierDeclared => Right(v)
-            case _ => Left("absent verifier state requires no verifierId and the explicit no-verifier reason")
-        case other => Left(s"verifier state must be produced|pending|absent, got '$other'")
+            case (None, Some(r)) if r == modelExport.noVerifierDeclared =>
+              Right(v)
+            case _ =>
+              Left(
+                "absent verifier state requires no verifierId and the explicit no-verifier reason"
+              )
+        case other =>
+          Left(s"verifier state must be produced|pending|absent, got '$other'")
 
   final case class OutcomeWire(
       kind: String, // execution | task | safety | protocol
@@ -158,20 +199,36 @@ object wire:
   )
 
   object OutcomeWire:
+
     private val statuses =
-      Set("pass", "fail", "error", "cancelled", "interrupted", "uncertain", "missing")
+      Set(
+        "pass",
+        "fail",
+        "error",
+        "cancelled",
+        "interrupted",
+        "uncertain",
+        "missing"
+      )
 
     given encoder: JsonEncoder[OutcomeWire] = DeriveJsonEncoder.gen[OutcomeWire]
+
     given decoder: JsonDecoder[OutcomeWire] =
       DeriveJsonDecoder.gen[OutcomeWire].mapOrFail(validate)
 
     def validate(o: OutcomeWire): Either[String, OutcomeWire] =
-      val kindOk = o.kind == "execution" || o.kind == "task" || o.kind == "safety" || o.kind == "protocol"
-      if !kindOk then Left(s"outcome kind must be execution|task|safety|protocol, got '${o.kind}'")
-      else if !statuses.contains(o.status) then Left(s"outcome status '$o.status' is not a closed-set member")
+      val kindOk =
+        o.kind == "execution" || o.kind == "task" || o.kind == "safety" || o.kind == "protocol"
+      if !kindOk then
+        Left(
+          s"outcome kind must be execution|task|safety|protocol, got '${o.kind}'"
+        )
+      else if !statuses.contains(o.status) then
+        Left(s"outcome status '$o.status' is not a closed-set member")
       else if o.status == "missing" then
         o match
-          case OutcomeWire(_, "missing", Some(r), None) if r.nonEmpty => Right(o)
+          case OutcomeWire(_, "missing", Some(r), None) if r.nonEmpty =>
+            Right(o)
           case _ => Left("missing outcome requires a reason and no evidence")
       else
         o.evidenceSha256 match
@@ -186,11 +243,14 @@ object wire:
       jobId: String,
       completion: CompletionWire,
       verifier: VerifierWire,
-      outcomes: Vector[OutcomeWire] // canonical order: execution, task, safety, protocol
+      outcomes: Vector[
+        OutcomeWire
+      ] // canonical order: execution, task, safety, protocol
   )
 
   object EpisodeWire:
     given encoder: JsonEncoder[EpisodeWire] = DeriveJsonEncoder.gen[EpisodeWire]
+
     given decoder: JsonDecoder[EpisodeWire] =
       DeriveJsonDecoder.gen[EpisodeWire].mapOrFail(validate)
 
@@ -203,9 +263,13 @@ object wire:
         _ <- nonEmpty("jobId", e.jobId)
         _ <-
           if e.outcomes.size == 4
-            && e.outcomes.map(_.kind) == Vector("execution", "task", "safety", "protocol")
+            && e.outcomes
+              .map(_.kind) == Vector("execution", "task", "safety", "protocol")
           then Right(())
-          else Left("episode outcomes must be exactly [execution, task, safety, protocol] in canonical order")
+          else
+            Left(
+              "episode outcomes must be exactly [execution, task, safety, protocol] in canonical order"
+            )
       yield e
 
   // -- calls ------------------------------------------------------------------
@@ -224,6 +288,7 @@ object wire:
 
   object CallWire:
     given encoder: JsonEncoder[CallWire] = DeriveJsonEncoder.gen[CallWire]
+
     given decoder: JsonDecoder[CallWire] =
       DeriveJsonDecoder.gen[CallWire].mapOrFail(validate)
 
@@ -247,7 +312,10 @@ object wire:
   )
 
   object ArtifactWire:
-    given encoder: JsonEncoder[ArtifactWire] = DeriveJsonEncoder.gen[ArtifactWire]
+
+    given encoder: JsonEncoder[ArtifactWire] =
+      DeriveJsonEncoder.gen[ArtifactWire]
+
     given decoder: JsonDecoder[ArtifactWire] =
       DeriveJsonDecoder.gen[ArtifactWire].mapOrFail(validate)
 
@@ -279,9 +347,12 @@ object wire:
   )
 
   object ToolWire:
-    private val outcomes = Set("succeeded", "failed", "denied", "cancelled", "timeout", "uncertain")
+
+    private val outcomes =
+      Set("succeeded", "failed", "denied", "cancelled", "timeout", "uncertain")
 
     given encoder: JsonEncoder[ToolWire] = DeriveJsonEncoder.gen[ToolWire]
+
     given decoder: JsonDecoder[ToolWire] =
       DeriveJsonDecoder.gen[ToolWire].mapOrFail(validate)
 
@@ -295,25 +366,35 @@ object wire:
         _ <- nonEmpty("tool", t.tool)
         _ <- outcomeReasonOk(t)
         _ <- shaOk("argsDigest", t.argsDigest)
-        _ <- t.artifacts.foldLeft[Either[String, Unit]](Right(()))((acc, a) => acc.flatMap(_ => ArtifactWire.validate(a).map(_ => ())))
-        _ <- t.envRefs.foldLeft[Either[String, Unit]](Right(()))((acc, e) => acc.flatMap(_ => envRefOk(e)))
+        _ <- t.artifacts.foldLeft[Either[String, Unit]](Right(()))((acc, a) =>
+          acc.flatMap(_ => ArtifactWire.validate(a).map(_ => ()))
+        )
+        _ <- t.envRefs.foldLeft[Either[String, Unit]](Right(()))((acc, e) =>
+          acc.flatMap(_ => envRefOk(e))
+        )
       yield t
 
     private def outcomeReasonOk(t: ToolWire): Either[String, Unit] =
-      if !outcomes.contains(t.outcome) then Left(s"tool outcome '${t.outcome}' is not a closed-set member")
+      if !outcomes.contains(t.outcome) then
+        Left(s"tool outcome '${t.outcome}' is not a closed-set member")
       else
         t.outcome match
           case "denied" =>
             t.denyReason match
               case Some(r) if r.nonEmpty && t.reason.isEmpty => Right(())
-              case _ => Left("denied tool call requires denyReason and no other reason")
+              case _ =>
+                Left("denied tool call requires denyReason and no other reason")
           case "failed" | "uncertain" =>
             t.reason match
               case Some(r) if r.nonEmpty && t.denyReason.isEmpty => Right(())
-              case _ => Left(s"${t.outcome} tool call requires a non-empty reason")
+              case _ =>
+                Left(s"${t.outcome} tool call requires a non-empty reason")
           case _ =>
             if t.reason.isEmpty && t.denyReason.isEmpty then Right(())
-            else Left("succeeded|cancelled|timeout tool call must not carry reason/denyReason")
+            else
+              Left(
+                "succeeded|cancelled|timeout tool call must not carry reason/denyReason"
+              )
 
   // -- verdicts ---------------------------------------------------------------
 
@@ -334,6 +415,7 @@ object wire:
 
   object VerdictWire:
     given encoder: JsonEncoder[VerdictWire] = DeriveJsonEncoder.gen[VerdictWire]
+
     given decoder: JsonDecoder[VerdictWire] =
       DeriveJsonDecoder.gen[VerdictWire].mapOrFail(validate)
 
@@ -347,7 +429,8 @@ object wire:
         _ <- nonEmpty("jobId", v.jobId)
         _ <- nonEmpty("verifierId", v.verifierId)
         _ <-
-          if v.verdict == "pass" || v.verdict == "fail" || v.verdict == "error" then Right(())
+          if v.verdict == "pass" || v.verdict == "fail" || v.verdict == "error"
+          then Right(())
           else Left(s"verdict '${v.verdict}' is not a closed-set member")
         _ <- shaOk("evidenceSha256", v.evidenceSha256)
         _ <- nonEmpty("evidenceKind", v.evidenceKind)
@@ -375,7 +458,10 @@ object wire:
   )
 
   object ReconciliationWire:
-    given encoder: JsonEncoder[ReconciliationWire] = DeriveJsonEncoder.gen[ReconciliationWire]
+
+    given encoder: JsonEncoder[ReconciliationWire] =
+      DeriveJsonEncoder.gen[ReconciliationWire]
+
     given decoder: JsonDecoder[ReconciliationWire] =
       DeriveJsonDecoder.gen[ReconciliationWire].mapOrFail(validate)
 
@@ -464,21 +550,52 @@ object wire:
   )
 
   object ManifestWire:
-    given encoder: JsonEncoder[GeneratorWire] = DeriveJsonEncoder.gen[GeneratorWire]
-    given encoderJobLineage: JsonEncoder[JobLineageWire] = DeriveJsonEncoder.gen[JobLineageWire]
-    given encoderLineage: JsonEncoder[LineageWire] = DeriveJsonEncoder.gen[LineageWire]
-    given encoderVerifierCoverage: JsonEncoder[VerifierCoverageWire] = DeriveJsonEncoder.gen[VerifierCoverageWire]
-    given encoderUsageCoverage: JsonEncoder[UsageCoverageWire] = DeriveJsonEncoder.gen[UsageCoverageWire]
-    given encoderCoverage: JsonEncoder[CoverageWire] = DeriveJsonEncoder.gen[CoverageWire]
-    given encoderIntegrity: JsonEncoder[IntegrityWire] = DeriveJsonEncoder.gen[IntegrityWire]
-    given encoderManifest: JsonEncoder[ManifestWire] = DeriveJsonEncoder.gen[ManifestWire]
-    given decoderGenerator: JsonDecoder[GeneratorWire] = DeriveJsonDecoder.gen[GeneratorWire]
-    given decoderJobLineage: JsonDecoder[JobLineageWire] = DeriveJsonDecoder.gen[JobLineageWire]
-    given decoderLineage: JsonDecoder[LineageWire] = DeriveJsonDecoder.gen[LineageWire]
-    given decoderVerifierCoverage: JsonDecoder[VerifierCoverageWire] = DeriveJsonDecoder.gen[VerifierCoverageWire]
-    given decoderUsageCoverage: JsonDecoder[UsageCoverageWire] = DeriveJsonDecoder.gen[UsageCoverageWire]
-    given decoderCoverage: JsonDecoder[CoverageWire] = DeriveJsonDecoder.gen[CoverageWire]
-    given decoderIntegrity: JsonDecoder[IntegrityWire] = DeriveJsonDecoder.gen[IntegrityWire]
+
+    given encoder: JsonEncoder[GeneratorWire] =
+      DeriveJsonEncoder.gen[GeneratorWire]
+
+    given encoderJobLineage: JsonEncoder[JobLineageWire] =
+      DeriveJsonEncoder.gen[JobLineageWire]
+
+    given encoderLineage: JsonEncoder[LineageWire] =
+      DeriveJsonEncoder.gen[LineageWire]
+
+    given encoderVerifierCoverage: JsonEncoder[VerifierCoverageWire] =
+      DeriveJsonEncoder.gen[VerifierCoverageWire]
+
+    given encoderUsageCoverage: JsonEncoder[UsageCoverageWire] =
+      DeriveJsonEncoder.gen[UsageCoverageWire]
+
+    given encoderCoverage: JsonEncoder[CoverageWire] =
+      DeriveJsonEncoder.gen[CoverageWire]
+
+    given encoderIntegrity: JsonEncoder[IntegrityWire] =
+      DeriveJsonEncoder.gen[IntegrityWire]
+
+    given encoderManifest: JsonEncoder[ManifestWire] =
+      DeriveJsonEncoder.gen[ManifestWire]
+
+    given decoderGenerator: JsonDecoder[GeneratorWire] =
+      DeriveJsonDecoder.gen[GeneratorWire]
+
+    given decoderJobLineage: JsonDecoder[JobLineageWire] =
+      DeriveJsonDecoder.gen[JobLineageWire]
+
+    given decoderLineage: JsonDecoder[LineageWire] =
+      DeriveJsonDecoder.gen[LineageWire]
+
+    given decoderVerifierCoverage: JsonDecoder[VerifierCoverageWire] =
+      DeriveJsonDecoder.gen[VerifierCoverageWire]
+
+    given decoderUsageCoverage: JsonDecoder[UsageCoverageWire] =
+      DeriveJsonDecoder.gen[UsageCoverageWire]
+
+    given decoderCoverage: JsonDecoder[CoverageWire] =
+      DeriveJsonDecoder.gen[CoverageWire]
+
+    given decoderIntegrity: JsonDecoder[IntegrityWire] =
+      DeriveJsonDecoder.gen[IntegrityWire]
+
     given decoder: JsonDecoder[ManifestWire] =
       DeriveJsonDecoder.gen[ManifestWire].mapOrFail(validate)
 
@@ -488,7 +605,8 @@ object wire:
         _ <- nonEmpty("runId", m.runId)
         _ <- nonEmpty("model", m.model)
         _ <-
-          if m.runStatus == "complete" || m.runStatus == "partial" then Right(())
+          if m.runStatus == "complete" || m.runStatus == "partial" then
+            Right(())
           else Left(s"runStatus '${m.runStatus}' is not complete|partial")
         _ <-
           if m.lineage.rootId == m.runId then Right(())
@@ -502,7 +620,7 @@ object wire:
   private[evalexport] object modelExport:
     /** Canonical reasons for honest verifier/outcome absence (EXPORT-02). */
     val verifierExpectedButMissing = "verifierExpectedButMissing"
-    val noVerifierDeclared         = "noVerifierDeclared"
-    val noEvidenceRecorded         = "noEvidenceRecorded"
+    val noVerifierDeclared = "noVerifierDeclared"
+    val noEvidenceRecorded = "noEvidenceRecorded"
 
 end wire

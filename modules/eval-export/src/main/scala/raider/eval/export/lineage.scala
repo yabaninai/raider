@@ -1,17 +1,17 @@
 package raider.evalexport
 
-/** Lineage reconstruction (RAI-040 acceptance EXPORT-01): the root ->
-  * job -> attempt chains are rebuilt from the EXPORTED documents alone —
-  * without the original input, without any journal. A consumer of the export
-  * directory (e.g. Yabanin eval tooling) gets the same structural facts the
-  * producer had, or a typed failure.
+/** Lineage reconstruction (RAI-040 acceptance EXPORT-01): the root -> job ->
+  * attempt chains are rebuilt from the EXPORTED documents alone — without the
+  * original input, without any journal. A consumer of the export directory
+  * (e.g. Yabanin eval tooling) gets the same structural facts the producer had,
+  * or a typed failure.
   *
   * This is also the executable part of the schema story: the reconstruction
   * reads every document through the validated wire decoders (closed enums,
   * sha256 shapes, explicit-null usage rules) and cross-checks the manifest's
-  * coverage counts against the actual section records. It does NOT run the
-  * JSON Schemas themselves (no validator library is available in this
-  * environment; see contracts/eval-export/README.md — limitations).
+  * coverage counts against the actual section records. It does NOT run the JSON
+  * Schemas themselves (no validator library is available in this environment;
+  * see contracts/eval-export/README.md — limitations).
   */
 object Lineage:
 
@@ -35,18 +35,31 @@ object Lineage:
   /** Rebuild the lineage from the bundle; every document is decoded with the
     * validating wire codecs first, so a tampered document fails here.
     */
-  def reconstruct(bundle: ExportBundle): Either[model.ExportError, ReconstructedLineage] =
+  def reconstruct(
+      bundle: ExportBundle
+  ): Either[model.ExportError, ReconstructedLineage] =
     for
-      manifest        <- bundle.parseJson[wire.ManifestWire](ExportBundle.ManifestName)
-      episodes        <- bundle.parseJsonl[wire.EpisodeWire](ExportBundle.EpisodesName)
-      calls           <- bundle.parseJsonl[wire.CallWire](ExportBundle.CallsName)
-      tools           <- bundle.parseJsonl[wire.ToolWire](ExportBundle.ToolsName)
-      verdicts        <- bundle.parseJsonl[wire.VerdictWire](ExportBundle.VerdictsName)
-      reconciliations <- bundle.parseJsonl[wire.ReconciliationWire](ExportBundle.ReconciliationName)
-      _               <- checkStructure(manifest, episodes, calls, tools, verdicts, reconciliations)
+      manifest <- bundle.parseJson[wire.ManifestWire](ExportBundle.ManifestName)
+      episodes <- bundle.parseJsonl[wire.EpisodeWire](ExportBundle.EpisodesName)
+      calls <- bundle.parseJsonl[wire.CallWire](ExportBundle.CallsName)
+      tools <- bundle.parseJsonl[wire.ToolWire](ExportBundle.ToolsName)
+      verdicts <- bundle.parseJsonl[wire.VerdictWire](ExportBundle.VerdictsName)
+      reconciliations <- bundle.parseJsonl[wire.ReconciliationWire](
+        ExportBundle.ReconciliationName
+      )
+      _ <- checkStructure(
+        manifest,
+        episodes,
+        calls,
+        tools,
+        verdicts,
+        reconciliations
+      )
     yield ReconstructedLineage(
       rootId = manifest.lineage.rootId,
-      jobs = manifest.lineage.jobs.map(j => ReconstructedJob(j.jobId, j.parentJobId, j.label, j.attempts)),
+      jobs = manifest.lineage.jobs.map(j =>
+        ReconstructedJob(j.jobId, j.parentJobId, j.label, j.attempts)
+      ),
       episodes = episodes.size,
       modelCalls = calls.size,
       toolCalls = tools.size,
@@ -66,8 +79,11 @@ object Lineage:
     for
       _ <-
         val roots = jobs.count(_.parentJobId.isEmpty)
-        if roots == 1 then Right(()) else Left(model.ExportError.MultipleRootJobs(roots))
-      _ <- jobs.zipWithIndex.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, pair) =>
+        if roots == 1 then Right(())
+        else Left(model.ExportError.MultipleRootJobs(roots))
+      _ <- jobs.zipWithIndex.foldLeft[Either[model.ExportError, Unit]](
+        Right(())
+      ) { (acc, pair) =>
         for
           _ <- acc
           (job, idx) = pair
@@ -76,28 +92,76 @@ object Lineage:
             case Some(parent) =>
               val parentIdx = jobs.indexWhere(_.jobId == parent)
               if parentIdx < 0 then
-                Left(model.ExportError.DanglingReference(s"job '${job.jobId}'", job.jobId, parent, "parent job"))
-              else if parentIdx >= idx then Left(model.ExportError.ParentNotEarlier(job.jobId, parent))
+                Left(
+                  model.ExportError.DanglingReference(
+                    s"job '${job.jobId}'",
+                    job.jobId,
+                    parent,
+                    "parent job"
+                  )
+                )
+              else if parentIdx >= idx then
+                Left(model.ExportError.ParentNotEarlier(job.jobId, parent))
               else Right(())
         yield ()
       }
       _ <- unique(jobs.map(_.jobId), "lineage job")
       chain = attemptChain(jobs)
       _ <- unique(chain.map(_._1), "lineage attempt")
-      _ <- episodes.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, e) =>
-        acc.flatMap(_ => resolveAttempt(e.attemptId, e.jobId, s"episode '${e.episodeId}'", chain))
+      _ <- episodes.foldLeft[Either[model.ExportError, Unit]](Right(())) {
+        (acc, e) =>
+          acc.flatMap(_ =>
+            resolveAttempt(
+              e.attemptId,
+              e.jobId,
+              s"episode '${e.episodeId}'",
+              chain
+            )
+          )
       }
-      _ <- calls.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, c) =>
-        acc.flatMap(_ => resolveAttempt(c.attemptId, c.jobId, s"model call '${c.callId}'", chain))
+      _ <- calls.foldLeft[Either[model.ExportError, Unit]](Right(())) {
+        (acc, c) =>
+          acc.flatMap(_ =>
+            resolveAttempt(
+              c.attemptId,
+              c.jobId,
+              s"model call '${c.callId}'",
+              chain
+            )
+          )
       }
-      _ <- tools.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, t) =>
-        acc.flatMap(_ => resolveAttempt(t.attemptId, t.jobId, s"tool call '${t.toolCallId}'", chain))
+      _ <- tools.foldLeft[Either[model.ExportError, Unit]](Right(())) {
+        (acc, t) =>
+          acc.flatMap(_ =>
+            resolveAttempt(
+              t.attemptId,
+              t.jobId,
+              s"tool call '${t.toolCallId}'",
+              chain
+            )
+          )
       }
-      _ <- verdicts.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, v) =>
-        acc.flatMap(_ => resolveAttempt(v.attemptId, v.jobId, s"verdict '${v.verdictId}'", chain))
+      _ <- verdicts.foldLeft[Either[model.ExportError, Unit]](Right(())) {
+        (acc, v) =>
+          acc.flatMap(_ =>
+            resolveAttempt(
+              v.attemptId,
+              v.jobId,
+              s"verdict '${v.verdictId}'",
+              chain
+            )
+          )
       }
-      _ <- coverageMatches(manifest, episodes.size, calls.size, tools.size, verdicts.size)
-      _ <- reconciliations.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, r) =>
+      _ <- coverageMatches(
+        manifest,
+        episodes.size,
+        calls.size,
+        tools.size,
+        verdicts.size
+      )
+      _ <- reconciliations.foldLeft[Either[model.ExportError, Unit]](
+        Right(())
+      ) { (acc, r) =>
         acc.flatMap { _ =>
           if calls.exists(_.callId == r.callId) then Right(())
           else
@@ -116,7 +180,9 @@ object Lineage:
   /** attemptId -> jobId over the manifest lineage (parents before children,
     * attempts listed per job).
     */
-  private def attemptChain(jobs: Vector[wire.JobLineageWire]): Vector[(String, String)] =
+  private def attemptChain(
+      jobs: Vector[wire.JobLineageWire]
+  ): Vector[(String, String)] =
     jobs.flatMap(j => j.attempts.map(_ -> j.jobId))
 
   private def resolveAttempt(
@@ -127,7 +193,10 @@ object Lineage:
   ): Either[model.ExportError, Unit] =
     chain.find(_._1 == attemptId) match
       case None =>
-        Left(model.ExportError.DanglingReference(from, attemptId, attemptId, "attempt"))
+        Left(
+          model.ExportError
+            .DanglingReference(from, attemptId, attemptId, "attempt")
+        )
       case Some((_, chainJob)) if chainJob != jobId =>
         Left(model.ExportError.AttemptJobMismatch(attemptId, jobId, chainJob))
       case _ => Right(())
@@ -141,21 +210,52 @@ object Lineage:
   ): Either[model.ExportError, Unit] =
     val cov = manifest.coverage
     if cov.episodes != episodes then
-      Left(model.ExportError.IntegrityMismatch("coverage.episodes", cov.episodes.toString, episodes.toString))
+      Left(
+        model.ExportError.IntegrityMismatch(
+          "coverage.episodes",
+          cov.episodes.toString,
+          episodes.toString
+        )
+      )
     else if cov.modelCalls != calls then
-      Left(model.ExportError.IntegrityMismatch("coverage.modelCalls", cov.modelCalls.toString, calls.toString))
+      Left(
+        model.ExportError.IntegrityMismatch(
+          "coverage.modelCalls",
+          cov.modelCalls.toString,
+          calls.toString
+        )
+      )
     else if cov.toolCalls != tools then
-      Left(model.ExportError.IntegrityMismatch("coverage.toolCalls", cov.toolCalls.toString, tools.toString))
+      Left(
+        model.ExportError.IntegrityMismatch(
+          "coverage.toolCalls",
+          cov.toolCalls.toString,
+          tools.toString
+        )
+      )
     else if cov.verdicts != verdicts then
-      Left(model.ExportError.IntegrityMismatch("coverage.verdicts", cov.verdicts.toString, verdicts.toString))
+      Left(
+        model.ExportError.IntegrityMismatch(
+          "coverage.verdicts",
+          cov.verdicts.toString,
+          verdicts.toString
+        )
+      )
     else Right(())
 
-  private def unique(ids: Vector[String], kind: String): Either[model.ExportError, Unit] =
-    ids.foldLeft[Either[model.ExportError, Set[String]]](Right(Set.empty)) { (acc, id) =>
-      acc.flatMap(seen =>
-        if seen.contains(id) then Left(model.ExportError.DuplicateId(kind, id))
-        else Right(seen + id)
-      )
-    }.map(_ => ())
+  private def unique(
+      ids: Vector[String],
+      kind: String
+  ): Either[model.ExportError, Unit] =
+    ids
+      .foldLeft[Either[model.ExportError, Set[String]]](Right(Set.empty)) {
+        (acc, id) =>
+          acc.flatMap(seen =>
+            if seen.contains(id) then
+              Left(model.ExportError.DuplicateId(kind, id))
+            else Right(seen + id)
+          )
+      }
+      .map(_ => ())
 
 end Lineage

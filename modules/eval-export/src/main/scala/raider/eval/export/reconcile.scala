@@ -6,9 +6,9 @@ import zio.json.*
   *
   * Usage evidence can arrive after the export (provider reports, gateway
   * correction). This object appends VERSIONED reconciliation records to
-  * reconciliation.jsonl and leaves every other document byte-identical —
-  * the manifest is not rewritten, no section digest changes, and the
-  * original usage numbers remain visible as `previousUsage` of each record.
+  * reconciliation.jsonl and leaves every other document byte-identical — the
+  * manifest is not rewritten, no section digest changes, and the original usage
+  * numbers remain visible as `previousUsage` of each record.
   *
   * Chain discipline (executable, see [[Reconciliation.verifyChain]]):
   *   - records are numbered rc-1, rc-2, ... in file order;
@@ -23,17 +23,24 @@ import zio.json.*
   */
 object Reconciliation:
 
-  /** Append one versioned late-usage record. Pure: returns a new bundle
-    * where reconciliation.jsonl has one more line and every other file is
+  /** Append one versioned late-usage record. Pure: returns a new bundle where
+    * reconciliation.jsonl has one more line and every other file is
     * byte-identical.
     */
-  def append(bundle: ExportBundle, late: model.LateUsage): Either[model.ExportError, ExportBundle] =
+  def append(
+      bundle: ExportBundle,
+      late: model.LateUsage
+  ): Either[model.ExportError, ExportBundle] =
     for
-      calls  <- bundle.parseJsonl[wire.CallWire](ExportBundle.CallsName)
-      call   <- calls.find(_.callId == late.callId).toRight(model.ExportError.MissingCall(late.callId))
-      _      <- validateLate(late)
+      calls <- bundle.parseJsonl[wire.CallWire](ExportBundle.CallsName)
+      call <- calls
+        .find(_.callId == late.callId)
+        .toRight(model.ExportError.MissingCall(late.callId))
+      _ <- validateLate(late)
       corrected <- validateUsage(late.usage, late.callId)
-      existing       <- bundle.parseJsonl[wire.ReconciliationWire](ExportBundle.ReconciliationName)
+      existing <- bundle.parseJsonl[wire.ReconciliationWire](
+        ExportBundle.ReconciliationName
+      )
       existingContent <- bundle.content(ExportBundle.ReconciliationName)
       forCall = existing.filter(_.callId == late.callId)
       version = forCall.map(_.reconciliationVersion).foldLeft(0)(math.max) + 1
@@ -47,13 +54,17 @@ object Reconciliation:
         jobId = call.jobId,
         reconciliationVersion = version,
         previousUsage = previous,
-        previousUsageSha256 = Digests.sha256HexUtf8(wire.UsageWire.canonical(previous)),
+        previousUsageSha256 =
+          Digests.sha256HexUtf8(wire.UsageWire.canonical(previous)),
         correctedUsage = corrected,
         source = late.source,
         atMs = late.atMs,
         prevFileSha256 = Digests.sha256HexUtf8(existingContent)
       )
-    yield bundle.withFile(ExportBundle.ReconciliationName, existingContent + record.toJson + "\n")
+    yield bundle.withFile(
+      ExportBundle.ReconciliationName,
+      existingContent + record.toJson + "\n"
+    )
 
   /** Verify the append chain of a bundle: every record's prevFileSha256 must
     * equal the sha256 of the file prefix before it, ids must be rc-1..rc-n in
@@ -62,11 +73,16 @@ object Reconciliation:
   def verifyChain(bundle: ExportBundle): Either[model.ExportError, Unit] =
     for
       content <- bundle.content(ExportBundle.ReconciliationName)
-      recs    <- bundle.parseJsonl[wire.ReconciliationWire](ExportBundle.ReconciliationName)
-      _       <- walk(content, recs)
+      recs <- bundle.parseJsonl[wire.ReconciliationWire](
+        ExportBundle.ReconciliationName
+      )
+      _ <- walk(content, recs)
     yield ()
 
-  private def walk(content: String, recs: Vector[wire.ReconciliationWire]): Either[model.ExportError, Unit] =
+  private def walk(
+      content: String,
+      recs: Vector[wire.ReconciliationWire]
+  ): Either[model.ExportError, Unit] =
     val lines = ExportBundle.splitJsonl(content)
     if lines.size != recs.size then
       Left(
@@ -76,42 +92,57 @@ object Reconciliation:
       )
     else
       val nextVersion = scala.collection.mutable.Map.empty[String, Int]
-      var prefix      = ""
-      recs.zipWithIndex.foldLeft[Either[model.ExportError, Unit]](Right(())) { (acc, pair) =>
-        acc.flatMap { _ =>
-          val (rec, idx) = pair
-          val expectedId = s"rc-${idx + 1}"
-          if rec.reconciliationId != expectedId then
-            Left(model.ExportError.ChainViolation(s"expected reconciliation id $expectedId, got '${rec.reconciliationId}'"))
-          else if Digests.sha256HexUtf8(prefix) != rec.prevFileSha256 then
-            Left(
-              model.ExportError.ChainViolation(
-                s"record '$expectedId' prevFileSha256 does not match the file content before it"
-              )
-            )
-          else
-            val expectedVersion = nextVersion.getOrElse(rec.callId, 0) + 1
-            if rec.reconciliationVersion != expectedVersion then
+      var prefix = ""
+      recs.zipWithIndex.foldLeft[Either[model.ExportError, Unit]](Right(())) {
+        (acc, pair) =>
+          acc.flatMap { _ =>
+            val (rec, idx) = pair
+            val expectedId = s"rc-${idx + 1}"
+            if rec.reconciliationId != expectedId then
               Left(
                 model.ExportError.ChainViolation(
-                  s"call '${rec.callId}' expected reconciliation version $expectedVersion, got ${rec.reconciliationVersion}"
+                  s"expected reconciliation id $expectedId, got '${rec.reconciliationId}'"
+                )
+              )
+            else if Digests.sha256HexUtf8(prefix) != rec.prevFileSha256 then
+              Left(
+                model.ExportError.ChainViolation(
+                  s"record '$expectedId' prevFileSha256 does not match the file content before it"
                 )
               )
             else
-              nextVersion(rec.callId) = expectedVersion
-              prefix += lines(idx) + "\n"
-              Right(())
-        }
+              val expectedVersion = nextVersion.getOrElse(rec.callId, 0) + 1
+              if rec.reconciliationVersion != expectedVersion then
+                Left(
+                  model.ExportError.ChainViolation(
+                    s"call '${rec.callId}' expected reconciliation version $expectedVersion, got ${rec.reconciliationVersion}"
+                  )
+                )
+              else
+                nextVersion(rec.callId) = expectedVersion
+                prefix += lines(idx) + "\n"
+                Right(())
+          }
       }
 
-  private def validateLate(late: model.LateUsage): Either[model.ExportError, Unit] =
-    if late.source.isEmpty then Left(model.ExportError.EmptyField("source", "late usage"))
-    else if late.atMs < 0 then Left(model.ExportError.EmptyField("atMs", "late usage"))
+  private def validateLate(
+      late: model.LateUsage
+  ): Either[model.ExportError, Unit] =
+    if late.source.isEmpty then
+      Left(model.ExportError.EmptyField("source", "late usage"))
+    else if late.atMs < 0 then
+      Left(model.ExportError.EmptyField("atMs", "late usage"))
     else Right(())
 
-  private def validateUsage(usage: model.Usage, callId: String): Either[model.ExportError, wire.UsageWire] =
+  private def validateUsage(
+      usage: model.Usage,
+      callId: String
+  ): Either[model.ExportError, wire.UsageWire] =
     wire.UsageWire
       .validate(wire.UsageWire.fromUsage(usage))
-      .left.map(msg => model.ExportError.BadUsage(s"late usage for call '$callId': $msg"))
+      .left
+      .map(msg =>
+        model.ExportError.BadUsage(s"late usage for call '$callId': $msg")
+      )
 
 end Reconciliation

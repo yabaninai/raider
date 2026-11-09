@@ -6,25 +6,24 @@ package raider.evalexport
   * caller from journal/trace/verifier evidence is turned into an
   * [[ExportBundle]] of six pinned JSON documents (Yabanin-compatible run
   * directory shape: manifest.json, episodes.jsonl, calls.jsonl, tools.jsonl,
-  * verdicts.jsonl, plus this contract's append-only reconciliation.jsonl).
-  * The module is standalone: no server, no database, no compile-time
-  * dependency on other Raider modules.
+  * verdicts.jsonl, plus this contract's append-only reconciliation.jsonl). The
+  * module is standalone: no server, no database, no compile-time dependency on
+  * other Raider modules.
   *
   * Honesty-critical shape constraints of the input (EXPORT-02):
-  *   - tool arguments travel as raw text ([[ToolCallInput.argsJsonText]])
-  *     that is NEVER exported verbatim — only its sha256 digest is; embedding
-  *     args into the export requires the explicit
-  *     [[ToolCallInput.argsRedactedSafe]] marker (fixture-pinned
-  *     redacted-safe args);
+  *   - tool arguments travel as raw text ([[ToolCallInput.argsJsonText]]) that
+  *     is NEVER exported verbatim — only its sha256 digest is; embedding args
+  *     into the export requires the explicit [[ToolCallInput.argsRedactedSafe]]
+  *     marker (fixture-pinned redacted-safe args);
   *   - environment references are NAME-only ([[ToolCallInput.envRefs]]); no
   *     field of this model can carry an environment VALUE (typed
   *     [[ExportError.BadEnvRef]] rejects name=value pairs at the door);
-  *   - verdicts exist ONLY as actual [[VerifierResult]] records supplied by
-  *     the caller; the exporter cannot synthesize one for an episode whose
-  *     verifier produced nothing — such episodes are exported as
-  *     pending/absent with an explicit reason;
-  *   - usage keeps unknown prices null ([[Usage]]); claiming a known price
-  *     with no number is a typed [[ExportError.BadUsage]].
+  *   - verdicts exist ONLY as actual [[VerifierResult]] records supplied by the
+  *     caller; the exporter cannot synthesize one for an episode whose verifier
+  *     produced nothing — such episodes are exported as pending/absent with an
+  *     explicit reason;
+  *   - usage keeps unknown prices null ([[Usage]]); claiming a known price with
+  *     no number is a typed [[ExportError.BadUsage]].
   *
   * Versioning: every exported document carries `schemaVersion` (see
   * [[model.schemaVersion]]). Any shape change is a new schemaVersion plus a
@@ -35,8 +34,8 @@ object model:
   /** Wire revision pinned by this module's codecs and schemas. */
   val schemaVersion: Int = 1
 
-  /** Producing toolchain of the export (mirrors the lineage contract
-    * generator shape). `name` must be exactly `raider`.
+  /** Producing toolchain of the export (mirrors the lineage contract generator
+    * shape). `name` must be exactly `raider`.
     */
   final case class Generator(
       name: String,
@@ -57,9 +56,9 @@ object model:
       finishedAtMs: Option[Long]
   )
 
-  /** One job of the run's root→job→attempt lineage. `parentJobId` is null
-    * for the single root job; parents must appear earlier in `jobs` (the
-    * same parents-before-children discipline as the lineage data contract).
+  /** One job of the run's root→job→attempt lineage. `parentJobId` is null for
+    * the single root job; parents must appear earlier in `jobs` (the same
+    * parents-before-children discipline as the lineage data contract).
     */
   final case class JobRecord(
       jobId: String,
@@ -91,8 +90,8 @@ object model:
 
   /** Terminal evidence of one episode (one attempt execution). A partial
     * episode carries its explicit terminal state plus a reason; the export
-    * keeps it partial forever — a cancellation is never rewritten into a
-    * fake completion.
+    * keeps it partial forever — a cancellation is never rewritten into a fake
+    * completion.
     */
   enum Completion:
     case Completed(outcome: ExecutionStatus, atMs: Long)
@@ -105,8 +104,8 @@ object model:
     case Error
 
   /** Safety/protocol outcome evidence. Exported only when present; episodes
-    * without evidence export the outcome as explicitly `missing` with a
-    * reason — coverage is reported, never silently skipped.
+    * without evidence export the outcome as explicitly `missing` with a reason
+    * — coverage is reported, never silently skipped.
     */
   final case class OutcomeEvidence(
       status: OutcomeStatus,
@@ -121,9 +120,9 @@ object model:
     case Error
 
   /** An ACTUAL verifier result (protected deterministic verifier; yabanin
-    * integration contract §11). This is the ONLY source of verdict records:
-    * the model never records its own success, and the exporter refuses to
-    * attach a verdict to an episode that did not declare a verifier.
+    * integration contract §11). This is the ONLY source of verdict records: the
+    * model never records its own success, and the exporter refuses to attach a
+    * verdict to an episode that did not declare a verifier.
     */
   final case class VerifierResult(
       episodeId: String,
@@ -165,8 +164,8 @@ object model:
       sizeBytes: Long
   )
 
-  /** Actual tool-call result evidence. A refusal is `Denied` and must carry
-    * its deny reason (yabanin integration contract §11: refusals include
+  /** Actual tool-call result evidence. A refusal is `Denied` and must carry its
+    * deny reason (yabanin integration contract §11: refusals include
     * `deny_reason`).
     */
   enum ToolResult:
@@ -183,8 +182,8 @@ object model:
     * exists ONLY as digest input — the exporter refuses to embed it. Embedding
     * requires `argsRedactedSafe`: args the caller explicitly pins as
     * redacted-safe (exported verbatim as a JSON object). At least one of the
-    * two must be present for a digest to exist; with both present the digest
-    * is computed over the raw text.
+    * two must be present for a digest to exist; with both present the digest is
+    * computed over the raw text.
     */
   final case class ToolCallInput(
       toolCallId: String,
@@ -217,9 +216,9 @@ object model:
       episodeId: String,
       attemptId: String,
       completion: Completion,
-      /** Whether a verifier was declared for this episode's task. Episodes
-        * with `verifierExpected=true` but no actual [[VerifierResult]] export
-        * a PENDING verifier state and a `missing` task outcome — a verdict is
+      /** Whether a verifier was declared for this episode's task. Episodes with
+        * `verifierExpected=true` but no actual [[VerifierResult]] export a
+        * PENDING verifier state and a `missing` task outcome — a verdict is
         * never fabricated (EXPORT-02).
         */
       verifierExpected: Boolean,
@@ -229,9 +228,9 @@ object model:
       protocol: Option[OutcomeEvidence]
   )
 
-  /** The full input of one export. Structure and cross-references are
-    * validated first ([[Exporter.export]] reports typed
-    * [[ExportError]] values); nothing is partially exported.
+  /** The full input of one export. Structure and cross-references are validated
+    * first ([[Exporter.export]] reports typed [[ExportError]] values); nothing
+    * is partially exported.
     */
   final case class EvalRunInput(
       run: RunInfo,
@@ -255,8 +254,20 @@ object model:
     case MultipleRootJobs(count: Int)
     case ParentNotEarlier(child: String, parent: String)
     case AttemptWithoutEpisode(attemptId: String)
-    case AttemptJobMismatch(attemptId: String, expectedJobId: String, actualJobId: String)
-    case DanglingReference(from: String, id: String, missing: String, kind: String)
+
+    case AttemptJobMismatch(
+        attemptId: String,
+        expectedJobId: String,
+        actualJobId: String
+    )
+
+    case DanglingReference(
+        from: String,
+        id: String,
+        missing: String,
+        kind: String
+    )
+
     case VerifierMismatch(episodeId: String, reason: String)
     case BadSha256(field: String, value: String)
     case BadEnvRef(value: String)
@@ -271,10 +282,13 @@ object model:
     def message: String = this match
       case UnsupportedSchemaVersion(found, expected) =>
         s"unsupported schemaVersion $found (this reader pins $expected)"
-      case BadGeneratorName(name)      => s"generator.name must be 'raider', got '$name'"
-      case EmptyField(field, where)    => s"empty required field '$field' in $where"
-      case DuplicateId(kind, id)       => s"duplicate $kind id '$id'"
-      case MultipleRootJobs(count)     => s"exactly one root job is required, found $count"
+      case BadGeneratorName(name) =>
+        s"generator.name must be 'raider', got '$name'"
+      case EmptyField(field, where) =>
+        s"empty required field '$field' in $where"
+      case DuplicateId(kind, id) => s"duplicate $kind id '$id'"
+      case MultipleRootJobs(count) =>
+        s"exactly one root job is required, found $count"
       case ParentNotEarlier(child, parent) =>
         s"parent job '$parent' must appear before child job '$child'"
       case AttemptWithoutEpisode(attemptId) =>
