@@ -26,14 +26,16 @@ object HonestySpec extends ZIOSpecDefault:
       val bundle  = Fixtures.exported(input)
       val ep2     = Fixtures.episodesOf(bundle).find(_.episodeId == "ep-2").getOrElse(sys.error("ep-2 absent"))
       val manifest = Fixtures.manifestOf(bundle)
-      val verdictFiles = bundle.file(ExportBundle.VerdictsName).map(_.content).getOrElse("")
+      // Real verdicts for produced episodes are exported (evidence is never
+      // dropped); the pending episode must not gain one.
+      val verdictEpisodes = Fixtures.verdictsOf(bundle).map(_.episodeId)
       assertTrue(
         ep2.verifier == wire.VerifierWire("pending", Some("verify.sh"), Some("verifierExpectedButMissing")),
         ep2.outcomes.find(_.kind == "task").contains(
           wire.OutcomeWire("task", "missing", Some("verifierExpectedButMissing"), None)
         ),
         manifest.coverage.verifier == wire.VerifierCoverageWire(expected = 2, produced = 1, pending = 1, absent = 0),
-        verdictFiles.isEmpty
+        verdictEpisodes == Vector("ep-1")
       )
     },
     test("an undeclared verifier exports absent with an explicit reason") {

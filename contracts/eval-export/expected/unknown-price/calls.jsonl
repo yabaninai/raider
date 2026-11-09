@@ -1,0 +1,2 @@
+{"schemaVersion":1,"runId":"run-20261106-unknown-price","callId":"call-1","attemptId":"att-1","jobId":"job-root","round":1,"model":"mock-coder","atMs":700,"usage":{"reservedMicroUsd":null,"observedMicroUsd":null,"unknown":true}}
+{"schemaVersion":1,"runId":"run-20261106-unknown-price","callId":"call-2","attemptId":"att-1","jobId":"job-root","round":2,"model":"mock-coder","atMs":1800,"usage":{"reservedMicroUsd":null,"observedMicroUsd":1200,"unknown":false}}

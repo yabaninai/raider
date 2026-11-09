@@ -1,6 +1,7 @@
 package raider.evalexport
 
 import zio.Scope
+import zio.json.*
 import zio.test.*
 import zio.test.Assertion.*
 
@@ -74,18 +75,20 @@ object ExportSpec extends ZIOSpecDefault:
     },
     test("lineage reconstructs from the exported documents alone") {
       val bundle = Fixtures.exported(Fixtures.Normal.input)
-      Lineage.reconstruct(bundle) == Right(
-        Lineage.ReconstructedLineage(
-          rootId = "run-20261106-normal",
-          jobs = Vector(
-            Lineage.ReconstructedJob("job-root", None, "root agent loop", Vector("att-1")),
-            Lineage.ReconstructedJob("job-child", Some("job-root"), "subtask: refactor module", Vector("att-2"))
-          ),
-          episodes = 2,
-          modelCalls = 3,
-          toolCalls = 4,
-          verdicts = 2,
-          reconciliations = 0
+      assertTrue(
+        Lineage.reconstruct(bundle) == Right(
+          Lineage.ReconstructedLineage(
+            rootId = "run-20261106-normal",
+            jobs = Vector(
+              Lineage.ReconstructedJob("job-root", None, "root agent loop", Vector("att-1")),
+              Lineage.ReconstructedJob("job-child", Some("job-root"), "subtask: refactor module", Vector("att-2"))
+            ),
+            episodes = 2,
+            modelCalls = 3,
+            toolCalls = 4,
+            verdicts = 2,
+            reconciliations = 0
+          )
         )
       )
     },
@@ -143,7 +146,7 @@ object ExportSpec extends ZIOSpecDefault:
                     case _                        => false
                   } &&
                   fields.get("type").contains(zio.json.ast.Json.Str("object"))
-              if ok then Right(()) else Left(s"$path lacks the pinned \$schema/\$id/type headers")
+              if ok then Right(()) else Left(path.toString + " lacks the pinned $schema/$id/type headers")
             case Right(_) => Left(s"$path is not a JSON object")
       }
       assertTrue(checks.collect { case Left(m) => m }.isEmpty)

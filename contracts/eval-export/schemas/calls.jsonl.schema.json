@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raider.local/contracts/eval-export/schemas/calls.jsonl",
+  "title": "Agent-eval export model calls section (schemaVersion 1)",
+  "description": "Schema of ONE model-call record; the file calls.jsonl carries exactly one record per line (UTF-8, LF-terminated; an empty section is a zero-byte file). Honesty rules pinned here: usage prices that are unknown stay explicitly null and are marked unknown=true — a null observed price with unknown=false is a contract violation (never fabricate, never conflate with zero); reservedMicroUsd may be null even when the observed price is known. attemptId/jobId must resolve against the manifest lineage.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "runId",
+    "callId",
+    "attemptId",
+    "jobId",
+    "round",
+    "model",
+    "atMs",
+    "usage"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string", "minLength": 1 },
+    "callId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "jobId": { "type": "string", "minLength": 1 },
+    "round": { "type": "integer", "minimum": 0, "description": "The actual agent-loop round the call belongs to." },
+    "model": { "type": "string", "minLength": 1 },
+    "atMs": { "type": "integer", "minimum": 0 },
+    "usage": { "$ref": "#/$defs/usage" }
+  },
+  "$defs": {
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reservedMicroUsd", "observedMicroUsd", "unknown"],
+      "properties": {
+        "reservedMicroUsd": { "type": ["integer", "null"], "description": "Reserved budget in micro-USD, or null when not reserved." },
+        "observedMicroUsd": { "type": ["integer", "null"], "description": "Observed spend in micro-USD, or null when the price is unknown. Unknown is null, never 0 and never fabricated." },
+        "unknown": { "type": "boolean", "description": "true means the price is honestly unknown: observedMicroUsd must then be null." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "unknown": { "const": true } }, "required": ["unknown"] },
+          "then": { "properties": { "observedMicroUsd": { "type": "null" } } }
+        },
+        {
+          "if": { "properties": { "unknown": { "const": false } }, "required": ["unknown"] },
+          "then": {
+            "properties": { "observedMicroUsd": { "type": "integer" } },
+            "required": ["observedMicroUsd"]
+          }
+        }
+      ]
+    }
+  }
+}
