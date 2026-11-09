@@ -129,6 +129,24 @@ lazy val raiderBackendOpencode = (project in file("modules/backend-opencode"))
     )
   )
 
+// raider-eval-export: eval-run export bundle (RAI-040) against the
+// contracts/eval-export schemas + pinned goldens. Standalone (zio + zio-json
+// only, no raiderCore/testkit edge). Lane test entry: TestMain via
+// modules/eval-export/run-tests.sh; the same zio-test suites are
+// sbt-discoverable. Registered by root coordinator (coordinator-owned file).
+lazy val raiderEvalExport = (project in file("modules/eval-export"))
+  .settings(
+    commonSettings,
+    testSettings,
+    name := "raider-eval-export"
+  )
+  .settings(
+    libraryDependencies ++= Seq(
+      "dev.zio" %% "zio" % zioVersion,
+      "dev.zio" %% "zio-json" % zioJsonVersion
+    )
+  )
+
 lazy val raiderCompatPi = (project in file("modules/compat-pi"))
   .settings(
     commonSettings,
@@ -319,7 +337,8 @@ lazy val root = (project in file("."))
     raiderProviderAnthropic,
     raiderCliFixtures,
     raiderCli,
-    raiderUi
+    raiderUi,
+    raiderEvalExport
   )
   .dependsOn(
     raiderCore,
@@ -333,7 +352,8 @@ lazy val root = (project in file("."))
     raiderProviderAnthropic,
     raiderCliFixtures,
     raiderCli,
-    raiderUi
+    raiderUi,
+    raiderEvalExport
   )
   .settings(
     name := "raider",
